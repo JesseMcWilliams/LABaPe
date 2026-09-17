@@ -350,11 +350,39 @@ mask actually match how you carve out lab space.
 - OpenTofu outputs a dynamic Ansible inventory; each host lands in one
   group per role it carries (§9).
 - The software list is **not** baked into the roles. It's supplied as a
-  per-run manifest (e.g. `software-manifest.yml`) consumed by generic
-  roles (`windows_common`, `linux_common`) that loop over a variable
-  package list using `chocolatey` (Windows) and `apt`/`dnf`/`zypper`
-  (Linux) modules — this avoids writing a new Ansible role every time
-  the software list changes.
+  per-run manifest consumed by generic roles (`windows_common`,
+  `linux_common`) — this avoids writing a new Ansible role every time
+  the software list changes, which is the whole reason this needs a
+  manifest rather than fixed roles per package.
+
+Package naming isn't consistent across `chocolatey`/`apt`/`dnf`/`zypper`
+for "the same" software, and some packages need extra setup (a repo
+added first) or aren't in any package manager at all. Full design,
+including exactly how a multi-role host's package list is resolved, is
+in [`docs/software-manifest.md`](./docs/software-manifest.md). Summary:
+
+- **Two files, two lifecycles**: `ansible/package_catalog.yml`
+  (repo-committed, stable — generic name → per-package-manager name,
+  optional repo/custom-installer info) vs. `software-manifest.yml`
+  (per-run — which catalog entries apply to which role; also accepts
+  one-off inline package definitions not worth cataloging).
+- **Missing platform fields are a silent skip, not an error** — the OS
+  matrix (§5) is wide enough that "not packaged for this platform" is
+  normal.
+- **Repo setup** (VS Code, Docker, etc.) is a named, reusable task per
+  repo, run once per host for the unique set of repos its resolved
+  packages actually need.
+- **Multi-role resolution is explicit**, not left to Ansible's default
+  variable behavior — group_vars lists don't merge across groups by
+  default, so a host with more than one role (§9) needs its roles'
+  package lists explicitly unioned via `group_names`, or software
+  silently goes missing on exactly the hosts §9 was designed to support.
+- **Custom installers** (no package-manager entry at all) use the same
+  catalog-entry shape with a `type: msi/exe/deb_url/rpm_url` + `url`
+  instead of a package name, so `windows_common`/`linux_common` have one
+  lookup path regardless of how a given package installs.
+- **Versioning** is optional per entry; omitted means "latest," which is
+  the practical default for a disposable environment.
 
 ## 12. Proposed Repository Layout
 
@@ -366,6 +394,7 @@ LABaPe/
     base-images.md
     networking.md
     credentials.md
+    software-manifest.md
   secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
   tofu/
     modules/
@@ -389,13 +418,14 @@ LABaPe/
     environment.example.yml
   ansible/
     group_vars/
+    package_catalog.yml   # repo-committed, stable — §11 / docs/software-manifest.md
     roles/
       domain_controller/
-      windows_common/
-      linux_common/
+      windows_common/     # resolves group_names -> package_catalog -> win_chocolatey/win_package
+      linux_common/       # resolves group_names -> package_catalog -> apt/dnf/zypper + repo setup
     playbooks/
       site.yml          # ordered: domain_controller role -> domain-join -> per-role software
-    software-manifest.example.yml
+    software-manifest.example.yml   # per-run — §11 / docs/software-manifest.md
   packer/
     windows/
       2019/ 2022/ 2025/
