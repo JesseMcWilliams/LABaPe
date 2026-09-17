@@ -114,6 +114,106 @@ Backend-specific details live behind a common module interface
 change based on which backend is selected — only which backend module is
 invoked does.
 
+### 6.1 The `vm` module interface
+
+`modules/vm/hyperv` and `modules/vm/libvirt` implement the **identical**
+set of inputs and outputs — an environment definition never has to know
+which one it's talking to:
+
+**Inputs:**
+
+| Variable | Type | Notes |
+|---|---|---|
+| `name` | string | VM/hostname |
+| `os` | string | key into a backend-specific catalog, e.g. `windows_server_2022`, `rocky9` — resolves to that backend's actual template name or ISO+answer-file pair internally |
+| `roles` | list(string) | passthrough only — the `vm` module doesn't interpret roles, it just carries them through to the generated inventory (§9) |
+| `image_source` | string | `"packer_template"` \| `"iso_direct"` |
+| `cpu_count`, `memory_mb`, `disk_gb` | number | |
+| `network_id` | string | output of the `network` module (§6.2) — which switch/bridge/libvirt-network this VM attaches to |
+| `addressing` | object | `{ mode = "static"\|"dhcp", address, prefix_length, gateway }` — `address` etc. only meaningful when `mode = "static"` |
+| `admin_credential` | sensitive object | bootstrap password (Windows) or SSH public key (Linux), from `docs/credentials.md` |
+| `template_vars` | map(string) | extra values rendered into the answer file/finalize scripts — `domain_name`, `dns_forward_ip`, `management_source` (docs/credentials.md §7), etc. |
+
+**Outputs:**
+
+| Output | Notes |
+|---|---|
+| `name`, `roles` | passthrough |
+| `os_family` | `"windows"` \| `"linux"`, derived from `os` — tells the inventory generator whether to set `ansible_connection=winrm` or `ssh` |
+| `ip_address` | for `mode = "static"`, this just echoes the input. **For `mode = "dhcp"`, this is a real gap**: the address genuinely isn't known at `apply` time. Resolved with a post-apply discovery step in the same script that generates the Ansible inventory (§11) — `Get-VMNetworkAdapter` (Hyper-V) or `virsh domifaddr` (libvirt) queried after the VM has booted and picked up a lease, before inventory generation runs. Flagged here rather than glossed over, since "both static and DHCP are supported" (§14) undersold that DHCP needs this extra step to actually work with the rest of the pipeline. |
+
+### 6.2 The `network` module interface
+
+`modules/network/hyperv` and `modules/network/libvirt` (§14, §12) follow
+the same pattern: `environment_name`, `mode` (`bridged`\|`nat`),
+`network_address`/`subnet_mask`/`gateway`, plus `physical_nic`
+(bridged) or nothing extra (nat, since libvirt/Hyper-V handle DHCP/NAT
+internally per `docs/networking.md`). Output: `network_id`, consumed by
+every `vm` module call for that environment.
+
+### 6.3 Backend selection and state (a real Terraform/OpenTofu constraint)
+
+A module's `source` argument has to be a **literal string** — it can't
+be a variable or an expression. That rules out one root configuration
+that picks `modules/vm/hyperv` vs. `modules/vm/libvirt` at `apply` time
+based on a variable; OpenTofu has no such thing as a runtime-selected
+module source. So backend selection happens one level up, by which root
+configuration you run, not by a variable inside one root config:
+
+```
+tofu/
+  modules/
+    vm/            hyperv/  libvirt/     # §6.1, identical contract
+    network/       hyperv/  libvirt/     # §6.2, identical contract
+  backends/
+    hyperv/        # root config — hardcodes module "hosts" { source = "../../modules/vm/hyperv" ... }
+      main.tf
+      variables.tf
+    libvirt/       # root config — hardcodes the libvirt equivalent
+      main.tf
+      variables.tf
+  environments/
+    small.tfvars.example
+    medium.tfvars.example
+  environment.example.yml
+```
+
+Both `backends/*/` roots consume the **same** `environments/<size>.tfvars`
+host-group data and the same `environment.yml` — only which directory
+`scripts/deploy.sh` runs `tofu apply` in changes with the backend. This
+corrects an imprecision in §15's original phrasing ("workspace select
+`<backend>`") — **workspaces don't select a backend**, they isolate
+*state* within one root config. The corrected model:
+
+- **Directory** (`backends/hyperv/` vs. `backends/libvirt/`) = which
+  hypervisor.
+- **Workspace** (`tofu workspace new <environment-instance-name>`)
+  within that directory = which running environment *instance* — this
+  is what actually isolates state between, say, two concurrent `medium`
+  environments, each getting its own state file automatically
+  (`terraform.tfstate.d/<workspace>/...`) without separate directories
+  per instance.
+
+**State backend**: local state (the default) is fine for v1 — a single
+self-hosted control machine, one operator. If the control machine ever
+stops being a single fixed machine (a laptop sometimes, WSL sometimes)
+and state needs to survive that, OpenTofu's `pg` backend (state in a
+Postgres database) is the natural self-hosted upgrade — no new service
+needed if Postgres is already available, and it avoids pulling in a
+cloud-only backend for a project that's explicitly self-hosted (§3).
+Same pattern as the Vault → HashiCorp Vault progression in §13: name the
+upgrade path, don't build it until it's an actual need. Either way,
+`.terraform/` and any local `terraform.tfstate*` files are `.gitignore`d
+— state can contain values from `template_vars`/`admin_credential`
+that shouldn't end up in the repo.
+
+**Feeding `environment.yml` to OpenTofu**: `environment.yml` is the one
+human-edited file (§10), but OpenTofu doesn't read YAML directly.
+`scripts/deploy.sh` converts it to `environment.auto.tfvars.json`
+(OpenTofu auto-loads any `*.auto.tfvars.json` in the working directory)
+before calling `tofu apply` — one source of truth for a human to edit,
+without hand-maintaining a parallel `.tfvars` copy.
+
 ## 7. Base Images
 
 Two supported paths for getting a host to a usable base OS state,
@@ -235,6 +335,8 @@ network:
   dns_forward_ip:               # optional — see §14 "DNS forwarding"
     - 1.1.1.1
     - 9.9.9.9
+  management_source: 192.168.1.50   # control machine IP/CIDR — WinRM/SSH
+                                     # firewall scoping, docs/credentials.md §7
 ```
 
 `domain_name` is never hardcoded — `company.com` above is only the
@@ -267,17 +369,23 @@ LABaPe/
   secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
   tofu/
     modules/
-      vm/               # common interface
+      vm/               # common interface, §6.1
         hyperv/
         libvirt/
-      network/          # bridged (default) + opt-in NAT, common interface (§14)
+      network/          # common interface, §6.2 — bridged (default) + opt-in NAT (§14)
         hyperv/         # External switch (bridged); Internal switch +
                          # null_resource/remote-exec New-NetNat (nat, opt-in)
         libvirt/        # bridge device (bridged); libvirt_network mode="nat" (opt-in)
-    environments/
-      small/
-      medium/
-    profiles.tfvars.example
+    backends/           # root configs — one per hypervisor, §6.3
+      hyperv/
+        main.tf
+        variables.tf
+      libvirt/
+        main.tf
+        variables.tf
+    environments/       # data only, consumed by either backends/*/ root
+      small.tfvars.example
+      medium.tfvars.example
     environment.example.yml
   ansible/
     group_vars/
@@ -429,19 +537,26 @@ a Windows DHCP Server role scoped to the environment (`docs/networking.md`
 
 ## 15. Workflow
 
+Corrected per §6.3 — the backend is which directory you run in, not a
+workspace:
+
 ```
-tofu init && tofu workspace select <backend>
-tofu apply -var-file=profiles/medium.tfvars
-# inventory auto-generated from tofu output
+cd tofu/backends/<hyperv|libvirt>
+tofu init
+tofu workspace new <environment-instance-name>   # or `select` if it already exists
+# environment.yml -> environment.auto.tfvars.json, generated by deploy.sh (§6.3)
+tofu apply -var-file=../../environments/medium.tfvars
+# inventory (+ hosts.generated) auto-generated from tofu output, including
+# post-apply DHCP-lease discovery for any host using addressing.mode=dhcp (§6.1)
 ansible-playbook -i inventory/generated site.yml -e @software-manifest.yml
 # ...
 tofu destroy
 ```
 
 Control machine is Linux or WSL (Ansible doesn't run natively as a
-control node on Windows). Wrapped in `scripts/deploy.sh` / a `Makefile`
-(`make up PROFILE=medium`, `make down`) so day-to-day use is one
-command.
+control node on Windows). Wrapped end-to-end in `scripts/deploy.sh` /
+`scripts/destroy.sh` so day-to-day use is one command per backend
+directory.
 
 ## 16. Testing / Validation
 
@@ -464,13 +579,21 @@ None blocking further scaffolding right now.
 3. ~~Bridged address range~~ — resolved: §14 makes
    `network_address`/`subnet_mask` a plain, unopinionated config option
    rather than assuming any particular slicing convention.
+4. **DHCP-mode IP discovery timing** (§6.1): the design calls for a
+   post-apply discovery step (`Get-VMNetworkAdapter`/`virsh domifaddr`)
+   before inventory generation for any host using `addressing.mode:
+   dhcp`. Not blocking — static addressing works today without it — but
+   worth deciding during M1/M2 whether that discovery step is worth
+   building right away or whether static-only is fine until a real need
+   for DHCP-mode hosts shows up.
 
 ## 18. Proposed Milestones
 
-- **M1** — libvirt backend, small profile, Linux-only VMs, bridged
-  networking (default), pre-flight address check
-  (`scripts/check-network.sh`), base Ansible config, direct-ISO-boot
-  path only. End-to-end smoke test on one backend.
+- **M1** — `modules/vm`/`modules/network` interface implemented for
+  libvirt (§6.1/§6.2), `tofu/backends/libvirt` root config, small
+  profile, Linux-only VMs, bridged networking (default), pre-flight
+  address check (`scripts/check-network.sh`), base Ansible config,
+  direct-ISO-boot path only. End-to-end smoke test on one backend.
 - **M2** — Hyper-V backend reaching parity with M1 for Linux VMs
   (External-switch bridged networking, `check-network.ps1`).
 - **M3** — Windows VM support on both backends, WinRM bootstrap,

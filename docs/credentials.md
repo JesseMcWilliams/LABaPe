@@ -106,19 +106,77 @@ One vault password (kept out of the repo, e.g. in a password manager or
 a `--vault-password-file` outside version control) unlocks everything
 both tools need for that run.
 
-## 7. Security note given bridged-by-default networking
+## 7. Firewall scoping (given bridged-by-default networking)
 
 Since DESIGN.md §14 defaults to bridged — VMs directly reachable on the
-physical LAN rather than behind NAT — WinRM listening with password auth
-is more exposed than it would be on an isolated network. Worth being
-deliberate about even in v1:
+physical LAN rather than behind NAT — the management protocols this
+whole document is about (WinRM, SSH) are more exposed than they'd be
+behind NAT. The fix in both cases is the same shape: restrict the
+listener to the control machine's address instead of leaving it open to
+the whole LAN.
 
-- Prefer WinRM over HTTPS (Cloudbase-Init can generate a self-signed
-  cert during provisioning) over plain HTTP.
-- Scope the Windows Firewall WinRM rule to the control machine's IP in
-  the answer file, if that IP is stable enough to hardcode per
-  environment.
+This needs a new, non-secret config value — `network.management_source`
+in `environment.yml` (DESIGN.md §10): the control machine's IP (or a
+small CIDR, if that IP isn't perfectly stable — see the caveat below).
+It's not sensitive, so it lives in `environment.yml` rather than the
+vault, and gets passed through as one of the `template_vars` the `vm`
+module renders into answer files/finalize scripts (§6.1 of DESIGN.md).
 
-Neither is a hard requirement to start building — it's a known gap being
-named now rather than discovered later, and worth closing before this
-sees any use beyond a fully trusted personal LAN.
+```yaml
+network:
+  management_source: 192.168.1.50    # control machine's IP, or a small CIDR
+```
+
+### Windows: scope the WinRM firewall rule
+
+Baked into the answer file's `FirstLogonCommands` (or run as a Packer/
+`promote-to-template.sh` provisioner) once WinRM is enabled:
+
+```powershell
+Set-NetFirewallRule -Name "WINRM-HTTP-In-TCP" `
+  -RemoteAddress "<management_source>"
+Set-NetFirewallRule -Name "WINRM-HTTPS-In-TCP" `
+  -RemoteAddress "<management_source>"
+```
+
+(Only the HTTPS rule matters once HTTPS-only WinRM is in place — keep
+both scoped in the meantime if HTTP is still enabled during bring-up.)
+
+### Linux: scope the SSH firewall rule
+
+RHEL family, Fedora, Oracle Linux, openSUSE/SLES (`firewalld`):
+
+```bash
+firewall-cmd --permanent --zone=public --remove-service=ssh
+firewall-cmd --permanent --zone=public --add-rich-rule=\
+'rule family="ipv4" source address="<management_source>" service name="ssh" accept'
+firewall-cmd --reload
+```
+
+Debian family — Ubuntu, Debian, Mint (`ufw`):
+
+```bash
+ufw allow from <management_source> to any port 22 proto tcp
+ufw deny 22/tcp
+```
+
+Both run as a provisioner step in the same place the OS-family finalize
+steps already run (docs/base-images.md §3), so it's part of every
+template/promoted image rather than a manual per-VM step.
+
+### Caveat: the control machine's IP has to be knowable at build time
+
+This only works cleanly if `management_source` is stable — a static IP,
+or a DHCP reservation, on the control machine. If the control machine's
+address genuinely moves around, scope to a small CIDR that covers where
+it's expected to be (e.g. a `/29` reserved for management use) rather
+than a single IP, trading a little precision for not locking yourself
+out. Either way, getting `management_source` wrong before a host is
+built means re-provisioning it, not just an Ansible re-run — one more
+reason it's worth deciding this value once per environment rather than
+improvising it per VM.
+
+Neither this nor HTTPS-only WinRM is a hard requirement to start
+building — both are known gaps named now rather than discovered later,
+and worth closing before this sees any use beyond a fully trusted
+personal LAN.
