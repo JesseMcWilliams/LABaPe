@@ -19,7 +19,9 @@ OS configuration and software installation.
   list is not fixed and changes between runs).
 - Deploy a fresh **Active Directory domain** as part of every
   environment and join the other Windows (and, where supported, Linux)
-  hosts to it automatically.
+  hosts to it automatically. Which host acts as the domain controller is
+  flexible — it can be a single-purpose host or share a host with
+  another role.
 - Idempotent, repeatable builds; environments can be torn down and
   rebuilt on demand.
 - Minimal manual steps: one command (or a short pipeline) from
@@ -40,34 +42,37 @@ Three-stage pipeline (domain services add an ordering dependency between
 provisioning and general configuration):
 
 1. **Provisioning (OpenTofu)** — creates VMs against the chosen
-   hypervisor provider and emits a dynamic Ansible inventory (grouped by
-   role: `domain_controller`, `windows_server`, `linux_server`,
-   `windows_workstation`, `linux_workstation`).
-2. **Directory services bring-up (Ansible, ordered)** — promotes the
-   `domain_controller` host(s) first, since every other host's domain
-   join depends on the domain and its DNS existing.
-3. **Configuration (Ansible, remaining groups)** — joins the rest of the
-   Windows and Linux hosts to the domain, then installs software and
+   hypervisor provider and emits a dynamic Ansible inventory. Each host
+   can belong to multiple Ansible groups, one per role it carries (see
+   §9 — a host isn't limited to a single role).
+2. **Directory services bring-up (Ansible, ordered)** — promotes
+   whichever host(s) carry the `domain_controller` role first, since
+   every other host's domain join depends on the domain and its DNS
+   existing. This runs before any other role's play, even on a host that
+   *also* carries another role.
+3. **Configuration (Ansible, remaining role plays)** — joins the rest of
+   the Windows and Linux hosts to the domain, then installs software and
    applies base configuration, over WinRM (Windows) and SSH (Linux).
 
 ```
- profile (small/medium/custom)      software manifest (per run)
-              │                               │
-              ▼                               │
-        OpenTofu apply                        │
-   (hyperv or libvirt provider)               │
-              │                               │
-              ▼                               │
-      generated inventory ────────────────────┤
-              │                               │
-              ▼                               │
-   Ansible: promote domain_controller(s)      │
-              │                               │
-              ▼                               │
-   Ansible: join windows_*/linux_* to domain  │
-              │                               │
-              ▼                               │
-   Ansible: install software, base config ────┘
+ environment config (profile + domain name + software manifest)
+              │
+              ▼
+        OpenTofu apply
+   (hyperv or libvirt provider)
+              │
+              ▼
+      generated inventory (hosts tagged by role, possibly >1 each)
+              │
+              ▼
+   Ansible: promote domain_controller-role host(s) first
+              │
+              ▼
+   Ansible: join remaining hosts to domain (Windows + Linux)
+              │
+              ▼
+   Ansible: per-role software install + base config
+   (runs for every role a host carries, DC included)
               │
               ▼
         Ready environment
@@ -79,21 +84,23 @@ provisioning and general configuration):
 |---|---|
 | Windows Server | 2019, 2022, 2025 |
 | Windows Client | 10, 11 |
-| Linux (RHEL family) | Rocky Linux, RHEL, AlmaLinux *(proposed addition — confirm)* |
+| Linux (RHEL family) | Rocky Linux, RHEL, AlmaLinux |
 | Linux (Debian family) | Ubuntu (LTS), Debian, Linux Mint |
+| Linux (other) | Fedora, openSUSE/SLES, Oracle Linux |
 
 Notes:
-- **RHEL** needs a Red Hat subscription (or the free Red Hat Developer
-  subscription) to pull packages/updates during image build and on the
-  running host (`subscription-manager register`) — Rocky and AlmaLinux
-  don't need this, being unencumbered rebuilds.
+- **RHEL** and **Oracle Linux** need registration (Red Hat subscription
+  or the free Red Hat Developer subscription; Oracle's `ULN`/`uek` repos
+  are free to register) to pull packages/updates during image build and
+  on the running host. Rocky, AlmaLinux, Fedora, and openSUSE don't need
+  this.
 - **Linux Mint** is Ubuntu-based (Mint Debian Edition is Debian-based) —
   it reuses the Ubuntu/Debian build pipeline rather than needing its own.
+- **openSUSE/SLES** uses AutoYaST instead of kickstart/preseed for its
+  unattended install — its own answer-file format, same role in the
+  pipeline.
 - Domain controllers require **Windows Server** — AD DS isn't available
   on Windows client or Linux.
-- Other distros considered and deliberately left out unless you want
-  them added: openSUSE/SLES, Fedora, Oracle Linux. Easy to add later
-  since each Linux family already has a build pipeline to extend.
 
 ## 6. Hypervisor Backends
 
@@ -109,78 +116,131 @@ invoked does.
 
 ## 7. Base Images
 
-Two supported paths for getting a host to a usable base OS state, chosen
-per host/profile rather than globally:
+Two supported paths for getting a host to a usable base OS state,
+chosen per host/host-group, not globally:
 
-1. **Packer-built golden templates** (recommended default) — built once,
-   cloned for every VM. Much faster per-environment provisioning.
+1. **Packer-built golden templates** — the **default** for every host
+   unless overridden. Built once, cloned for every VM — much faster
+   per-environment provisioning.
 2. **Direct ISO boot** — the hypervisor provider boots straight from the
    vendor ISO with an answer file, no pre-built template. Slower per
-   `tofu apply` (a full OS install runs every time) but no image
-   pipeline/template storage to maintain — useful for one-off or rarely
-   used OS versions.
+   `tofu apply` but useful to stand up an initial lab quickly, or for a
+   one-off/rarely used OS version.
 
-Both paths use the *same* answer files (autounattend.xml / kickstart /
-cloud-init autoinstall), so they never drift from each other. Full
-process detailed in [`docs/base-images.md`](./docs/base-images.md).
+A host built via direct ISO boot can later be **promoted into a
+template** once it's proven out — this is the intended day-one workflow:
+build the first lab from ISOs, then convert the VMs you'll keep reusing
+into Packer-equivalent templates rather than reinstalling from ISO every
+time. Both paths use the *same* answer files, and the promotion path
+reuses the same generalize/sysprep steps a Packer build would run. Full
+process, including promotion, in
+[`docs/base-images.md`](./docs/base-images.md).
 
 ## 8. Directory Services (Domain Controller & Domain Join)
 
 - The AD domain is deployed **as part of the environment**, not assumed
   to pre-exist. Every profile that wants domain join needs at least one
-  `domain_controller` host (Windows Server only).
-- **Ordering constraint**: the domain controller must be provisioned and
-  promoted (`Install-ADDSForest`), with DNS answering, before any other
-  host attempts to join. This is enforced in the Ansible run — the
-  `domain_controller` group's play runs to completion before the
-  domain-join tasks for `windows_server`, `windows_workstation`,
-  `linux_server`, or `linux_workstation` run.
+  host carrying the `domain_controller` role (Windows Server only).
+- **The domain controller role is just a role, not a dedicated host
+  type.** A host group can carry `[domain_controller]` alone (a
+  single-purpose DC) or `[domain_controller, windows_server]` (a host
+  that's both the DC and a general-purpose member server) — this is a
+  per-environment config choice, not something fixed by the tooling. See
+  §9 for how roles are expressed.
+- **Ordering constraint**: whichever host(s) carry `domain_controller`
+  must be provisioned and promoted (`Install-ADDSForest`), with DNS
+  answering, before any host attempts to join — including that host's
+  *own* other role plays, if it carries more than one role.
+- **Domain naming** is configurable per environment, not hardcoded —
+  see §10. Placeholder default: `company.com`.
 - **Windows join**: standard `Add-Computer -DomainName` against the
   freshly promoted domain.
-- **Linux join**: `realmd`/`sssd` (works across both the RHEL and
-  Debian families) rather than a distro-specific mechanism.
+- **Linux join**: `realmd`/`sssd` (works across the RHEL, Debian, and
+  other Linux families) rather than a distro-specific mechanism.
 - Since environments are rebuilt from scratch, each rebuild creates a
   **brand-new AD forest** — no state carried over between environment
-  lifecycles. Flagged as an assumption in §16 in case that's wrong.
+  lifecycles.
 
-## 9. Environment Profiles
+## 9. Environment Profiles & Host Roles
 
-Profiles are data, not code:
+A profile is a list of **host groups**, each with a count, an OS, and a
+**list of roles** — a host can carry more than one role, which is how DC
+placement stays flexible (§8) instead of being a fixed slot:
 
 ```yaml
 profiles:
   small:
-    domain_controller: 1
-    windows_server: 2
-    linux_server: 2
+    host_groups:
+      - name: dc
+        count: 1
+        os: windows_server_2022
+        roles: [domain_controller]        # single-purpose DC
+      - name: winsrv
+        count: 2
+        os: windows_server_2022
+        roles: [windows_server]
+      - name: linsrv
+        count: 2
+        os: rocky9
+        roles: [linux_server]
+
   medium:
-    domain_controller: 1
-    windows_server: 3
-    linux_server: 3
-    windows_workstation: 2
-    linux_workstation: 2
+    host_groups:
+      - name: dc
+        count: 1
+        os: windows_server_2022
+        roles: [domain_controller, windows_server]   # DC doubles as a member server
+      - name: winsrv
+        count: 2
+        os: windows_server_2022
+        roles: [windows_server]
+      - name: linsrv
+        count: 3
+        os: rocky9
+        roles: [linux_server]
+      - name: winws
+        count: 2
+        os: windows_11
+        roles: [windows_workstation]
+      - name: linws
+        count: 2
+        os: ubuntu_lts
+        roles: [linux_workstation]
 ```
 
-A custom profile is just a different set of counts passed the same way
-— no separate code path.
+Each role a host carries becomes an Ansible inventory group membership,
+so a host with multiple roles simply runs multiple role plays against
+it — the `domain_controller` play always runs first for that host,
+regardless of what else is in its role list (§8). A custom profile is
+just a different `host_groups` list — no separate code path.
 
-**Open question**: does `domain_controller` count against the
-originally stated Windows Server total (e.g. small = 2 Windows Server
-VMs total, one of which is the DC), or is it additional to it (e.g.
-small = 2 member servers + 1 dedicated DC = 3 Windows Server VMs)? The
-example above assumes *additional* — flagged in §16 to confirm.
+## 10. Environment Configuration
 
-## 10. Inventory & Software Manifest
+Settings that describe a *specific* environment instance rather than its
+topology (which is what a profile describes) live in their own config,
+e.g. `environment.yml`:
 
-- OpenTofu outputs a dynamic Ansible inventory grouping hosts by role.
+```yaml
+domain_name: company.com      # placeholder — set per environment
+netbios_name: COMPANY         # optional override; derived from domain_name if omitted
+image_source_default: packer_template   # can be overridden per host group
+```
+
+`domain_name` is never hardcoded — `company.com` above is only the
+example/placeholder value shipped in `environment.example.yml`.
+
+## 11. Inventory & Software Manifest
+
+- OpenTofu outputs a dynamic Ansible inventory; each host lands in one
+  group per role it carries (§9).
 - The software list is **not** baked into the roles. It's supplied as a
   per-run manifest (e.g. `software-manifest.yml`) consumed by generic
   roles (`windows_common`, `linux_common`) that loop over a variable
-  package list using `chocolatey` (Windows) and `apt`/`dnf` (Linux)
-  modules — this avoids writing a new Ansible role every time the
-  software list changes.
+  package list using `chocolatey` (Windows) and `apt`/`dnf`/`zypper`
+  (Linux) modules — this avoids writing a new Ansible role every time
+  the software list changes.
 
-## 11. Proposed Repository Layout
+## 12. Proposed Repository Layout
 
 ```
 LABaPe/
@@ -197,6 +257,7 @@ LABaPe/
       small/
       medium/
     profiles.tfvars.example
+    environment.example.yml
   ansible/
     group_vars/
     roles/
@@ -204,24 +265,26 @@ LABaPe/
       windows_common/
       linux_common/
     playbooks/
-      site.yml          # ordered: domain_controller -> domain-join -> software
+      site.yml          # ordered: domain_controller role -> domain-join -> per-role software
     software-manifest.example.yml
   packer/
     windows/
       2019/ 2022/ 2025/
     linux/
-      rocky/ rhel/ almalinux/ ubuntu/ debian/ mint/
+      rocky/ rhel/ almalinux/ fedora/ opensuse/ oraclelinux/ ubuntu/ debian/ mint/
   iso/
-    answer-files/        # shared by Packer builds and direct-ISO-boot path
+    answer-files/        # shared by Packer builds, direct-ISO-boot, and template promotion
       windows/
       rhel-family/
       debian-family/
+      opensuse/
   scripts/
     deploy.sh            # tofu apply -> generate inventory -> ansible-playbook
     destroy.sh
+    promote-to-template.sh   # generalize + export a live ISO-built VM into a template
 ```
 
-## 12. Credentials & Secrets
+## 13. Credentials & Secrets
 
 WinRM credentials, SSH keys, hypervisor host credentials, and the domain
 admin/local administrator passwords must never be committed.
@@ -254,14 +317,14 @@ upgrade path if a self-hosted HashiCorp Vault OSS instance gets added
 later — the mechanism is pluggable, so this isn't a decision that needs
 to be locked in now.
 
-## 13. Networking
+## 14. Networking
 
 Both static IP and DHCP are supported, chosen per host or per profile
 (e.g. `network: {mode: static, address: ...}` vs `{mode: dhcp}`). The
 domain controller should generally be static (it's also serving DNS),
 but nothing in the design forces static addressing on every host.
 
-## 14. Workflow
+## 15. Workflow
 
 ```
 tofu init && tofu workspace select <backend>
@@ -277,39 +340,41 @@ control node on Windows). Wrapped in `scripts/deploy.sh` / a `Makefile`
 (`make up PROFILE=medium`, `make down`) so day-to-day use is one
 command.
 
-## 15. Testing / Validation
+## 16. Testing / Validation
 
 - `tofu validate` and `tflint` for the provisioning code.
 - `ansible-lint` for playbooks/roles.
 - Molecule role testing is a stretch goal, not v1.
 
-## 16. Open Questions
+## 17. Open Questions
 
-1. **Domain controller count**: additional to each profile's stated
-   Windows Server count, or counted against it? (§9 assumes additional.)
-2. **Additional Linux distros**: add AlmaLinux alongside Rocky/RHEL as
-   proposed in §5? Any interest in openSUSE, Fedora, or Oracle Linux, or
-   leave those out for now?
-3. **Domain naming**: any preference for the AD DNS domain name/NetBIOS
-   name per environment, or is a generated default (e.g.
-   `lab.local`/`LAB`) fine?
-4. **Base image default**: should new profiles default to the Packer
-   golden-image path, the direct-ISO path, or should that default be
-   per-OS (e.g. Packer for the OSes you rebuild often, direct ISO for
-   ones you only need occasionally)?
+None blocking further scaffolding right now. Remaining items are
+implementation-level and can be decided as each milestone is built:
 
-## 17. Proposed Milestones
+1. Per-host-group **NetBIOS derivation** default (first label of
+   `domain_name`, uppercased) — flag if a different default is wanted.
+2. Whether `promote-to-template.sh` (§12) is a manually-run step (you
+   decide when a lab VM is "good enough" to become a template) or should
+   ever be triggered automatically — current design assumes manual,
+   since "ready to template" isn't a well-defined automatic condition.
+
+## 18. Proposed Milestones
 
 - **M1** — libvirt backend, small profile, Linux-only VMs, base Ansible
-  config. End-to-end smoke test on one backend.
+  config, direct-ISO-boot path only. End-to-end smoke test on one
+  backend.
 - **M2** — Hyper-V backend reaching parity with M1 for Linux VMs.
 - **M3** — Windows VM support on both backends, WinRM bootstrap,
   `windows_common` role.
-- **M4** — Domain controller role: AD DS promotion, Windows domain join
-  (server + workstation), Linux realm join (`realmd`/`sssd`).
+- **M4** — Domain controller role: AD DS promotion, configurable domain
+  name, Windows domain join (server + workstation), Linux realm join
+  (`realmd`/`sssd`). Validate the flexible-role model (DC as
+  single-purpose vs. dual-role host).
 - **M5** — Workstation host type + medium profile, validated with
   domain join across all host types.
-- **M6** — Software manifest system finalized; Packer base images for
-  the full OS matrix in §5; direct-ISO-boot path implemented.
+- **M6** — Packer base images for the full OS matrix in §5, set as the
+  default image source; `promote-to-template.sh` for turning an
+  ISO-built lab VM into a reusable template; software manifest system
+  finalized.
 - **M7** — Secrets/vault integration, CI validation (`tflint`,
   `ansible-lint`), docs polish.

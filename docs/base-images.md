@@ -1,25 +1,35 @@
-# Base Images: Packer Templates vs. Direct ISO Boot
+# Base Images: Packer Templates, Direct ISO Boot, and Promotion
 
 Both hypervisor backends (Hyper-V, libvirt) need a starting point for
-each VM's disk. LABaPe supports two ways to get there, chosen per
-host/profile, not globally.
+each VM's disk. LABaPe supports three related workflows, chosen per
+host/host-group, not globally: build a template with Packer up front,
+boot straight from ISO, or boot from ISO now and promote the result into
+a template later.
 
-## 1. The two paths
+## 1. The three workflows
 
-| | Packer-built template | Direct ISO boot |
-|---|---|---|
-| When the OS install runs | Once, ahead of time | Every `tofu apply` |
-| Per-VM provisioning time | Minutes (clone + boot) | As long as the OS installer takes |
-| Extra pipeline/state to maintain | Yes — template library | No |
-| Best for | OS versions you rebuild often (the bulk of day-to-day use) | One-off or rarely used OS versions; evaluating a new release before deciding to template it |
+| | Packer-built template | Direct ISO boot | ISO boot, then promote |
+|---|---|---|---|
+| When the OS install runs | Once, ahead of time | Every `tofu apply` | Once, during initial lab build |
+| Per-VM provisioning time after this | Minutes (clone + boot) | As long as the OS installer takes, every time | Minutes, after the one-time promotion |
+| Extra pipeline/state to maintain | Yes — template library | No | Template library, but built lazily |
+| Best for | OS versions already known to be reused often | One-off/rarely used OS versions; evaluating a new release | **Recommended default day-one workflow** — stand a lab up fast from ISO, then convert the VMs worth keeping into templates instead of reinstalling next time |
 
-Both paths use **the same answer files** (`autounattend.xml` for
-Windows, kickstart for the RHEL family, cloud-init autoinstall for the
-Debian family) stored once under `iso/answer-files/`. Packer just wraps
-that same unattended install into a repeatable pipeline and snapshots
-the result; direct ISO boot hands the identical answer file to the
-hypervisor provider on every apply. They never drift from each other
-because there's only one copy of each answer file.
+`image_source_default: packer_template` (DESIGN.md §10) is the default
+for new host groups, but nothing stops a host group from starting on
+`iso_direct` and moving to a promoted template once it's proven out —
+that transition is exactly what §5 below covers.
+
+All three workflows use **the same answer files** (`autounattend.xml`
+for Windows, kickstart for the RHEL family, cloud-init autoinstall for
+the Debian family, AutoYaST for openSUSE/SLES) stored once under
+`iso/answer-files/`. Packer wraps the unattended install into a
+repeatable pipeline; direct ISO boot hands the identical answer file to
+the hypervisor provider on every apply; promotion reuses the same
+generalize/finalize steps a Packer build would run, just against an
+already-installed VM instead of inside an isolated build. Nothing
+diverges because there's only one copy of each answer file and one set
+of finalize steps.
 
 ## 2. Repository layout
 
@@ -32,7 +42,7 @@ packer/
       scripts/
         provision.ps1
   linux/
-    rocky/ rhel/ almalinux/ ubuntu/ debian/ mint/
+    rocky/ rhel/ almalinux/ fedora/ opensuse/ oraclelinux/ ubuntu/ debian/ mint/
       <version>/
         build.pkr.hcl
         variables.pkr.hcl
@@ -50,10 +60,16 @@ iso/
       ks-rocky9.cfg
       ks-rhel9.cfg
       ks-almalinux9.cfg
+      ks-fedora.cfg
+      ks-oraclelinux9.cfg
     debian-family/
       user-data-ubuntu-lts.yaml
       user-data-debian.yaml
       user-data-mint.yaml
+    opensuse/
+      autoyast-leap.xml
+scripts/
+  promote-to-template.sh   # generalize + export a live ISO-built VM into a template
 ```
 
 Packer's `build.pkr.hcl` for each OS points at the shared answer file
@@ -80,20 +96,37 @@ under `iso/answer-files/` rather than keeping its own copy.
 - **Output**: exported Hyper-V VM (VHDX + export folder) copied into the
   template library, or a libvirt qcow2 base image.
 
-### RHEL family (Rocky, RHEL, AlmaLinux)
+### RHEL family (Rocky, RHEL, AlmaLinux, Oracle Linux)
 
 - **Builder**: `qemu` or `hyperv-iso`.
 - **Boot**: ISO + kickstart file served over Packer HTTP — partitioning,
   user creation, enabling `sshd`, installing `cloud-init`.
-- **RHEL specifically**: needs `subscription-manager register` with a
-  Red Hat subscription (or the free Red Hat Developer subscription)
-  during the build to pull packages/updates from Red Hat's CDN. Rocky
-  and AlmaLinux don't need this, being unencumbered rebuilds — this is
-  the main practical difference in an otherwise identical pipeline.
+- **RHEL and Oracle Linux** need registration during the build to pull
+  packages/updates: RHEL via `subscription-manager register` (a Red Hat
+  subscription, or the free Red Hat Developer subscription, works),
+  Oracle Linux via its free ULN/yum-repo registration. Rocky and
+  AlmaLinux don't need this, being unencumbered rebuilds — the main
+  practical difference in an otherwise identical pipeline.
 - **Finalize**: `dnf clean all`, remove `/etc/machine-id` and SSH host
   keys, `cloud-init clean` — otherwise every clone would share the same
   machine identity and SSH host keys.
 - **Output**: qcow2 (libvirt) or VHDX (Hyper-V).
+
+### Fedora
+
+- Same pipeline as the RHEL family (kickstart, `dnf`, `cloud-init`) —
+  no registration needed. Fedora's faster release cadence means these
+  templates are worth rebuilding more often than the RHEL-family ones.
+
+### openSUSE/SLES
+
+- **Builder**: `qemu` or `hyperv-iso`.
+- **Boot**: ISO + **AutoYaST** profile (its unattended-install format,
+  distinct from kickstart/preseed but the same role in the pipeline).
+- **Finalize**: `zypper clean`, clear machine-id and SSH host keys,
+  `cloud-init clean` if cloud-init is installed.
+- SLES additionally needs SCC registration, similar in spirit to RHEL's
+  subscription-manager step.
 
 ### Debian family (Ubuntu, Debian, Linux Mint)
 
@@ -109,7 +142,8 @@ under `iso/answer-files/` rather than keeping its own copy.
 
 ## 4. Direct ISO-boot path (no Packer)
 
-For a host that shouldn't use a pre-baked template:
+For a host that shouldn't use a pre-baked template — including the very
+first lab build before any templates exist yet:
 
 - The OpenTofu VM module points the hypervisor provider straight at the
   vendor ISO (mounted as a virtual DVD) plus the same answer file from
@@ -121,29 +155,56 @@ For a host that shouldn't use a pre-baked template:
   via a DVD drive resource, `dmacvicar/libvirt` via `cdrom`/`cloudinit`
   disk resources.
 - Trade-off is time, not capability: the full OS installer runs on every
-  `tofu apply` for that host.
+  `tofu apply` for that host — until it's promoted (§5).
 
-## 5. Choosing per host
+## 5. Promoting an ISO-built VM to a Template
 
-Selection happens per host/profile, e.g.:
+This is the intended on-ramp: build the first environment entirely from
+ISO (fast to get started, no template pipeline needed yet), then convert
+the VMs worth reusing into templates instead of reinstalling from ISO
+every rebuild.
+
+`scripts/promote-to-template.sh <backend> <vm-name> <template-name>`
+does, against the already-installed VM:
+
+1. Runs the **same finalize steps** §3 lists for that OS family over the
+   VM's existing WinRM/SSH connection — `sysprep` for Windows,
+   `cloud-init clean` + machine-id/SSH-host-key removal for the RHEL,
+   Debian, and Fedora families, AutoYaST-equivalent cleanup + `zypper
+   clean` for openSUSE/SLES.
+2. Shuts the VM down.
+3. Exports/converts its disk into the template library using the same
+   naming convention Packer output uses (§6) — a Hyper-V export or a
+   libvirt qcow2 conversion, depending on backend.
+4. Registers the result so any host group can reference it going forward
+   via `image_source: packer_template` (the name is kept for consistency
+   even though this template didn't come from a Packer build — the
+   consuming side, OpenTofu, doesn't care how a template was produced).
+
+This is a **manually-triggered** step (DESIGN.md §17.2) — you decide
+when a lab VM is done enough to become a reusable template, rather than
+the tooling guessing.
+
+## 6. Choosing per host
+
+Selection happens per host group, e.g.:
 
 ```yaml
-windows_server:
-  image_source: packer_template   # win2022-base-2026.09
-linux_workstation:
-  image_source: iso_direct        # testing Mint 22 once, not templating it yet
+host_groups:
+  - name: winsrv
+    image_source: packer_template   # win2022-base-2026.09
+  - name: linws
+    image_source: iso_direct        # testing Mint 22 once, not templating it yet
 ```
 
-This lets a fast Packer template be used for OSes rebuilt often while a
-rare or newly-evaluated OS version boots straight from ISO without first
-building a pipeline for it.
-
-## 6. Versioning & rebuild cadence
+## 7. Versioning & rebuild cadence
 
 - Name templates with a build date, e.g. `win2022-base-2026.09`,
-  `rocky9-base-2026.09`.
-- Rebuild templates periodically (Windows: Patch Tuesday cadence; Linux:
-  monthly) instead of patching live VMs — every fresh environment then
+  `rocky9-base-2026.09` — the same convention whether the template came
+  from a Packer build or a promotion (§5).
+- Rebuild/re-promote templates periodically (Windows: Patch Tuesday
+  cadence; most Linux: monthly; Fedora: more often given its release
+  pace) instead of patching live VMs — every fresh environment then
   starts from a current, consistent baseline.
 - Don't delete a template immediately after rebuilding it — keep it
   until nothing references it, so in-flight environments aren't broken
