@@ -226,13 +226,22 @@ netbios_name: COMPANY         # optional override; derived from domain_name if o
 image_source_default: packer_template   # can be overridden per host group
 network:
   mode: bridged                # bridged (default) | nat — see §14
-  subnet: 192.168.1.100/28     # bridged: a reserved slice of the physical LAN
-                                # nat: this environment's isolated subnet instead
-  dns_forwarders: [1.1.1.1, 9.9.9.9]   # only used in nat mode (§14)
+  network_address: 192.168.1.0 # freely configurable — no imposed slicing convention;
+  subnet_mask: 255.255.255.0   # a /24 on the real LAN (bridged), an isolated
+                                # range (nat), a VLAN-specific block, whatever
+                                # you actually use. Normalized to CIDR internally
+                                # for the OpenTofu resources.
+  gateway: 192.168.1.1         # optional; sensible per-mode default if omitted
+  dns_forward_ip:               # optional — see §14 "DNS forwarding"
+    - 1.1.1.1
+    - 9.9.9.9
 ```
 
 `domain_name` is never hardcoded — `company.com` above is only the
 example/placeholder value shipped in `environment.example.yml`.
+`network_address`/`subnet_mask` resolve §17's earlier open question:
+there's no assumed `/28`-style convention — you set whatever address and
+mask actually match how you carve out lab space.
 
 ## 11. Inventory & Software Manifest
 
@@ -366,6 +375,24 @@ pre-flight availability check, and hosts-file generation — are in
   VM's IP to its hostname/domain — after `tofu apply`, matching the
   existing manual workflow rather than replacing it.
 
+**Network address and subnet are a plain configuration option** —
+`network.network_address`/`network.subnet_mask` in `environment.yml`
+(§10). There's no imposed slicing convention (no assumed `/28`, no
+fixed static/DHCP split baked into the tooling); you set whatever
+address and mask match how the LAN is actually carved up for the lab, or
+whatever isolated range you want in NAT mode.
+
+**DNS forwarding**: `network.dns_forward_ip` (§10) is the upstream DNS
+server(s) configured as **Forwarders** on the environment's own DNS
+server — which, in this design, is whatever host got promoted to
+`domain_controller` (§8), since that's where AD-integrated DNS runs.
+This setting only does something if a profile's host groups actually
+include that role; it's silently unused on, say, a Linux-only
+environment with no domain controller. It applies the same way
+regardless of network mode (bridged or NAT) — it's about what the
+DC forwards non-domain queries to, not about the environment's own
+network topology.
+
 Per-host addressing (unchanged): both static IP and DHCP are supported,
 chosen per host or per host group (e.g.
 `network: {mode: static, address: ...}` vs `{mode: dhcp}`). The domain
@@ -409,11 +436,9 @@ implementation-level and can be decided as each milestone is built:
    decide when a lab VM is "good enough" to become a template) or should
    ever be triggered automatically — current design assumes manual,
    since "ready to template" isn't a well-defined automatic condition.
-3. **Bridged address range**: does a `/28`-style reserved slice of your
-   real LAN (as sketched in §10) match how you'd actually carve out lab
-   addresses, or do you allocate differently (a separate VLAN, a
-   specific DHCP reservation range, etc.)? Affects what
-   `environment.yml`'s `network.subnet` should mean in practice.
+3. ~~Bridged address range~~ — resolved: §14 makes
+   `network_address`/`subnet_mask` a plain, unopinionated config option
+   rather than assuming any particular slicing convention.
 
 ## 18. Proposed Milestones
 
