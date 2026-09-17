@@ -225,9 +225,10 @@ domain_name: company.com      # placeholder — set per environment
 netbios_name: COMPANY         # optional override; derived from domain_name if omitted
 image_source_default: packer_template   # can be overridden per host group
 network:
-  mode: nat                   # nat (default) | bridged — see §14.1
-  subnet: 10.50.0.0/24        # this environment's reserved subnet, see §14.2
-  dns_forwarders: [1.1.1.1, 9.9.9.9]
+  mode: bridged                # bridged (default) | nat — see §14
+  subnet: 192.168.1.100/28     # bridged: a reserved slice of the physical LAN
+                                # nat: this environment's isolated subnet instead
+  dns_forwarders: [1.1.1.1, 9.9.9.9]   # only used in nat mode (§14)
 ```
 
 `domain_name` is never hardcoded — `company.com` above is only the
@@ -257,9 +258,10 @@ LABaPe/
       vm/               # common interface
         hyperv/
         libvirt/
-      network/          # per-environment NAT network, common interface (§14.1)
-        hyperv/         # Internal switch + null_resource/remote-exec New-NetNat
-        libvirt/        # libvirt_network, mode = "nat"
+      network/          # bridged (default) + opt-in NAT, common interface (§14)
+        hyperv/         # External switch (bridged); Internal switch +
+                         # null_resource/remote-exec New-NetNat (nat, opt-in)
+        libvirt/        # bridge device (bridged); libvirt_network mode="nat" (opt-in)
     environments/
       small/
       medium/
@@ -286,8 +288,10 @@ LABaPe/
       debian-family/
       opensuse/
   scripts/
-    deploy.sh            # tofu apply -> generate inventory -> ansible-playbook
+    deploy.sh            # check-network -> tofu apply -> generate inventory/hosts -> ansible-playbook
     destroy.sh
+    check-network.sh     # pre-flight address/subnet availability check (docs/networking.md §3)
+    check-network.ps1
     promote-to-template.sh   # generalize + export a live ISO-built VM into a template
 ```
 
@@ -326,103 +330,51 @@ to be locked in now.
 
 ## 14. Networking
 
-### 14.1 Isolation model: NAT'd per-environment network (default)
+Default mode is **bridged**: environment VMs go straight on the
+physical LAN, matching how the lab is actually used — heavy hands-on
+testing against it, with hostnames managed by hand-editing a hosts file
+(§14.4) rather than via DNS lookups. **NAT isolation remains available
+as an opt-in** (`network.mode: nat`) for an environment that should stay
+off the physical network entirely.
 
-Each environment gets its **own virtual network, isolated from the
-physical LAN and from every other environment**, with outbound internet
-access via NAT — not bridged onto the physical network by default.
+Full mechanics — the exact Hyper-V and libvirt steps for both modes, the
+pre-flight availability check, and hosts-file generation — are in
+[`docs/networking.md`](./docs/networking.md). Summary:
 
-This matters specifically because of §8: every environment stands up its
-own AD domain and DNS server. Bridging that onto the real network risks
-a rogue DHCP/DNS server and domain-name/NetBIOS collisions with whatever
-the physical network already runs — a materially worse failure mode than
-a normal isolated test VM. NAT keeps the domain and its DNS contained to
-the environment's own virtual network while still letting Ansible pull
-packages (`apt`/`dnf`/`zypper`/`chocolatey`) and Windows Update reach the
-internet, which the software-manifest step depends on.
+- **Bridged (default)**: an `External` Hyper-V switch or a bridge device
+  (`br0`) on libvirt — both providers support this natively, no
+  workaround needed. Caution: since the domain controller (§8) and its
+  DNS are directly reachable on the segment, pick a `domain_name` that
+  won't collide with a real corporate domain on the same network, and
+  don't enable the DC's DHCP role unless that's actually wanted.
+- **NAT (opt-in)**: `libvirt_network` (`mode = "nat"`) is native and
+  needs no extra steps. Hyper-V has no single resource for this —
+  creating the Internal switch, assigning the gateway address, and
+  binding `New-NetNat` is a WinRM-executed provisioner sequence, fully
+  documented in `docs/networking.md` §2 since it's the more involved
+  path of the two.
+- **Pre-flight check** (`scripts/check-network.sh`/`.ps1`): before
+  `tofu apply`, verifies the environment's planned static addresses
+  (bridged) or subnet/prefix (NAT) aren't already in use — an ARP/ping
+  check for bridged addresses, `Get-NetNat`/`virsh net-list` comparison
+  for NAT — so a collision (with another running environment, or
+  anything else on the LAN) fails fast instead of mid-`apply`. This is
+  the direct mitigation for running multiple environments concurrently
+  (§17.4).
+- **Hosts-file generation**: `scripts/deploy.sh` writes
+  `inventory/hosts.generated` — a ready-to-paste snippet mapping every
+  VM's IP to its hostname/domain — after `tofu apply`, matching the
+  existing manual workflow rather than replacing it.
 
-Both backends have a native resource for exactly this:
-
-| Backend | Mechanism |
-|---|---|
-| libvirt | `libvirt_network` resource, `mode = "nat"` — DHCP/DNS (dnsmasq) and NAT are handled by the resource itself. |
-| Hyper-V | An **Internal** `hyperv_network_switch` bound to `New-NetNat`. The `taliesins/hyperv` provider manages the switch but has no native NAT resource, so the NAT binding itself is a `null_resource` + WinRM `remote-exec` provisioner running `New-NetNat` — a real gap between the two backends, not just a config difference. |
-
-A **bridged** mode (the environment's VMs placed directly on the
-physical LAN) is supported as an explicit opt-in override per
-environment for cases where that's genuinely wanted (e.g. testing
-network discovery against real infrastructure), but it is never the
-default given the domain-collision risk above.
-
-### 14.2 Per-environment addressing
-
-Each environment is assigned one subnet (e.g. a `/24`) out of a range
-you reserve for LABaPe, set in `environment.yml`:
-
-```yaml
-network:
-  mode: nat                 # nat (default) | bridged
-  subnet: 10.50.0.0/24
-  dns_forwarders: [1.1.1.1, 9.9.9.9]   # upstream DNS the DC forwards to
-```
-
-Within that subnet, static-role hosts (domain controller, and any other
-host configured `mode: static` per §14.3 of the original design) take
-addresses from a low, fixed range; the platform's own DHCP (dnsmasq for
-libvirt, the Hyper-V NAT DHCP) serves the rest — e.g. `.1` = gateway,
-`.2`–`.19` reserved for static hosts, `.20`–`.199` DHCP pool,
-`.200`–`.254` reserved. Both static and DHCP addressing remain supported
-per-host as already noted below; this just describes how they share one
-environment subnet without collision.
-
-Subnet assignment across **concurrent** environments is manual for v1
-(you pick a non-overlapping `/24` per environment instance) rather than
-auto-allocated — auto-allocation would need a shared registry across
-independent OpenTofu states, which isn't worth building until running
-several environments side by side is an actual, not hypothetical, need.
-
-### 14.3 DNS
-
-The domain controller's AD-integrated DNS is authoritative for the
-environment's domain and forwards everything else to
-`network.dns_forwarders`. In-domain hosts get this automatically (their
-DHCP/static config points at the DC). Your own admin/control machine —
-which is *not* domain-joined — won't resolve lab hostnames unless it's
-explicitly pointed at the DC's DNS server (or the deploy step writes out
-a local hosts-file snippet from the OpenTofu-generated inventory as a
-convenience — worth adding once M4 lands).
-
-### 14.4 Reaching into the environment (admin / control machine)
-
-Since the network is NAT'd rather than bridged, both your own management
-access and the Ansible control machine (§15 — itself possibly a separate
-Linux/WSL box, not the hypervisor host) need a way in. Two options, not
-mutually exclusive:
-
-- **Route via the host** — the hypervisor host already has an interface
-  on each environment's virtual network (a libvirt bridge, or a Hyper-V
-  internal-switch vEthernet adapter). Adding a static route on the admin
-  machine pointing the environment's subnet at the host's LAN IP, plus
-  enabling IP forwarding and a firewall allow rule on the host, gives
-  full reachability to every VM with no per-VM configuration. Simplest
-  when the admin machine is on the same LAN as the host and you can add
-  routes on it.
-- **NAT port-forwarding per VM** — `Add-NetNatStaticMapping` (Hyper-V) or
-  a manual DNAT `iptables`/`nft` rule (libvirt, since its built-in NAT
-  network doesn't include port-forwarding config on its own) exposing
-  specific ports (3389/RDP, 22/SSH, 5985-5986/WinRM) on the host's own
-  IP. Needed when the admin/control machine can't get a route added
-  (e.g. a locked-down corporate network).
-
-Both are documented rather than picking one as *the* answer, since which
-one applies depends on your actual network permissions — see §17.
-
-### 14.5 Per-host addressing mode (unchanged from earlier draft)
-
-Both static IP and DHCP are supported, chosen per host or per host group
-(e.g. `network: {mode: static, address: ...}` vs `{mode: dhcp}`). The
-domain controller should generally be static (it's also serving DNS),
-but nothing in the design forces static addressing on every host.
+Per-host addressing (unchanged): both static IP and DHCP are supported,
+chosen per host or per host group (e.g.
+`network: {mode: static, address: ...}` vs `{mode: dhcp}`). The domain
+controller should generally be static (it's also serving DNS). In
+bridged mode, DHCP-mode hosts get their lease from whatever DHCP server
+already serves that LAN segment — LABaPe doesn't manage it. In NAT mode,
+DHCP is either the libvirt network's built-in `dnsmasq`, or, on Hyper-V,
+a Windows DHCP Server role scoped to the environment (`docs/networking.md`
+§2 step 4) since a custom Internal+NAT switch has no DHCP of its own.
 
 ## 15. Workflow
 
@@ -457,38 +409,35 @@ implementation-level and can be decided as each milestone is built:
    decide when a lab VM is "good enough" to become a template) or should
    ever be triggered automatically — current design assumes manual,
    since "ready to template" isn't a well-defined automatic condition.
-3. **Reachability method (§14.4)**: route-via-host or NAT port-forwarding
-   as the standard way you and the Ansible control machine reach into an
-   environment — depends on where the control machine sits relative to
-   the hypervisor host and what routing you're able to add, which isn't
-   something the design can decide for you. Both are documented; pick
-   one as the default when this is built, or use route-via-host as the
-   default with port-forwarding as a documented fallback if that's fine.
-4. **Concurrent environments**: is running more than one environment at
-   once an actual near-term need? If so, the manual per-environment
-   subnet assignment in §14.2 needs a documented convention (e.g. a
-   simple counter/registry file) sooner rather than as a stretch goal.
+3. **Bridged address range**: does a `/28`-style reserved slice of your
+   real LAN (as sketched in §10) match how you'd actually carve out lab
+   addresses, or do you allocate differently (a separate VLAN, a
+   specific DHCP reservation range, etc.)? Affects what
+   `environment.yml`'s `network.subnet` should mean in practice.
 
 ## 18. Proposed Milestones
 
-- **M1** — libvirt backend, small profile, Linux-only VMs, NAT'd
-  per-environment network (`libvirt_network`), base Ansible config,
-  direct-ISO-boot path only. End-to-end smoke test on one backend.
-- **M2** — Hyper-V backend reaching parity with M1 for Linux VMs,
-  including the Internal-switch + `New-NetNat` provisioning step (§14.1).
+- **M1** — libvirt backend, small profile, Linux-only VMs, bridged
+  networking (default), pre-flight address check
+  (`scripts/check-network.sh`), base Ansible config, direct-ISO-boot
+  path only. End-to-end smoke test on one backend.
+- **M2** — Hyper-V backend reaching parity with M1 for Linux VMs
+  (External-switch bridged networking, `check-network.ps1`).
 - **M3** — Windows VM support on both backends, WinRM bootstrap,
   `windows_common` role.
 - **M4** — Domain controller role: AD DS promotion, configurable domain
   name, Windows domain join (server + workstation), Linux realm join
-  (`realmd`/`sssd`). Validate the flexible-role model (DC as
-  single-purpose vs. dual-role host) and DC-provided DNS with upstream
-  forwarding (§14.3).
+  (`realmd`/`sssd`), hosts-file snippet generation (`docs/networking.md`
+  §4). Validate the flexible-role model (DC as single-purpose vs.
+  dual-role host).
 - **M5** — Workstation host type + medium profile, validated with
-  domain join across all host types. Implement the chosen reachability
-  method (§14.4/§17.3).
+  domain join across all host types.
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
   ISO-built lab VM into a reusable template; software manifest system
   finalized.
-- **M7** — Secrets/vault integration, CI validation (`tflint`,
+- **M7** — NAT isolation mode (opt-in) for both backends, including the
+  Hyper-V Internal-switch + `New-NetNat` provisioning sequence
+  (`docs/networking.md` §2).
+- **M8** — Secrets/vault integration, CI validation (`tflint`,
   `ansible-lint`), docs polish.
