@@ -262,6 +262,9 @@ LABaPe/
   DESIGN.md
   docs/
     base-images.md
+    networking.md
+    credentials.md
+  secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
   tofu/
     modules/
       vm/               # common interface
@@ -297,7 +300,7 @@ LABaPe/
       debian-family/
       opensuse/
   scripts/
-    deploy.sh            # check-network -> tofu apply -> generate inventory/hosts -> ansible-playbook
+    deploy.sh            # vault decrypt -> check-network -> tofu apply -> generate inventory/hosts -> ansible-playbook
     destroy.sh
     check-network.sh     # pre-flight address/subnet availability check (docs/networking.md §3)
     check-network.ps1
@@ -310,7 +313,27 @@ LABaPe/
 WinRM credentials, SSH keys, hypervisor host credentials, and the domain
 admin/local administrator passwords must never be committed.
 
-Ansible's options, from simplest to most integrated:
+This also covers two bootstrap problems that sit underneath everything
+else: how OpenTofu authenticates to the hypervisor host itself, and how
+Ansible gets its very first connection to a VM nothing has configured
+yet. Both share the **same** vault rather than inventing separate
+credential paths — full mechanics, including the exact `deploy.sh`
+credential flow, are in
+[`docs/credentials.md`](./docs/credentials.md). Summary:
+
+- Hyper-V auth (WinRM to the host) and libvirt auth (SSH URI) both come
+  from `secrets.vault.yml`, exported as `TF_VAR_*` before `tofu apply`.
+- Windows VMs bootstrap on a shared local Administrator password
+  (rendered into the answer file at build/apply time, never hardcoded in
+  the checked-in XML); Linux VMs bootstrap on the control machine's own
+  SSH key baked into cloud-init/kickstart. Both are also what Ansible
+  uses for its first connection — no separate initial-vs-later
+  credential model.
+- Given bridged-by-default networking (§14), WinRM is more exposed than
+  it would be behind NAT — prefer HTTPS and firewall-scoping the WinRM
+  listener where practical (`docs/credentials.md` §7).
+
+Ansible's own secrets-at-rest options, from simplest to most integrated:
 
 - **Ansible Vault** (built-in) — encrypts variables/files with a
   password, password file, or a **vault password script**: any external
