@@ -29,7 +29,10 @@ Prerequisites, none of which this repo automates yet:
 3. `virt-install`/`virsh` reachable from wherever OpenTofu runs against
    that same `qemu+ssh://` URI (tofu/modules/vm/libvirt shells out to
    `virt-install` directly — see that module's comments for why).
-4. OpenTofu, Ansible, and Python 3 with PyYAML on the control machine.
+4. OpenTofu, Ansible, and Python 3 with PyYAML on the control machine —
+   [docs/install-opentofu.md](./docs/install-opentofu.md) and
+   [docs/install-ansible.md](./docs/install-ansible.md) if you're
+   setting these up fresh on Debian 13.
 5. An SSH keypair for the Ansible bootstrap user (docs/credentials.md §5)
    — `ssh-keygen -f ~/.ssh/labape_bootstrap`.
 

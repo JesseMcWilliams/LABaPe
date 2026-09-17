@@ -418,6 +418,8 @@ LABaPe/
     credentials.md
     software-manifest.md
     directory-objects.md
+    install-opentofu.md   # control-machine setup, Debian 13
+    install-ansible.md    # control-machine setup, Debian 13
   secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
   software-store/             # .gitignore'd — local installer files, docs/software-manifest.md §8
   tofu/
