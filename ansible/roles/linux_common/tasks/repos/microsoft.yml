@@ -1,0 +1,31 @@
+---
+# docs/software-manifest.md §3 — added once per host, only if that
+# host's resolved package list actually needs it (currently: vscode's
+# apt/dnf entries in package_catalog.yml).
+
+- name: Add Microsoft's GPG key (dnf/RHEL family)
+  ansible.builtin.rpm_key:
+    key: https://packages.microsoft.com/keys/microsoft.asc
+    state: present
+  when: ansible_facts['pkg_mgr'] == 'dnf'
+
+- name: Add Microsoft's repo (dnf/RHEL family)
+  ansible.builtin.yum_repository:
+    name: microsoft
+    description: Microsoft packages
+    baseurl: https://packages.microsoft.com/yumrepos/vscode
+    gpgcheck: true
+  when: ansible_facts['pkg_mgr'] == 'dnf'
+
+- name: Add Microsoft's GPG key (apt/Debian family)
+  ansible.builtin.apt_key:
+    url: https://packages.microsoft.com/keys/microsoft.asc
+    state: present
+  when: ansible_facts['pkg_mgr'] == 'apt'
+
+- name: Add Microsoft's repo (apt/Debian family)
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64] https://packages.microsoft.com/repos/code stable main"
+    state: present
+    filename: microsoft
+  when: ansible_facts['pkg_mgr'] == 'apt'

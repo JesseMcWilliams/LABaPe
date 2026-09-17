@@ -1,0 +1,53 @@
+---
+# DESIGN.md §4's ordered pipeline. M1 only has linux_server hosts, so
+# the domain_controller/domain_directory plays below simply match zero
+# hosts and no-op — kept here now rather than bolted on later, since
+# the ordering constraint (DESIGN.md §8) is easy to get wrong if it's
+# retrofitted after the fact.
+
+- name: Promote domain controller(s) first — must complete before any join
+  hosts: domain_controller
+  become: true
+  gather_facts: true
+  roles:
+    - domain_controller
+  tags: [domain_controller]
+
+- name: Populate the domain — OUs, domain groups/users, domain-scope membership
+  hosts: domain_controller
+  become: true
+  gather_facts: true
+  # vars_files: [../directory-manifest.yml] — added once docs/directory-objects.md
+  # lands in M5; referencing it now would break this play if it's ever
+  # non-empty before the manifest file exists.
+  roles:
+    - domain_directory
+  tags: [directory_objects]
+
+# --- Per-role configuration (software + local accounts) ---
+# docs/software-manifest.md §5 — software_manifest_roles is computed
+# once here (lookup runs on the control machine) rather than per-host,
+# since the file it reads lives in the repo, not on any target.
+
+- name: Configure Linux hosts (software manifest, local accounts)
+  hosts: linux_server:linux_workstation
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../package_catalog.yml
+  vars:
+    software_manifest_roles: "{{ (lookup('file', playbook_dir + '/../software-manifest.yml') | from_yaml).roles | default({}) }}"
+  roles:
+    - linux_common
+  tags: [software, directory_objects]
+
+- name: Configure Windows hosts (software manifest, local accounts)
+  hosts: windows_server:windows_workstation
+  gather_facts: true
+  vars_files:
+    - ../package_catalog.yml
+  vars:
+    software_manifest_roles: "{{ (lookup('file', playbook_dir + '/../software-manifest.yml') | from_yaml).roles | default({}) }}"
+  roles:
+    - windows_common
+  tags: [software, directory_objects]

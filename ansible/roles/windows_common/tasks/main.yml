@@ -1,0 +1,7 @@
+---
+# Not implemented yet — DESIGN.md §18 schedules Windows VM support for
+# M3. Placeholder so site.yml's Windows play is present but harmless
+# against M1's Linux-only inventory.
+- name: (placeholder) windows_common role not implemented until M3
+  ansible.builtin.debug:
+    msg: "windows_common role: not implemented yet (M3, DESIGN.md §18)."

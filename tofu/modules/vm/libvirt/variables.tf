@@ -1,0 +1,105 @@
+# Common `vm` module interface (DESIGN.md §6.1). Both backends' vm
+# modules accept the same set of variables so an environment definition
+# never changes based on which hypervisor is selected — only which
+# backend module gets invoked does (tofu/backends/*, DESIGN.md §6.3).
+
+variable "name" {
+  description = "VM/hostname."
+  type        = string
+}
+
+variable "os" {
+  description = "Key into var.os_catalog, e.g. \"rocky9\". M1 ships only that one entry — DESIGN.md §5's full OS matrix lands across M2-M6."
+  type        = string
+}
+
+variable "roles" {
+  description = "Passthrough only — this module doesn't interpret roles, it just carries them through to the generated inventory (DESIGN.md §9)."
+  type        = list(string)
+  default     = []
+}
+
+variable "image_source" {
+  description = "\"packer_template\" | \"iso_direct\". Only iso_direct is implemented as of M1 (DESIGN.md §18) — packer_template is a documented, deliberate fail-fast until M6."
+  type        = string
+
+  validation {
+    condition     = contains(["packer_template", "iso_direct"], var.image_source)
+    error_message = "image_source must be \"packer_template\" or \"iso_direct\"."
+  }
+}
+
+variable "cpu_count" {
+  type    = number
+  default = 2
+}
+
+variable "memory_mb" {
+  type    = number
+  default = 4096
+}
+
+variable "disk_gb" {
+  type    = number
+  default = 40
+}
+
+variable "network_id" {
+  description = "Output of the network module (../network/libvirt) — the bridge device name in bridged mode (DESIGN.md §6.2)."
+  type        = string
+}
+
+variable "addressing" {
+  description = "{ mode = \"static\"|\"dhcp\", address, prefix_length, gateway }. DHCP is accepted here but the pipeline-level IP-discovery step is deferred (DESIGN.md §17.4) — only static is exercised end-to-end as of M1."
+  type = object({
+    mode          = string
+    address       = optional(string)
+    prefix_length = optional(number)
+    gateway       = optional(string)
+  })
+
+  validation {
+    condition     = contains(["static", "dhcp"], var.addressing.mode)
+    error_message = "addressing.mode must be \"static\" or \"dhcp\"."
+  }
+}
+
+variable "admin_credential" {
+  description = "Bootstrap credential from docs/credentials.md. Only ssh_public_key is used on this (Linux-only, M1) backend path."
+  type = object({
+    ssh_public_key         = optional(string)
+    windows_admin_password = optional(string)
+  })
+  sensitive = true
+}
+
+variable "template_vars" {
+  description = "Extra values rendered into the answer file at provisioning time — e.g. management_source for firewall scoping (docs/credentials.md §7). Deliberately NOT where domain_name/dns_forward_ip go (DESIGN.md §6.1's output table note)."
+  type        = map(string)
+  default     = {}
+}
+
+# --- Backend-specific inputs (beyond the common §6.1 contract) ---
+
+variable "libvirt_uri" {
+  description = "The same connection URI the libvirt provider itself is configured with (docs/credentials.md §3) — needed again here because the iso_direct path shells out to virt-install via a local-exec provisioner, which runs outside the provider's own resource management and can't introspect its connection config."
+  type        = string
+}
+
+variable "os_catalog" {
+  description = <<-EOT
+    Per-OS metadata for the iso_direct path. M1 ships a single "rocky9"
+    entry (tofu/environments/small.tfvars.example) — extending this to
+    the full OS matrix (DESIGN.md §5) is out of scope for M1.
+
+    iso_host_path must already exist on the libvirt host's filesystem —
+    virt-install with a remote qemu+ssh:// connection doesn't upload a
+    local ISO for you. Staging/downloading ISOs onto the host is a
+    manual prerequisite for now, not something this module automates.
+  EOT
+  type = map(object({
+    iso_host_path      = string
+    kickstart_template = string
+    os_family          = string
+  }))
+}

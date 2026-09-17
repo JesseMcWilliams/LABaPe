@@ -1,0 +1,9 @@
+---
+# Not implemented yet — DESIGN.md §18 schedules AD DS promotion for M4.
+# Present now (rather than added when M4 lands) so site.yml's ordering
+# (DESIGN.md §8's promote-before-join constraint) doesn't need
+# retrofitting later; this play simply no-ops until M1's Linux-only
+# inventory includes a domain_controller-role host.
+- name: (placeholder) domain_controller role not implemented until M4
+  ansible.builtin.debug:
+    msg: "domain_controller role: not implemented yet (M4, DESIGN.md §18)."

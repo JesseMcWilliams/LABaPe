@@ -1,0 +1,150 @@
+---
+# docs/software-manifest.md §5 — union each role's package list rather
+# than relying on Ansible's default variable behavior, which does not
+# merge list-type variables across the multiple groups a host belongs
+# to (a real, easy-to-miss gap for a multi-role host, DESIGN.md §9).
+- name: Union this host's role package lists (raw catalog keys / inline overrides)
+  ansible.builtin.set_fact:
+    linux_common_raw_packages: "{{ (linux_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"
+  loop: "{{ group_names }}"
+  loop_control:
+    label: "{{ item }}"
+
+# Each item is either a catalog key (string) or an inline override — a
+# dict with its own `name:` (docs/software-manifest.md §4). Normalize
+# both into {name, spec}. A catalog/inline entry has two possible
+# shapes: a flat per-package-manager entry (package_catalog.yml's
+# firefox/vscode/sevenzip — spec comes from packages[name][pkg_mgr]) or
+# a custom-installer entry (internal_agent/vendor_tool — nested under
+# windows:/linux:, spec comes from .linux regardless of pkg_mgr).
+- name: Normalize into {name, spec} for this host's package manager
+  ansible.builtin.set_fact:
+    linux_common_package_entries: >-
+      {{ (linux_common_package_entries | default([])) +
+         [{
+           'name': (item.name if item is mapping else item),
+           'spec': (
+             (item.linux | default({}))
+             if item is mapping
+             else (
+               (packages[item].linux | default(packages[item][ansible_facts['pkg_mgr']] | default({})))
+               if item in packages
+               else {}
+             )
+           )
+         }]
+      }}
+  loop: "{{ linux_common_raw_packages | unique }}"
+  loop_control:
+    label: "{{ item.name if item is mapping else item }}"
+
+# docs/software-manifest.md §2 — a missing platform field is a silent
+# skip, not an error. The OS matrix (DESIGN.md §5) is wide enough that
+# "not packaged for this platform" is the normal case.
+- name: Drop entries with nothing applicable on this platform
+  ansible.builtin.set_fact:
+    linux_common_package_entries: "{{ linux_common_package_entries | rejectattr('spec', 'equalto', {}) | list }}"
+
+- name: Report skipped packages (visibility, not a failure)
+  ansible.builtin.debug:
+    msg: >-
+      {{ (linux_common_raw_packages | unique | length) - (linux_common_package_entries | length) }}
+      resolved package(s) have nothing applicable to {{ ansible_facts['pkg_mgr'] }} on this host — skipped (§2).
+  when: (linux_common_raw_packages | unique | length) != (linux_common_package_entries | length)
+
+# --- §3: repo setup, once per unique repo this host's packages need ---
+
+- name: Collect the unique set of repos this host's packages need
+  ansible.builtin.set_fact:
+    linux_common_needed_repos: >-
+      {{ linux_common_package_entries
+         | selectattr('spec.repo', 'defined')
+         | map(attribute='spec.repo')
+         | unique | list }}
+
+- name: Add each needed repo (once)
+  ansible.builtin.include_tasks: "repos/{{ item }}.yml"
+  loop: "{{ linux_common_needed_repos }}"
+  loop_control:
+    label: "{{ item }}"
+
+# --- §8: locally-sourced installers — copy before install ---
+
+- name: Copy locally-sourced installer files to the target
+  ansible.builtin.copy:
+    src: "{{ software_store_path }}/{{ item.spec.path }}"
+    dest: "/tmp/{{ item.spec.path | basename }}"
+    mode: "0644"
+  loop: "{{ linux_common_package_entries | selectattr('spec.source', 'defined') | selectattr('spec.source', 'equalto', 'local') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- §9: pre-seed debconf answers before an install that needs them ---
+# (Debian family only — harmless no-op elsewhere, since debconf_selections
+# will simply never be set on non-Debian catalog entries.)
+
+- name: Pre-seed debconf selections
+  ansible.builtin.debconf:
+    name: "{{ item.split(' ')[0] }}"
+    question: "{{ item.split(' ')[1] }}"
+    vtype: "{{ item.split(' ')[2] }}"
+    value: "{{ item.split(' ')[3] }}"
+  loop: >-
+    {{ linux_common_package_entries
+       | selectattr('spec.debconf_selections', 'defined')
+       | map(attribute='spec.debconf_selections')
+       | flatten }}
+  loop_control:
+    label: "{{ item }}"
+  when: ansible_facts['pkg_mgr'] == 'apt'
+
+# --- Install: package-manager entries (no `type` in spec) ---
+
+- name: Install package-manager entries (dnf)
+  ansible.builtin.dnf:
+    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    state: present
+  loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: ansible_facts['pkg_mgr'] == 'dnf'
+
+- name: Install package-manager entries (apt)
+  ansible.builtin.apt:
+    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    state: present
+  loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: ansible_facts['pkg_mgr'] == 'apt'
+
+- name: Install package-manager entries (zypper)
+  community.general.zypper:
+    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    state: present
+  loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: ansible_facts['pkg_mgr'] == 'zypper'
+
+# --- Install: custom installers (deb/rpm, url or local — §8/§9) ---
+
+- name: Install custom .deb installers (URL or local)
+  ansible.builtin.apt:
+    deb: >-
+      {{ item.spec.url if item.spec.source == 'url'
+         else '/tmp/' + (item.spec.path | basename) }}
+  loop: "{{ linux_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'deb') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install custom .rpm installers (URL or local)
+  ansible.builtin.dnf:
+    name: >-
+      {{ item.spec.url if item.spec.source == 'url'
+         else '/tmp/' + (item.spec.path | basename) }}
+    state: present
+    disable_gpg_check: "{{ item.spec.source == 'local' }}"
+  loop: "{{ linux_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'rpm') | list }}"
+  loop_control:
+    label: "{{ item.name }}"

@@ -1,0 +1,8 @@
+---
+# Not implemented yet — docs/directory-objects.md, scheduled for M5
+# (DESIGN.md §18). Placeholder for the same reason as
+# domain_controller: keeps site.yml's stage ordering stable rather than
+# needing to be inserted later.
+- name: (placeholder) domain_directory role not implemented until M5
+  ansible.builtin.debug:
+    msg: "domain_directory role: not implemented yet (M5, docs/directory-objects.md)."

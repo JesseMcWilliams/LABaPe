@@ -1,0 +1,39 @@
+# Secrets — never commit the real files, only *.example.yml
+secrets.vault.yml
+environment.yml
+software-manifest.yml
+directory-manifest.yml
+
+# OpenTofu state and working directories (docs/credentials.md §6.3 / DESIGN.md §6.3)
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.auto.tfvars.json
+
+# Generated at deploy time (ansible/inventory/*, but written with a
+# leading **/ since a plain "inventory/generated" pattern would only
+# match at the repo root, not ansible/inventory/)
+**/inventory/generated
+**/inventory/hosts.generated
+
+# Intermediate files scripts/deploy.sh cleans up itself, kept here as a
+# safety net if a run is interrupted partway
+**/tfplan.bin
+**/tfplan.json
+**/hosts.json
+**/.rendered/
+
+# Local installer files (docs/software-manifest.md §8) — never committed
+software-store/*
+!software-store/.gitkeep
+
+# Vault password file, if kept alongside the repo (it shouldn't be, but just in case)
+.vault-pass
+*.vault-pass
+
+# Python
+__pycache__/
+*.pyc

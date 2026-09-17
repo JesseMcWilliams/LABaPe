@@ -1,0 +1,9 @@
+# Copy to software-manifest.yml and adjust — docs/software-manifest.md §4.
+# Per-run: which package_catalog.yml entries apply to which role.
+# .gitignore excludes the real file; this example is the only version
+# checked in.
+
+roles:
+  linux_server:
+    - sevenzip
+    - firefox

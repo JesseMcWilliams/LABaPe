@@ -1,0 +1,8 @@
+---
+# software_manifest_roles and packages are provided by the play
+# (ansible/playbooks/site.yml) via vars_files / a computed vars entry —
+# defaulted here only so this role doesn't hard-fail when included on
+# its own (e.g. during development).
+software_manifest_roles: {}
+packages: {}
+software_store_path: "./software-store"

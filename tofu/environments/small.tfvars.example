@@ -1,0 +1,21 @@
+# M1 subset of DESIGN.md §9's "small" profile — Linux-only.
+#
+# The full small profile also has a `dc` host group
+# (roles = ["domain_controller"], os = "windows_server_2022") and a
+# `winsrv` group. Both are left out here on purpose: M1 only implements
+# the libvirt vm module for Linux/rocky9 over the iso_direct path
+# (DESIGN.md §18) — adding either group back before M3/M4 land Windows
+# support would just fail fast at the os_catalog lookup (intentionally,
+# tofu/modules/vm/libvirt/main.tf's validate_os precondition).
+#
+# Copy this to small.tfvars and adjust before use — it's checked in as
+# an example, not applied directly (.gitignore excludes real .tfvars).
+
+host_groups = [
+  {
+    name  = "linsrv"
+    count = 2
+    os    = "rocky9"
+    roles = ["linux_server"]
+  },
+]
