@@ -301,7 +301,8 @@ LABaPe/
     destroy.sh
     check-network.sh     # pre-flight address/subnet availability check (docs/networking.md §3)
     check-network.ps1
-    promote-to-template.sh   # generalize + export a live ISO-built VM into a template
+    promote-to-template.sh   # generalize + export a live VM (from ISO or a template clone) into a template
+    refresh-template.sh      # clone existing template -> apply update via Ansible -> promote as new version
 ```
 
 ## 13. Credentials & Secrets
@@ -427,15 +428,16 @@ command.
 
 ## 17. Open Questions
 
-None blocking further scaffolding right now. Remaining items are
-implementation-level and can be decided as each milestone is built:
+None blocking further scaffolding right now.
 
-1. Per-host-group **NetBIOS derivation** default (first label of
-   `domain_name`, uppercased) — flag if a different default is wanted.
-2. Whether `promote-to-template.sh` (§12) is a manually-run step (you
-   decide when a lab VM is "good enough" to become a template) or should
-   ever be triggered automatically — current design assumes manual,
-   since "ready to template" isn't a well-defined automatic condition.
+1. ~~NetBIOS derivation~~ — resolved: first label of `domain_name`,
+   uppercased, with `netbios_name` as an explicit override. Confirmed.
+2. ~~Promote-to-template trigger~~ — resolved as manual (docs/base-images.md
+   §5), and extended: `promote-to-template.sh` is now one building block
+   of two distinct, both-manual workflows — promoting a fresh ISO-built
+   VM (§5) and refreshing an *existing* template when a package or patch
+   needs to land in it (§6, `scripts/refresh-template.sh`) — rather than
+   a single one-shot "onboarding" operation.
 3. ~~Bridged address range~~ — resolved: §14 makes
    `network_address`/`subnet_mask` a plain, unopinionated config option
    rather than assuming any particular slicing convention.
@@ -459,8 +461,9 @@ implementation-level and can be decided as each milestone is built:
   domain join across all host types.
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
-  ISO-built lab VM into a reusable template; software manifest system
-  finalized.
+  ISO-built lab VM into a reusable template; `refresh-template.sh`
+  (docs/base-images.md §6) for updating an existing template without a
+  full rebuild; software manifest system finalized.
 - **M7** — NAT isolation mode (opt-in) for both backends, including the
   Hyper-V Internal-switch + `New-NetNat` provisioning sequence
   (`docs/networking.md` §2).

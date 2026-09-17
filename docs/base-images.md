@@ -1,24 +1,26 @@
-# Base Images: Packer Templates, Direct ISO Boot, and Promotion
+# Base Images: Packer Templates, Direct ISO Boot, Promotion, and Refresh
 
 Both hypervisor backends (Hyper-V, libvirt) need a starting point for
-each VM's disk. LABaPe supports three related workflows, chosen per
+each VM's disk. LABaPe supports four related workflows, chosen per
 host/host-group, not globally: build a template with Packer up front,
-boot straight from ISO, or boot from ISO now and promote the result into
-a template later.
+boot straight from ISO, boot from ISO now and promote the result into a
+template later, or refresh an *existing* template once it needs an
+update.
 
-## 1. The three workflows
+## 1. The four workflows
 
-| | Packer-built template | Direct ISO boot | ISO boot, then promote |
-|---|---|---|---|
-| When the OS install runs | Once, ahead of time | Every `tofu apply` | Once, during initial lab build |
-| Per-VM provisioning time after this | Minutes (clone + boot) | As long as the OS installer takes, every time | Minutes, after the one-time promotion |
-| Extra pipeline/state to maintain | Yes — template library | No | Template library, but built lazily |
-| Best for | OS versions already known to be reused often | One-off/rarely used OS versions; evaluating a new release | **Recommended default day-one workflow** — stand a lab up fast from ISO, then convert the VMs worth keeping into templates instead of reinstalling next time |
+| | Packer-built template | Direct ISO boot | ISO boot, then promote | Refresh an existing template |
+|---|---|---|---|---|
+| When the OS install runs | Once, ahead of time | Every `tofu apply` | Once, during initial lab build | Never — starts from the template, not ISO |
+| Per-VM provisioning time after this | Minutes (clone + boot) | As long as the OS installer takes, every time | Minutes, after the one-time promotion | Minutes, same as any template clone |
+| Extra pipeline/state to maintain | Yes — template library | No | Template library, but built lazily | Template library (updates it) |
+| Best for | OS versions already known to be reused often | One-off/rarely used OS versions; evaluating a new release | **Recommended default day-one workflow** — stand a lab up fast from ISO, then convert the VMs worth keeping into templates instead of reinstalling next time | **A software package or OS patch needs to land in a template you already have** — see §6 |
 
 `image_source_default: packer_template` (DESIGN.md §10) is the default
 for new host groups, but nothing stops a host group from starting on
 `iso_direct` and moving to a promoted template once it's proven out —
-that transition is exactly what §5 below covers.
+that transition is exactly what §5 below covers. §6 covers keeping an
+already-promoted (or already Packer-built) template current.
 
 All three workflows use **the same answer files** (`autounattend.xml`
 for Windows, kickstart for the RHEL family, cloud-init autoinstall for
@@ -185,7 +187,65 @@ This is a **manually-triggered** step (DESIGN.md §17.2) — you decide
 when a lab VM is done enough to become a reusable template, rather than
 the tooling guessing.
 
-## 6. Choosing per host
+## 6. Refreshing an Existing Template
+
+Promotion (§5) answers "how does a template get created." It doesn't
+answer a different, equally common question: **a template already
+exists, and a package in it needs a version bump** (or an OS patch, or a
+config change) — the image itself needs to move forward, not just the
+next lab build.
+
+Two ways to get there, and neither is "edit the template in place" —
+templates stay disposable/rebuildable, never hand-patched:
+
+### Option A — Full Packer rebuild
+
+Re-run `packer build` for that OS from ISO + kickstart/answer-file +
+provisioners (§3), producing a new dated template
+(`win2022-base-2026.10`) from scratch. Fully reproducible — the template
+is always exactly what its build recipe says it is, nothing more. Best
+when the change is significant enough to want a clean rebuild anyway
+(a new OS point release, a provisioner script change), but it re-runs
+the entire OS install every time, which is slow for "just bump one
+package."
+
+### Option B — Incremental refresh (recommended for small changes)
+
+For the case you described — one package needs a newer version, nothing
+else about the image is changing — rebuilding the OS from ISO is wasted
+work. Instead, `scripts/refresh-template.sh <backend> <template-name>
+<new-template-name>` does:
+
+1. Boots a **throwaway VM** from the existing template (`<template-name>`)
+   using the same OpenTofu `vm` module every other VM uses —
+   `image_source: packer_template` — not from ISO.
+2. Runs the **same Ansible** that would configure a normal lab host
+   against it: either the regular software manifest (§11 in DESIGN.md)
+   with the updated package version, or a dedicated OS-patch playbook
+   (`apt/dnf/zypper upgrade`, Windows Update) — whichever is actually
+   driving the change. This is deliberately the same playbook path
+   as normal configuration, not a separate update mechanism to maintain.
+3. Runs `promote-to-template.sh` (§5) against that same throwaway VM —
+   the finalize/generalize steps are identical whether the VM came from
+   ISO or from an existing template.
+4. Destroys the throwaway VM.
+
+The result is a **new, separately named template**
+(`win2022-base-2026.10.1`, or whatever scheme distinguishes it from the
+original `2026.10` build) — the old template is never overwritten.
+Host groups keep referencing the template name they were already
+pinned to until you deliberately move them to the new one, and the old
+template stays available until nothing references it (§7's retirement
+policy already covers this — refresh just adds another reason a new
+version gets created).
+
+This is why `promote-to-template.sh` was designed as a standalone,
+manually-triggered step in the first place (§5): it doesn't care whether
+its source VM came from ISO or from cloning an existing template, so
+refresh didn't need a second finalize/export implementation — just a
+different way of getting to "a VM ready to be finalized."
+
+## 7. Choosing per host
 
 Selection happens per host group, e.g.:
 
@@ -197,15 +257,15 @@ host_groups:
     image_source: iso_direct        # testing Mint 22 once, not templating it yet
 ```
 
-## 7. Versioning & rebuild cadence
+## 8. Versioning & rebuild cadence
 
 - Name templates with a build date, e.g. `win2022-base-2026.09`,
   `rocky9-base-2026.09` — the same convention whether the template came
-  from a Packer build or a promotion (§5).
-- Rebuild/re-promote templates periodically (Windows: Patch Tuesday
-  cadence; most Linux: monthly; Fedora: more often given its release
-  pace) instead of patching live VMs — every fresh environment then
-  starts from a current, consistent baseline.
-- Don't delete a template immediately after rebuilding it — keep it
-  until nothing references it, so in-flight environments aren't broken
-  out from under them.
+  from a Packer build, a promotion (§5), or a refresh (§6).
+- Rebuild/re-promote/refresh templates periodically (Windows: Patch
+  Tuesday cadence; most Linux: monthly; Fedora: more often given its
+  release pace) instead of patching live VMs — every fresh environment
+  then starts from a current, consistent baseline.
+- Don't delete a template immediately after rebuilding or refreshing it
+  — keep it until nothing references it, so in-flight environments
+  aren't broken out from under them.
