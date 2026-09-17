@@ -31,8 +31,11 @@ Prerequisites, none of which this repo automates yet:
    `virt-install` directly — see that module's comments for why).
 4. OpenTofu, Ansible, and Python 3 with PyYAML on the control machine —
    [docs/install-opentofu.md](./docs/install-opentofu.md) and
-   [docs/install-ansible.md](./docs/install-ansible.md) if you're
-   setting these up fresh on Debian 13.
+   [docs/install-ansible.md](./docs/install-ansible.md) for a dedicated
+   Debian 13 control machine, or
+   [docs/install-opentofu-windows-wsl.md](./docs/install-opentofu-windows-wsl.md) /
+   [docs/install-ansible-windows-wsl.md](./docs/install-ansible-windows-wsl.md)
+   if the control machine is WSL2 on the same Windows/Hyper-V box.
 5. An SSH keypair for the Ansible bootstrap user (docs/credentials.md §5)
    — `ssh-keygen -f ~/.ssh/labape_bootstrap`.
 
@@ -60,15 +63,33 @@ scripts/destroy.sh libvirt lab1 small
 DESIGN.md §6.3) — pick anything; running the same name again re-applies
 against that same environment instead of creating a new one.
 
+## Validating your setup
+
+Before the first real `scripts/deploy.sh` run, or any time something's
+not working and it's unclear whether it's this repo or the underlying
+tooling: [docs/validate-setup.md](./docs/validate-setup.md) plus
+`scripts/test/run-all.sh` check that OpenTofu/Ansible are actually
+installed correctly, the playbook/HCL actually parse, and (whichever
+backend you're using) the libvirt or WinRM connection actually works —
+independently of running a full deploy.
+
+```
+scripts/test/run-all.sh
+```
+
 ## Known gaps in this scaffold
 
-- **Nothing here has been run against a real libvirt host or a real
-  Ansible run.** The OpenTofu HCL passed a manual brace-balance/logic
-  review and the Python/bash helper scripts were smoke-tested with
-  synthetic inputs, but `tofu validate`/`tofu plan` have not been run
-  (no OpenTofu binary available in the environment this was written
-  in — network policy blocked fetching one). Treat this as a first
-  real test candidate, not as verified-working code.
+- **Nothing here has been run against a real libvirt or Hyper-V host.**
+  `ansible-playbook --syntax-check` has actually been run against
+  `playbooks/site.yml` and passes (confirmed in a real `ansible-core`
+  2.19 install), but `tofu validate`/`tofu plan` have not — no OpenTofu
+  binary was fetchable in the environment this was scaffolded in
+  (network policy blocked it). The OpenTofu HCL passed a manual
+  brace-balance/logic review and the Python/bash helper scripts were
+  smoke-tested with synthetic inputs, but that's not the same as a real
+  `tofu validate`. Run `scripts/test/run-all.sh` (docs/validate-setup.md)
+  as the first real check in an environment where these tools are
+  actually installable.
 - DHCP-mode addressing, the Hyper-V backend, Windows hosts, domain
   services, the full OS matrix, Packer templates, and the software/
   directory manifests beyond the simple package-manager case are all

@@ -418,8 +418,11 @@ LABaPe/
     credentials.md
     software-manifest.md
     directory-objects.md
-    install-opentofu.md   # control-machine setup, Debian 13
-    install-ansible.md    # control-machine setup, Debian 13
+    install-opentofu.md            # control-machine setup, Debian 13
+    install-ansible.md             # control-machine setup, Debian 13
+    install-opentofu-windows-wsl.md  # control machine = WSL2 on the Hyper-V host itself
+    install-ansible-windows-wsl.md   # same
+    validate-setup.md              # checklist backing scripts/test/
   secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
   software-store/             # .gitignore'd — local installer files, docs/software-manifest.md §8
   tofu/
@@ -474,6 +477,9 @@ LABaPe/
     check-network.ps1
     promote-to-template.sh   # generalize + export a live VM (from ISO or a template clone) into a template
     refresh-template.sh      # clone existing template -> apply update via Ansible -> promote as new version
+    lib/                 # environment.yml/vault/plan-JSON helpers used by deploy.sh/destroy.sh
+    test/                 # docs/validate-setup.md — tool/collection presence, playbook syntax,
+                           # tofu validate, libvirt/WinRM connectivity, vault+key consistency
 ```
 
 ## 13. Credentials & Secrets
