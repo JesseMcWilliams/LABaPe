@@ -49,8 +49,8 @@ Because the domain controller and its DNS/AD services are directly
 reachable on the physical segment in bridged mode, two things are worth
 being deliberate about, not because they're forbidden:
 
-- Pick a `domain_name` (§8) that can't collide with a real corporate
-  domain reachable on the same network.
+- Pick a `domain_name` (DESIGN.md §8) that can't collide with a real
+  corporate domain reachable on the same network.
 - Don't enable the DC's DHCP Server role unless you actually want it
   answering DHCP for that physical segment — AD DS promotion alone
   doesn't turn on DHCP, so this only happens if you explicitly add it.
@@ -124,7 +124,7 @@ specifically to catch this before it happens mid-`apply`.
 own.** Two ways to handle it, pick one per environment:
 
 - Simplest: every host in this environment uses static addressing
-  (§10 / DESIGN.md §14.5) — no DHCP server needed at all.
+  (DESIGN.md §14, "Per-host addressing") — no DHCP server needed at all.
 - If DHCP-mode hosts are wanted anyway, install the Windows **DHCP
   Server** role on the Hyper-V host and scope it to the environment's
   subnet:

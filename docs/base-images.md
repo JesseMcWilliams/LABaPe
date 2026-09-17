@@ -11,7 +11,7 @@ update.
 
 | | Packer-built template | Direct ISO boot | ISO boot, then promote | Refresh an existing template |
 |---|---|---|---|---|
-| When the OS install runs | Once, ahead of time | Every `tofu apply` | Once, during initial lab build | Never — starts from the template, not ISO |
+| When the OS install runs | Once, ahead of time | Every `tofu apply` | Once, during initial lab build | Never, for the recommended incremental path (§6 Option B) — starts from the template, not ISO. A full rebuild (§6 Option A) still runs it, same as the first column. |
 | Per-VM provisioning time after this | Minutes (clone + boot) | As long as the OS installer takes, every time | Minutes, after the one-time promotion | Minutes, same as any template clone |
 | Extra pipeline/state to maintain | Yes — template library | No | Template library, but built lazily | Template library (updates it) |
 | Best for | OS versions already known to be reused often | One-off/rarely used OS versions; evaluating a new release | **Recommended default day-one workflow** — stand a lab up fast from ISO, then convert the VMs worth keeping into templates instead of reinstalling next time | **A software package or OS patch needs to land in a template you already have** — see §6 |
@@ -22,16 +22,20 @@ for new host groups, but nothing stops a host group from starting on
 that transition is exactly what §5 below covers. §6 covers keeping an
 already-promoted (or already Packer-built) template current.
 
-All three workflows use **the same answer files** (`autounattend.xml`
-for Windows, kickstart for the RHEL family, cloud-init autoinstall for
-the Debian family, AutoYaST for openSUSE/SLES) stored once under
-`iso/answer-files/`. Packer wraps the unattended install into a
-repeatable pipeline; direct ISO boot hands the identical answer file to
-the hypervisor provider on every apply; promotion reuses the same
-generalize/finalize steps a Packer build would run, just against an
-already-installed VM instead of inside an isolated build. Nothing
-diverges because there's only one copy of each answer file and one set
-of finalize steps.
+The first three workflows all use **the same answer files**
+(`autounattend.xml` for Windows, kickstart for the RHEL family,
+cloud-init autoinstall for the Debian family, AutoYaST for
+openSUSE/SLES) stored once under `iso/answer-files/`. Packer wraps the
+unattended install into a repeatable pipeline; direct ISO boot hands the
+identical answer file to the hypervisor provider on every apply;
+promotion reuses the same generalize/finalize steps a Packer build would
+run, just against an already-installed VM instead of inside an isolated
+build. Refresh (§6) only touches answer files if it takes Option A (a
+full rebuild) — Option B, the recommended path for a small change,
+clones an existing template instead and never touches ISO or answer
+files at all. Nothing diverges across whichever of these actually run,
+because there's only one copy of each answer file and one set of
+finalize steps.
 
 ## 2. Repository layout
 
@@ -176,7 +180,7 @@ does, against the already-installed VM:
    clean` for openSUSE/SLES.
 2. Shuts the VM down.
 3. Exports/converts its disk into the template library using the same
-   naming convention Packer output uses (§6) — a Hyper-V export or a
+   naming convention Packer output uses (§8) — a Hyper-V export or a
    libvirt qcow2 conversion, depending on backend.
 4. Registers the result so any host group can reference it going forward
    via `image_source: packer_template` (the name is kept for consistency
@@ -235,7 +239,7 @@ The result is a **new, separately named template**
 original `2026.10` build) — the old template is never overwritten.
 Host groups keep referencing the template name they were already
 pinned to until you deliberately move them to the new one, and the old
-template stays available until nothing references it (§7's retirement
+template stays available until nothing references it (§8's retirement
 policy already covers this — refresh just adds another reason a new
 version gets created).
 

@@ -132,7 +132,7 @@ which one it's talking to:
 | `network_id` | string | output of the `network` module (§6.2) — which switch/bridge/libvirt-network this VM attaches to |
 | `addressing` | object | `{ mode = "static"\|"dhcp", address, prefix_length, gateway }` — `address` etc. only meaningful when `mode = "static"` |
 | `admin_credential` | sensitive object | bootstrap password (Windows) or SSH public key (Linux), from `docs/credentials.md` |
-| `template_vars` | map(string) | extra values rendered into the answer file/finalize scripts — `domain_name`, `dns_forward_ip`, `management_source` (docs/credentials.md §7), etc. |
+| `template_vars` | map(string) | extra values rendered into the answer file/finalize scripts at OS-provisioning time — e.g. `management_source` for firewall scoping (docs/credentials.md §7). **Not** where domain-related config goes: `domain_name`/`dns_forward_ip` (§10) are consumed directly by the `domain_controller` Ansible role during AD DS promotion (§8), not baked into an answer file — the domain doesn't exist yet when a VM is first provisioned, so there'd be nothing for it to join at that point anyway. |
 
 **Outputs:**
 
@@ -140,7 +140,7 @@ which one it's talking to:
 |---|---|
 | `name`, `roles` | passthrough |
 | `os_family` | `"windows"` \| `"linux"`, derived from `os` — tells the inventory generator whether to set `ansible_connection=winrm` or `ssh` |
-| `ip_address` | for `mode = "static"`, this just echoes the input. **For `mode = "dhcp"`, this is a real gap**: the address genuinely isn't known at `apply` time. Resolved with a post-apply discovery step in the same script that generates the Ansible inventory (§11) — `Get-VMNetworkAdapter` (Hyper-V) or `virsh domifaddr` (libvirt) queried after the VM has booted and picked up a lease, before inventory generation runs. Flagged here rather than glossed over, since "both static and DHCP are supported" (§14) undersold that DHCP needs this extra step to actually work with the rest of the pipeline. |
+| `ip_address` | for `mode = "static"`, this just echoes the input. **For `mode = "dhcp"`, this is a real, currently-unbuilt gap**: the address genuinely isn't known at `apply` time, and nothing produces it yet. The design calls for a post-apply discovery step in the same script that generates the Ansible inventory (§11) — `Get-VMNetworkAdapter` (Hyper-V) or `virsh domifaddr` (libvirt) queried after the VM has booted and picked up a lease, before inventory generation runs — but building it is explicitly deferred (§17.4) until a real need for DHCP-mode hosts shows up. Static addressing is the only mode that actually works end-to-end until then. Flagged here rather than glossed over, since "both static and DHCP are supported" (§14) undersold that DHCP needs this extra step at all. |
 
 ### 6.2 The `network` module interface
 
@@ -265,47 +265,32 @@ process, including promotion, in
 
 A profile is a list of **host groups**, each with a count, an OS, and a
 **list of roles** — a host can carry more than one role, which is how DC
-placement stays flexible (§8) instead of being a fixed slot:
+placement stays flexible (§8) instead of being a fixed slot. Unlike
+`environment.yml` (§10), a profile is consumed **only** by OpenTofu —
+Ansible never reads it directly, it only sees the resulting generated
+inventory — so it doesn't need the YAML-plus-conversion treatment §6.3
+uses for `environment.yml`; it's native `.tfvars` (HCL), one file per
+size, matching the `environments/small.tfvars.example` /
+`medium.tfvars.example` layout in §12:
 
-```yaml
-profiles:
-  small:
-    host_groups:
-      - name: dc
-        count: 1
-        os: windows_server_2022
-        roles: [domain_controller]        # single-purpose DC
-      - name: winsrv
-        count: 2
-        os: windows_server_2022
-        roles: [windows_server]
-      - name: linsrv
-        count: 2
-        os: rocky9
-        roles: [linux_server]
+```hcl
+# environments/small.tfvars.example
+host_groups = [
+  { name = "dc",     count = 1, os = "windows_server_2022", roles = ["domain_controller"] },   # single-purpose DC
+  { name = "winsrv", count = 2, os = "windows_server_2022", roles = ["windows_server"] },
+  { name = "linsrv", count = 2, os = "rocky9",               roles = ["linux_server"] },
+]
+```
 
-  medium:
-    host_groups:
-      - name: dc
-        count: 1
-        os: windows_server_2022
-        roles: [domain_controller, windows_server]   # DC doubles as a member server
-      - name: winsrv
-        count: 2
-        os: windows_server_2022
-        roles: [windows_server]
-      - name: linsrv
-        count: 3
-        os: rocky9
-        roles: [linux_server]
-      - name: winws
-        count: 2
-        os: windows_11
-        roles: [windows_workstation]
-      - name: linws
-        count: 2
-        os: ubuntu_lts
-        roles: [linux_workstation]
+```hcl
+# environments/medium.tfvars.example
+host_groups = [
+  { name = "dc",     count = 1, os = "windows_server_2022", roles = ["domain_controller", "windows_server"] },   # DC doubles as a member server
+  { name = "winsrv", count = 2, os = "windows_server_2022", roles = ["windows_server"] },
+  { name = "linsrv", count = 3, os = "rocky9",               roles = ["linux_server"] },
+  { name = "winws",  count = 2, os = "windows_11",           roles = ["windows_workstation"] },
+  { name = "linws",  count = 2, os = "ubuntu_lts",           roles = ["linux_workstation"] },
+]
 ```
 
 Each role a host carries becomes an Ansible inventory group membership,
@@ -523,7 +508,7 @@ to be locked in now.
 Default mode is **bridged**: environment VMs go straight on the
 physical LAN, matching how the lab is actually used — heavy hands-on
 testing against it, with hostnames managed by hand-editing a hosts file
-(§14.4) rather than via DNS lookups. **NAT isolation remains available
+(`docs/networking.md` §4) rather than via DNS lookups. **NAT isolation remains available
 as an opt-in** (`network.mode: nat`) for an environment that should stay
 off the physical network entirely.
 
@@ -574,8 +559,8 @@ regardless of network mode (bridged or NAT) — it's about what the
 DC forwards non-domain queries to, not about the environment's own
 network topology.
 
-Per-host addressing (unchanged): both static IP and DHCP are supported,
-chosen per host or per host group (e.g.
+Per-host addressing (unchanged): both static IP and DHCP are
+**designed** to be supported, chosen per host or per host group (e.g.
 `network: {mode: static, address: ...}` vs `{mode: dhcp}`). The domain
 controller should generally be static (it's also serving DNS). In
 bridged mode, DHCP-mode hosts get their lease from whatever DHCP server
@@ -583,6 +568,9 @@ already serves that LAN segment — LABaPe doesn't manage it. In NAT mode,
 DHCP is either the libvirt network's built-in `dnsmasq`, or, on Hyper-V,
 a Windows DHCP Server role scoped to the environment (`docs/networking.md`
 §2 step 4) since a custom Internal+NAT switch has no DHCP of its own.
+**In practice, `mode: dhcp` doesn't work end-to-end yet** — the
+IP-discovery step it depends on is deferred (§17.4/§6.1). Static
+addressing is what actually functions until that's built.
 
 ## 15. Workflow
 
@@ -595,8 +583,8 @@ tofu init
 tofu workspace new <environment-instance-name>   # or `select` if it already exists
 # environment.yml -> environment.auto.tfvars.json, generated by deploy.sh (§6.3)
 tofu apply -var-file=../../environments/medium.tfvars
-# inventory (+ hosts.generated) auto-generated from tofu output, including
-# post-apply DHCP-lease discovery for any host using addressing.mode=dhcp (§6.1)
+# inventory (+ hosts.generated) auto-generated from tofu output
+# (DHCP-lease discovery for addressing.mode=dhcp hosts is deferred, §17.4 — static only for now)
 ansible-playbook -i inventory/generated site.yml -e @software-manifest.yml
 # ...
 tofu destroy
@@ -628,13 +616,14 @@ None blocking further scaffolding right now.
 3. ~~Bridged address range~~ — resolved: §14 makes
    `network_address`/`subnet_mask` a plain, unopinionated config option
    rather than assuming any particular slicing convention.
-4. **DHCP-mode IP discovery timing** (§6.1): the design calls for a
-   post-apply discovery step (`Get-VMNetworkAdapter`/`virsh domifaddr`)
-   before inventory generation for any host using `addressing.mode:
-   dhcp`. Not blocking — static addressing works today without it — but
-   worth deciding during M1/M2 whether that discovery step is worth
-   building right away or whether static-only is fine until a real need
-   for DHCP-mode hosts shows up.
+4. ~~DHCP-mode IP discovery timing~~ — **deferred, not resolved by
+   building it**: the design still calls for a post-apply discovery step
+   (`Get-VMNetworkAdapter`/`virsh domifaddr`) before inventory generation
+   for any host using `addressing.mode: dhcp` (§6.1), but it's explicitly
+   *not* going into M1/M2. Static addressing covers every host in scope
+   until then; the discovery step gets built only once a real need for
+   DHCP-mode hosts actually shows up, not preemptively. Left here as a
+   documented, known gap rather than something silently unhandled.
 
 ## 18. Proposed Milestones
 

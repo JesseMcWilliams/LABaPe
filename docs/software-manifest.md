@@ -78,6 +78,7 @@ packages:
       path: legacy_exe_tool/setup.exe
       answer_file: legacy_exe_tool/setup.iss   # InstallShield response file
       arguments: '/s /f1"{{ answer_file_remote_path }}"'
+      creates_path: 'C:\Program Files\Legacy Tool\tool.exe'   # idempotency check, §9
 ```
 
 Ships with a modest starter set of common tools (browsers, 7-Zip,
@@ -225,14 +226,16 @@ has the file:
 
 1. **Copy** — `ansible.windows.win_copy` (Windows) /
    `ansible.builtin.copy` (Linux) pushes the file from the control
-   machine to a temp path on the target host, over the same
-   WinRM/SSH connection Ansible already has open. This is the
-   fundamental difference from the URL case: the *target host* fetches
-   a URL itself, but a local file only exists on the control machine,
-   so the control machine has to push it there first.
+   machine to a temp path on the target host (registered as
+   `installer_remote_path` — and `answer_file_remote_path` too, if the
+   entry has an `answer_file`, §9), over the same WinRM/SSH connection
+   Ansible already has open. This is the fundamental difference from the
+   URL case: the *target host* fetches a URL itself, but a local file
+   only exists on the control machine, so the control machine has to
+   push it there first.
 2. **Install** — `win_package`/`apt`/`dnf`/`zypper` then run against
-   that now-local-on-the-target path, exactly like the URL case just
-   substitutes a local path for a URL.
+   `installer_remote_path`, exactly like the URL case just substitutes a
+   local path for a URL.
 
 ### Where local files live
 
@@ -299,7 +302,14 @@ A string or list, passed straight through to `win_package`'s own
   something entirely proprietary). There's no default to fall back to;
   `arguments:` has to be set explicitly per EXE entry, found from that
   installer's own documentation (or `setup.exe /?`/`/help` if it has
-  one).
+  one). A related field that also needs setting explicitly for EXE
+  (unlike MSI, which can usually determine its own idempotency from the
+  file itself): `product_id` if the installer registers one, or
+  `creates_path`/`creates_service` pointing at something the install
+  leaves behind (`legacy_exe_tool`'s example above) — without one of
+  these, `win_package` has no reliable way to tell "already installed"
+  from "not," and a re-run could reinstall every time instead of
+  no-op'ing.
 - **deb/rpm**: `apt`/`dnf`/`rpm` are already non-interactive by
   default for straightforward packages — `arguments:` is rarely needed
   here. `debconf_selections` (below) covers the actual common failure
