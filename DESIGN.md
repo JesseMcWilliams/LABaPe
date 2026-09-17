@@ -392,6 +392,15 @@ in [`docs/software-manifest.md`](./docs/software-manifest.md). Summary:
   git.
 - **Versioning** is optional per entry; omitted means "latest," which is
   the practical default for a disposable environment.
+- **Silent-install instructions** (`arguments`, `answer_file`,
+  `debconf_selections`) apply only to the custom-installer path —
+  package-manager entries already handle unattended install themselves.
+  MSI gets a sensible overridable default (`/qn /norestart`); EXE has no
+  standard and always needs `arguments:` set explicitly per entry;
+  `answer_file` covers installers with their own response-file format
+  (InstallShield's `.iss`, distinct from the OS-level answer files in
+  §7); `debconf_selections` pre-seeds a `.deb`'s configuration prompts
+  before install (`docs/software-manifest.md` §9).
 
 ## 12. Proposed Repository Layout
 

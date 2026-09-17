@@ -64,10 +64,20 @@ packages:
       source: local
       path: vendor_tool/vendor-tool-4.1.msi
       product_id: "{C7654321-...}"
+      # no `arguments:` — msi gets a sensible silent default, §9
     linux:
       type: rpm
       source: local
       path: vendor_tool/vendor-tool-4.1.rpm
+
+  legacy_exe_tool:                 # EXE bootstrapper needing its own
+                                    # unattended answer file — §9
+    windows:
+      type: exe
+      source: local
+      path: legacy_exe_tool/setup.exe
+      answer_file: legacy_exe_tool/setup.iss   # InstallShield response file
+      arguments: '/s /f1"{{ answer_file_remote_path }}"'
 ```
 
 Ships with a modest starter set of common tools (browsers, 7-Zip,
@@ -164,6 +174,9 @@ happened to load last.
   that URL (same egress assumption the software-manifest package
   installs already depend on).
 - `type: msi`/`exe`, `source: local` → copy-then-install, §8.
+- Either way, `arguments:` (if set) is passed straight through to
+  `win_package`'s own `arguments:` parameter — including a rendered
+  `answer_file_remote_path` if the entry copied a response file, §9.
 - Otherwise → `chocolatey.chocolatey.win_chocolatey`, with `version:`
   passed through if the entry pins one (§7).
 
@@ -178,6 +191,9 @@ happened to load last.
   pointed at the URL directly) — same no-copy, host-fetches-it-itself
   behavior as the Windows URL case above.
 - `type: deb`/`rpm`, `source: local` → copy-then-install, §8.
+- Either way, `.deb` installs run with `DEBIAN_FRONTEND=noninteractive`
+  set and any `debconf_selections:` (§9) applied first, so a package
+  that would otherwise prompt during configuration doesn't hang the run.
 - Otherwise → the native module (`apt`/`dnf`/`community.general.zypper`)
   with the platform-specific package name, `version:` passed through if
   pinned.
@@ -256,3 +272,78 @@ package just means a new file in the store and an updated `path:`
 Keeping the old file around lets a manifest still reference an older
 version deliberately, the same reasoning §7 already covers for
 URL-sourced packages.
+
+## 9. Instructing a silent/unattended install
+
+`chocolatey`/`apt`/`dnf`/`zypper` entries don't need anything here —
+package-manager packages already encapsulate correct unattended
+behavior; that's what a package manager is for. This section only
+matters for the **custom installer path** (`type: msi/exe/deb/rpm`, any
+`source`), since that path bypasses a package manager's own conventions
+and talks to `win_package`/`dpkg`/`rpm` directly. Nothing about it is
+specific to `source: local` — a URL-sourced EXE (§1's `internal_agent`)
+needs exactly the same silent-install instructions as a locally-sourced
+one.
+
+### `arguments`
+
+A string or list, passed straight through to `win_package`'s own
+`arguments:` parameter:
+
+- **MSI**: has an actual standard here — unlike everything else in this
+  section, a sensible default (`/qn /norestart`) applies automatically
+  when `arguments:` is omitted. Still overridable for an MSI that needs
+  custom properties, e.g. `arguments: "/qn INSTALLDIR=D:\\Tools ACCEPTEULA=1"`.
+- **EXE**: no standard exists — every vendor's bootstrapper picks its
+  own silent flag (`/S`, `/SILENT`, `/VERYSILENT`, `/quiet`, or
+  something entirely proprietary). There's no default to fall back to;
+  `arguments:` has to be set explicitly per EXE entry, found from that
+  installer's own documentation (or `setup.exe /?`/`/help` if it has
+  one).
+- **deb/rpm**: `apt`/`dnf`/`rpm` are already non-interactive by
+  default for straightforward packages — `arguments:` is rarely needed
+  here. `debconf_selections` (below) covers the actual common failure
+  mode on Linux (a `.deb`'s postinst script prompting for
+  configuration) rather than an install-time flag.
+
+### `answer_file` — for an installer with its own response-file format
+
+Distinct from the OS-level answer files in `docs/base-images.md` (those
+answer autounattend.xml/kickstart/cloud-init questions the *OS
+installer* asks) — some Windows EXE installers (InstallShield being the
+classic case) have their **own** unattended mechanism: a response file
+(`.iss` for InstallShield) recorded once interactively
+(`setup.exe /r /f1"template.iss"`) and replayed silently on every future
+install (`setup.exe /s /f1"template.iss"`).
+
+`answer_file:` names a file in the software store (§8) — copied
+alongside the installer itself in the same `win_copy` step, to
+`answer_file_remote_path` — and referenced from `arguments:` via that
+variable, as `legacy_exe_tool` in §1 shows. Only relevant for the small
+set of installers that actually use this pattern; most EXEs just need a
+`/silent`-style flag in `arguments:` with no separate file at all.
+
+### `debconf_selections` — pre-answering a `.deb`'s configuration prompts
+
+Some `.deb` packages ask interactive questions during
+`postinst` (via `debconf`) — a license prompt, a config choice — which
+would otherwise hang an unattended install. Setting
+`DEBIAN_FRONTEND=noninteractive` for the install task (done
+automatically by `linux_common` for every `.deb` install, §6) silences
+the prompt but doesn't answer it, which can leave a package
+half-configured. `debconf_selections` pre-seeds the actual answers
+before installing:
+
+```yaml
+some_deb_tool:
+  linux:
+    type: deb
+    source: local
+    path: some_deb_tool/tool.deb
+    debconf_selections:
+      - "some-deb-tool some-deb-tool/accept-license boolean true"
+```
+
+Applied via `ansible.builtin.debconf` (one task per line) immediately
+before the install task. Only needed for packages that actually prompt
+— most don't, and this field is simply omitted for them.
