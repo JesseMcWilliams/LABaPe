@@ -22,6 +22,9 @@ OS configuration and software installation.
   hosts to it automatically. Which host acts as the domain controller is
   flexible — it can be a single-purpose host or share a host with
   another role.
+- Populate that domain — **OUs, domain/local groups, domain/local
+  users, and membership** — from a per-run manifest, the same
+  "changes between runs" reasoning as the software manifest.
 - Idempotent, repeatable builds; environments can be torn down and
   rebuilt on demand.
 - Minimal manual steps: one command (or a short pipeline) from
@@ -261,6 +264,22 @@ process, including promotion, in
   **brand-new AD forest** — no state carried over between environment
   lifecycles.
 
+**Populating the domain** (OUs, domain/local groups, domain/local users,
+membership) is a separate, per-run `directory-manifest.yml` — the same
+"changes between runs" reasoning as the software manifest (§11), not
+fixed infrastructure. Domain objects (`microsoft.ad.*`) run against the
+DC right after promotion, in a new `domain_directory` role; local
+objects run per-host, folded into the existing `windows_common`/
+`linux_common` passes — two stages the pipeline (§4) already has, not a
+new one. A group/user's OU is auto-created if it doesn't exist, group
+"type" is modeled as `scope` + `category` (AD's actual two axes), and a
+local account can never be a member of a domain group — that direction
+is rejected, not just documented. Every task also carries a
+`directory_objects` tag so a change can be pushed to an already-running
+environment (`--tags directory_objects`) without re-running domain join
+or software install. Full design in
+[`docs/directory-objects.md`](./docs/directory-objects.md).
+
 ## 9. Environment Profiles & Host Roles
 
 A profile is a list of **host groups**, each with a count, an OS, and a
@@ -398,6 +417,7 @@ LABaPe/
     networking.md
     credentials.md
     software-manifest.md
+    directory-objects.md
   secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
   software-store/             # .gitignore'd — local installer files, docs/software-manifest.md §8
   tofu/
@@ -425,11 +445,15 @@ LABaPe/
     package_catalog.yml   # repo-committed, stable — §11 / docs/software-manifest.md
     roles/
       domain_controller/
+      domain_directory/   # OUs, domain groups/users, domain-scope membership — §8 / docs/directory-objects.md
       windows_common/     # resolves group_names -> package_catalog -> win_chocolatey/win_package
+                           # + local groups/users/membership, docs/directory-objects.md §9
       linux_common/       # resolves group_names -> package_catalog -> apt/dnf/zypper + repo setup
+                           # + local groups/users/membership, docs/directory-objects.md §9
     playbooks/
-      site.yml          # ordered: domain_controller role -> domain-join -> per-role software
+      site.yml          # ordered: domain_controller -> domain_directory -> domain-join -> per-role software/local accounts
     software-manifest.example.yml   # per-run — §11 / docs/software-manifest.md
+    directory-manifest.example.yml  # per-run — §8 / docs/directory-objects.md
   packer/
     windows/
       2019/ 2022/ 2025/
@@ -642,7 +666,9 @@ None blocking further scaffolding right now.
   §4). Validate the flexible-role model (DC as single-purpose vs.
   dual-role host).
 - **M5** — Workstation host type + medium profile, validated with
-  domain join across all host types.
+  domain join across all host types. `domain_directory` role +
+  `directory-manifest.yml` (OUs, domain/local groups and users,
+  membership, `--tags directory_objects` re-apply) — docs/directory-objects.md.
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
   ISO-built lab VM into a reusable template; `refresh-template.sh`
