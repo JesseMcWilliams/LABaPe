@@ -45,14 +45,29 @@ packages:
     chocolatey: notepadplusplus
     # windows-only tool — no linux fields at all, same silent-skip rule
 
-  internal_agent:                 # no package manager has this at all
+  internal_agent:                 # no package manager has this at all,
+                                   # and it's fetched from a URL — contrast
+                                   # with vendor_tool below, §8
     windows:
       type: msi
+      source: url
       url: https://internal.example.com/agent.msi
       product_id: "{B1234567-...}"   # for win_package's idempotency check
     linux:
-      type: deb_url
+      type: deb
+      source: url
       url: https://internal.example.com/agent.deb
+
+  vendor_tool:                    # no repo, no reachable URL either — §8
+    windows:
+      type: msi
+      source: local
+      path: vendor_tool/vendor-tool-4.1.msi
+      product_id: "{C7654321-...}"
+    linux:
+      type: rpm
+      source: local
+      path: vendor_tool/vendor-tool-4.1.rpm
 ```
 
 Ships with a modest starter set of common tools (browsers, 7-Zip,
@@ -99,7 +114,7 @@ roles:
     - firefox
     - vscode
     - name: internal_agent        # inline override example, not required here —
-      windows: { type: msi, url: "https://.../agent-v2.msi", product_id: "..." }
+      windows: { type: msi, source: url, url: "https://.../agent-v2.msi", product_id: "..." }
                                    # this would shadow the catalog entry for this run only
 ```
 
@@ -143,8 +158,12 @@ happened to load last.
 **`windows_common`**, for each entry in `resolved_packages`:
 - Look up the entry's `windows`/`chocolatey` field (inline entries use
   the same shape as catalog entries, so one lookup path handles both).
-- `type: msi`/`exe` → `ansible.windows.win_package` (url + product_id
-  for idempotency).
+- `type: msi`/`exe`, `source: url` → `ansible.windows.win_package` with
+  `path:` set to the URL directly — `win_package` fetches it itself, no
+  copy step, so this needs the target host to have outbound access to
+  that URL (same egress assumption the software-manifest package
+  installs already depend on).
+- `type: msi`/`exe`, `source: local` → copy-then-install, §8.
 - Otherwise → `chocolatey.chocolatey.win_chocolatey`, with `version:`
   passed through if the entry pins one (§7).
 
@@ -154,9 +173,11 @@ happened to load last.
   matches whichever OS family (DESIGN.md §5) the host actually is.
 - Run any repo-setup tasks the resolved list needs first (§3), each
   exactly once.
-- `type: deb_url`/`rpm_url` → the native module's URL-install form
-  (`ansible.builtin.apt` with `deb:`, `ansible.builtin.dnf`/`zypper`
-  pointed at a URL/local path directly).
+- `type: deb`/`rpm`, `source: url` → the native module's URL-install form
+  (`ansible.builtin.apt` with `deb: <url>`; `dnf`/`community.general.zypper`
+  pointed at the URL directly) — same no-copy, host-fetches-it-itself
+  behavior as the Windows URL case above.
+- `type: deb`/`rpm`, `source: local` → copy-then-install, §8.
 - Otherwise → the native module (`apt`/`dnf`/`community.general.zypper`)
   with the platform-specific package name, `version:` passed through if
   pinned.
@@ -169,10 +190,69 @@ Every catalog or inline entry can optionally pin a version:
 
 ```yaml
 - name: internal_agent
-  windows: { type: msi, url: "...", product_id: "...", version: "2.3.1" }
+  windows: { type: msi, source: url, url: "...", product_id: "...", version: "2.3.1" }
 ```
 
 Omitted means "whatever's current" — the practical default for a
 disposable test/lab environment. Pinning exists for the case that
 matters here specifically: reproducing a bug against a known-bad or
 known-good version rather than whatever happens to be latest that day.
+
+## 8. Software with no repo and no reachable URL
+
+Some software isn't in any package manager *and* isn't hosted anywhere
+a lab VM can reach it — a vendor's installer that only exists as a file
+on your own machine or file share. `source: local` (§1's `vendor_tool`
+example) covers this with an explicit two-step install instead of the
+one-step URL case, since nothing except the control machine actually
+has the file:
+
+1. **Copy** — `ansible.windows.win_copy` (Windows) /
+   `ansible.builtin.copy` (Linux) pushes the file from the control
+   machine to a temp path on the target host, over the same
+   WinRM/SSH connection Ansible already has open. This is the
+   fundamental difference from the URL case: the *target host* fetches
+   a URL itself, but a local file only exists on the control machine,
+   so the control machine has to push it there first.
+2. **Install** — `win_package`/`apt`/`dnf`/`zypper` then run against
+   that now-local-on-the-target path, exactly like the URL case just
+   substitutes a local path for a URL.
+
+### Where local files live
+
+`path:` in a `source: local` entry is relative to a **software store**
+— a directory the control machine can read, kept **outside git**
+(installer binaries don't belong in a git repo, especially without
+Git LFS, which this design doesn't require). Location is configurable,
+defaulting to `./software-store/` next to the rest of the repo:
+
+```yaml
+# environment.yml
+software_store_path: /srv/labape/software-store   # optional override; defaults to ./software-store
+```
+
+```
+software-store/                  # .gitignore'd
+  internal_agent/
+    agent.msi
+    agent.deb
+  vendor_tool/
+    vendor-tool-4.1.msi
+    vendor-tool-4.1.rpm
+```
+
+Since Ansible copies the file directly from the control machine over
+its existing connection, the store only has to exist in **one place**
+— unlike Packer templates, which are backend/hypervisor-specific, the
+software store doesn't need to be replicated anywhere per backend or
+per environment.
+
+### Versioning local files
+
+No separate mechanism from §7 — a version bump for a locally-sourced
+package just means a new file in the store and an updated `path:`
+(e.g. `vendor_tool/vendor-tool-4.2.msi`), optionally alongside the
+`version:` field for `win_package`'s/`apt`'s own idempotency checks.
+Keeping the old file around lets a manifest still reference an older
+version deliberately, the same reasoning §7 already covers for
+URL-sourced packages.

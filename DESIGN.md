@@ -337,6 +337,8 @@ network:
     - 9.9.9.9
   management_source: 192.168.1.50   # control machine IP/CIDR — WinRM/SSH
                                      # firewall scoping, docs/credentials.md §7
+software_store_path: ./software-store   # optional override — local installer
+                                         # files, docs/software-manifest.md §8
 ```
 
 `domain_name` is never hardcoded — `company.com` above is only the
@@ -378,9 +380,16 @@ in [`docs/software-manifest.md`](./docs/software-manifest.md). Summary:
   package lists explicitly unioned via `group_names`, or software
   silently goes missing on exactly the hosts §9 was designed to support.
 - **Custom installers** (no package-manager entry at all) use the same
-  catalog-entry shape with a `type: msi/exe/deb_url/rpm_url` + `url`
+  catalog-entry shape with a `type: msi/exe/deb/rpm` + `source: url`
   instead of a package name, so `windows_common`/`linux_common` have one
   lookup path regardless of how a given package installs.
+- **Locally-sourced installers** (`source: local`) cover software with
+  no repo *and* no reachable URL — an MSI/EXE/.deb/.rpm that only exists
+  as a file on your own machine. `win_copy`/`copy` pushes it from the
+  control machine to the target over the existing WinRM/SSH connection
+  before installing, from a `.gitignore`d **software store** directory
+  (`docs/software-manifest.md` §8) rather than committing binaries to
+  git.
 - **Versioning** is optional per entry; omitted means "latest," which is
   the practical default for a disposable environment.
 
@@ -396,6 +405,7 @@ LABaPe/
     credentials.md
     software-manifest.md
   secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
+  software-store/             # .gitignore'd — local installer files, docs/software-manifest.md §8
   tofu/
     modules/
       vm/               # common interface, §6.1
