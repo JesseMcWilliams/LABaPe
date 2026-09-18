@@ -105,7 +105,12 @@ resource "terraform_data" "packer_template_not_implemented" {
 
   lifecycle {
     precondition {
-      condition     = false
+      # count above already gates this resource's existence on
+      # image_source == "packer_template", so this always fails when it
+      # runs — but a bare `false` literal is rejected at validate time
+      # ("must refer to at least one object from elsewhere in the
+      # configuration"), so the condition re-checks the same value.
+      condition     = var.image_source != "packer_template"
       error_message = "image_source = \"packer_template\" is not implemented on the libvirt backend yet (DESIGN.md §18 schedules it for M6). Use \"iso_direct\" for now."
     }
   }
