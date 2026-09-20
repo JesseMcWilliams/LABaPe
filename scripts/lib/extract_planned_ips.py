@@ -13,7 +13,10 @@ Prints one IP per line. DHCP-mode hosts have a null ip_address
 (DESIGN.md §17.4) and are silently skipped, not an error here.
 """
 import json
+import re
 import sys
+
+_VM_MODULE_RE = re.compile(r'^module\.vm\["([^"]+)"\]\.')
 
 
 def main() -> int:
@@ -32,7 +35,25 @@ def main() -> int:
         or {}
     )
 
-    for host in hosts.values():
+    # Only check hosts this apply will actually create — an
+    # already-existing, unchanged VM legitimately responds on its own
+    # IP and isn't a collision. Without this filter, a second
+    # deploy.sh run against an already-deployed environment always
+    # failed here: the pre-flight check saw its own running VMs
+    # respond and reported them as address conflicts.
+    creating = set()
+    for change in plan.get("resource_changes", []):
+        if change.get("type") != "null_resource" or change.get("name") != "vm_iso_direct":
+            continue
+        if "create" not in change.get("change", {}).get("actions", []):
+            continue
+        m = _VM_MODULE_RE.match(change.get("address", ""))
+        if m:
+            creating.add(m.group(1))
+
+    for name, host in hosts.items():
+        if name not in creating:
+            continue
         ip = host.get("ip_address")
         if ip:
             print(ip)
