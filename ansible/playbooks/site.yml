@@ -5,6 +5,21 @@
 # the ordering constraint (DESIGN.md §8) is easy to get wrong if it's
 # retrofitted after the fact.
 
+- name: Wait for freshly-created hosts to actually accept connections
+  # virt-install's --wait returns once the post-install reboot lands the
+  # domain back in "running" state, but that's not the same moment
+  # sshd/WinRM is actually up inside the guest — for the *last* host in
+  # a multi-host apply (serialized, DESIGN.md/deploy.sh -parallelism=1)
+  # there's effectively zero buffer between "just rebooted" and
+  # ansible-playbook's very next task trying to connect. Hit as a real
+  # UNREACHABLE failure in the M1 smoke test, not a hypothetical.
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for connection
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
 - name: Promote domain controller(s) first — must complete before any join
   hosts: domain_controller
   become: true
