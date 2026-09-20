@@ -15,7 +15,11 @@ keyboard --vckeymap=us --xlayouts='us'
 timezone UTC --utc
 
 %{ if addressing.mode == "static" ~}
-network --bootproto=static --ip=${addressing.address} --prefix=${addressing.prefix_length} --gateway=${addressing.gateway} --hostname=${hostname} --activate
+# No dedicated DNS field exists in environment.yml yet — defaulting to
+# the gateway is a reasonable assumption for a small/lab LAN (it's what
+# this design's own control-machine setup uses) and static addressing
+# has no other source for a resolver at all otherwise.
+network --bootproto=static --ip=${addressing.address} --netmask=${cidrnetmask("${addressing.address}/${addressing.prefix_length}")} --gateway=${addressing.gateway} --nameserver=${addressing.gateway} --hostname=${hostname} --activate
 %{ else ~}
 network --bootproto=dhcp --hostname=${hostname} --activate
 %{ endif ~}
