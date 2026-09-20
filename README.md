@@ -11,10 +11,14 @@ credentials, the software manifest, and directory objects.
 
 ## Status
 
-M1 scaffolding is in place: the libvirt backend, Linux-only, bridged
-networking, direct-ISO-boot only (DESIGN.md §18). Nothing here has been
-run against real infrastructure yet — see **Known gaps** below before
-trusting it.
+M1 is implemented and has passed a real end-to-end smoke test: the
+libvirt backend, Linux-only, bridged networking, direct-ISO-boot only
+(DESIGN.md §18). `scripts/deploy.sh libvirt lab1 small` was run against
+a real Debian 13 libvirt host — two Rocky 9 VMs built from a real ISO
+via kickstart, bridged onto the physical LAN, bootstrapped over SSH,
+and configured by `ansible-playbook` (software manifest packages
+installed, EPEL repo added) — with 0 Ansible failures on the final run.
+See **Known gaps** below for what M1 still doesn't cover.
 
 ## M1 quickstart (libvirt backend)
 
@@ -79,17 +83,20 @@ scripts/test/run-all.sh
 
 ## Known gaps in this scaffold
 
-- **Nothing here has been run against a real libvirt or Hyper-V host.**
-  `ansible-playbook --syntax-check` has actually been run against
-  `playbooks/site.yml` and passes (confirmed in a real `ansible-core`
-  2.19 install), but `tofu validate`/`tofu plan` have not — no OpenTofu
-  binary was fetchable in the environment this was scaffolded in
-  (network policy blocked it). The OpenTofu HCL passed a manual
-  brace-balance/logic review and the Python/bash helper scripts were
-  smoke-tested with synthetic inputs, but that's not the same as a real
-  `tofu validate`. Run `scripts/test/run-all.sh` (docs/validate-setup.md)
-  as the first real check in an environment where these tools are
-  actually installable.
+- **The libvirt/Linux/bridged/iso_direct path (M1) has been run
+  end-to-end against real infrastructure** — see Status above. Getting
+  there surfaced and fixed several real bugs the original scaffold
+  couldn't have caught without a real `tofu apply`/`virt-install`/
+  kickstart run: an invalid OpenTofu precondition, `virt-install`
+  called with an incompatible flag combination, a libvirt-internal race
+  when creating multiple VMs concurrently, a kickstart `network` line
+  using an option this Anaconda version doesn't accept (silently left
+  installs hanging indefinitely rather than failing fast), no DNS
+  resolver for static addressing, a missing EPEL repo dependency, a
+  timing race between a VM finishing its post-install reboot and
+  Ansible's first connection attempt, and a pre-flight network check
+  that couldn't tell its own already-running VMs apart from a real
+  address conflict. None of this was reachable by static review alone.
 - DHCP-mode addressing, the Hyper-V backend, Windows hosts, domain
   services, the full OS matrix, Packer templates, and the software/
   directory manifests beyond the simple package-manager case are all
