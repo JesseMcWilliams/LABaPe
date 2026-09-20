@@ -27,7 +27,9 @@ packages:
   sevenzip:
     chocolatey: 7zip
     apt: p7zip-full
-    dnf: p7zip
+    dnf:
+      package: p7zip
+      repo: epel                  # not in RHEL/Rocky's default repos, §3
     zypper: 7zip
 
   notepadplusplus:
