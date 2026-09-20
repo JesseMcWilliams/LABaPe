@@ -65,7 +65,13 @@ echo "labape: pre-flight network check (docs/networking.md §3)..." >&2
 python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
 
 echo "labape: applying..." >&2
-tofu apply -input=false tfplan.bin
+# -parallelism=1: concurrent virt-install invocations race to define the
+# same libvirt "boot-scratch" scratch-storage pool (a virt-install-
+# internal TOCTOU bug, not something this repo's script can fix from the
+# outside) and one of them fails outright. Serializing VM creation avoids
+# it — slower for multi-host environments, but M1's smoke test surfaced
+# this as a 100%-reproducible failure with even two concurrent hosts.
+tofu apply -input=false -parallelism=1 tfplan.bin
 rm -f tfplan.bin tfplan.json
 
 echo "labape: generating inventory..." >&2
