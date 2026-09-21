@@ -14,6 +14,13 @@ variable "ssh_public_key" {
   sensitive   = true
 }
 
+variable "windows_admin_password" {
+  description = "Local Administrator password baked into every Windows VM's autounattend.xml (docs/credentials.md §4) — from the vault's windows_bootstrap_admin_password, passed as TF_VAR_windows_admin_password by scripts/deploy.sh. Empty/unset is fine for Linux-only environments; deploy.sh refuses to proceed if it's still the vault's CHANGE_ME placeholder and a Windows host is actually being deployed."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # --- from environment.yml (DESIGN.md §10), via environment.auto.tfvars.json ---
 
 variable "network_mode" {
@@ -47,6 +54,11 @@ variable "static_ip_offset_start" {
   description = "Static-addressed hosts get network_cidr's .N, .N+1, ... starting here, in host_groups declaration order. Kept low but not .1/.2 to leave room for the gateway and other infrastructure."
   type        = number
   default     = 10
+}
+
+variable "vm_storage_path" {
+  description = "Directory on the libvirt host where VM disks (and, for Windows, the generated answer-file ISO) are created — from environment.yml's vm_storage_path, via environment.auto.tfvars.json (DESIGN.md §6.3)."
+  type        = string
 }
 
 # --- from environments/<size>.tfvars (DESIGN.md §9) ---

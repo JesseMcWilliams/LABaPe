@@ -26,9 +26,15 @@ software_store_path: ./software-store   # not yet used in M1 — no locally-sour
                                          # installers exercised until the software
                                          # manifest lands (M6, docs/software-manifest.md)
 
+# Directory on the libvirt host where VM disks (and, for Windows, the
+# generated answer-file ISO) get created. Convention on this project's
+# real test host is a dedicated /data volume rather than the small root
+# filesystem — adjust to whatever's right for yours.
+vm_storage_path: /data/VMs/LABaPe
+
 # Per-OS ISO path already staged on the libvirt host's filesystem —
 # tofu/modules/vm/libvirt's iso_direct path shells out to virt-install
 # on that host, which needs a local path, not a URL (docs/base-images.md).
-# M1 only needs a rocky9 entry.
 os_iso_paths:
-  rocky9: /var/lib/libvirt/images/isos/Rocky-9-x86_64-dvd1.iso
+  rocky9: /data/OS_Images/Rocky-9-x86_64-minimal.iso
+  windows_server_2022: /data/OS_Images/SERVER_EVAL_x64FRE_en-us.iso   # optional — only needed if a host_group uses it

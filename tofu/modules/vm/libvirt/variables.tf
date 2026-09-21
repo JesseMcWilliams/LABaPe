@@ -88,18 +88,30 @@ variable "libvirt_uri" {
 
 variable "os_catalog" {
   description = <<-EOT
-    Per-OS metadata for the iso_direct path. M1 ships a single "rocky9"
-    entry (tofu/environments/small.tfvars.example) — extending this to
-    the full OS matrix (DESIGN.md §5) is out of scope for M1.
+    Per-OS metadata for the iso_direct path — the full OS matrix
+    (DESIGN.md §5) is still out of scope; only what's actually
+    implemented (Rocky, Windows Server 2022) is populated.
 
     iso_host_path must already exist on the libvirt host's filesystem —
     virt-install with a remote qemu+ssh:// connection doesn't upload a
     local ISO for you. Staging/downloading ISOs onto the host is a
     manual prerequisite for now, not something this module automates.
+
+    answer_file_template is a kickstart .cfg.tpl for os_family "linux",
+    an autounattend .xml.tpl for "windows". os_variant is the
+    libosinfo short-id (e.g. "win2k22") virt-install's --os-variant
+    needs for Windows; unused (empty string) for Linux, which relies on
+    --os-variant detect=on,require=off instead.
   EOT
   type = map(object({
-    iso_host_path      = string
-    kickstart_template = string
-    os_family          = string
+    iso_host_path         = string
+    answer_file_template  = string
+    os_family             = string
+    os_variant            = optional(string, "")
   }))
+}
+
+variable "vm_storage_path" {
+  description = "Directory on the libvirt host where this VM's disk (and, for Windows, the generated answer-file ISO) are created. docs/base-images.md — kept off the small root filesystem by convention."
+  type        = string
 }

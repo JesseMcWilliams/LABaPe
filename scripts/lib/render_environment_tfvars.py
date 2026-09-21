@@ -35,6 +35,11 @@ def main() -> int:
 
     network_obj = ipaddress.ip_network(f"{address}/{mask}", strict=False)
 
+    vm_storage_path = env.get("vm_storage_path")
+    if not vm_storage_path:
+        print(f"labape: {env_path}'s vm_storage_path is required", file=sys.stderr)
+        return 1
+
     tfvars = {
         "network_mode": network.get("mode", "bridged"),
         "network_cidr": str(network_obj),
@@ -42,6 +47,7 @@ def main() -> int:
         "management_source": network.get("management_source", ""),
         "image_source_default": env.get("image_source_default", "iso_direct"),
         "os_iso_paths": env.get("os_iso_paths", {}),
+        "vm_storage_path": vm_storage_path,
     }
 
     out_path = f"{backend_dir}/environment.auto.tfvars.json"

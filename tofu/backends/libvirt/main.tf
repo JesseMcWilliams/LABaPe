@@ -2,16 +2,36 @@ locals {
   network_prefix_length = tonumber(split("/", var.network_cidr)[1])
   gateway               = var.gateway != "" ? var.gateway : cidrhost(var.network_cidr, 1)
 
-  # M1 only has one kickstart family (RHEL), so the template path
-  # follows a fixed "ks-<os_key>.cfg.tpl" convention under
-  # rhel-family/. Generalizing this per §5's full OS matrix is an
-  # M2+ concern, not needed for the M1 smoke test.
-  os_catalog = {
-    for os_key, iso_path in var.os_iso_paths : os_key => {
-      iso_host_path      = iso_path
-      kickstart_template = "${path.module}/../../../iso/answer-files/rhel-family/ks-${os_key}.cfg.tpl"
-      os_family          = "linux"
+  # Every RHEL-family os_key follows a fixed "ks-<os_key>.cfg.tpl"
+  # convention under rhel-family/ — that's still the default for
+  # anything not explicitly listed here. Windows entries need real
+  # per-entry metadata (a different answer-file format entirely, plus
+  # the libosinfo short-id virt-install's --os-variant needs), so
+  # they're special-cased instead of trying to force one naming
+  # convention across totally different OS families. Extending this to
+  # the full §5 OS matrix beyond what's actually implemented is still
+  # out of scope.
+  windows_catalog = {
+    windows_server_2022 = {
+      answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-win2022.xml.tpl"
+      os_variant            = "win2k22"
     }
+  }
+
+  os_catalog = {
+    for os_key, iso_path in var.os_iso_paths : os_key => (
+      contains(keys(local.windows_catalog), os_key) ? {
+        iso_host_path         = iso_path
+        answer_file_template  = local.windows_catalog[os_key].answer_file_template
+        os_family              = "windows"
+        os_variant              = local.windows_catalog[os_key].os_variant
+      } : {
+        iso_host_path         = iso_path
+        answer_file_template  = "${path.module}/../../../iso/answer-files/rhel-family/ks-${os_key}.cfg.tpl"
+        os_family              = "linux"
+        os_variant              = ""
+      }
+    )
   }
 
   # Flatten host_groups (each with a `count`) into one map keyed by a
@@ -68,13 +88,15 @@ module "vm" {
   }
 
   admin_credential = {
-    ssh_public_key = var.ssh_public_key
+    ssh_public_key         = var.ssh_public_key
+    windows_admin_password = var.windows_admin_password
   }
 
   template_vars = {
     management_source = var.management_source
   }
 
-  libvirt_uri = var.libvirt_uri
-  os_catalog  = local.os_catalog
+  libvirt_uri     = var.libvirt_uri
+  os_catalog      = local.os_catalog
+  vm_storage_path = var.vm_storage_path
 }
