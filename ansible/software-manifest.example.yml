@@ -7,3 +7,6 @@ roles:
   linux_server:
     - sevenzip
     - firefox
+  windows_server:
+    - sevenzip
+    - firefox

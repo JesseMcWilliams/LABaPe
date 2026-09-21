@@ -10,6 +10,14 @@
   loop_control:
     label: "{{ item }}"
 
+# A host with no packages assigned at all (raw_packages ends up [])
+# means the loop below has zero iterations — set_fact never runs, so
+# without this the variable it would have created is simply undefined
+# rather than an empty list, and the next task fails referencing it.
+- name: Initialize package_entries accumulator (loop below may have zero iterations)
+  ansible.builtin.set_fact:
+    linux_common_package_entries: []
+
 # Each item is either a catalog key (string) or an inline override — a
 # dict with its own `name:` (docs/software-manifest.md §4). Normalize
 # both into {name, spec}. A catalog/inline entry has two possible

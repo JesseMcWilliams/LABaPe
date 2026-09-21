@@ -1,7 +1,92 @@
 ---
-# Not implemented yet — DESIGN.md §18 schedules Windows VM support for
-# M3. Placeholder so site.yml's Windows play is present but harmless
-# against M1's Linux-only inventory.
-- name: (placeholder) windows_common role not implemented until M3
+# Windows counterpart to linux_common/tasks/main.yml — same union/
+# normalize/install shape (docs/software-manifest.md §5), simplified
+# since there's only one package manager to branch on. win_chocolatey
+# bootstraps Chocolatey itself on first use, so there's no separate
+# "install Chocolatey" step needed here.
+
+- name: Union this host's role package lists (raw catalog keys / inline overrides)
+  ansible.builtin.set_fact:
+    windows_common_raw_packages: "{{ (windows_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"
+  loop: "{{ group_names }}"
+  loop_control:
+    label: "{{ item }}"
+
+# A host with no packages assigned at all (raw_packages ends up [])
+# means the loop below has zero iterations — set_fact never runs, so
+# without this the variable it would have created is simply undefined
+# rather than an empty list, and the next task fails referencing it.
+- name: Initialize package_entries accumulator (loop below may have zero iterations)
+  ansible.builtin.set_fact:
+    windows_common_package_entries: []
+
+# A catalog entry has two possible shapes: a flat chocolatey: <name>
+# string (package_catalog.yml's firefox/vscode/sevenzip/
+# notepadplusplus) or a custom-installer entry nested under windows:
+# (internal_agent/vendor_tool, docs/software-manifest.md §8/§9).
+- name: Normalize into {name, spec} for this host's package manager
+  ansible.builtin.set_fact:
+    windows_common_package_entries: >-
+      {{ (windows_common_package_entries | default([])) +
+         [{
+           'name': (item.name if item is mapping else item),
+           'spec': (
+             (item.windows | default({}))
+             if item is mapping
+             else (
+               (packages[item].windows | default(packages[item].chocolatey | default({})))
+               if item in packages
+               else {}
+             )
+           )
+         }]
+      }}
+  loop: "{{ windows_common_raw_packages | unique }}"
+  loop_control:
+    label: "{{ item.name if item is mapping else item }}"
+
+# docs/software-manifest.md §2 — a missing platform field is a silent
+# skip, not an error.
+- name: Drop entries with nothing applicable on this platform
+  ansible.builtin.set_fact:
+    windows_common_package_entries: "{{ windows_common_package_entries | rejectattr('spec', 'equalto', {}) | list }}"
+
+- name: Report skipped packages (visibility, not a failure)
   ansible.builtin.debug:
-    msg: "windows_common role: not implemented yet (M3, DESIGN.md §18)."
+    msg: >-
+      {{ (windows_common_raw_packages | unique | length) - (windows_common_package_entries | length) }}
+      resolved package(s) have nothing applicable to Windows on this host — skipped (§2).
+  when: (windows_common_raw_packages | unique | length) != (windows_common_package_entries | length)
+
+# --- §8: locally-sourced installers — copy before install ---
+
+- name: Copy locally-sourced installer files to the target
+  ansible.windows.win_copy:
+    src: "{{ software_store_path }}/{{ item.spec.path }}"
+    dest: "C:\\Windows\\Temp\\{{ item.spec.path | basename }}"
+  loop: "{{ windows_common_package_entries | selectattr('spec.source', 'defined') | selectattr('spec.source', 'equalto', 'local') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- Install: chocolatey entries (a bare package-name spec, no `type`) ---
+
+- name: Install chocolatey entries
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    state: present
+  loop: "{{ windows_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- Install: custom .msi installers (URL or local — §8/§9) ---
+
+- name: Install custom .msi installers (URL or local)
+  ansible.windows.win_package:
+    path: >-
+      {{ item.spec.url if item.spec.source == 'url'
+         else 'C:\\Windows\\Temp\\' + (item.spec.path | basename) }}
+    product_id: "{{ item.spec.product_id }}"
+    state: present
+  loop: "{{ windows_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'msi') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
