@@ -3,6 +3,9 @@
 # provisioner. Not meant to be run by hand.
 set -euo pipefail
 
+# shellcheck source=lib/safe-undefine.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/safe-undefine.sh"
+
 : "${LIBVIRT_URI:?}"
 : "${VM_NAME:?}"
 
@@ -12,6 +15,6 @@ if ! virsh --connect "$LIBVIRT_URI" domstate "$VM_NAME" >/dev/null 2>&1; then
 fi
 
 virsh --connect "$LIBVIRT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
-virsh --connect "$LIBVIRT_URI" undefine "$VM_NAME" --remove-all-storage
+safe_undefine "$LIBVIRT_URI" "$VM_NAME"
 
 echo "labape: '$VM_NAME' destroyed and undefined." >&2
