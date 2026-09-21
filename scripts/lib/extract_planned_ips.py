@@ -35,17 +35,20 @@ def main() -> int:
         or {}
     )
 
-    # Only check hosts this apply will actually create — an
-    # already-existing, unchanged VM legitimately responds on its own
-    # IP and isn't a collision. Without this filter, a second
-    # deploy.sh run against an already-deployed environment always
-    # failed here: the pre-flight check saw its own running VMs
-    # respond and reported them as address conflicts.
+    # Only check hosts landing on a brand-new address: a pure "create"
+    # action. An already-existing, unchanged VM (a no-op) legitimately
+    # responds on its own IP and isn't a collision — and neither is a
+    # "replace" (actions == ["delete", "create"], e.g. the kickstart
+    # content changed): the address currently responds because the
+    # *old* instance of that same tofu-managed host hasn't been
+    # destroyed yet, not because something foreign took it. Checking
+    # only exact ["create"] excludes both of those alongside the
+    # already-existing no-op case.
     creating = set()
     for change in plan.get("resource_changes", []):
         if change.get("type") != "null_resource" or change.get("name") != "vm_iso_direct":
             continue
-        if "create" not in change.get("change", {}).get("actions", []):
+        if change.get("change", {}).get("actions", []) != ["create"]:
             continue
         m = _VM_MODULE_RE.match(change.get("address", ""))
         if m:
