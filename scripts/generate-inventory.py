@@ -2,7 +2,7 @@
 """Build the Ansible inventory + hosts.generated from `tofu output -json
 hosts` (DESIGN.md §11, docs/networking.md §4).
 
-Usage: generate-inventory.py <hosts.json> <environment.yml> <ssh-private-key-path> <out-dir>
+Usage: generate-inventory.py <hosts.json> <environment.yml> <ssh-private-key-path> <out-dir> [windows-admin-password]
 Writes <out-dir>/generated (Ansible YAML inventory) and
 <out-dir>/hosts.generated (the pasteable hosts-file snippet).
 """
@@ -26,14 +26,15 @@ ALL_ROLE_GROUPS = [
 
 
 def main() -> int:
-    if len(sys.argv) != 5:
+    if len(sys.argv) not in (5, 6):
         print(
-            f"usage: {sys.argv[0]} <hosts.json> <environment.yml> <ssh-private-key-path> <out-dir>",
+            f"usage: {sys.argv[0]} <hosts.json> <environment.yml> <ssh-private-key-path> <out-dir> [windows-admin-password]",
             file=sys.stderr,
         )
         return 2
 
     hosts_json_path, env_path, ssh_key_path, out_dir = sys.argv[1:5]
+    windows_admin_password = sys.argv[5] if len(sys.argv) == 6 else None
 
     with open(hosts_json_path, encoding="utf-8") as f:
         hosts = json.load(f)
@@ -58,10 +59,20 @@ def main() -> int:
 
         host_vars = {"ansible_host": ip}
         if os_family == "windows":
-            # Not exercised until M3 (DESIGN.md §18) — kept here so the
-            # inventory shape doesn't need revisiting when it lands.
+            # HTTPS (5986), matching the WinRM listener
+            # iso/answer-files/windows/autounattend-win2022.xml.tpl
+            # actually sets up (self-signed cert, hence
+            # cert_validation: ignore) — docs/credentials.md §4/§2.
+            # Basic auth transport matches that same answer file
+            # enabling it explicitly for this first (non-domain)
+            # connection, per docs/install-opentofu-windows-wsl.md §3.
             host_vars["ansible_connection"] = "winrm"
-            host_vars["ansible_port"] = 5985
+            host_vars["ansible_port"] = 5986
+            host_vars["ansible_winrm_transport"] = "basic"
+            host_vars["ansible_winrm_server_cert_validation"] = "ignore"
+            host_vars["ansible_user"] = "Administrator"
+            if windows_admin_password:
+                host_vars["ansible_password"] = windows_admin_password
         else:
             host_vars["ansible_connection"] = "ssh"
             host_vars["ansible_user"] = "labape"  # docs/credentials.md §5
