@@ -28,6 +28,14 @@ SSH_PRIVATE_KEY_PATH="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FIL
 export TF_VAR_ssh_public_key
 TF_VAR_ssh_public_key="$(cat "${SSH_PRIVATE_KEY_PATH}.pub")"
 
+# Only needs *some* non-empty value to satisfy the windows_answer_file
+# local_file's coalesce() while Terraform evaluates the full resource
+# graph (even a destroy needs to, to know what to tear down) — the
+# real value doesn't matter for a teardown, unlike deploy.sh's CHANGE_ME
+# check before actually creating anything.
+export TF_VAR_windows_admin_password
+TF_VAR_windows_admin_password="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" windows_bootstrap_admin_password 2>/dev/null || echo 'unused-for-destroy')"
+
 python3 "$ROOT_DIR/scripts/lib/render_environment_tfvars.py" "$ENV_FILE" "$BACKEND_DIR"
 
 cd "$BACKEND_DIR"

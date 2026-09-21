@@ -50,6 +50,13 @@ fi
 export TF_VAR_ssh_public_key
 TF_VAR_ssh_public_key="$(cat "${SSH_PRIVATE_KEY_PATH}.pub")"
 
+export TF_VAR_windows_admin_password
+TF_VAR_windows_admin_password="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" windows_bootstrap_admin_password 2>/dev/null || echo '')"
+if [ "$TF_VAR_windows_admin_password" = "CHANGE_ME" ] && grep -q '"windows' "$PROFILE_FILE" 2>/dev/null; then
+  echo "labape: $PROFILE_FILE deploys a Windows host but windows_bootstrap_admin_password in the vault is still the CHANGE_ME placeholder — set a real one first: ansible-vault edit $VAULT_FILE --vault-password-file $VAULT_PASS_FILE" >&2
+  exit 1
+fi
+
 echo "labape: rendering environment.yml -> environment.auto.tfvars.json..." >&2
 python3 "$ROOT_DIR/scripts/lib/render_environment_tfvars.py" "$ENV_FILE" "$BACKEND_DIR"
 
@@ -76,7 +83,7 @@ rm -f tfplan.bin tfplan.json
 
 echo "labape: generating inventory..." >&2
 tofu output -json hosts > hosts.json
-python3 "$ROOT_DIR/scripts/generate-inventory.py" hosts.json "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$ROOT_DIR/ansible/inventory"
+python3 "$ROOT_DIR/scripts/generate-inventory.py" hosts.json "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$ROOT_DIR/ansible/inventory" "$TF_VAR_windows_admin_password"
 rm -f hosts.json
 
 echo "labape: running ansible-playbook..." >&2
