@@ -97,7 +97,39 @@ scripts/test/run-all.sh
   Ansible's first connection attempt, and a pre-flight network check
   that couldn't tell its own already-running VMs apart from a real
   address conflict. None of this was reachable by static review alone.
-- DHCP-mode addressing, the Hyper-V backend, Windows hosts, domain
-  services, the full OS matrix, Packer templates, and the software/
-  directory manifests beyond the simple package-manager case are all
-  out of scope for M1 — see DESIGN.md §18 for the milestone plan.
+- **Windows Server support (2019/2022/2025) exists on the libvirt
+  backend — ahead of DESIGN.md §18's original M3 schedule — but is
+  intermittently unreliable and not currently usable.** All three
+  versions use the same `autounattend.xml`-based unattended install as
+  Linux's kickstart path (`iso/answer-files/windows/`), and the
+  mechanics are genuinely implemented and code-reviewed: partitioning,
+  static/DHCP addressing, WinRM bootstrap (HTTPS listener, self-signed
+  cert, Basic auth), and a working `windows_common` Ansible role
+  (Chocolatey packages). It has fully succeeded twice — once each for
+  Server 2022 and 2025, confirmed end-to-end including Ansible/WinRM
+  connecting and installing packages. But repeated retries (including a
+  full host reboot in between) fail the same way roughly 3 times out of
+  5: Windows Setup silently never finds/uses the answer file at all
+  (sits at its first interactive "Language to install" screen forever,
+  confirmed via `virsh screenshot` — not a validation error, which
+  would show a blocking dialog instead) rather than installing
+  unattended. Ruled out via direct testing: host resource exhaustion
+  (RAM/disk/network-interfaces/inotify all confirmed healthy), disk bus
+  (SATA/floppy/IDE — IDE isn't even supported on this q35 machine
+  type), answer-file delivery mechanism (CD-ROM vs. floppy — both fail
+  identically), `EI.CFG` differences between the three ISOs (all
+  identical), domain-name reuse, and `libvirtd`/host-level state
+  (a full reboot didn't change the failure rate). The two successes and
+  ~5 failures used byte-identical configuration, so this looks like a
+  genuine timing race in Windows Setup's own media-scan logic rather
+  than anything this repo's pipeline controls — but that's an inference
+  from process of elimination, not a confirmed root cause. `small.tfvars`
+  currently ships Linux-only for this reason; add a `windows_server_*`
+  `host_group` back once this is resolved, or if you're willing to
+  retry `scripts/deploy.sh` on failure (each attempt is a fresh
+  unattended install, ~5-10 minutes, so retrying is cheap even if
+  unsatisfying).
+- DHCP-mode addressing, the Hyper-V backend, domain services, the full
+  OS matrix, Packer templates, and the software/directory manifests
+  beyond the simple package-manager case are all out of scope for M1 —
+  see DESIGN.md §18 for the milestone plan.

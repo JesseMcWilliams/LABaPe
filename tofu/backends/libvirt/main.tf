@@ -11,18 +11,23 @@ locals {
   # convention across totally different OS families. Extending this to
   # the full §5 OS matrix beyond what's actually implemented is still
   # out of scope.
+  # All three versions share one answer-file template — confirmed via
+  # `wiminfo` against each real eval ISO that install image index 1
+  # ("SERVERSTANDARDCORE") is consistent across all of them, so
+  # nothing in the XML itself is actually version-specific. os_variant
+  # (the libosinfo short-id) is the only thing that varies.
+  windows_answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl"
   windows_catalog = {
-    windows_server_2022 = {
-      answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-win2022.xml.tpl"
-      os_variant            = "win2k22"
-    }
+    windows_server_2019 = { os_variant = "win2k19" }
+    windows_server_2022 = { os_variant = "win2k22" }
+    windows_server_2025 = { os_variant = "win2k25" }
   }
 
   os_catalog = {
     for os_key, iso_path in var.os_iso_paths : os_key => (
       contains(keys(local.windows_catalog), os_key) ? {
         iso_host_path         = iso_path
-        answer_file_template  = local.windows_catalog[os_key].answer_file_template
+        answer_file_template  = local.windows_answer_file_template
         os_family              = "windows"
         os_variant              = local.windows_catalog[os_key].os_variant
       } : {

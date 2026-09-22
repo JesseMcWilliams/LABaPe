@@ -5,15 +5,20 @@
      partitioning, network, and first-boot bootstrap (WinRM here, an
      SSH key there) all live in this one rendered file.
 
-     Disk bus is SATA and the NIC model is e1000e (not virtio) on
-     purpose — both have in-box Windows Server 2022 drivers, avoiding
-     the virtio-win driver-injection dance entirely for this first
-     pass. Revisit if VM disk/network performance actually matters.
+     Shared across Windows Server 2019/2022/2025 (backends/libvirt's
+     windows_catalog local picks this same template for all three) —
+     confirmed via `wiminfo` against each real eval ISO that install
+     image index 1 is "SERVERSTANDARDCORE" (no Desktop Experience) on
+     every one of them, so there's nothing actually version-specific
+     in here. --os-variant (win2k19/win2k22/win2k25) is the only thing
+     that varies per version, and that's a virt-install CLI flag, not
+     anything in this file. Ansible/WinRM manages the host, so no GUI
+     is needed.
 
-     Install image index 1 = "Windows Server 2022 SERVERSTANDARDCORE"
-     (no Desktop Experience) — confirmed via `wiminfo` against the
-     real eval ISO staged for this project; Ansible/WinRM manages the
-     host, so no GUI is needed. -->
+     Disk bus is SATA and the NIC model is e1000e (not virtio) on
+     purpose — both have in-box drivers on all three versions, avoiding
+     the virtio-win driver-injection dance entirely for this first
+     pass. Revisit if VM disk/network performance actually matters. -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
 
   <settings pass="windowsPE">
