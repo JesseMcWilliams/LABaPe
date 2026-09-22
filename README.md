@@ -143,24 +143,50 @@ scripts/test/run-all.sh
      ambiguity, per a real-world "automate Windows install in a VM"
      guide) made things *worse* — the guest crashed within under a
      minute instead of idling at Setup's language screen.
-  3. Most promising lead, still unresolved: injecting `autounattend.xml`
-     directly into `boot.wim` (both WinPE images, via `wimupdate`) and
-     rebuilding the full install ISO around it — mirroring how the
-     Linux kickstart path injects straight into what's booting, rather
-     than relying on a separately-scanned secondary device at all. This
-     produced a **genuinely different failure signature**: sustained
-     ~100% CPU for 6+ minutes with the screen never advancing past
-     `Booting from DVD/CD...`, vs. every previous failure's near-0% CPU
-     idle — real evidence the original failures actually were "Setup
-     never finds the file," since this approach bypasses that detection
-     step entirely and still fails, just differently. The rebuilt ISO's
-     El Torito boot catalog doesn't quite match what Microsoft's
-     `etfsboot.com` expects (`xorrisofs -iso-level 4` broke it outright
-     with "Couldn't find BOOTMGR"; `-iso-level 3` fixed that but hangs
-     later). Fixing this needs either preserving the *original* ISO's
-     boot catalog bytes exactly instead of having `xorrisofs` regenerate
-     one, or a purpose-built Windows-ISO remastering tool — more
-     specialized than a quick follow-up.
+  3. Injecting `autounattend.xml` directly into `boot.wim` (both WinPE
+     images, via `wimupdate`) and rebuilding the full install ISO around
+     it — mirroring how the Linux kickstart path injects straight into
+     what's booting, rather than relying on a separately-scanned
+     secondary device at all. This produced a **genuinely different
+     failure signature**: sustained ~100% CPU for 6+ minutes with the
+     screen never advancing past `Booting from DVD/CD...`, vs. every
+     previous failure's near-0% CPU idle — real evidence the original
+     failures actually were "Setup never finds the file," since this
+     approach bypasses that detection step entirely and still fails,
+     just differently. `xorrisofs -iso-level 4 -untranslated-filenames`
+     broke the boot catalog outright ("Couldn't find BOOTMGR");
+     `-iso-level 3 -J -rock` fixed that specific error but still hung.
+  4. Tried to fix (3) surgically — patch just `boot.wim` inside the
+     *original*, still-bootable ISO via `xorriso -indev/-map/-boot_image
+     any replay` instead of having `xorrisofs` regenerate the whole
+     image — but `xorriso`'s reader genuinely cannot parse the UDF
+     filesystem these ISOs use (confirmed: `-indev` on the untouched
+     original ISO sees only one file, `/README.TXT`, at the top level).
+     Any `-outdev` write from that state silently discards everything
+     it couldn't see — produced a 56KB "ISO" from an 8GB source. Real
+     tooling dead end, not a config mistake.
+  5. Reviewed Microsoft's official
+     [Windows Setup Automation Overview](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-setup-automation-overview?view=windows-11)
+     for the actual implicit answer-file search order. Confirms
+     read-only removable media (a second CD-ROM) genuinely is searched
+     (position 5 of 8), just after read/write removable media (position
+     4) — so the mechanism *should* work, matching that it does succeed
+     some of the time. Also surfaced an untried location — the
+     `\Sources` directory of the Windows distribution itself (position
+     6, windowsPE/offlineServicing passes) — so tried adding
+     `sources\autounattend.xml` (and, for good measure, one at the ISO
+     root too) to a rebuilt primary ISO. Hit the exact same "high CPU,
+     screen never advances" hang as (3). A **control test — rebuilding
+     the ISO via the identical `xorrisofs` recipe with zero
+     modifications at all — hung identically**, which conclusively
+     isolates that hang to `xorrisofs` not correctly reconstructing
+     this specific Windows ISO's boot structure, completely unrelated to
+     autounattend.xml placement. So the "modify the primary boot media"
+     family of approaches is blocked by this separate, real tooling
+     limitation, not by anything about the answer-file mechanism itself
+     — and the original secondary-CD-ROM/floppy mystery remains exactly
+     that, a mystery, now with the added confirmation that it
+     *shouldn't* be failing per Microsoft's own documented behavior.
 - DHCP-mode addressing, the Hyper-V backend, domain services, the full
   OS matrix, Packer templates, and the software/directory manifests
   beyond the simple package-manager case are all out of scope for M1 —
