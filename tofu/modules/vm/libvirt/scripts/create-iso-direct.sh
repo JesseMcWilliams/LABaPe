@@ -85,9 +85,25 @@ windows)
 
   # Windows Setup auto-detects an autounattend.xml at the root of any
   # attached optical/floppy media — no kernel-argument hook like
-  # Linux's inst.ks= exists, so build a tiny ISO containing just that
-  # file (renamed to the exact filename Setup looks for) and attach it
-  # as a second CD-ROM (docs/base-images.md §4).
+  # Linux's inst.ks= exists (docs/base-images.md §4), so build a tiny
+  # ISO containing just that file and attach it as a second CD-ROM.
+  # This is intermittently missed (~40% failure, README's Known Gaps —
+  # see that doc for the full investigation, since this is the surviving
+  # approach after several ruled-out alternatives, not the first one
+  # tried). Two of the strongest candidate fixes were disproven with a
+  # live VNC session rather than just theorized: a floppy in place of
+  # the second CD-ROM (checked earliest in Setup's search order, no
+  # optical/SCSI negotiation) hit the exact same failure — confirmed via
+  # a WinPE Shift+F10 shell that the file was present and readable both
+  # times, on both media types, ruling out placement/format/enumeration-
+  # timing as the cause. Folding autounattend.xml directly into the boot
+  # ISO (no second device at all) was also retried with a fresh mkisofs
+  # recipe from https://palant.info/2023/02/13/automating-windows-installation-in-a-vm/
+  # — it re-hit the exact two dead ends this repo had already separately
+  # documented (BOOTMGR not found without -boot-info-table; a CPU-spin
+  # hang at the boot screen with it), confirming that's a genuine
+  # xorrisofs/toolchain incompatibility on this host, not a flag to
+  # tune around.
   answer_iso="${VM_STORAGE_PATH}/${VM_NAME}-autounattend.iso"
   answer_stage_dir="$(mktemp -d)"
   trap 'rm -rf "$answer_stage_dir"' EXIT

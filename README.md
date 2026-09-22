@@ -187,6 +187,39 @@ scripts/test/run-all.sh
      — and the original secondary-CD-ROM/floppy mystery remains exactly
      that, a mystery, now with the added confirmation that it
      *shouldn't* be failing per Microsoft's own documented behavior.
+  6. Gave Windows guests a permanent VNC display (`--graphics vnc`
+     instead of `none`) so failures are actually watchable live rather
+     than only via post-mortem forensics, then used that to add two new
+     data points instead of more theorizing. First: reproduced the
+     failure live, then opened a WinPE command shell (`Shift+F10`) and
+     confirmed with `wmic logicaldisk`/`dir` that `autounattend.xml` was
+     present, correctly labeled, and byte-for-byte readable at `E:\` (a
+     second SATA CD-ROM) at the exact moment Setup was idling at the
+     language screen — not a placement or format problem. Repeated the
+     same live check with the answer file on a virtual floppy instead
+     (`A:\`, confirmed present and readable the same way) — identical
+     failure. Two structurally different delivery mechanisms, both
+     independently confirmed present-but-unused, which rules out
+     media-format/placement and narrows this to *something about
+     Setup's search itself* not finding a file that's genuinely there.
+     Second: retried the "modify the primary boot media" family once
+     more with a fresh, previously-untried `mkisofs`/`xorrisofs` recipe
+     from an independent source
+     ([palant.info](https://palant.info/2023/02/13/automating-windows-installation-in-a-vm/))
+     that reportedly works for that author. It re-hit exactly the two
+     failure modes (3) and (5) above had already isolated — no
+     `-boot-info-table` → "Couldn't find BOOTMGR"; with it → the guest
+     boots past that but the host's `qemu-system-x86_64` process pins at
+     ~108% CPU indefinitely with the screen frozen at
+     `Booting from DVD/CD...`. Confirms (3)-(5)'s conclusion rather than
+     finding a way around it: this is a real `xorrisofs`/toolchain
+     incompatibility with this specific Windows ISO's boot structure on
+     this host, not a flag combination nobody had tried yet. Net result:
+     the original secondary-CD-ROM approach remains the least-bad option
+     — reverted to it after this round (docs/base-images.md §4,
+     `create-iso-direct.sh`) — and the underlying mechanism is now more
+     thoroughly ruled *in* to Windows Setup's own search logic than
+     ruled out of this repo's control, without a fix in hand.
 - DHCP-mode addressing, the Hyper-V backend, domain services, the full
   OS matrix, Packer templates, and the software/directory manifests
   beyond the simple package-manager case are all out of scope for M1 —
