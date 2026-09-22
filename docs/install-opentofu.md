@@ -150,7 +150,46 @@ tofu init
 From here, `scripts/deploy.sh` (repo root) drives `tofu plan`/`apply`
 for you — see the root README's quickstart.
 
-## 8. Troubleshooting
+## 8. Cockpit + the Virtual Machines plugin (optional, recommended)
+
+Not required for `scripts/deploy.sh` — this is purely for *watching*
+what's happening on the libvirt host with your own eyes, which matters
+more than it sounds: several Windows-guest install failures during this
+project's development were only diagnosable at all via a live console
+view (`virsh screenshot`/VNC) — headless (`--graphics none`) Linux VMs
+log plenty over serial, but Windows Setup has no serial-console
+equivalent, so without a display there's nothing to inspect if an
+install stalls. Every Windows VM this repo creates gets a VNC display
+device for exactly this reason (`tofu/modules/vm/libvirt/scripts/
+create-iso-direct.sh`) — Cockpit's Virtual Machines page is the
+easiest way to actually look at it.
+
+Only meaningful if this box is *also* the libvirt host (§5) — Cockpit
+manages the local system, not a remote `qemu+ssh://` target.
+
+```bash
+sudo apt-get install -y cockpit cockpit-machines
+sudo systemctl enable --now cockpit.socket
+```
+
+Browse to `https://<host>:9090` and log in with a local system account.
+To see/manage VMs on the Virtual Machines page, that account needs to
+be in the `libvirt` group — the same `usermod -aG libvirt,kvm "$USER"`
+step §5 already has you run covers this; no separate Cockpit-specific
+group setup needed. If port 9090 isn't reachable, check whatever
+firewall is in front of this host (`ufw`/`nftables`/security group) —
+Cockpit doesn't open it for you.
+
+On the Virtual Machines page, each VM's **Console** tab shows its VNC
+display live (for Windows guests) or lets you attach to the serial
+console (for Linux guests, `console_log` in
+`create-iso-direct.sh` mirrors the same stream to a file for
+after-the-fact inspection too). A VM showing nothing in the Console tab
+almost always means it has no graphics device at all (`--graphics
+none`) rather than anything being broken — expected and fine for
+Linux, a sign something's misconfigured for Windows.
+
+## 9. Troubleshooting
 
 - **`tofu init` can't download the provider** — check the control
   machine has outbound HTTPS to `registry.opentofu.org` (proxies/

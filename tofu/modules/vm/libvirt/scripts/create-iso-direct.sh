@@ -97,6 +97,15 @@ windows)
   # bus=sata / model=e1000e (not virtio) on purpose — both have in-box
   # Windows Server 2022 drivers, avoiding the virtio-win
   # driver-injection dance entirely for this first pass.
+  #
+  # --graphics vnc (not none, unlike the Linux path above): Windows
+  # Setup is a graphical installer with no serial-console equivalent to
+  # Linux's console=ttyS0, so --graphics none leaves genuinely nothing
+  # to inspect if it stalls — confirmed the hard way during development
+  # (only a live VNC/screenshot attach ever showed anything useful).
+  # listen=127.0.0.1 keeps it host-local; view it via Cockpit's Virtual
+  # Machines page (docs/install-opentofu.md §8) or, absent Cockpit,
+  # `virsh -c qemu:///system screenshot <name> out.png`.
   if ! timeout "$install_timeout_seconds" virt-install \
     --connect "$LIBVIRT_URI" \
     --name "$VM_NAME" \
@@ -107,11 +116,11 @@ windows)
     --cdrom "$ISO_HOST_PATH" \
     --network "bridge=${BRIDGE_DEVICE},model=e1000e" \
     --os-variant "$OS_VARIANT" \
-    --graphics none \
+    --graphics vnc,listen=127.0.0.1 \
     --noautoconsole \
     --wait -1; then
     echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
-    echo "labape: the VM is left running for inspection — no console log for Windows yet (no serial redirection configured in the answer file), check virsh domstate/domiflist." >&2
+    echo "labape: the VM is left running for inspection — view its console via Cockpit's Virtual Machines page, or 'virsh -c $LIBVIRT_URI screenshot $VM_NAME out.png'." >&2
     exit 1
   fi
   ;;
