@@ -104,6 +104,10 @@ windows)
   # hang at the boot screen with it), confirming that's a genuine
   # xorrisofs/toolchain incompatibility on this host, not a flag to
   # tune around.
+  # Named autounattend.xml, not unattend.xml — that alternate name was
+  # tried and hit the identical failure (README's Known Gaps, round 7),
+  # as expected since unattend.xml isn't the documented name for this
+  # windowsPE-pass/removable-media search position anyway.
   answer_iso="${VM_STORAGE_PATH}/${VM_NAME}-autounattend.iso"
   answer_stage_dir="$(mktemp -d)"
   trap 'rm -rf "$answer_stage_dir"' EXIT

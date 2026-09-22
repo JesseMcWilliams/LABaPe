@@ -220,6 +220,15 @@ scripts/test/run-all.sh
      `create-iso-direct.sh`) — and the underlying mechanism is now more
      thoroughly ruled *in* to Windows Setup's own search logic than
      ruled out of this repo's control, without a fix in hand.
+  7. Tried renaming the file on the secondary CD-ROM from
+     `autounattend.xml` to `unattend.xml`, on the chance Setup's search
+     was keying on the wrong name for this position. Identical failure
+     (idle at the language screen). Expected in hindsight — Microsoft's
+     documented search order uses `autounattend.xml` specifically for
+     the pre-install/windowsPE pass on removable media, `unattend.xml`
+     is for later passes against an already-installed system — but worth
+     ruling out directly rather than assuming. Reverted to
+     `autounattend.xml`.
 - DHCP-mode addressing, the Hyper-V backend, domain services, the full
   OS matrix, Packer templates, and the software/directory manifests
   beyond the simple package-manager case are all out of scope for M1 —
