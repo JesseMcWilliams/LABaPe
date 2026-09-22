@@ -129,6 +129,38 @@ scripts/test/run-all.sh
   retry `scripts/deploy.sh` on failure (each attempt is a fresh
   unattended install, ~5-10 minutes, so retrying is cheap even if
   unsatisfying).
+
+  Three follow-up fix attempts, each tested against real infrastructure
+  rather than just proposed:
+  1. A real historical virt-install bug — multiple CD-ROMs getting a
+     non-deterministic *boot order* — was found and confirmed already
+     fixed upstream years before the version in use here. Doesn't match
+     our symptom anyway: the primary Windows ISO always boots and shows
+     Setup's UI reliably; it's specifically post-boot answer-file
+     *detection* on the secondary CD that fails intermittently.
+  2. Rebuilding the secondary answer-file ISO with
+     `-iso-level 4 -untranslated-filenames` (avoiding Joliet/short-name
+     ambiguity, per a real-world "automate Windows install in a VM"
+     guide) made things *worse* — the guest crashed within under a
+     minute instead of idling at Setup's language screen.
+  3. Most promising lead, still unresolved: injecting `autounattend.xml`
+     directly into `boot.wim` (both WinPE images, via `wimupdate`) and
+     rebuilding the full install ISO around it — mirroring how the
+     Linux kickstart path injects straight into what's booting, rather
+     than relying on a separately-scanned secondary device at all. This
+     produced a **genuinely different failure signature**: sustained
+     ~100% CPU for 6+ minutes with the screen never advancing past
+     `Booting from DVD/CD...`, vs. every previous failure's near-0% CPU
+     idle — real evidence the original failures actually were "Setup
+     never finds the file," since this approach bypasses that detection
+     step entirely and still fails, just differently. The rebuilt ISO's
+     El Torito boot catalog doesn't quite match what Microsoft's
+     `etfsboot.com` expects (`xorrisofs -iso-level 4` broke it outright
+     with "Couldn't find BOOTMGR"; `-iso-level 3` fixed that but hangs
+     later). Fixing this needs either preserving the *original* ISO's
+     boot catalog bytes exactly instead of having `xorrisofs` regenerate
+     one, or a purpose-built Windows-ISO remastering tool — more
+     specialized than a quick follow-up.
 - DHCP-mode addressing, the Hyper-V backend, domain services, the full
   OS matrix, Packer templates, and the software/directory manifests
   beyond the simple package-manager case are all out of scope for M1 —
