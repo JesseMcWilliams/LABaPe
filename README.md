@@ -229,6 +229,23 @@ scripts/test/run-all.sh
      is for later passes against an already-installed system — but worth
      ruling out directly rather than assuming. Reverted to
      `autounattend.xml`.
+  8. Checked whether [CVE-2026-0386](https://support.microsoft.com/en-us/servicing/os/windows/2025/12/windows-deployment-services-wds-hands-free-deployment-hardening-guidance-related-to-cve-2026-0386)
+     — Microsoft's fix disabling "hands-free" answer-file deployment —
+     could explain this. It doesn't apply here: the hardening is scoped
+     specifically to Windows Deployment Services (WDS) network/PXE
+     deployment, where an `unattend.xml` is exposed over an
+     unauthenticated RPC channel via the `RemoteInstall` share; Microsoft's
+     own guidance states it applies "only to native... WDS scenarios,"
+     and the patch lands on the *WDS server role*, not client-side
+     Setup.exe/WinPE. This repo has no WDS/PXE involved anywhere — Setup
+     boots straight from a locally-attached ISO — and the install media
+     itself predates the fix by years regardless. Tested anyway in case
+     of an undocumented interaction: a direct `virt-install` smoke test
+     against the **Windows Server 2019** ISO (untouched by any prior
+     round) with the same secondary-CD-ROM mechanism hit the identical
+     language-screen failure. Confirms both that this CVE isn't the
+     cause and that the bug is version-independent across 2019/2022/2025,
+     not something specific to the 2022 media used for every prior round.
 - DHCP-mode addressing, the Hyper-V backend, domain services, the full
   OS matrix, Packer templates, and the software/directory manifests
   beyond the simple package-manager case are all out of scope for M1 —
