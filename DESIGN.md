@@ -656,20 +656,20 @@ None blocking further scaffolding right now.
    until then; the discovery step gets built only once a real need for
    DHCP-mode hosts actually shows up, not preemptively. Left here as a
    documented, known gap rather than something silently unhandled.
-5. **Windows Setup answer-file reliability** — accepted as-is, not
-   resolved. The libvirt Windows path (§18 M3, landed early — see
-   below) mounts `autounattend.xml` on a separate CD-ROM/floppy rather
-   than modifying the vendor ISO, matching this section's own direct-
-   ISO-boot approach for Linux. That mechanism is real and does work,
-   but Windows Setup's own detection of it is intermittently unreliable
-   (~2 successes per 5 attempts observed) for reasons extensive
-   investigation didn't pin down — see README's Known Gaps for the
-   full trail (what was ruled out, what Microsoft's own docs say should
-   work, and why modifying the vendor ISO directly turned out to be a
-   dead end too). Decision: keep the separate-media approach as-is
-   (it's the only one that doesn't also risk the vendor ISO), document
-   the unreliability plainly, and retry-on-failure rather than block
-   on a fix.
+5. ~~**Windows Setup answer-file reliability**~~ — **resolved** (README's
+   Known Gaps, round 10). The libvirt Windows path (§18 M3, landed
+   early — see below) mounts `autounattend.xml` on a separate CD-ROM
+   rather than modifying the vendor ISO, matching this section's own
+   direct-ISO-boot approach for Linux. Nine rounds of behavioral
+   investigation (delivery mechanism, media type, file naming, CVE
+   research, vendor-ISO modification — all documented in README) never
+   found the cause; round 10 finally pulled Windows Setup's own
+   `setupact.log` via a WinPE shell during a live failure, which showed
+   it immediately: Setup found the file every time but failed to
+   *deserialize* it, and the answer-file `.tpl`'s multi-line XML
+   comments turned out to be exactly the documented cause of that
+   failure mode. Fix: `create-iso-direct.sh` strips XML comments from
+   the copy it writes to the CD-ROM. Confirmed end-to-end post-fix.
 
 ## 18. Proposed Milestones
 
@@ -681,11 +681,12 @@ None blocking further scaffolding right now.
 - **M2** — Hyper-V backend reaching parity with M1 for Linux VMs
   (External-switch bridged networking, `check-network.ps1`).
 - **M3** — Windows VM support on both backends, WinRM bootstrap,
-  `windows_common` role. **Landed early for libvirt** (Server 2019/
-  2022/2025, `autounattend.xml`-based, real WinRM bootstrap, a working
-  `windows_common` role) — see Open Question 5 above and README's Known
-  Gaps for the one real caveat (intermittent Setup reliability, accepted
-  as a known limitation rather than blocking). Hyper-V still pending M2.
+  `windows_common` role. **Landed early for libvirt, and solid** (Server
+  2019/2022/2025, `autounattend.xml`-based, real WinRM bootstrap, a
+  working `windows_common` role) — see Open Question 5 above and
+  README's Known Gaps round 10 for the answer-file reliability bug that
+  blocked this for a long stretch and is now fixed. Hyper-V still
+  pending M2.
 - **M4** — Domain controller role: AD DS promotion, configurable domain
   name, Windows domain join (server + workstation), Linux realm join
   (`realmd`/`sssd`), hosts-file snippet generation (`docs/networking.md`

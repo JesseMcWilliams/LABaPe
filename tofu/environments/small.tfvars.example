@@ -4,11 +4,11 @@
 # implemented yet (M4).
 #
 # winsrv below is real and works (M3 landed early for libvirt — see
-# DESIGN.md §17 Open Question 5 and README's Known Gaps), but Windows
-# Setup's own detection of the answer file is intermittently unreliable
-# (~2 successes per 5 attempts observed, root cause not found despite
-# extensive investigation) — comment it out if you'd rather not deal
-# with retrying scripts/deploy.sh on an occasional failed attempt.
+# DESIGN.md §17 Open Question 5 and README's Known Gaps). It used to
+# carry a caveat about intermittent answer-file failures; that's
+# resolved as of README's Known Gaps round 10 (a multi-line XML comment
+# in the answer-file template was tripping Windows Setup's XML
+# deserializer) — no longer expected to need retries.
 #
 # Copy this to small.tfvars and adjust before use — it's checked in as
 # an example, not applied directly (.gitignore excludes real .tfvars).

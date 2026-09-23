@@ -108,11 +108,31 @@ windows)
   # tried and hit the identical failure (README's Known Gaps, round 7),
   # as expected since unattend.xml isn't the documented name for this
   # windowsPE-pass/removable-media search position anyway.
+  # Root cause, finally confirmed directly rather than inferred (README's
+  # Known Gaps, round 10): pulled Windows Setup's own
+  # X:\Windows\setupact.log via a WinPE Shift+F10 shell during a live
+  # failure. It isn't a detection problem at all — Setup finds the file
+  # every time — it's *deserialization*: "UnattendSearchExplicitPath:
+  # Found unattend file at [...] but unable to deserialize it; status =
+  # 0x1, hrResult = 0x800705b9", a generic XML-parse failure. A quick
+  # `sync` before virt-install (ruling out an un-flushed write racing
+  # the guest's very early read) made no difference — same error,
+  # byte-identical. What did line up: this repo's answer-file .tpl has
+  # several multi-line XML comments (`<!-- ... -->` spanning several
+  # physical lines) documenting the file for developers, and a Windows
+  # 10-era forum thread found during round 1 of this investigation
+  # (tenforums.com) had already identified exactly this — Windows
+  # Setup's XML deserializer chokes on multi-line comments despite them
+  # being perfectly valid XML — as a real, reproducible cause of this
+  # same "unable to deserialize" failure. Strip comments from the copy
+  # that actually reaches Setup; the .tpl itself keeps its full
+  # documentation for anyone reading the source.
   answer_iso="${VM_STORAGE_PATH}/${VM_NAME}-autounattend.iso"
   answer_stage_dir="$(mktemp -d)"
   trap 'rm -rf "$answer_stage_dir"' EXIT
-  cp "$ANSWER_FILE_PATH" "$answer_stage_dir/autounattend.xml"
+  perl -0777 -pe 's/<!--.*?-->//gs' "$ANSWER_FILE_PATH" > "$answer_stage_dir/autounattend.xml"
   xorrisofs -o "$answer_iso" -V AUTOUNATTEND -J -r "$answer_stage_dir" >/dev/null
+  sync "$answer_iso"
 
   # bus=sata / model=e1000e (not virtio) on purpose — both have in-box
   # Windows Server 2022 drivers, avoiding the virtio-win
