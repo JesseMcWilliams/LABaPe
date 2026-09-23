@@ -17,6 +17,12 @@ variable "hyperv_password" {
   sensitive   = true
 }
 
+variable "ssh_public_key" {
+  description = "Ansible control machine's own SSH public key, baked into every Linux VM's kickstart (docs/credentials.md §5). Passed as TF_VAR_ssh_public_key by scripts/deploy.sh."
+  type        = string
+  sensitive   = true
+}
+
 variable "windows_admin_password" {
   description = "Local Administrator password baked into every Windows VM's autounattend.xml — from the vault's windows_bootstrap_admin_password. Empty/unset is fine for Linux-only environments."
   type        = string

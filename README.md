@@ -20,6 +20,31 @@ and configured by `ansible-playbook` (software manifest packages
 installed, EPEL repo added) — with 0 Ansible failures on the final run.
 See **Known gaps** below for what M1 still doesn't cover.
 
+M2 (Hyper-V backend, Linux-only parity with M1) is in progress. Real,
+tested-against-infrastructure pieces: `tofu/modules/network/hyperv`
+(an External virtual switch), and the boot-media approach for
+unattended Linux install — Hyper-V has no equivalent to libvirt's
+kernel-arg injection, so `tofu/modules/vm/hyperv/scripts/
+prepare-boot-iso.sh` instead copies the vendor ISO and edits isolinux's
+boot menu to default to `inst.ks=cdrom:/ks.cfg`, confirmed twice by a
+real, complete, unattended Rocky 9 kickstart install (333/333 packages)
+booted from the modified media. `tofu/modules/vm/hyperv` (VHD + the
+actual `hyperv_machine_instance` resource) is written and did
+successfully create and boot a real VM once via `tofu apply` against
+the test host below. **Not yet confirmed working end-to-end**: that VM
+completed its kickstart install and rebooted (confirmed via VHD growth
+and a Hyper-V uptime-counter reset) but was never reachable over SSH
+afterward, and a second attempt hit an unrelated `Start-VM` failure
+("The parameter is incorrect") likely caused by concurrent manual
+diagnostics rather than the module itself — worth a clean re-test
+before relying on this. See **Known gaps** below.
+
+Test infrastructure for M2: `hvhost1`, a nested Windows Server 2022 VM
+(on the M1 libvirt host, which has nested virtualization enabled) with
+the Hyper-V role installed — confirmed genuinely functional (not just
+"the feature installed") by creating, starting, and stopping an actual
+nested VM inside it.
+
 ## M1 quickstart (libvirt backend)
 
 Prerequisites, none of which this repo automates yet:
@@ -291,7 +316,30 @@ scripts/test/run-all.sh
       tolerable and sometimes not was never identified, and doesn't need
       to be now that the comments are simply gone from the file Setup
       actually reads.
-- DHCP-mode addressing, the Hyper-V backend, domain services, the full
-  OS matrix, Packer templates, and the software/directory manifests
-  beyond the simple package-manager case are all out of scope for M1 —
-  see DESIGN.md §18 for the milestone plan.
+- **M2 (Hyper-V) VM creation works — the freshly-installed guest's SSH
+  reachability doesn't, yet.** A real `tofu apply` against the test
+  Hyper-V host (Status above) created a network switch, VHD, and
+  `hyperv_machine_instance` correctly, and the VM completed its
+  kickstart install (VHD grew ~2.8GB, Hyper-V's own uptime counter
+  reset on reboot, `Heartbeat` integration service reported `OK`
+  afterward — the guest kernel is genuinely healthy). But SSH was never
+  reachable: alternating "connection refused" (something responding,
+  nothing on port 22) and brief "no route to host"/timeout windows for
+  20+ minutes post-reboot. Leading theory, not yet confirmed: entropy
+  starvation blocking `sshd-keygen` on first boot — this VM is doubly
+  virtualized (Hyper-V nested inside the KVM host that hosts it), and
+  unlike the libvirt backend's guests, `hyperv_machine_instance` has no
+  virtio-rng-equivalent device wired up. A serial-console kernel
+  argument was added to the shared kickstart template
+  (`iso/answer-files/rhel-family/ks-rocky9.cfg.tpl`'s
+  `bootloader --append`) specifically to make this diagnosable — mirrors
+  the lesson from the Windows/libvirt VNC fix above — but a second test
+  VM hit an unrelated `Start-VM` "parameter is incorrect" failure before
+  that could actually be used, likely from concurrent manual diagnostics
+  on the same VM object rather than the module itself. Needs a clean
+  re-test with the serial console before M2 can be considered working
+  end-to-end.
+- DHCP-mode addressing, domain services, the full OS matrix, Packer
+  templates, and the software/directory manifests beyond the simple
+  package-manager case are all out of scope for M1/M2 — see DESIGN.md
+  §18 for the milestone plan.

@@ -52,7 +52,13 @@ firewall-cmd --reload
 %{ endif ~}
 %end
 
-bootloader --location=mbr
+# console=ttyS0 mirrors kernel/systemd boot messages to the first serial
+# port alongside the normal VGA console (tty0) — costs nothing on
+# backends that don't wire up a serial device, and was the only way to
+# actually see what a stuck/failed boot was doing on the Hyper-V backend
+# (DESIGN.md §6, no VNC-equivalent framebuffer readily available there
+# the way libvirt's virsh screenshot gave the Windows-answer-file saga).
+bootloader --location=mbr --append="console=ttyS0,115200n8 console=tty0"
 zerombr
 clearpart --all --initlabel
 autopart --type=lvm
