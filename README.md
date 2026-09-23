@@ -246,6 +246,25 @@ scripts/test/run-all.sh
      language-screen failure. Confirms both that this CVE isn't the
      cause and that the bug is version-independent across 2019/2022/2025,
      not something specific to the 2022 media used for every prior round.
+  9. Tried a third, structurally different delivery mechanism: the
+     answer file on a 64MB FAT32 image attached as removable USB storage
+     (`virt-install --disk ...,bus=usb,removable=on`) rather than a
+     second CD-ROM or a floppy — real-world unattended-Windows guides
+     often specifically recommend USB for this. Windows *did* treat it
+     differently: WinPE enumerated it as `C:\`, "Removable Disk" (a
+     distinct category from "CD-ROM Disc"), rather than the CD-ROM/
+     floppy's drive letters. Identical outcome anyway — idle at the
+     language screen, and a WinPE shell again confirmed
+     `autounattend.xml` present and byte-correct at `C:\` the moment it
+     happened. Three structurally unrelated delivery mechanisms
+     (CD-ROM, floppy, USB) have now each independently confirmed the
+     same signature: the file is genuinely there and readable, Setup
+     just doesn't act on it, roughly 3 times out of 5. That pattern is
+     hard to square with a per-media-type detection bug and points
+     increasingly at something in Setup's own answer-file
+     validation/application step being racy — independent of how the
+     file arrives — though this remains inference from elimination, not
+     a confirmed root cause.
 - DHCP-mode addressing, the Hyper-V backend, domain services, the full
   OS matrix, Packer templates, and the software/directory manifests
   beyond the simple package-manager case are all out of scope for M1 —
