@@ -60,6 +60,7 @@ resource "local_file" "kickstart" {
     ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
     addressing        = var.addressing
     management_source = lookup(var.template_vars, "management_source", "")
+    syslog_host       = lookup(var.template_vars, "syslog_host", "")
   })
 
   depends_on = [terraform_data.validate_os]

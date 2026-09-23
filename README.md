@@ -325,20 +325,52 @@ scripts/test/run-all.sh
   afterward — the guest kernel is genuinely healthy). But SSH was never
   reachable: alternating "connection refused" (something responding,
   nothing on port 22) and brief "no route to host"/timeout windows for
-  20+ minutes post-reboot. Leading theory, not yet confirmed: entropy
-  starvation blocking `sshd-keygen` on first boot — this VM is doubly
-  virtualized (Hyper-V nested inside the KVM host that hosts it), and
-  unlike the libvirt backend's guests, `hyperv_machine_instance` has no
-  virtio-rng-equivalent device wired up. A serial-console kernel
-  argument was added to the shared kickstart template
-  (`iso/answer-files/rhel-family/ks-rocky9.cfg.tpl`'s
-  `bootloader --append`) specifically to make this diagnosable — mirrors
-  the lesson from the Windows/libvirt VNC fix above — but a second test
-  VM hit an unrelated `Start-VM` "parameter is incorrect" failure before
-  that could actually be used, likely from concurrent manual diagnostics
-  on the same VM object rather than the module itself. Needs a clean
-  re-test with the serial console before M2 can be considered working
-  end-to-end.
+  20+ minutes post-reboot, reproduced identically across multiple clean
+  rebuilds. Three logging/capture channels were built and tried to
+  actually see what's happening instead of continuing to guess from the
+  outside:
+  1. **Install-time syslog** — kickstart's native `logging --host=...
+     --port=1514` command (`scripts/test/syslog-capture.py`, a small
+     UDP listener). Confirmed the network path itself works (a test
+     packet sent directly from the Hyper-V host arrived fine) — but
+     zero bytes ever arrived from the guest across two full install
+     cycles.
+  2. **Post-install rsyslog forwarding** — `%post` installs and enables
+     `rsyslog` with `*.* @<host>:1514`, gated the same way, meant to
+     keep logs flowing *after* reboot too (the install-time `logging`
+     command stops working once the installer exits). Also zero bytes,
+     despite the guest clearly being up and networked enough for
+     Hyper-V's own `wait_for_ips` to succeed and for TCP RSTs
+     ("connection refused") to reach us on port 22 — genuinely puzzling,
+     since an RST is itself outbound guest traffic that demonstrably
+     *does* get through, which the UDP logging traffic's total absence
+     doesn't fit cleanly.
+  3. **Serial console** — added `console=ttyS0,115200n8 console=tty0`
+     to the shared kickstart's `bootloader --append`
+     (`iso/answer-files/rhel-family/ks-rocky9.cfg.tpl`) and a Hyper-V
+     COM1-to-named-pipe redirect, read via a small PowerShell client
+     (mirrors the lesson from the Windows/libvirt VNC fix above). First
+     attempt connected too late (VM already 13+ minutes up) and
+     naturally caught nothing — serial streams don't buffer for a late
+     client. Redone with the reader connected *before* `Start-VM`: still
+     zero bytes after 3+ minutes into boot, strongly suggesting
+     `console=ttyS0` genuinely isn't reaching the kernel on this
+     Generation 1 setup (a kickstart `bootloader --append` alone may not
+     be enough — GRUB2 itself may need `GRUB_TERMINAL`/
+     `GRUB_SERIAL_COMMAND` configured for its own early output, separate
+     from the kernel argument that only takes effect once GRUB hands
+     off).
+  Net: all three network/serial-dependent capture channels came up
+  empty, which is itself informative — it points at something that
+  isn't just "sshd is slow to start" but is affecting outbound
+  traffic/console output more broadly, in a way that doesn't fit simple
+  entropy starvation either. **Strongest untried option**: have `%post`
+  write a diagnostic dump (`systemctl status sshd`, `journalctl`,
+  `ip addr`, etc.) to a small FAT-formatted VHD attached alongside the
+  main disk — FAT is natively readable from the Windows/Hyper-V host
+  side (`Mount-VHD`), unlike the guest's own ext4/xfs root, so this
+  would work regardless of network or serial console cooperation.
+  Needs a clean re-test before M2 can be considered working end-to-end.
 - DHCP-mode addressing, domain services, the full OS matrix, Packer
   templates, and the software/directory manifests beyond the simple
   package-manager case are all out of scope for M1/M2 — see DESIGN.md

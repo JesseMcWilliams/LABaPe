@@ -14,6 +14,16 @@ lang en_US.UTF-8
 keyboard --vckeymap=us --xlayouts='us'
 timezone UTC --utc
 
+%{ if syslog_host != "" ~}
+# Streams Anaconda's own install-time log to a remote syslog receiver
+# in real time (kickstart's native `logging` command, UDP 514) —
+# a much more direct troubleshooting channel than inferring install
+# progress from VHD growth or a Hyper-V uptime-counter reset (see
+# README's Known Gaps, M2). Off by default (empty syslog_host); no
+# effect on the working libvirt path unless explicitly opted into.
+logging --host=${syslog_host} --port=1514 --level=debug
+%{ endif ~}
+
 %{ if addressing.mode == "static" ~}
 # No dedicated DNS field exists in environment.yml yet — defaulting to
 # the gateway is a reasonable assumption for a small/lab LAN (it's what
@@ -34,6 +44,9 @@ user --name=labape --groups=wheel
 %packages
 @^minimal-environment
 openssh-server
+%{ if syslog_host != "" ~}
+rsyslog
+%{ endif ~}
 %end
 
 %post
@@ -41,6 +54,15 @@ echo 'labape ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/labape
 chmod 0440 /etc/sudoers.d/labape
 
 systemctl enable sshd
+
+%{ if syslog_host != "" ~}
+# Keep logs flowing to the same receiver *after* install too — covers
+# exactly the "guest looks healthy but I can't tell why sshd isn't
+# answering" gap the install-time `logging` command above doesn't
+# reach, since that one stops at reboot.
+echo '*.* @${syslog_host}:1514' >> /etc/rsyslog.conf
+systemctl enable rsyslog
+%{ endif ~}
 
 %{ if management_source != "" ~}
 # Firewall scoping — docs/credentials.md §7. Restrict SSH to the

@@ -100,3 +100,9 @@ variable "management_source" {
   type        = string
   default     = ""
 }
+
+variable "syslog_host" {
+  description = "Control machine IP to stream install-time and post-install logs to (scripts/test/syslog-capture.py, UDP 1514) — a troubleshooting aid, off by default (README's Known Gaps, M2)."
+  type        = string
+  default     = ""
+}
