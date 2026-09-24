@@ -7,7 +7,9 @@ installation.
 
 See [DESIGN.md](./DESIGN.md) for scope, architecture, and open decisions,
 `docs/` for the detailed design of base images, networking, credentials,
-the software manifest, and directory objects, and
+the software manifest, directory objects, and future work (a
+`certificate_authority` role and a web interface for composable
+environment templates — DESIGN.md §19/§20, not yet implemented), and
 [docs/troubleshooting-log.md](./docs/troubleshooting-log.md) for the
 detailed, blow-by-blow history behind every bug mentioned below.
 

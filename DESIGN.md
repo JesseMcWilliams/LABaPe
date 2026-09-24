@@ -278,7 +278,15 @@ is rejected, not just documented. Every task also carries a
 `directory_objects` tag so a change can be pushed to an already-running
 environment (`--tags directory_objects`) without re-running domain join
 or software install. Full design in
-[`docs/directory-objects.md`](./docs/directory-objects.md).
+[`docs/directory-objects.md`](./docs/directory-objects.md) — this
+already covers both "users into groups" and "groups assigned to a
+server's local groups or nested into other groups" (its §7
+`memberships:` list), the full scope needed when §19/§20 (below) were
+added; no separate design was needed for that part.
+
+Future work (§19) adds a `certificate_authority` role using the same
+flexible-role model as `domain_controller` above — see
+[`docs/certificate-authority.md`](./docs/certificate-authority.md).
 
 ## 9. Environment Profiles & Host Roles
 
@@ -317,6 +325,13 @@ so a host with multiple roles simply runs multiple role plays against
 it — the `domain_controller` play always runs first for that host,
 regardless of what else is in its role list (§8). A custom profile is
 just a different `host_groups` list — no separate code path.
+
+Future work (§20) wraps this `host_groups` profile, the software
+manifest (§11), and the directory manifest
+(docs/directory-objects.md) into one composable **environment
+template**, managed from a future web interface rather than three
+hand-edited files — see
+[`docs/environment-templates.md`](./docs/environment-templates.md).
 
 ## 10. Environment Configuration
 
@@ -706,3 +721,45 @@ None blocking further scaffolding right now.
   (`docs/networking.md` §2).
 - **M8** — Secrets/vault integration, CI validation (`tflint`,
   `ansible-lint`), docs polish.
+- **M9** — `certificate_authority` role (§19): AD CS for Windows,
+  step-ca for Linux, Windows-issues-Linux's-intermediate trust
+  relationship when both are present.
+- **M10** — Web interface (§20): environment templates (composable,
+  assemblies/sub-assemblies), OS/software/feature repository browsing,
+  async deploy job runner with live progress.
+
+Both M9 and M10 are recorded now (design discussion, not yet
+implementation) because a design exists — see §19/§20 — not because
+they're scheduled next; M4/M5 (domain services, still unimplemented)
+remain the more immediate next step per README's Status.
+
+## 19. Certificate Authorities (Future)
+
+A `certificate_authority` role — Windows via AD CS, Linux via step-ca,
+combinable with other roles and following the same singleton-per-platform
+assumption §8 makes for `domain_controller`. When both platforms are
+present in one environment, the Linux CA is provisioned as a subordinate
+of the Windows CA (one cross-trusted PKI); otherwise the Linux CA is its
+own root. Full design, including what's still unresolved (client trust
+distribution, renewal automation, where per-service cert requests are
+modeled):
+[`docs/certificate-authority.md`](./docs/certificate-authority.md).
+
+## 20. Environment Templates & Web Interface (Future)
+
+A web interface for creating, duplicating, and editing **environment
+templates** — §9's `host_groups` profile, §11's software manifest, and
+docs/directory-objects.md's directory manifest, merged into one
+composable object — and deploying them ("hit go") instead of hand-editing
+three separate files. Templates are self-similar: any template can be
+deployed standalone or included as a component ("sub-assembly") inside a
+larger one, with auto-prefixed host-group names on inclusion and
+field-level overrides from the including template. The deploy step
+itself needs a real async job model (queue, live logs, retry/cancel) —
+a `tofu apply` + multi-role Ansible run took 15-40+ minutes and needed
+hands-on recovery more than once in this project's own testing
+(docs/troubleshooting-log.md), so a synchronous request/response UI
+isn't viable. Full design, including what's still unresolved (template
+storage, versioning/pinning of included sub-assemblies, auth model,
+relationship to the existing CLI):
+[`docs/environment-templates.md`](./docs/environment-templates.md).
