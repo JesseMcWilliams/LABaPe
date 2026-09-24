@@ -119,6 +119,18 @@ relative to what already exists:
    button. This is realistically the biggest single piece of new
    engineering in this whole feature, bigger than the UI or the
    template model.
+4. **Live credentials lookup for a running environment**
+   (docs/credentials.md §8). Today, tester access credentials for a
+   deployed environment come from a plain generated handout file
+   (`ansible/inventory/credentials.generated`) — deliberately simple,
+   built before this web interface existed. Once this UI exists, add a
+   credentials view here as a *second, selectable* way to get the same
+   information (a tester picks an environment, sees its accounts) —
+   explicitly not a replacement for the generated-file option. Some
+   teams will still want a plain handout instead of routing every
+   access request through a web page; both should keep working, chosen
+   per-environment or per-deployment rather than one deprecating the
+   other.
 
 ## 4. Open questions (not yet resolved)
 

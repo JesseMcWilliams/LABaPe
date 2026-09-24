@@ -93,3 +93,4 @@ ansible-playbook playbooks/site.yml \
   -e @../secrets.vault.yml --vault-password-file "$VAULT_PASS_FILE"
 
 echo "labape: done. Paste ansible/inventory/hosts.generated into your hosts file (docs/networking.md §4)." >&2
+echo "labape: tester access credentials for this environment: ansible/inventory/credentials.generated (docs/credentials.md §8)." >&2

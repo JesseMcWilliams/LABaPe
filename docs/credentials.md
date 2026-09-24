@@ -136,6 +136,30 @@ network:
   management_source: 192.168.1.50    # control machine's IP, or a small CIDR
 ```
 
+## 8. Handing testers access to a running environment
+
+The vault (§1) is for whoever runs `scripts/deploy.sh` — testers using
+the resulting environment shouldn't need the vault password or shell
+access to the control machine just to log into a VM. `deploy.sh`
+generates `ansible/inventory/credentials.generated` alongside
+`hosts.generated` (docs/networking.md §4): a plain-text, per-environment
+handout listing each account a tester actually needs (today: the shared
+Windows local/domain Administrator password, and the Linux `labape`
+SSH-key access details) — never the vault itself, and gitignored the
+same way every other generated/secret file is. Share it however you'd
+share any other credential (not by committing it, obviously).
+
+This is a deliberately simple starting point ("option 1" of a few
+considered), not a growth path toward its own credential-distribution
+service — see
+[docs/environment-templates.md](./environment-templates.md) §3/§4:
+once the future web interface (DESIGN.md §20) exists, a live
+credentials lookup there is expected to be the nicer option, and this
+generated file should become a *selectable alternative* to that (some
+teams may still want a plain handout instead of routing every access
+request through a web page), not be replaced outright or left as the
+only option.
+
 ### Windows: scope the WinRM firewall rule
 
 Baked into the answer file's `FirstLogonCommands` (or run as a Packer/

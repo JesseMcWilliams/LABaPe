@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Build the Ansible inventory + hosts.generated from `tofu output -json
-hosts` (DESIGN.md §11, docs/networking.md §4).
+"""Build the Ansible inventory + hosts.generated/credentials.generated
+from `tofu output -json hosts` (DESIGN.md §11, docs/networking.md §4).
 
 Usage: generate-inventory.py <hosts.json> <environment.yml> <ssh-private-key-path> <out-dir> [windows-admin-password]
-Writes <out-dir>/generated (Ansible YAML inventory) and
-<out-dir>/hosts.generated (the pasteable hosts-file snippet).
+Writes <out-dir>/generated (Ansible YAML inventory),
+<out-dir>/hosts.generated (the pasteable hosts-file snippet), and
+<out-dir>/credentials.generated (a per-environment access handout for
+testers — docs/credentials.md §8. Deliberately a plain generated file,
+not a service: this is "option 1" of that section's tradeoff writeup;
+once a web interface exists (DESIGN.md §20) this should become a
+selectable alternative to a live credentials lookup there, not the only
+way to get this information — see docs/environment-templates.md).
 """
 import json
 import os
@@ -67,11 +73,21 @@ def main() -> int:
     }
 
     hosts_lines = [f"# LABaPe: generated {datetime.now(timezone.utc).isoformat()}"]
+    windows_hosts = []
+    linux_hosts = []
+    has_domain_controller = False
 
     for name, host in hosts.items():
         ip = host.get("ip_address")
         os_family = host.get("os_family")
         roles = host.get("roles", [])
+
+        if os_family == "windows":
+            windows_hosts.append(name)
+        else:
+            linux_hosts.append(name)
+        if "domain_controller" in roles:
+            has_domain_controller = True
 
         host_vars = {"ansible_host": ip}
         if os_family == "windows":
@@ -112,7 +128,41 @@ def main() -> int:
     with open(f"{out_dir}/hosts.generated", "w", encoding="utf-8") as f:
         f.write("\n".join(hosts_lines) + "\n")
 
-    print(f"labape: wrote {out_dir}/generated and {out_dir}/hosts.generated", file=sys.stderr)
+    creds_lines = [
+        f"# LABaPe: generated {datetime.now(timezone.utc).isoformat()}",
+        "# Access credentials for THIS environment instance only — not the",
+        "# vault itself. Not committed to git (.gitignore); handle like any",
+        "# other secret and discard once the environment is torn down.",
+        "",
+    ]
+    if windows_hosts:
+        creds_lines.append(f"## Windows ({', '.join(sorted(windows_hosts))})")
+        creds_lines.append("Local Administrator: Administrator")
+        creds_lines.append(
+            f"Password: {windows_admin_password}" if windows_admin_password
+            else "Password: (not provided to generate-inventory.py — check the vault directly)"
+        )
+        if has_domain_controller and netbios_name:
+            creds_lines.append(
+                f"Also valid as Domain Administrator ({netbios_name}\\Administrator) on "
+                "domain-joined hosts — same password until M5 adds dedicated named "
+                "accounts (docs/credentials.md §6)."
+            )
+        creds_lines.append("")
+    if linux_hosts:
+        creds_lines.append(f"## Linux ({', '.join(sorted(linux_hosts))})")
+        creds_lines.append("User: labape (SSH key auth, no password — docs/credentials.md §5)")
+        creds_lines.append(f"ssh -i {ssh_key_path} labape@<host-ip>")
+        creds_lines.append("sudo: passwordless (NOPASSWD, bootstrap-only)")
+        creds_lines.append("")
+
+    with open(f"{out_dir}/credentials.generated", "w", encoding="utf-8") as f:
+        f.write("\n".join(creds_lines) + "\n")
+
+    print(
+        f"labape: wrote {out_dir}/generated, {out_dir}/hosts.generated, and {out_dir}/credentials.generated",
+        file=sys.stderr,
+    )
     return 0
 
 

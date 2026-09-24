@@ -18,6 +18,7 @@ directory-manifest.yml
 # match at the repo root, not ansible/inventory/)
 **/inventory/generated
 **/inventory/hosts.generated
+**/inventory/credentials.generated
 
 # Intermediate files scripts/deploy.sh cleans up itself, kept here as a
 # safety net if a run is interrupted partway
