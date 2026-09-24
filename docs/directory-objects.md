@@ -75,25 +75,35 @@ domain_users:
 
 local_users:
   - name: local_tester
-    hosts: [winws]                        # role name from DESIGN.md §9's host_groups
+    hosts: [windows_workstation]          # a role name — see below
     password_vault_key: local_tester_password
     groups: ["Remote Desktop Users"]      # local group, same host
 ```
 
-`hosts:` on a local object is a **role name** (`winws`, `linsrv`, …) —
-the same names DESIGN.md §9's `host_groups` and the inventory (§11)
-already use — not a literal hostname, so a local user/group definition
-applies to every host currently carrying that role, consistent with how
-everything else in this design resolves roles to hosts.
+`hosts:` on a local object is a **role name** — one of
+`domain_controller`, `windows_server`, `windows_workstation`,
+`linux_server`, `linux_workstation` (DESIGN.md §9), the same values
+`software-manifest.yml`'s `roles:` key is already keyed by — not a
+literal hostname, and **not** a `host_groups` entry's own `name:`
+field (e.g. a profile's `winws`/`linsrv` labels). This matters because
+it's what `scripts/generate-inventory.py` actually creates Ansible
+inventory groups from (`ALL_ROLE_GROUPS`) — a `host_groups` block's
+`name:` is just a naming convenience for the hosts it produces
+(`winsrv1`, `linsrv1`, …), it isn't itself an inventory group. Confirmed
+the hard way during M5's implementation: an earlier draft of this doc
+and the example manifest both used host-group names here, and every
+local-object task silently no-op'd (an empty `for_host_group` match,
+docs/directory-objects.md's own local-object implementation) until
+corrected to real role names.
 
 ## 5. Local groups
 
 ```yaml
 local_groups:
   - name: Remote Desktop Users    # built-in group — ensuring membership, not creating it
-    hosts: [winws]
+    hosts: [windows_workstation]
   - name: DeploymentTesters       # a genuinely new local group
-    hosts: [linws]
+    hosts: [linux_workstation]
 ```
 
 ## 6. Passwords
@@ -123,7 +133,7 @@ memberships:
   - member: "COMPANY\\Sales-Users"   # domain group added to a LOCAL group — the common
     group: Administrators            # "domain admins in the local admins group" pattern
     group_scope: local
-    hosts: [winws]
+    hosts: [windows_workstation]
 ```
 
 `group_scope: local` entries need `hosts:` (which role's hosts to apply

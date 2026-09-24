@@ -90,3 +90,46 @@
   loop: "{{ windows_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'msi') | list }}"
   loop_control:
     label: "{{ item.name }}"
+
+# --- Local accounts (docs/directory-objects.md §5/§4/§7) — this host's
+# role only, via the for_host_group filter (ansible/filter_plugins/
+# directory_objects.py); directory_manifest is loaded once at the play
+# level (playbooks/site.yml), same pattern as software_manifest_roles.
+
+- name: Ensure local groups exist
+  ansible.windows.win_group:
+    name: "{{ item.name }}"
+    state: present
+  loop: "{{ (directory_manifest.local_groups | default([])) | for_host_group(group_names) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [directory_objects, local_group]
+
+- name: Ensure local users exist
+  ansible.windows.win_user:
+    name: "{{ item.name }}"
+    password: "{{ lookup('vars', item.password_vault_key) if item.password_vault_key is defined else default_user_password }}"
+    groups: "{{ item.groups | default(omit) }}"
+    state: present
+  loop: "{{ (directory_manifest.local_users | default([])) | for_host_group(group_names) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  tags: [directory_objects, local_user]
+
+# state: present is additive (existing members untouched) — state: pure
+# would replace the whole membership list, which isn't what a manifest
+# entry meant to add one more member should do.
+- name: Apply local-scope group memberships (domain principal or local account into a local group)
+  ansible.windows.win_group_membership:
+    name: "{{ item.group }}"
+    members: ["{{ item.member }}"]
+    state: present
+  loop: >-
+    {{ (directory_manifest.memberships | default([]))
+       | selectattr('group_scope', 'equalto', 'local')
+       | list
+       | for_host_group(group_names) }}
+  loop_control:
+    label: "{{ item.member }} -> {{ item.group }}"
+  tags: [directory_objects, membership]

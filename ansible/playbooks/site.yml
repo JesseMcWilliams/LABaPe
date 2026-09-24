@@ -41,9 +41,16 @@
   # "Become plugin sudo is not supported by the Windows exec wrapper."
   hosts: domain_controller
   gather_facts: true
-  # vars_files: [../directory-manifest.yml] — added once docs/directory-objects.md
-  # lands in M5; referencing it now would break this play if it's ever
-  # non-empty before the manifest file exists.
+  vars:
+    # errors='ignore' + the default(): directory-manifest.yml is
+    # entirely optional (M5, docs/directory-objects.md) — an
+    # environment with no domain objects to add just shouldn't need to
+    # create an empty file.
+    directory_manifest: >-
+      {{
+        (lookup('file', playbook_dir + '/../directory-manifest.yml', errors='ignore') | from_yaml)
+        | default({}, true)
+      }}
   roles:
     - domain_directory
   tags: [directory_objects]
@@ -86,6 +93,11 @@
     - ../package_catalog.yml
   vars:
     software_manifest_roles: "{{ (lookup('file', playbook_dir + '/../software-manifest.yml') | from_yaml).roles | default({}) }}"
+    directory_manifest: >-
+      {{
+        (lookup('file', playbook_dir + '/../directory-manifest.yml', errors='ignore') | from_yaml)
+        | default({}, true)
+      }}
   roles:
     - linux_common
   tags: [software, directory_objects]
@@ -97,6 +109,11 @@
     - ../package_catalog.yml
   vars:
     software_manifest_roles: "{{ (lookup('file', playbook_dir + '/../software-manifest.yml') | from_yaml).roles | default({}) }}"
+    directory_manifest: >-
+      {{
+        (lookup('file', playbook_dir + '/../directory-manifest.yml', errors='ignore') | from_yaml)
+        | default({}, true)
+      }}
   roles:
     - windows_common
   tags: [software, directory_objects]

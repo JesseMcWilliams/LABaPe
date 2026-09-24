@@ -48,6 +48,18 @@ domain-join credentials that turned out to need *opposite* formats per
 platform (Linux: bare username; Windows: NetBIOS-qualified,
 `DOMAIN\user`) — see Known Gaps.
 
+**M5 (directory objects) works end-to-end**: OUs, domain groups, domain
+users, local groups/users, and both membership directions (domain group
+nesting, and a domain principal added to a local group), all driven by
+a single optional `directory-manifest.yml` and confirmed against real
+AD DS. Three more non-obvious fixes needed — a misconfigured
+filter-plugin search path, `microsoft.ad` parameters that look
+list-valued but actually need an `{add:/remove:/set:}` dict, and a
+documented manifest-field convention that turned out not to match how
+the inventory is actually built — see Known Gaps. Workstation host-type
+support and the medium profile (the other half of M5 as originally
+scoped) are deferred to a separate pass.
+
 ## M1 quickstart (libvirt backend)
 
 Prerequisites, none of which this repo automates yet:
@@ -153,7 +165,21 @@ scripts/test/run-all.sh
   (`DOMAIN\user`) — each confirmed by reproducing the failure outside
   Ansible entirely to rule out a module bug. Full investigation:
   [troubleshooting-log.md § M4](./docs/troubleshooting-log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs).
-- DHCP-mode addressing, the full OS matrix, Packer templates, and the
-  software/directory manifests beyond the simple package-manager case
-  are all out of scope for M1/M2/M4 — see DESIGN.md §18 for the
-  milestone plan.
+- **M5 (directory objects)** now works end-to-end: OUs, domain groups,
+  domain users, local groups/users, and both membership directions, all
+  via an optional `directory-manifest.yml`, confirmed against a real
+  domain. Three more bugs: a filter-plugin search-path mismatch (fixed
+  by configuring it explicitly in `ansible.cfg`, matching how
+  `roles_path` is already handled), `microsoft.ad` parameters that look
+  list-valued but actually need an `{add:/remove:/set:}` dict, and a
+  documented `hosts:` field convention on local objects that didn't
+  match how Ansible inventory groups are actually built (role names,
+  not a `host_groups` entry's own `name:` label) — every local-object
+  task silently matched zero hosts until this was corrected. Full
+  investigation:
+  [troubleshooting-log.md § M5](./docs/troubleshooting-log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working).
+  Workstation host-type support and the medium profile (M5's other
+  half, as DESIGN.md §18 originally scoped it) are deferred.
+- DHCP-mode addressing, the full OS matrix, Packer templates, and
+  workstation host-type support are all out of scope for M1/M2/M4/M5 —
+  see DESIGN.md §18 for the milestone plan.

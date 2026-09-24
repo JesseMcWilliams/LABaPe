@@ -1,0 +1,58 @@
+# Copy to directory-manifest.yml and adjust — docs/directory-objects.md.
+# Per-run: OUs, domain/local groups, domain/local users, and membership
+# for this environment. .gitignore excludes the real file; this example
+# is the only version checked in. Entirely optional — an environment
+# with no directory-manifest.yml just gets no directory objects beyond
+# the domain itself (M4).
+
+organizational_units:
+  - name: Sales
+    path: "DC=labape,DC=test"
+  - name: Workstations
+    path: "OU=Sales,DC=labape,DC=test"
+
+domain_groups:
+  - name: Sales-Users
+    ou: "OU=Sales,DC=labape,DC=test"
+    scope: Global
+    category: Security
+  - name: Sales-RemoteAccess
+    ou: "OU=Sales,DC=labape,DC=test"
+    scope: DomainLocal
+    category: Security
+
+domain_users:
+  - name: jdoe
+    ou: "OU=Sales,DC=labape,DC=test"
+    display_name: "Jane Doe"
+    password_vault_key: sales_jdoe_password   # falls back to default_user_password if omitted
+    groups: [Sales-Users]                     # convenience inline membership
+
+local_users:
+  - name: local_tester
+    hosts: [windows_server]               # a role name (matches software-manifest.yml's
+                                           # roles: key) -- domain_controller,
+                                           # windows_server, windows_workstation,
+                                           # linux_server, or linux_workstation
+                                           # (DESIGN.md §9), NOT a host_groups entry's
+                                           # own name: field, since that's not what
+                                           # scripts/generate-inventory.py creates
+                                           # Ansible inventory groups from.
+    password_vault_key: local_tester_password
+    groups: ["Remote Desktop Users"]      # local group, same host
+
+local_groups:
+  - name: Remote Desktop Users    # built-in group — ensuring membership, not creating it
+    hosts: [windows_server]
+  - name: DeploymentTesters       # a genuinely new local group
+    hosts: [linux_server]
+
+memberships:
+  - member: Sales-Users              # domain group nested inside another domain group
+    group: Sales-RemoteAccess
+    group_scope: domain
+
+  - member: "LABAPE\\Sales-Users"    # domain group added to a LOCAL group — the common
+    group: Administrators            # "domain admins in the local admins group" pattern
+    group_scope: local
+    hosts: [windows_server]

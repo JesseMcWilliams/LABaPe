@@ -724,6 +724,22 @@ None blocking further scaffolding right now.
   domain join across all host types. `domain_directory` role +
   `directory-manifest.yml` (OUs, domain/local groups and users,
   membership, `--tags directory_objects` re-apply) — docs/directory-objects.md.
+
+  **The directory-objects half is now confirmed working end-to-end**
+  against real infrastructure: OUs, domain groups, domain users (with
+  inline group membership), explicit domain-group nesting, local groups,
+  local users, and a domain principal added to a local group, all via a
+  single optional `directory-manifest.yml`. Three real bugs found along
+  the way — see README's Known Gaps and
+  [docs/troubleshooting-log.md § M5](./docs/troubleshooting-log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working)
+  — most notably that `docs/directory-objects.md`'s original `hosts:`
+  field convention (host-group *names* like `winsrv`/`linsrv`) didn't
+  match what the inventory actually groups by (role names); corrected in
+  that doc. **Workstation host type + medium profile — the other half of
+  M5 as originally scoped — deliberately deferred**, scoped out of this
+  pass as a separate, mostly-unrelated OS-matrix expansion (new
+  Windows-client answer-file template, a new Debian-family
+  kickstart-equivalent, `medium.tfvars.example`).
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
   ISO-built lab VM into a reusable template; `refresh-template.sh`
@@ -743,9 +759,10 @@ None blocking further scaffolding right now.
 
 Both M9 and M10 are recorded now (design discussion, not yet
 implementation) because a design exists — see §19/§20 — not because
-they're scheduled next; M4's core mechanism is now confirmed working
-end-to-end (see above), M5 (populating the domain — OUs, groups, users)
-is the more immediate next step per README's Status.
+they're scheduled next; M4 and M5's directory-objects half are both now
+confirmed working end-to-end (see above). The more immediate next steps
+per README's Status are M5's deferred other half (workstation host
+type + medium profile) and M6 (Packer base images).
 
 ## 19. Certificate Authorities (Future)
 

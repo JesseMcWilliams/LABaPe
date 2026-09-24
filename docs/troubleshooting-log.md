@@ -420,3 +420,77 @@ a non-obvious mechanic worth knowing before assuming list order
 controls IP assignment. Worked around by fully destroying the old
 environment before applying the new topology, since two of the three
 target hosts needed replacing either way once `dc` was added.
+
+## M5 (directory objects): three bugs found getting OUs/groups/users/membership working
+
+M5's directory-objects piece (`domain_directory` role, local-account
+tasks folded into `windows_common`/`linux_common`,
+`directory-manifest.yml`) is now confirmed working end-to-end against
+real infrastructure: OUs, domain groups, domain users with inline group
+membership, explicit domain-group nesting, local groups, local users,
+and a domain principal added to a local group all created successfully
+in one test pass, zero failures. Three real bugs along the way, none
+guessable without running it:
+
+### Custom filter plugin not discovered
+
+`ansible/filter_plugins/directory_objects.py` (two small helpers —
+`ou_dns` for OU ancestor-DN computation, `for_host_group` for matching
+manifest entries against a host's role — both awkward to express in
+pure Jinja2, hence a filter plugin) went completely undiscovered:
+`Syntax error in template: No filter named 'ou_dns'`. Ansible's default
+filter-plugin search path is relative to the *playbook file's own
+directory* (`ansible/playbooks/filter_plugins/`), not the `ansible/`
+directory these actually live in — a mismatch with how this project
+already places things (`ansible/roles/`, configured explicitly via
+`roles_path = ./roles` in `ansible.cfg`, rather than relying on that
+same "relative to playbook" default). Fixed by adding an explicit
+`filter_plugins = ./filter_plugins` line to `ansible.cfg`, matching the
+existing `roles_path` convention instead of fighting Ansible's default
+discovery rules.
+
+### `microsoft.ad`'s list-valued parameters actually want `{add:/remove:/set:}`
+
+Both `microsoft.ad.user`'s `groups` parameter and `microsoft.ad.group`'s
+`members` parameter look like they take a plain list (that's what a
+flat YAML list under either key visually suggests, and it's what
+`ansible-doc`'s one-line description implies: "the members of the group
+to set"). They don't — passing a plain list to `groups` failed with
+`argument for groups is of type System.Object[] and we were unable to
+convert to dict: System.Object[] cannot be converted to a dict`. Both
+parameters actually want a dict with `add`/`remove`/`set` sub-keys.
+Fixed by wrapping the list: `{{ {'add': item.groups} }}` — `add` chosen
+deliberately over `set` since the manifest's inline `groups:`/explicit
+`members:` are meant as *additive* membership, not the account's sole
+authoritative group list.
+
+### `directory-manifest.yml`'s `hosts:` field: the documented convention was wrong
+
+The original `docs/directory-objects.md` (and the example manifest that
+came with it) said a local object's `hosts:` field is "a role name
+(`winws`, `linsrv`, …) — the same names DESIGN.md §9's `host_groups`
+... already use." That's not what the inventory actually contains:
+`scripts/generate-inventory.py` builds Ansible inventory groups from
+each host's `roles` list (`domain_controller`, `windows_server`,
+`windows_workstation`, `linux_server`, `linux_workstation` —
+`ALL_ROLE_GROUPS`), never from a `host_groups` block's own `name:`
+label (`winws`, `linsrv`, `dc`, …, which is only a hostname-generation
+convenience — DESIGN.md §9 itself says "each *role* a host carries
+becomes an Ansible inventory group membership," not each host-group
+name). Every local-object task silently no-op'd — no error, just an
+empty `for_host_group` match on every host — until the manifest and doc
+were both corrected to use real role names (`windows_server` instead of
+`winsrv`, etc.), which immediately matches
+`software-manifest.yml`'s own `roles:` key convention. A quiet
+"0 items matched" is a much easier bug to miss than a hard failure —
+worth specifically checking task recap output for unexpected
+all-`skipping` local-object tasks rather than just "no errors, must be
+fine."
+
+### Known minor gap, not chased down
+
+`microsoft.ad.user`'s `{add: [...]}` form of `groups` reports `changed`
+on a second run even when the user's group membership hasn't actually
+changed — an idempotency wrinkle in the module (or in how this role
+calls it) worth revisiting, but not blocking: it's cosmetic (a spurious
+`changed` in the run summary), not a correctness problem.

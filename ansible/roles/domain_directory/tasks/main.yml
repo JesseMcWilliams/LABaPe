@@ -1,8 +1,86 @@
 ---
-# Not implemented yet — docs/directory-objects.md, scheduled for M5
-# (DESIGN.md §18). Placeholder for the same reason as
-# domain_controller: keeps site.yml's stage ordering stable rather than
-# needing to be inserted later.
-- name: (placeholder) domain_directory role not implemented until M5
-  ansible.builtin.debug:
-    msg: "domain_directory role: not implemented yet (M5, docs/directory-objects.md)."
+# Populates the domain — DESIGN.md §8, docs/directory-objects.md (M5).
+# Runs on the domain_controller host, after promotion (site.yml's play
+# order). Everything here is domain-scope; local objects are folded
+# into windows_common/linux_common (docs/directory-objects.md §9).
+
+- name: Compute every OU DN to ensure (explicit list + ancestors of any ou reference), shallowest first
+  ansible.builtin.set_fact:
+    directory_all_ou_dns: >-
+      {{
+        (directory_manifest.organizational_units | default([]))
+        | ou_dns(
+            (directory_manifest.domain_groups | default([]) | map(attribute='ou') | list)
+            + (directory_manifest.domain_users | default([]) | map(attribute='ou') | list)
+          )
+      }}
+
+- name: Ensure organizational units exist
+  microsoft.ad.ou:
+    name: "{{ item.split(',')[0] | regex_replace('^OU=', '') }}"
+    path: "{{ item.split(',')[1:] | join(',') }}"
+    state: present
+  loop: "{{ directory_all_ou_dns }}"
+  tags: [directory_objects, ou]
+
+# scope/category here are lowercase (microsoft.ad.group's actual
+# choices: domainlocal/global/universal, distribution/security) — the
+# manifest schema's own examples use Capitalized values for
+# readability, so this role lowercases them rather than requiring
+# manifest authors to know the module's exact casing.
+- name: Ensure domain groups exist
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    path: "{{ item.ou }}"
+    scope: "{{ (item.scope | default('Global')) | lower }}"
+    category: "{{ (item.category | default('Security')) | lower }}"
+    state: present
+  loop: "{{ directory_manifest.domain_groups | default([]) }}"
+  tags: [directory_objects, domain_group]
+
+# password_vault_key names a key already loaded as a top-level var by
+# `-e @secrets.vault.yml` (docs/credentials.md §1); looked up
+# dynamically by name via the `vars` lookup since it's only known as a
+# string at this point. Falls back to the single default_user_password
+# vault key when omitted (docs/directory-objects.md §6).
+- name: Ensure domain users exist
+  microsoft.ad.user:
+    name: "{{ item.name }}"
+    path: "{{ item.ou }}"
+    display_name: "{{ item.display_name | default(omit) }}"
+    password: "{{ lookup('vars', item.password_vault_key) if item.password_vault_key is defined else default_user_password }}"
+    enabled: true
+    # groups (like microsoft.ad.group's members below) takes an
+    # {add:/remove:/set:} dict, not a plain list — confirmed hands-on:
+    # a bare list errors with "argument for groups is of type
+    # System.Object[] and we were unable to convert to dict". add: is
+    # additive, matching the doc's framing of this as convenience
+    # inline membership rather than the user's sole/exclusive list.
+    groups: "{{ {'add': item.groups} if item.groups is defined else omit }}"
+    state: present
+  loop: "{{ directory_manifest.domain_users | default([]) }}"
+  no_log: true
+  tags: [directory_objects, domain_user]
+
+# Explicit domain-scope memberships (docs/directory-objects.md §7) —
+# group nested inside another domain group. Grouped by target group so
+# one task handles every configured member of that group in a single
+# call. `members.add` is additive (existing members neither removed nor
+# required to be re-listed) — verified against this module's actual
+# behavior during M5's real-infrastructure test pass, not assumed.
+- name: Group domain-scope memberships by target group
+  ansible.builtin.set_fact:
+    directory_domain_memberships_by_group: >-
+      {{
+        (directory_manifest.memberships | default([]))
+        | selectattr('group_scope', 'equalto', 'domain')
+        | groupby('group')
+      }}
+
+- name: Ensure domain group nesting (members added to their target domain group)
+  microsoft.ad.group:
+    identity: "{{ item.0 }}"
+    members:
+      add: "{{ item.1 | map(attribute='member') | list }}"
+  loop: "{{ directory_domain_memberships_by_group }}"
+  tags: [directory_objects, membership]

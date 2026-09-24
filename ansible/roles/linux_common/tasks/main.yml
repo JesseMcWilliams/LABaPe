@@ -156,3 +156,54 @@
   loop: "{{ linux_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'rpm') | list }}"
   loop_control:
     label: "{{ item.name }}"
+
+# --- Local accounts (docs/directory-objects.md §5/§4/§7) — this host's
+# role only, via the for_host_group filter (ansible/filter_plugins/
+# directory_objects.py); directory_manifest is loaded once at the play
+# level (playbooks/site.yml), same pattern as software_manifest_roles.
+
+- name: Ensure local groups exist
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    state: present
+  loop: "{{ (directory_manifest.local_groups | default([])) | for_host_group(group_names) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [directory_objects, local_group]
+
+- name: Ensure local users exist
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    password: >-
+      {{ (lookup('vars', item.password_vault_key) if item.password_vault_key is defined else default_user_password)
+         | password_hash('sha512') }}
+    groups: "{{ item.groups | default([]) }}"
+    append: true
+    state: present
+  loop: "{{ (directory_manifest.local_users | default([])) | for_host_group(group_names) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  tags: [directory_objects, local_user]
+
+# Linux has no group-into-group nesting (a Unix group's members are
+# always users, unlike AD) and no local equivalent of Windows' explicit
+# local-group membership for a domain principal — realmd/sssd's own
+# domain-group ID mapping is the idiomatic mechanism there instead, out
+# of scope here. So this only makes sense for a manifest-defined LOCAL
+# user added to a LOCAL group; item.member is assumed to be a bare
+# username, not a domain-qualified one.
+- name: Apply local-scope group memberships (local user into a local group)
+  ansible.builtin.user:
+    name: "{{ item.member }}"
+    groups: "{{ item.group }}"
+    append: true
+    state: present
+  loop: >-
+    {{ (directory_manifest.memberships | default([]))
+       | selectattr('group_scope', 'equalto', 'local')
+       | list
+       | for_host_group(group_names) }}
+  loop_control:
+    label: "{{ item.member }} -> {{ item.group }}"
+  tags: [directory_objects, membership]
