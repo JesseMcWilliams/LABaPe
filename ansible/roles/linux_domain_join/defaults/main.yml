@@ -1,0 +1,51 @@
+---
+# Until M5 lands dedicated domain-admin accounts (docs/directory-objects.md),
+# this is the account AD DS promotion itself carried over — see
+# ansible/roles/domain_controller/tasks/main.yml and
+# secrets.vault.example.yml for the password-equality gotcha this implies.
+#
+# Bare username, NOT a UPN (user@domain) -- confirmed hands-on: `realm
+# join -U 'Administrator@<domain>'` fails with adcli's opaque "KDC reply
+# did not match expectations" (not an auth/password/DNS/clock problem --
+# kinit with the identical password against the identical realm
+# succeeds cleanly). A direct `adcli join -U Administrator
+# --stdin-password` with the bare username succeeds completely
+# (computer account created, keytab populated). dns_domain_name is
+# already passed separately below; -U doesn't need (and apparently
+# shouldn't get) the realm appended.
+domain_admin_user: "Administrator"
+
+# Fixed prerequisite packages for realmd/sssd domain join — infrastructure
+# config, deliberately NOT routed through package_catalog.yml/
+# software-manifest.yml (that system is for the per-run, user-chosen
+# software list, docs/software-manifest.md; this is a fixed dependency
+# of the join mechanism itself).
+linux_domain_join_packages:
+  dnf:
+    - realmd
+    - sssd
+    - sssd-tools
+    - adcli
+    - samba-common-tools
+    - oddjob
+    - oddjob-mkhomedir
+    - krb5-workstation
+  apt:
+    - realmd
+    - sssd
+    - sssd-tools
+    - adcli
+    - samba-common-bin
+    - oddjob
+    - oddjob-mkhomedir
+    - krb5-user
+    - packagekit
+  zypper:
+    - realmd
+    - sssd
+    - sssd-tools
+    - adcli
+    - samba-client
+    - oddjob
+    - oddjob-mkhomedir
+    - krb5-client

@@ -1,9 +1,39 @@
 ---
-# Not implemented yet — DESIGN.md §18 schedules AD DS promotion for M4.
-# Present now (rather than added when M4 lands) so site.yml's ordering
-# (DESIGN.md §8's promote-before-join constraint) doesn't need
-# retrofitting later; this play simply no-ops until M1's Linux-only
-# inventory includes a domain_controller-role host.
-- name: (placeholder) domain_controller role not implemented until M4
+# AD DS promotion — DESIGN.md §8/§18 (M4). Creates a brand-new forest
+# every time (DESIGN.md §8: "each rebuild creates a brand-new AD
+# forest — no state carried over"), never joins an existing one.
+
+- name: Install the AD-Domain-Services Windows feature
+  ansible.windows.win_feature:
+    name: AD-Domain-Services
+    state: present
+    include_management_tools: true
+
+# microsoft.ad.domain promotes the CONNECTING account (the local
+# Administrator this play is already authenticated as, per
+# docs/credentials.md §4) into the new forest as Domain Administrator —
+# its password doesn't change. domain_admin_password (used by the join
+# roles, not this task) must match windows_bootstrap_admin_password
+# until M5 adds dedicated domain-admin accounts — see
+# secrets.vault.example.yml.
+- name: Promote this host to a new AD DS forest
+  microsoft.ad.domain:
+    dns_domain_name: "{{ domain_name }}"
+    domain_netbios_name: "{{ netbios_name }}"
+    safe_mode_password: "{{ dsrm_password }}"
+    reboot: true
+    reboot_timeout: 1800
+  register: promote_result
+
+# Informational, not a hard gate — AD/DNS/SYSVOL can take a few seconds
+# to fully settle right after the reboot, and a flaky failure here
+# would be worse than just surfacing whatever dcdiag says.
+- name: Sanity-check the new domain controller (informational only)
+  ansible.windows.win_command: dcdiag /q
+  register: dcdiag_result
+  failed_when: false
+  changed_when: false
+
+- name: Show dcdiag output
   ansible.builtin.debug:
-    msg: "domain_controller role: not implemented yet (M4, DESIGN.md §18)."
+    var: dcdiag_result.stdout_lines

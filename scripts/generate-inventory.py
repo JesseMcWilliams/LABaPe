@@ -42,10 +42,26 @@ def main() -> int:
     with open(env_path, encoding="utf-8") as f:
         env = yaml.safe_load(f) or {}
     domain_name = env.get("domain_name", "")
+    # DESIGN.md §17 Open Question 1's resolution: first label of
+    # domain_name, uppercased, unless explicitly overridden.
+    netbios_name = env.get("netbios_name") or (
+        domain_name.split(".")[0].upper() if domain_name else ""
+    )
 
     inventory = {
         "all": {
             "hosts": {},
+            # Written even when empty — domain_name/netbios_name
+            # previously reached only this script's own hosts.generated
+            # output, never Ansible itself (M4, DESIGN.md §8). Every
+            # consumer (domain_controller, windows_domain_join,
+            # linux_domain_join) is already behind a
+            # domain_controller-group-non-empty guard, so an empty value
+            # here on a domain-less environment is harmless.
+            "vars": {
+                "domain_name": domain_name,
+                "netbios_name": netbios_name,
+            },
             "children": {g: {"hosts": {}} for g in ALL_ROLE_GROUPS},
         }
     }

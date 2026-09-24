@@ -1,0 +1,29 @@
+---
+# Windows domain join — DESIGN.md §8/§18 (M4). Only ever runs when a
+# domain_controller-role host exists in this environment (site.yml's
+# role-entry `when:` guard) and this host isn't itself the DC (DCs have
+# their own membership semantics — not touched via this generic role).
+
+- name: Look up the domain controller's IP
+  ansible.builtin.set_fact:
+    domain_controller_ip: "{{ hostvars[groups['domain_controller'][0]].ansible_host }}"
+
+# realm join / microsoft.ad.membership both depend on real DNS SRV
+# record discovery against the domain's own DNS server (which the DC
+# becomes as part of promotion) — the hosts-file snippet
+# (docs/networking.md §4) is a human-convenience file Ansible never
+# reads, it doesn't substitute for this.
+- name: Point this host's DNS resolver at the domain controller
+  ansible.windows.win_dns_client:
+    adapter_names: "*"
+    dns_servers:
+      - "{{ domain_controller_ip }}"
+
+- name: Join the domain
+  microsoft.ad.membership:
+    dns_domain_name: "{{ domain_name }}"
+    domain_admin_user: "{{ domain_admin_user }}"
+    domain_admin_password: "{{ domain_admin_password }}"
+    state: domain
+    reboot: true
+    reboot_timeout: 1800

@@ -27,7 +27,8 @@ hyperv_password: "..."
 libvirt_ssh_key_path: ~/.ssh/labape_libvirt
 
 windows_bootstrap_admin_password: "..."   # shared local Administrator password, §4
-domain_admin_password: "..."              # set during AD DS promotion, DESIGN.md §8
+domain_admin_password: "..."              # authenticates domain JOIN, not promotion — §6
+dsrm_password: "..."                      # AD DS promotion's DSRM account, DESIGN.md §8
 ```
 
 ## 2. Hyper-V host authentication
@@ -98,8 +99,16 @@ vault.
      -e @software-manifest.yml \
      -e @secrets.vault.yml --vault-password-file ~/.labape-vault-pass
    (first connection to every host uses the same bootstrap credential
-    the answer file set; domain_admin_password is used only by the
-    domain_controller role during AD DS promotion, DESIGN.md §8)
+    the answer file set; dsrm_password is used by the domain_controller
+    role during AD DS promotion, DESIGN.md §8 — domain_admin_password is
+    used afterward, by windows_domain_join/linux_domain_join, to
+    authenticate each host's domain join. Promotion itself runs as the
+    connecting WinRM credential, i.e. windows_bootstrap_admin_password,
+    which becomes the new domain's Domain Administrator with its
+    password unchanged — so until M5 adds dedicated domain-admin
+    accounts, domain_admin_password must equal
+    windows_bootstrap_admin_password or every join fails to
+    authenticate)
 ```
 
 One vault password (kept out of the repo, e.g. in a password manager or

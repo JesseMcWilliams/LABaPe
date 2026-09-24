@@ -1,0 +1,80 @@
+---
+# Linux domain join (realmd/sssd) — DESIGN.md §8/§18 (M4). Only ever
+# runs when a domain_controller-role host exists in this environment
+# (site.yml's role-entry `when:` guard).
+
+- name: Install realmd/sssd prerequisites
+  ansible.builtin.package:
+    name: "{{ linux_domain_join_packages[ansible_facts['pkg_mgr']] | default([]) }}"
+    state: present
+
+- name: Look up the domain controller's IP
+  ansible.builtin.set_fact:
+    domain_controller_ip: "{{ hostvars[groups['domain_controller'][0]].ansible_host }}"
+
+# realm join depends on real DNS SRV record discovery against the
+# domain's own DNS server (which the DC becomes as part of promotion) —
+# the hosts-file snippet (docs/networking.md §4) is a human-convenience
+# file Ansible never reads, it doesn't substitute for this. Rocky 9's
+# kickstart sets a plain --nameserver (the LAN gateway), and
+# /etc/resolv.conf is NetworkManager-managed by default — a direct edit
+# would likely get silently clobbered, so this goes through nmcli
+# instead, editing only the DNS fields of the existing connection
+# profile rather than redescribing the whole profile (which risks
+# clobbering the existing static/DHCP config).
+- name: Find the active NetworkManager connection profile
+  ansible.builtin.command: >-
+    nmcli -g GENERAL.CONNECTION device show {{ ansible_facts.default_ipv4.interface }}
+  register: nm_conn
+  changed_when: false
+
+- name: Check the connection profile's current DNS servers
+  ansible.builtin.command: >-
+    nmcli -g ipv4.dns connection show "{{ nm_conn.stdout }}"
+  register: nm_current_dns
+  changed_when: false
+
+- name: Point this host's DNS resolver at the domain controller
+  ansible.builtin.command: >-
+    nmcli connection modify "{{ nm_conn.stdout }}"
+    ipv4.dns "{{ domain_controller_ip }}" ipv4.ignore-auto-dns yes
+  when: domain_controller_ip not in nm_current_dns.stdout
+  register: nm_dns_changed
+
+# device reapply applies the pending config without tearing the link
+# down — gentler than `connection up`, which can briefly drop the
+# interface this very SSH session is riding on.
+- name: Apply the DNS change
+  ansible.builtin.command: >-
+    nmcli device reapply {{ ansible_facts.default_ipv4.interface }}
+  when: nm_dns_changed is changed
+
+- name: Reconnect after the DNS change (defensive)
+  ansible.builtin.wait_for_connection:
+    timeout: 60
+  when: nm_dns_changed is changed
+
+- name: Check current realm membership
+  ansible.builtin.command: realm list
+  register: realm_list
+  changed_when: false
+  failed_when: false
+
+# Password goes over stdin, never a CLI arg (would leak into the
+# process list) or the run log (no_log on this task specifically).
+- name: Join the domain
+  ansible.builtin.command:
+    cmd: realm join -U "{{ domain_admin_user }}" "{{ domain_name }}"
+    stdin: "{{ domain_admin_password }}"
+  when: domain_name not in realm_list.stdout
+  no_log: true
+
+# Needed on RHEL family for pam_oddjob_mkhomedir to actually create home
+# directories on first domain login — easy to miss, silently leaves
+# logins working but homeless.
+- name: Ensure oddjobd is running (RHEL family — pam_oddjob_mkhomedir)
+  ansible.builtin.systemd:
+    name: oddjobd
+    state: started
+    enabled: true
+  when: ansible_facts['os_family'] == "RedHat"

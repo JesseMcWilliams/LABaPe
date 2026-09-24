@@ -17,6 +17,21 @@ variable "roles" {
   description = "Passthrough only — this module doesn't interpret roles, it just carries them through to the generated inventory (DESIGN.md §9)."
   type        = list(string)
   default     = []
+
+  # Kept in sync by hand with scripts/generate-inventory.py's
+  # ALL_ROLE_GROUPS — not worth a shared-file abstraction for a
+  # five-item list that changes rarely. Catches a typo (e.g.
+  # "domain_controler") at plan time instead of it silently producing a
+  # dead inventory group no play ever matches.
+  validation {
+    condition = alltrue([
+      for r in var.roles : contains(
+        ["domain_controller", "windows_server", "windows_workstation", "linux_server", "linux_workstation"],
+        r
+      )
+    ])
+    error_message = "Each entry in roles must be one of: domain_controller, windows_server, windows_workstation, linux_server, linux_workstation."
+  }
 }
 
 variable "image_source" {

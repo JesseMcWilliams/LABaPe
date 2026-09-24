@@ -330,3 +330,93 @@ final system — which the install-time `logging` command and serial
 console *should* have covered but didn't; that gap (why install-time
 capture also came up empty) wasn't separately root-caused and is worth
 another look if these channels matter again.
+
+## M4 (domain services): AD DS promotion and domain join bugs
+
+M4 (`domain_controller` role, Windows/Linux domain join) is now
+confirmed working end-to-end against real infrastructure (libvirt
+backend: a `dc` + `linsrv` + `winsrv` small profile) — a single,
+unmodified `ansible-playbook site.yml` run takes bare VMs all the way
+through AD DS promotion, both platforms' domain join, and software
+install with zero failures. Three real, non-obvious bugs had to be
+found first, none of them reachable by static review or the
+implementation plan alone.
+
+### `become: true` on Windows WinRM plays
+
+`site.yml`'s `domain_controller` and `domain_directory` plays both had
+`become: true` left over from scaffolding, never exercised while those
+roles were still `debug`-only placeholders. The moment real tasks ran
+against them: `[ERROR]: Task failed: Become plugin sudo is not
+supported by the Windows exec wrapper. Make sure to set the become
+method to runas.` WinRM connections already run as the local
+Administrator (docs/credentials.md §4) — fully privileged, no
+escalation needed — and nothing in this design sets
+`ansible_become_user`/`ansible_become_pass` for the `runas` method
+Windows actually requires. Fix: drop `become: true` from both plays,
+matching `windows_common`'s (which never had it). Found the first
+occurrence (`domain_controller`) by reasoning about it up front; found
+the second (`domain_directory`) only by hitting it live — it directly
+blocked every subsequent play from running during that test, since a
+play failure removes the failed host from the rest of that
+`ansible-playbook` invocation.
+
+### Username format is platform-specific, and in *opposite* directions
+
+Both new join roles (`windows_domain_join`, `linux_domain_join`)
+originally defaulted `domain_admin_user` to a UPN,
+`"Administrator@{{ domain_name }}"`. Both failed — with completely
+different, both misleading, error messages — and each platform turned
+out to need a *different* format, discovered only by reproducing each
+failure outside Ansible entirely to rule out a module-layer bug:
+
+- **Linux (`realm join`/`adcli`) needs a bare username** (`Administrator`,
+  no realm suffix). The UPN form failed with `realm: Couldn't
+  authenticate as Administrator@labape.test: KDC reply did not match
+  expectations` — which reads like a Kerberos/auth problem but isn't:
+  `kinit administrator@LABAPE.TEST` with the identical password against
+  the identical realm succeeded cleanly (valid TGT issued), and DNS/SRV
+  discovery (`realm discover`) and clock sync (sub-2-second skew between
+  client and KDC) were both independently confirmed fine. What actually
+  fixed it: a direct `adcli join -U Administrator --stdin-password`
+  (bare username) succeeded completely — full computer-account creation
+  and keytab population — while `-U 'Administrator@labape.test'` did
+  not. `dns_domain_name` is already passed as its own parameter, so `-U`
+  apparently doesn't need (and actively mishandles) the realm appended.
+- **Windows (`Add-Computer`/`microsoft.ad.membership`) needs the
+  opposite: a NetBIOS-qualified credential** (`LABAPE\Administrator`).
+  Both bare `Administrator` and the UPN form failed identically:
+  `Unable to update the password. The value provided as the current
+  password is incorrect.` — despite the same password authenticating
+  fine over WinRM Basic auth to the DC moments earlier, which proved the
+  *password* itself was never the problem. Reproduced with raw
+  `Add-Computer -Credential` outside Ansible/`microsoft.ad.membership`
+  entirely, isolating it to Windows' own join API rejecting the
+  credential's *form* — a workgroup computer has no domain context yet
+  to resolve a bare username against, so (unlike `adcli`) it needs
+  explicit domain qualification. Switching to
+  `"{{ netbios_name }}\\Administrator"` fixed it immediately (confirmed
+  first via a manual `Add-Computer` test, then via the real Ansible
+  role).
+
+Net: two structurally similar-looking roles, doing conceptually the
+same job (join a domain), needed genuinely opposite credential formats
+for their respective platforms' join mechanisms — not a case where one
+was "right" and the other just hadn't caught up.
+
+### A smaller, related lesson: `for_each` map ordering, not list position
+
+Unrelated to the Ansible roles above, but hit while setting up the real
+test environment: inserting a new `dc` host group into `host_groups`
+(wherever in the list) unexpectedly renumbered `linsrv1`/`winsrv1`'s
+IPs and collided with the still-running VMs from a prior test, which
+`scripts/deploy.sh`'s pre-flight network check (docs/networking.md §3)
+correctly refused to proceed past. Reordering `host_groups` (`dc` first
+vs. last) made no difference — because OpenTofu's `for_each` over the
+flattened host map iterates in **sorted key order**, not list-insertion
+order, so `"dc1"` always sorts before `"linsrv1"`/`"winsrv1"`
+regardless of where `dc` appears in the `.tfvars` list. Not a bug, just
+a non-obvious mechanic worth knowing before assuming list order
+controls IP assignment. Worked around by fully destroying the old
+environment before applying the new topology, since two of the three
+target hosts needed replacing either way once `dc` was added.

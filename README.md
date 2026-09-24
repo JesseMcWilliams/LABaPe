@@ -37,6 +37,17 @@ when KVM genuinely isn't an option, and budget more operational care —
 in particular, `scripts/set-boot-order.sh` must currently be run by
 hand after every `tofu apply` (Known Gaps).
 
+**M4 (domain services) works end-to-end**, confirmed against real
+infrastructure on the libvirt backend: a single, unmodified
+`ansible-playbook site.yml` run takes bare VMs through AD DS promotion
+(`domain_controller` role), Windows domain join
+(`microsoft.ad.membership`), Linux domain join (`realmd`/`sssd`), and
+software install, with zero failures. Getting there needed two
+non-obvious fixes: a `become: true` bug on Windows WinRM plays, and
+domain-join credentials that turned out to need *opposite* formats per
+platform (Linux: bare username; Windows: NetBIOS-qualified,
+`DOMAIN\user`) — see Known Gaps.
+
 ## M1 quickstart (libvirt backend)
 
 Prerequisites, none of which this repo automates yet:
@@ -131,7 +142,18 @@ scripts/test/run-all.sh
   the three logging/capture channels that turned out to be chasing a
   false premise:
   [troubleshooting-log.md § M2](./docs/troubleshooting-log.md#m2-hyper-v-the-ssh-unreachable--install-stalled-investigation).
-- DHCP-mode addressing, domain services, the full OS matrix, Packer
-  templates, and the software/directory manifests beyond the simple
-  package-manager case are all out of scope for M1/M2 — see DESIGN.md
-  §18 for the milestone plan.
+- **M4 (domain services)** now works end-to-end: AD DS promotion, both
+  platforms' domain join, confirmed with a real forest and real joins
+  on the libvirt backend. Two bugs found along the way: a leftover
+  `become: true` on Windows WinRM plays (broke the instant the
+  previously-placeholder `domain_controller`/`domain_directory` roles
+  ran for real), and domain-join credentials needing *opposite* formats
+  per platform — Linux's `realm join` wants a bare username, Windows'
+  `Add-Computer`/`microsoft.ad.membership` wants a NetBIOS-qualified one
+  (`DOMAIN\user`) — each confirmed by reproducing the failure outside
+  Ansible entirely to rule out a module bug. Full investigation:
+  [troubleshooting-log.md § M4](./docs/troubleshooting-log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs).
+- DHCP-mode addressing, the full OS matrix, Packer templates, and the
+  software/directory manifests beyond the simple package-manager case
+  are all out of scope for M1/M2/M4 — see DESIGN.md §18 for the
+  milestone plan.

@@ -1,0 +1,20 @@
+---
+# Until M5 lands dedicated domain-admin accounts (docs/directory-objects.md),
+# this is the account AD DS promotion itself carried over — see
+# ansible/roles/domain_controller/tasks/main.yml and
+# secrets.vault.example.yml for the password-equality gotcha this implies.
+#
+# NetBIOS-qualified (DOMAIN\user), NOT bare and NOT a UPN -- confirmed
+# hands-on. Bare "Administrator" and "Administrator@{{ domain_name }}"
+# (UPN) both fail Add-Computer/microsoft.ad.membership identically:
+# "Unable to update the password. The value provided as the current
+# password is incorrect." -- a misleading message; reproduced with raw
+# Add-Computer outside Ansible entirely, so it's Windows' own join API
+# rejecting the credential form, not a module or password bug (the
+# same password authenticates fine over WinRM). Add-Computer needs a
+# domain-qualified credential because the computer has no domain
+# context yet to resolve a bare username against -- unlike Linux's
+# adcli, which specifically needs the OPPOSITE (bare username; see
+# linux_domain_join's defaults/main.yml). Two different platforms,
+# two different correct formats.
+domain_admin_user: "{{ netbios_name }}\\Administrator"

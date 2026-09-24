@@ -707,6 +707,19 @@ None blocking further scaffolding right now.
   (`realmd`/`sssd`), hosts-file snippet generation (`docs/networking.md`
   §4). Validate the flexible-role model (DC as single-purpose vs.
   dual-role host).
+
+  **Core mechanism confirmed working end-to-end** against real
+  infrastructure (libvirt backend, a single-purpose `dc` +
+  `linsrv`/`winsrv` small profile): a real forest promoted, both
+  platforms' domain join succeeded, software install ran cleanly
+  afterward — see README's Known Gaps and
+  [docs/troubleshooting-log.md § M4](./docs/troubleshooting-log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs)
+  for the two real bugs (a `become: true` mistake, and platform-opposite
+  domain-join credential formats) this took to get working. **Not yet
+  separately exercised**: the `windows_workstation`/`linux_workstation`
+  join path (same role, different target group — should work
+  identically in principle, untested in practice) and the dual-role
+  DC+member-server profile from §9's medium example.
 - **M5** — Workstation host type + medium profile, validated with
   domain join across all host types. `domain_directory` role +
   `directory-manifest.yml` (OUs, domain/local groups and users,
@@ -730,8 +743,9 @@ None blocking further scaffolding right now.
 
 Both M9 and M10 are recorded now (design discussion, not yet
 implementation) because a design exists — see §19/§20 — not because
-they're scheduled next; M4/M5 (domain services, still unimplemented)
-remain the more immediate next step per README's Status.
+they're scheduled next; M4's core mechanism is now confirmed working
+end-to-end (see above), M5 (populating the domain — OUs, groups, users)
+is the more immediate next step per README's Status.
 
 ## 19. Certificate Authorities (Future)
 

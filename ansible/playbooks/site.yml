@@ -21,16 +21,25 @@
         timeout: 300
 
 - name: Promote domain controller(s) first — must complete before any join
+  # No become: this play runs over WinRM as the local Administrator
+  # (docs/credentials.md §4), which already has full privileges — unlike
+  # SSH, Windows become needs ansible_become_user/ansible_become_pass
+  # configured, which nothing here sets. Matches windows_common's play.
   hosts: domain_controller
-  become: true
   gather_facts: true
   roles:
     - domain_controller
   tags: [domain_controller]
 
 - name: Populate the domain — OUs, domain groups/users, domain-scope membership
+  # No become: same reasoning as the domain_controller play above (M4) —
+  # this play runs over WinRM as the local Administrator, already fully
+  # privileged; Windows become needs ansible_become_user/pass, which
+  # nothing sets. Confirmed as a real bug hands-on: a live M4 test run
+  # hit this exact error the moment a real domain existed to promote
+  # this (till-then-placeholder) play into actually running:
+  # "Become plugin sudo is not supported by the Windows exec wrapper."
   hosts: domain_controller
-  become: true
   gather_facts: true
   # vars_files: [../directory-manifest.yml] — added once docs/directory-objects.md
   # lands in M5; referencing it now would break this play if it's ever
@@ -38,6 +47,31 @@
   roles:
     - domain_directory
   tags: [directory_objects]
+
+# --- Domain join (Windows/Linux) — after the domain (and its DNS)
+# exists, before per-role software config below. Both roles no-op via
+# the role-entry `when:` guard on any M1-M3-style environment with no
+# domain_controller-role host (DESIGN.md §8/§18, M4).
+
+- name: Join Linux hosts to the domain
+  hosts: linux_server:linux_workstation
+  become: true
+  gather_facts: true
+  roles:
+    - role: linux_domain_join
+      when: groups['domain_controller'] | length > 0
+  tags: [domain_join]
+
+- name: Join Windows hosts to the domain
+  # No become — see the domain_controller play's note above. Excludes a
+  # dual-role DC+member-server host: DCs have their own membership
+  # semantics, not touched via this generic join role.
+  hosts: windows_server:windows_workstation
+  gather_facts: true
+  roles:
+    - role: windows_domain_join
+      when: groups['domain_controller'] | length > 0 and 'domain_controller' not in group_names
+  tags: [domain_join]
 
 # --- Per-role configuration (software + local accounts) ---
 # docs/software-manifest.md §5 — software_manifest_roles is computed

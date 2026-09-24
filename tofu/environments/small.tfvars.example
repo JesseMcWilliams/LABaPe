@@ -1,7 +1,5 @@
-# Subset of DESIGN.md §9's "small" profile. The full small profile also
-# has a `dc` host group (roles = ["domain_controller"], DESIGN.md §8) —
-# left out here since the domain_controller role itself isn't
-# implemented yet (M4).
+# DESIGN.md §9's "small" profile — a single-purpose DC (M4, DESIGN.md
+# §8), two Linux servers, one Windows member server.
 #
 # winsrv below is real and works (M3 landed early for libvirt — see
 # DESIGN.md §17 Open Question 5 and README's Known Gaps). It used to
@@ -14,6 +12,12 @@
 # an example, not applied directly (.gitignore excludes real .tfvars).
 
 host_groups = [
+  {
+    name  = "dc"
+    count = 1
+    os    = "windows_server_2022"
+    roles = ["domain_controller"]
+  },
   {
     name  = "linsrv"
     count = 2
