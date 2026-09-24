@@ -47,6 +47,9 @@ openssh-server
 %{ if syslog_host != "" ~}
 rsyslog
 %{ endif ~}
+%{ if debug_disk ~}
+dosfstools
+%{ endif ~}
 %end
 
 %post
@@ -62,6 +65,78 @@ systemctl enable sshd
 # reach, since that one stops at reboot.
 echo '*.* @${syslog_host}:1514' >> /etc/rsyslog.conf
 systemctl enable rsyslog
+%{ endif ~}
+
+%{ if debug_disk ~}
+# Debugging aid, off by default (README's Known Gaps, M2) — network
+# (syslog forwarding) and serial console both came up completely empty
+# investigating the SSH-reachability gap, despite the guest clearly
+# being healthy, so this channel deliberately depends on neither: a
+# oneshot systemd unit mounts the small extra FAT-formatted disk
+# tofu/modules/vm/hyperv/main.tf attaches when debug_disk is set,
+# writes a live diagnostic dump there every boot, and unmounts — FAT is
+# natively readable from the Windows/Hyper-V host side (Mount-VHD)
+# without touching the network or a serial port at all. Found by size,
+# not by device name -- see the comment further down.
+cat > /usr/local/bin/labape-debug-dump.sh <<'DUMPEOF'
+#!/bin/bash
+set -uo pipefail
+mount_point="$(mktemp -d)"
+# Do NOT assume the debug disk is /dev/sdb -- Hyper-V's synthetic IDE
+# enumeration order is not guaranteed stable across boots (confirmed
+# hands-on: an install once saw this exact 64 MiB disk come up as sda,
+# with the OS's own 40 GiB root disk as sdb). Hardcoding the device
+# name here would risk sfdisk/mkfs.vfat running against the live root
+# disk instead. Match on its known exact size
+# (tofu/modules/vm/hyperv/main.tf hyperv_vhd.debug: size = 67108864)
+# instead, and bail out rather than guess if that doesn't turn up
+# exactly one disk.
+debug_dev="$(lsblk -dn -o NAME,SIZE --bytes | awk '$2 == 67108864 {print "/dev/" $1}')"
+if [ "$(echo "$debug_dev" | wc -l)" != "1" ] || [ -z "$debug_dev" ]; then
+  echo "labape-debug-dump: could not uniquely identify the debug disk by size, aborting" >&2
+  rmdir "$mount_point"
+  exit 1
+fi
+if [ ! -b "$${debug_dev}1" ]; then
+  echo 'start=2048, type=c' | sfdisk "$debug_dev" >/dev/null 2>&1
+  partprobe "$debug_dev" >/dev/null 2>&1 || true
+  udevadm settle >/dev/null 2>&1 || true
+fi
+mkfs.vfat -n LABAPEDBG "$${debug_dev}1" >/dev/null 2>&1
+mount "$${debug_dev}1" "$mount_point"
+{
+  echo "=== date ==="; date
+  echo "=== systemctl status sshd ==="; systemctl status sshd --no-pager -l
+  echo "=== sshd-keygen units ==="; systemctl list-units 'sshd-keygen*' --no-pager -l
+  echo "=== systemctl list-units --failed ==="; systemctl list-units --failed --no-pager -l
+  echo "=== ip addr ==="; ip addr
+  echo "=== ip route ==="; ip route
+  echo "=== ss -tlnp ==="; ss -tlnp
+  echo "=== firewall-cmd --list-all ==="; firewall-cmd --list-all
+  echo "=== journalctl -b --no-pager ==="; journalctl -b --no-pager
+  echo "=== dmesg ==="; dmesg
+} > "$mount_point/debug-report.txt" 2>&1
+sync
+umount "$mount_point"
+rmdir "$mount_point"
+DUMPEOF
+chmod +x /usr/local/bin/labape-debug-dump.sh
+
+cat > /etc/systemd/system/labape-debug-dump.service <<'UNITEOF'
+[Unit]
+Description=LABaPe debug diagnostic dump (README Known Gaps, M2)
+After=network-online.target sshd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/labape-debug-dump.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+systemctl enable labape-debug-dump.service
 %{ endif ~}
 
 %{ if management_source != "" ~}

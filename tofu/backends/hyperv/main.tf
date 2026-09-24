@@ -110,6 +110,7 @@ module "vm" {
   os_catalog       = local.os_catalog
   iso_storage_path = var.iso_storage_path
   vm_storage_path  = var.vm_storage_path
+  debug_disk       = var.debug_disk
 
   depends_on = [null_resource.boot_iso]
 }

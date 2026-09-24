@@ -106,3 +106,9 @@ variable "syslog_host" {
   type        = string
   default     = ""
 }
+
+variable "debug_disk" {
+  description = "Attach a small extra FAT-formatted disk that a systemd unit writes a diagnostic dump to every boot, readable from the Hyper-V host via Mount-VHD — a troubleshooting aid, off by default (README's Known Gaps, M2). See tofu/modules/vm/hyperv/variables.tf."
+  type        = bool
+  default     = false
+}

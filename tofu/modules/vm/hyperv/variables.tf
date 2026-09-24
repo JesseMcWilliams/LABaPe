@@ -126,3 +126,18 @@ variable "vm_storage_path" {
   description = "Directory on the Hyper-V host (a Windows path, e.g. C:\\VMs) where this VM's VHD is created."
   type        = string
 }
+
+variable "debug_disk" {
+  description = <<-EOT
+    Debugging aid, off by default. When true, attaches a small extra
+    FAT-formatted VHD; a systemd unit installed by the kickstart
+    (gated the same way) mounts it after boot and writes a diagnostic
+    dump (systemctl/journalctl/ip/ss output) there. FAT is natively
+    readable from the Windows/Hyper-V host side (Mount-VHD), unlike the
+    guest's own ext4/xfs root — a channel that doesn't depend on
+    network or serial console cooperation, both of which came up empty
+    investigating the M2 SSH-reachability gap (README's Known Gaps).
+  EOT
+  type        = bool
+  default     = false
+}

@@ -20,24 +20,32 @@ and configured by `ansible-playbook` (software manifest packages
 installed, EPEL repo added) — with 0 Ansible failures on the final run.
 See **Known gaps** below for what M1 still doesn't cover.
 
-M2 (Hyper-V backend, Linux-only parity with M1) is in progress. Real,
-tested-against-infrastructure pieces: `tofu/modules/network/hyperv`
-(an External virtual switch), and the boot-media approach for
-unattended Linux install — Hyper-V has no equivalent to libvirt's
-kernel-arg injection, so `tofu/modules/vm/hyperv/scripts/
-prepare-boot-iso.sh` instead copies the vendor ISO and edits isolinux's
-boot menu to default to `inst.ks=cdrom:/ks.cfg`, confirmed twice by a
-real, complete, unattended Rocky 9 kickstart install (333/333 packages)
-booted from the modified media. `tofu/modules/vm/hyperv` (VHD + the
-actual `hyperv_machine_instance` resource) is written and did
-successfully create and boot a real VM once via `tofu apply` against
-the test host below. **Not yet confirmed working end-to-end**: that VM
-completed its kickstart install and rebooted (confirmed via VHD growth
-and a Hyper-V uptime-counter reset) but was never reachable over SSH
-afterward, and a second attempt hit an unrelated `Start-VM` failure
-("The parameter is incorrect") likely caused by concurrent manual
-diagnostics rather than the module itself — worth a clean re-test
-before relying on this. See **Known gaps** below.
+M2 (Hyper-V backend, Linux-only parity with M1) is **now confirmed
+working end-to-end**: `tofu apply` against the test host below creates
+a network switch, VHD, and `hyperv_machine_instance`; the VM completes
+a real unattended Rocky 9 kickstart install from the boot-media
+approach (`tofu/modules/vm/hyperv/scripts/prepare-boot-iso.sh` edits
+the vendor ISO's isolinux boot menu to default to
+`inst.ks=cdrom:/ks.cfg` — Hyper-V has no equivalent to libvirt's
+kernel-arg injection); reboots into the freshly installed OS; and is
+reachable over SSH as the `labape` bootstrap user. Getting there
+surfaced a real, hard-to-diagnose bug — Generation 1 Hyper-V VMs
+default to booting DVD media before the hard disk, so every completed
+install just re-ran itself forever, which looked identical to an
+install *stall* from the outside — plus a separate `taliesins/hyperv`
+provider bug that had to be root-caused and pinned around. See
+**Known gaps** below for both, and for the debug-disk diagnostic aid
+built (and then shelved) while tracking this down.
+
+**Recommendation:** given the number of real bugs it took to get here —
+a Hyper-V-specific BIOS default, several distinct `taliesins/hyperv`
+provider crashes each needing its own precise workaround, and WinRM's
+general fragility compared to SSH for remote execution — **Linux KVM
+(the libvirt backend) is the preferred backend for this project.** M1
+had a clean end-to-end run with comparatively few surprises, and
+libvirt supports both Linux and Windows guests. Use the Hyper-V backend
+when KVM genuinely isn't an option; budget for more operational care if
+so.
 
 Test infrastructure for M2: `hvhost1`, a nested Windows Server 2022 VM
 (on the M1 libvirt host, which has nested virtualization enabled) with
@@ -316,19 +324,86 @@ scripts/test/run-all.sh
       tolerable and sometimes not was never identified, and doesn't need
       to be now that the comments are simply gone from the file Setup
       actually reads.
-- **M2 (Hyper-V) VM creation works — the freshly-installed guest's SSH
-  reachability doesn't, yet.** A real `tofu apply` against the test
-  Hyper-V host (Status above) created a network switch, VHD, and
-  `hyperv_machine_instance` correctly, and the VM completed its
-  kickstart install (VHD grew ~2.8GB, Hyper-V's own uptime counter
-  reset on reboot, `Heartbeat` integration service reported `OK`
-  afterward — the guest kernel is genuinely healthy). But SSH was never
-  reachable: alternating "connection refused" (something responding,
-  nothing on port 22) and brief "no route to host"/timeout windows for
-  20+ minutes post-reboot, reproduced identically across multiple clean
-  rebuilds. Three logging/capture channels were built and tried to
-  actually see what's happening instead of continuing to guess from the
-  outside:
+- **M2 (Hyper-V) SSH-reachability mystery: RESOLVED. Root cause was
+  never sshd or networking — the VM was never actually booting the
+  installed OS.** The three logging/capture channels below (install-time
+  syslog, post-install rsyslog forwarding, serial console) were built to
+  chase what looked like "install completes, guest is healthy
+  (`Heartbeat` OK, VHD grew, uptime counter reset), but SSH is
+  unreachable for 20+ minutes." All three came up completely empty —
+  and retrospectively, that's because they were investigating a false
+  premise: a real, fully-installed guest was never actually failing to
+  answer SSH. **Generation 1 Hyper-V VMs default their BIOS boot order
+  to DVD before hard disk** (`Get-VMBios`'s `StartupOrder`:
+  `{CD, IDE, LegacyNetworkAdapter, Floppy}`), and this module leaves the
+  boot ISO and kickstart ISO permanently attached. So the kickstart
+  install genuinely *did* complete successfully every time (confirmed:
+  matches this module's real install duration, ~20 minutes) and reboot
+  — straight back into the same boot ISO, re-running the unattended
+  install from scratch, forever. Every symptom (VHD growth stopping,
+  "connection refused" then timeouts, `Heartbeat` sometimes OK/sometimes
+  not) was a snapshot of *some* point in that infinite loop, not a
+  stalled or unhealthy guest. Found by direct observation rather than
+  more inference: `vmconnect.exe <hyperv-host> <vm-name>` (the actual
+  Hyper-V console — see below) showed the installer's own summary
+  screen mid-loop ("Not enough free space on selected disks" from an
+  earlier, unrelated debug-disk-related kickstart bug — see below), and
+  once that was fixed, showed the boot menu itself defaulting back to
+  "unattended install" instead of the newly installed OS after a
+  completed install. **Fix**: `Set-VMBios -StartupOrder` with `IDE`
+  before `CD` (`tofu/modules/vm/hyperv/scripts/set-boot-order.sh`).
+  Confirmed end-to-end after the fix: the guest boots the installed OS,
+  `Heartbeat`/`Shutdown`/`Time Synchronization`/`VSS` integration
+  services all report `OK`, and `ssh labape@<ip>` succeeds. (`Key-Value
+  Pair Exchange` still shows `No Contact` — minor, likely just the
+  `hyperv-daemons` package/`hv_kvp_daemon` not being installed by
+  default; doesn't block anything observed so far.)
+
+  **Not automated as a Terraform resource** — tried wiring
+  `set-boot-order.sh` in as a `null_resource` with `depends_on` on the
+  VM, and hit a real, reproducible `taliesins/hyperv` provider crash
+  every time ("Unable to remove resource pool from dvd drive") whenever
+  anything caused Terraform to reconcile the existing
+  `hyperv_machine_instance` — including just the VM being stopped/
+  started externally. Root-caused precisely: the provider computes
+  `dvd_drives[].resource_pool_name` (`"Primordial"`, Hyper-V's default)
+  and a `vm_processor` block that this module's config never declared,
+  so every `tofu apply` against an existing VM saw permanent drift and
+  tried (and crashed) reconciling it. Fixed *that* by pinning both
+  explicitly in `tofu/modules/vm/hyperv/main.tf` — `tofu plan` now
+  reports zero drift — but the boot-order fix itself still can't safely
+  run as a resource (it would hit the same crash on a *fresh* VM's very
+  first apply, before any drift exists to have pinned yet). Run
+  `scripts/set-boot-order.sh` by hand once after `tofu apply` until this
+  is better understood.
+
+  One casualty of this investigation: a debug-disk diagnostic aid
+  (`var.debug_disk`, off by default) was built — a second small
+  FAT-formatted VHD the guest's `%post` mounts and writes a diagnostic
+  dump to, readable from the Windows side via `Mount-VHD` without
+  needing network or serial console cooperation. Attaching it exposed a
+  *second*, independent bug: without an explicit `ignoredisk`, Anaconda
+  considers every attached disk during partitioning, and Hyper-V's
+  guest disk-enumeration order for `sda`/`sdb` was confirmed unstable
+  across boots (one run saw the 64MB debug disk come up as `sda`, the
+  40GB OS disk as `sdb` — the opposite of the naive assumption), so a
+  hardcoded `ignoredisk --only-use=sda` silently pinned the wrong disk.
+  A kickstart `%pre`-generates-then-`%include`s-a-file approach to pick
+  the disk dynamically by size was tried and found to not work reliably
+  in this Anaconda version (`%include` appears to resolve before `%pre`
+  has actually run). Given the console access this whole investigation
+  produced made the debug-disk's original motivation moot, it was
+  reverted to its simple, twice-proven-working single-disk form rather
+  than chasing a third fix; `var.debug_disk` still exists and its
+  `%post` dump script is written defensively (finds the debug disk by
+  exact size, never by assumed device name — see the script for why),
+  but needs the attach-after-install redesign noted in code comments
+  before it's something to actually rely on.
+
+  Kept for the record, the three capture channels that were built while
+  the real cause was still unknown (all legitimate infrastructure, none
+  of them wrong to have tried — the premise they were testing just
+  turned out to be false):
   1. **Install-time syslog** — kickstart's native `logging --host=...
      --port=1514` command (`scripts/test/syslog-capture.py`, a small
      UDP listener). Confirmed the network path itself works (a test
@@ -337,40 +412,17 @@ scripts/test/run-all.sh
      cycles.
   2. **Post-install rsyslog forwarding** — `%post` installs and enables
      `rsyslog` with `*.* @<host>:1514`, gated the same way, meant to
-     keep logs flowing *after* reboot too (the install-time `logging`
-     command stops working once the installer exits). Also zero bytes,
-     despite the guest clearly being up and networked enough for
-     Hyper-V's own `wait_for_ips` to succeed and for TCP RSTs
-     ("connection refused") to reach us on port 22 — genuinely puzzling,
-     since an RST is itself outbound guest traffic that demonstrably
-     *does* get through, which the UDP logging traffic's total absence
-     doesn't fit cleanly.
+     keep logs flowing *after* reboot too. Also zero bytes.
   3. **Serial console** — added `console=ttyS0,115200n8 console=tty0`
-     to the shared kickstart's `bootloader --append`
-     (`iso/answer-files/rhel-family/ks-rocky9.cfg.tpl`) and a Hyper-V
-     COM1-to-named-pipe redirect, read via a small PowerShell client
-     (mirrors the lesson from the Windows/libvirt VNC fix above). First
-     attempt connected too late (VM already 13+ minutes up) and
-     naturally caught nothing — serial streams don't buffer for a late
-     client. Redone with the reader connected *before* `Start-VM`: still
-     zero bytes after 3+ minutes into boot, strongly suggesting
-     `console=ttyS0` genuinely isn't reaching the kernel on this
-     Generation 1 setup (a kickstart `bootloader --append` alone may not
-     be enough — GRUB2 itself may need `GRUB_TERMINAL`/
-     `GRUB_SERIAL_COMMAND` configured for its own early output, separate
-     from the kernel argument that only takes effect once GRUB hands
-     off).
-  Net: all three network/serial-dependent capture channels came up
-  empty, which is itself informative — it points at something that
-  isn't just "sshd is slow to start" but is affecting outbound
-  traffic/console output more broadly, in a way that doesn't fit simple
-  entropy starvation either. **Strongest untried option**: have `%post`
-  write a diagnostic dump (`systemctl status sshd`, `journalctl`,
-  `ip addr`, etc.) to a small FAT-formatted VHD attached alongside the
-  main disk — FAT is natively readable from the Windows/Hyper-V host
-  side (`Mount-VHD`), unlike the guest's own ext4/xfs root, so this
-  would work regardless of network or serial console cooperation.
-  Needs a clean re-test before M2 can be considered working end-to-end.
+     to the shared kickstart's `bootloader --append` and a Hyper-V
+     COM1-to-named-pipe redirect, read via a small PowerShell client.
+     Zero bytes even with the reader connected before `Start-VM`.
+  In hindsight, all three were plausibly reading a guest stuck back at
+  Anaconda's boot menu / early installer environment rather than a
+  booted final system — which the install-time `logging` command and
+  serial console *should* have covered but didn't; that gap (why
+  install-time capture also came up empty) wasn't separately
+  root-caused and is worth another look if these channels matter again.
 - DHCP-mode addressing, domain services, the full OS matrix, Packer
   templates, and the software/directory manifests beyond the simple
   package-manager case are all out of scope for M1/M2 — see DESIGN.md

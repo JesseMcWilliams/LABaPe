@@ -61,6 +61,11 @@ resource "local_file" "kickstart" {
     addressing        = var.addressing
     management_source = lookup(var.template_vars, "management_source", "")
     syslog_host       = lookup(var.template_vars, "syslog_host", "")
+    # The debug disk (README's Known Gaps, M2) is Hyper-V-specific —
+    # modules/vm/hyperv attaches the actual extra disk this needs;
+    # nothing here does, so always false. Still has to be passed:
+    # templatefile() requires every variable the template references.
+    debug_disk = false
   })
 
   depends_on = [terraform_data.validate_os]
