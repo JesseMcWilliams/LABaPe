@@ -113,16 +113,32 @@ variable "os_catalog" {
     manual prerequisite for now, not something this module automates.
 
     answer_file_template is a kickstart .cfg.tpl for os_family "linux",
-    an autounattend .xml.tpl for "windows". os_variant is the
-    libosinfo short-id (e.g. "win2k22") virt-install's --os-variant
-    needs for Windows; unused (empty string) for Linux, which relies on
-    --os-variant detect=on,require=off instead.
+    an autounattend .xml.tpl for "windows", or a cloud-init/subiquity
+    autoinstall .yaml.tpl for "debian" (Debian-family — first added
+    alongside Windows 11 support; a distinct os_family from "linux"
+    because the install mechanism differs — a NoCloud seed ISO, not
+    kickstart's --initrd-inject — even though both connect over SSH
+    the same way afterward). os_variant is the libosinfo short-id
+    (e.g. "win2k22", "ubuntu24.04") virt-install's --os-variant needs
+    for Windows/Debian; unused (empty string) for RHEL-family Linux,
+    which relies on --os-variant detect=on,require=off instead.
+
+    meta_data_template ("debian" only, empty string otherwise): cloud-
+    init's NoCloud datasource needs a second file, meta-data, alongside
+    answer_file_template's user-data — computed here (not independently
+    via the vm module's own path.module) for the same reason
+    answer_file_template already is: this module is invoked from
+    tofu/backends/libvirt with a relative `source`, so a path built from
+    ITS OWN path.module needs different ".." arithmetic than one built
+    in the root module — simplest to only ever compute these paths in
+    one place.
   EOT
   type = map(object({
     iso_host_path         = string
     answer_file_template  = string
     os_family             = string
     os_variant            = optional(string, "")
+    meta_data_template    = optional(string, "")
   }))
 }
 

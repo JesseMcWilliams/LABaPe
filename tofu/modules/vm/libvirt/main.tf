@@ -11,11 +11,16 @@ locals {
   rendered_answer_file_path = coalesce(
     try(local_file.kickstart[0].filename, null),
     try(local_file.windows_answer_file[0].filename, null),
+    try(local_file.debian_user_data[0].filename, null),
   )
   rendered_answer_file_md5 = coalesce(
     try(local_file.kickstart[0].content_md5, null),
     try(local_file.windows_answer_file[0].content_md5, null),
+    try(local_file.debian_user_data[0].content_md5, null),
   )
+  # Empty string (not null) when not debian — passed straight through to
+  # create-iso-direct.sh's environment map, which requires a string.
+  rendered_meta_data_path = try(local_file.debian_meta_data[0].filename, "")
 }
 
 # Fail fast and clearly on an unknown `os` key, rather than a confusing
@@ -90,6 +95,36 @@ resource "local_file" "windows_answer_file" {
   depends_on = [terraform_data.validate_os]
 }
 
+# Debian-family autoinstall (cloud-init/subiquity) needs TWO files at
+# the seed ISO's root — user-data and meta-data (cloud-init's NoCloud
+# datasource convention) — unlike kickstart's single injected file or
+# Windows' single autounattend.xml, hence two resources instead of one.
+resource "local_file" "debian_user_data" {
+  count    = var.image_source == "iso_direct" && local.os_family == "debian" ? 1 : 0
+  filename = "${local.rendered_dir}/${var.name}-user-data"
+
+  content = templatefile(local.os_meta.answer_file_template, {
+    hostname          = var.name
+    ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
+    addressing        = var.addressing
+    management_source = lookup(var.template_vars, "management_source", "")
+    syslog_host       = lookup(var.template_vars, "syslog_host", "")
+  })
+
+  depends_on = [terraform_data.validate_os]
+}
+
+resource "local_file" "debian_meta_data" {
+  count    = var.image_source == "iso_direct" && local.os_family == "debian" ? 1 : 0
+  filename = "${local.rendered_dir}/${var.name}-meta-data"
+
+  content = templatefile(local.os_meta.meta_data_template, {
+    hostname = var.name
+  })
+
+  depends_on = [terraform_data.validate_os]
+}
+
 resource "null_resource" "vm_iso_direct" {
   count = var.image_source == "iso_direct" ? 1 : 0
 
@@ -119,6 +154,7 @@ resource "null_resource" "vm_iso_direct" {
       DISK_GB         = tostring(var.disk_gb)
       ISO_HOST_PATH   = local.os_meta.iso_host_path
       ANSWER_FILE_PATH = local.rendered_answer_file_path
+      META_DATA_PATH  = local.rendered_meta_data_path
       BRIDGE_DEVICE   = var.network_id
       OS_FAMILY       = local.os_family
       OS_VARIANT      = try(local.os_meta.os_variant, "")
@@ -141,7 +177,13 @@ resource "null_resource" "vm_iso_direct" {
   # as that resource's clear precondition message, not a raw "attempt to
   # index null value" from this resource's own triggers evaluating
   # local.os_meta first.
-  depends_on = [terraform_data.validate_os, local_file.kickstart, local_file.windows_answer_file]
+  depends_on = [
+    terraform_data.validate_os,
+    local_file.kickstart,
+    local_file.windows_answer_file,
+    local_file.debian_user_data,
+    local_file.debian_meta_data,
+  ]
 }
 
 # --- packer_template path (not implemented until M6, DESIGN.md §18) ---

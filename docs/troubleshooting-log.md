@@ -494,3 +494,143 @@ on a second run even when the user's group membership hasn't actually
 changed — an idempotency wrinkle in the module (or in how this role
 calls it) worth revisiting, but not blocking: it's cosmetic (a spurious
 `changed` in the run summary), not a correctness problem.
+
+## M5 (workstation support, Ubuntu LTS half): five real bugs, one still open
+
+First-ever Debian-family (subiquity/cloud-init) install attempt, tested
+in isolation per the M5 workstation-support plan. Real infrastructure
+testing surfaced five distinct bugs — four fixed and confirmed, one
+(disk/storage configuration) still open at the end of this round. This
+took roughly the same order of iteration the original Windows
+answer-file saga did (troubleshooting-log's own M1 Windows section,
+round 10) — expected, not a surprise, per that plan's own stated
+expectations.
+
+### `virt-install` couldn't find the kernel on Ubuntu's live-server ISO
+
+`virt-install --location <iso>` failed outright: `ERROR Couldn't find
+kernel for install tree.` — `--debug` showed it probing a hardcoded
+legacy path (`hasFile(/install/vmlinuz) returning False`) rather than
+consulting osinfo-db's own declared kernel path for this OS. Root
+cause: osinfo-db's `ubuntu24.04` entry only declares `<media>` entries
+(`installer-script="false"`, with the entry's own comment noting
+subiquity's autoinstall style "isn't supported yet in libosinfo and
+associated tools") — no `<tree>` entry at all, so virt-install's
+install-tree kernel/initrd auto-detection has nothing to consult and
+falls back to a short list of legacy paths, none of which exist on a
+casper-based live ISO (real path: `casper/vmlinuz` /
+`casper/initrd`, confirmed via `xorriso -indev <iso> -find /`). Fixed
+by passing the paths explicitly on `--location`, bypassing detection
+entirely: `--location "<iso>,kernel=casper/vmlinuz,initrd=casper/initrd"`
+(`tofu/modules/vm/libvirt/scripts/create-iso-direct.sh`'s `debian)`
+case).
+
+### Several one-time subiquity screens block forever over a serial console, even with `interactive-sections: []`
+
+Despite `interactive-sections: []`, subiquity still requires one Enter
+keypress each on a chain of screens before an install actually becomes
+hands-off: a "Serial console started in basic mode" splash, a
+welcome/language picker, an installer-self-update check, a
+network-configuration review, and a proxy-configuration screen were all
+hit in testing — none suppressed by the autoinstall config, all
+requiring real input, none documented anywhere as unavoidable. Fixed by
+adding `dismiss_subiquity_prompts()` to `create-iso-direct.sh`'s
+`debian)` case: it runs `virt-install ... --wait -1` backgrounded (not
+foreground-blocking) so this function can poll concurrently, detects
+"idle" generically (the console log only grows while the TUI is
+actively redrawing — two consecutive polls with no size change means
+something is very likely waiting on input) and injects a carriage
+return into the domain's console pty via `sudo -n tee` when idle,
+rather than hardcoding a marker string per screen (fragile — the exact
+set of unavoidable pre-autoinstall screens isn't documented and a
+naive marker-based first attempt was overtaken by a screen it hadn't
+accounted for). Two sharp edges hit building this:
+- Reading/writing the console log and pty requires root (both are
+  0600, a libvirt/QEMU default unrelated to this repo) — this repo's
+  test account only has narrowly-scoped passwordless sudo for specific
+  binaries (`cp`, `tee`, …), not a blanket allowance, so the function
+  is built entirely out of `sudo -n /usr/bin/cp <path> /dev/stdout`
+  (stream a root-owned file to an unprivileged reader) and
+  `printf '\r' | sudo -n tee <pty>` (write to a root-owned device) —
+  worth confirming the real deploy account has the same two commands
+  allowed, wherever this ends up actually running.
+- `set -euo pipefail` (this script's own top line) plus a `grep -oP`
+  with **no match yet** (routine — the console element doesn't exist
+  in `virsh dumpxml` until the domain actually starts) makes the whole
+  pipeline "fail," which `set -e` then treats as the *entire script*
+  failing — silently orphaning the backgrounded `virt-install` (visibly
+  reparented to PID 1) and leaving OpenTofu's `local-exec` hung
+  reading its now-parentless-but-still-open output pipe (`tofu apply`
+  sat on "Still creating..." indefinitely, well past when the actual
+  work had already died). Needed an explicit `|| true` on that specific
+  pipeline — not defensive boilerplate, load-bearing.
+- The idle-detection cap (`max_sends`) was first set to a cautious 10
+  and immediately exhausted by ordinary boot noise (disk-allocation
+  progress ticks, kernel/udev messages each produce an idle gap of a
+  few seconds) well before subiquity's TUI ever appeared, silently
+  disabling the function for the rest of the install. Raised to 50 — a
+  stray Enter during boot has nothing focused/actionable to
+  accidentally trigger, so a generous cap is safe; `install_timeout_seconds`
+  is still the real ceiling.
+
+### apt mirror-testing hangs forever on "The mirror location is being tested"
+
+With no `apt:` section at all, subiquity defaults to a GeoIP lookup to
+pick a country mirror before testing it — and hung indefinitely on that
+step even though `archive.ubuntu.com` itself was directly reachable
+(confirmed via `curl` from an already-deployed guest VM on the same
+network, `HTTP:200`). The GeoIP lookup service itself, not the mirror,
+is the part this network can't reach. Fixed by pinning a known mirror
+and skipping GeoIP entirely: `apt: {geoip: false, primary: [{arches:
+[amd64], uri: "http://archive.ubuntu.com/ubuntu/"}]}`.
+
+### OPEN: guided storage configuration doesn't honor either `layout` or `config`, defaults to a mandatory encryption prompt
+
+Neither of subiquity's two documented storage directives produced a
+non-interactive result on this Ubuntu 24.04.3 build:
+- `storage: {layout: {name: direct}}` (the documented "whole disk, no
+  LVM, no encryption" shorthand) was still followed by an unskippable
+  **"Passphrase must be set"** LUKS screen with no way to leave it
+  blank — contradicting the documented behavior that `direct` doesn't
+  support encryption at all.
+- Replacing it with an explicit action list (`storage: {config: [{type:
+  disk, ...}, {type: partition, ...}, {type: format, ...}, {type:
+  mount, ...}]}`, confirmed correctly rendered into the final
+  `user-data` file actually used) got further — subiquity's guided
+  screen did show "**(X) Custom storage layout**" pre-selected, meaning
+  the directive was at least partially recognized — but the actual
+  device editor underneath showed **"No used devices"**: none of the
+  declared disk/partition/format/mount actions were actually applied,
+  leaving an empty manual editor. A subsequent guided pass (same
+  install, different attempt) showed a *different* symptom again: an
+  LVM-guided screen with an unchecked-by-default "Encrypt the LVM group
+  with LUKS" checkbox — inconsistent behavior across otherwise-identical
+  attempts.
+
+Manually completing the interactive storage editor via injected
+keystrokes (the same pty-injection mechanism `dismiss_subiquity_prompts`
+uses) proved too fragile to drive blind — urwid's on-screen state
+doesn't map predictably enough to a fixed keystroke sequence
+(dropdowns not opening on the expected key, focus landing on an
+unrelated top-right help menu, near-identical screen redraws that
+looked unchanged across genuinely different underlying state) to be
+worth continuing without live visual feedback. **Not yet resolved** —
+next steps, in rough order of promise: (a) check whether an `apt`-side
+or `storage`-side `version:` key is required specifically for the
+`config:` form on this subiquity release (both attempts used the same
+top-level `version: 1`); (b) check subiquity's own logs from inside
+the live installer (it advertises SSH access into the running install
+environment — `/var/log/installer/subiquity-*-debug.log` — for the
+actual reason the declared actions weren't applied, rather than
+inferring from the TUI alone); (c) as a fallback, a real (test-only,
+clearly-labeled-insecure) LUKS passphrase plus a `late-commands` step
+that stores it somewhere Ansible's first connection can retrieve and
+unlock with — undesirable (breaks unattended reboot without extra
+plumbing) but would at least unblock forward progress on Windows 11
+testing (Stage 4) while this is revisited.
+
+Stage 3 (Ubuntu LTS in isolation) is therefore **partially confirmed**:
+templating, kernel/initrd boot, the serial-console prompt chain, and
+apt/mirror configuration are all confirmed working unattended; disk
+provisioning is not, so no Ubuntu LTS host has yet completed a full
+unattended install through to a bootable, SSH-reachable final system.

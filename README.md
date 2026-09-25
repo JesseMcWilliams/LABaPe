@@ -56,9 +56,23 @@ AD DS. Three more non-obvious fixes needed — a misconfigured
 filter-plugin search path, `microsoft.ad` parameters that look
 list-valued but actually need an `{add:/remove:/set:}` dict, and a
 documented manifest-field convention that turned out not to match how
-the inventory is actually built — see Known Gaps. Workstation host-type
-support and the medium profile (the other half of M5 as originally
-scoped) are deferred to a separate pass.
+the inventory is actually built — see Known Gaps.
+
+**M5's other half (workstation host types + medium profile) is
+in progress, partially confirmed.** Windows 11 client support and
+Ubuntu LTS (first-ever Debian-family) support have been added; Ubuntu
+LTS testing in isolation found and fixed four real bugs (a
+`virt-install` kernel-detection failure specific to Ubuntu's live-server
+ISO, several one-time subiquity TUI screens that block forever over a
+serial console even with `interactive-sections: []`, and an apt
+GeoIP-mirror-lookup hang) but hit one still-open issue — subiquity's
+guided storage configuration doesn't honor either documented
+autoinstall storage directive on this Ubuntu 24.04.3 build, always
+falling back to an interactive (and inconsistently-encrypted) storage
+editor — see
+[troubleshooting-log.md § M5 (workstation support, Ubuntu LTS half)](./docs/troubleshooting-log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
+No Ubuntu LTS host has completed a full unattended install yet; Windows
+11 testing hasn't started.
 
 ## M1 quickstart (libvirt backend)
 
@@ -178,8 +192,22 @@ scripts/test/run-all.sh
   task silently matched zero hosts until this was corrected. Full
   investigation:
   [troubleshooting-log.md § M5](./docs/troubleshooting-log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working).
-  Workstation host-type support and the medium profile (M5's other
-  half, as DESIGN.md §18 originally scoped it) are deferred.
-- DHCP-mode addressing, the full OS matrix, Packer templates, and
-  workstation host-type support are all out of scope for M1/M2/M4/M5 —
-  see DESIGN.md §18 for the milestone plan.
+- **M5's other half (workstation host types + medium profile)** is in
+  progress. Windows 11 client and Ubuntu LTS OS entries have been
+  added; Ubuntu LTS isolation testing found and fixed a `virt-install`
+  kernel-detection failure specific to Ubuntu's live-server ISO
+  (osinfo-db declares no `<tree>` entry for it — fixed with an explicit
+  `kernel=`/`initrd=` override), several one-time subiquity TUI screens
+  that block forever over a serial console even with
+  `interactive-sections: []` (fixed with a generic idle-detection
+  keystroke-injection loop in `create-iso-direct.sh`), and an apt
+  GeoIP-mirror-lookup hang (fixed by pinning a mirror and disabling
+  GeoIP). **Still open**: subiquity's guided storage configuration
+  doesn't honor either documented autoinstall storage directive on this
+  Ubuntu 24.04.3 build, falling back to an interactive (and
+  inconsistently-encrypted) storage editor — no Ubuntu LTS host has
+  completed a full unattended install yet, and Windows 11 testing
+  hasn't started. Full investigation:
+  [troubleshooting-log.md § M5 (workstation support, Ubuntu LTS half)](./docs/troubleshooting-log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
+- DHCP-mode addressing, the full OS matrix, and Packer templates are
+  all still out of scope — see DESIGN.md §18 for the milestone plan.

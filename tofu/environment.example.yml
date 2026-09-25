@@ -37,8 +37,12 @@ vm_storage_path: /data/VMs/LABaPe
 # on that host, which needs a local path, not a URL (docs/base-images.md).
 os_iso_paths:
   rocky9: /data/OS_Images/Rocky-9-x86_64-minimal.iso
-  # Windows entries are all optional — only needed if a host_group
-  # actually uses that os key.
+  # Windows and Debian-family entries are all optional — only needed if
+  # a host_group actually uses that os key.
   windows_server_2019: /data/OS_Images/Windows_Server_2019.iso
   windows_server_2022: /data/OS_Images/SERVER_2022_x64FRE_en-us.iso
   windows_server_2025: /data/OS_Images/SERVER_2025_x64FRE_en-us.iso
+  windows_11: /data/OS_Images/Windows_11_24H2.iso
+  # The live-server ISO specifically — subiquity/autoinstall (M5) lives
+  # there, not on the desktop image.
+  ubuntu_lts: /data/OS_Images/ubuntu-24.04-live-server-amd64.iso

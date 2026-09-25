@@ -7,7 +7,7 @@ output "roles" {
 }
 
 output "os_family" {
-  description = "\"windows\" | \"linux\", derived from os_catalog — tells the inventory generator whether to set ansible_connection=winrm or ssh (DESIGN.md §6.1)."
+  description = "\"windows\" | \"linux\" | \"debian\", derived from os_catalog — tells the inventory generator whether to set ansible_connection=winrm or ssh (DESIGN.md §6.1). \"debian\" connects over ssh exactly like \"linux\" — it's a distinct value because the *install* mechanism differs, not the Ansible-facing one."
   value       = local.os_family
 }
 

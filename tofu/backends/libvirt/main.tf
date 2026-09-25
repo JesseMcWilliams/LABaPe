@@ -11,25 +11,53 @@ locals {
   # convention across totally different OS families. Extending this to
   # the full §5 OS matrix beyond what's actually implemented is still
   # out of scope.
-  # All three versions share one answer-file template — confirmed via
-  # `wiminfo` against each real eval ISO that install image index 1
-  # ("SERVERSTANDARDCORE") is consistent across all of them, so
-  # nothing in the XML itself is actually version-specific. os_variant
-  # (the libosinfo short-id) is the only thing that varies.
-  windows_answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl"
+  # The three Server versions share one answer-file template — confirmed
+  # via `wiminfo` against each real eval ISO that install image index 1
+  # ("SERVERSTANDARDCORE") is consistent across all of them, so nothing
+  # in the XML itself is actually version-specific there. Windows 11
+  # (client) is a genuinely different template, not just a different
+  # os_variant — see iso/answer-files/windows/autounattend-windows-
+  # client.xml.tpl's own comments for why (image selection by name, not
+  # index; LabConfig hardware-check bypasses a Server eval ISO never
+  # needed).
   windows_catalog = {
-    windows_server_2019 = { os_variant = "win2k19" }
-    windows_server_2022 = { os_variant = "win2k22" }
-    windows_server_2025 = { os_variant = "win2k25" }
+    windows_server_2019 = { os_variant = "win2k19", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
+    windows_server_2022 = { os_variant = "win2k22", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
+    windows_server_2025 = { os_variant = "win2k25", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
+    windows_11           = { os_variant = "win11",   answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-client.xml.tpl" }
+  }
+
+  # First-ever non-RHEL Linux family (M5's deferred workstation-support
+  # half) — a distinct os_family ("debian"), not folded into "linux",
+  # since the *install mechanism* genuinely differs (a NoCloud seed ISO,
+  # not kickstart's --initrd-inject) even though the Ansible-facing
+  # side (SSH, labape bootstrap user) is identical. Verified safe: every
+  # existing os_family branch is `== "windows" ? ... : ...` (an else,
+  # not an explicit `== "linux"` check), so a third value doesn't break
+  # anything outside the two vm/*/main.tf modules that need to know
+  # about it directly.
+  debian_catalog = {
+    # os_variant is the libosinfo short-id virt-install's --os-variant
+    # needs — verify against the actual libvirt host if installs start
+    # failing on this specifically (osinfo-query isn't installed there
+    # as of this writing, so this hasn't been independently confirmed
+    # beyond being the documented current-Ubuntu-LTS short-id).
+    ubuntu_lts = { os_variant = "ubuntu24.04", answer_file_template = "${path.module}/../../../iso/answer-files/debian-family/user-data-ubuntu-lts.yaml.tpl" }
   }
 
   os_catalog = {
     for os_key, iso_path in var.os_iso_paths : os_key => (
       contains(keys(local.windows_catalog), os_key) ? {
         iso_host_path         = iso_path
-        answer_file_template  = local.windows_answer_file_template
+        answer_file_template  = local.windows_catalog[os_key].answer_file_template
         os_family              = "windows"
         os_variant              = local.windows_catalog[os_key].os_variant
+      } : contains(keys(local.debian_catalog), os_key) ? {
+        iso_host_path         = iso_path
+        answer_file_template  = local.debian_catalog[os_key].answer_file_template
+        os_family              = "debian"
+        os_variant              = local.debian_catalog[os_key].os_variant
+        meta_data_template     = "${path.module}/../../../iso/answer-files/debian-family/meta-data.yaml.tpl"
       } : {
         iso_host_path         = iso_path
         answer_file_template  = "${path.module}/../../../iso/answer-files/rhel-family/ks-${os_key}.cfg.tpl"

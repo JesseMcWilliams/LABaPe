@@ -57,26 +57,38 @@ packer/
 iso/
   answer-files/
     windows/
-      autounattend-2019.xml
-      autounattend-2022.xml
-      autounattend-2025.xml
-      autounattend-win10.xml
-      autounattend-win11.xml
+      autounattend-windows-server.xml.tpl   # implemented — shared: 2019/2022/2025
+      autounattend-windows-client.xml.tpl   # implemented — shared: 11 (10 once it lands)
     rhel-family/
-      ks-rocky9.cfg
-      ks-rhel9.cfg
-      ks-almalinux9.cfg
-      ks-fedora.cfg
-      ks-oraclelinux9.cfg
+      ks-rocky9.cfg.tpl                     # implemented
+      ks-rhel9.cfg.tpl                      # not yet — same pattern once needed
+      ks-almalinux9.cfg.tpl
+      ks-fedora.cfg.tpl
+      ks-oraclelinux9.cfg.tpl
     debian-family/
-      user-data-ubuntu-lts.yaml
-      user-data-debian.yaml
-      user-data-mint.yaml
+      user-data-ubuntu-lts.yaml.tpl         # implemented
+      meta-data.yaml.tpl                    # implemented — shared, all Debian-family
+      user-data-debian.yaml.tpl             # not yet
+      user-data-mint.yaml.tpl
     opensuse/
-      autoyast-leap.xml
+      autoyast-leap.xml.tpl                 # not yet
 scripts/
   promote-to-template.sh   # generalize + export a live ISO-built VM into a template
 ```
+
+Every real file above ends in `.tpl` and is rendered via OpenTofu's
+`templatefile()` (tofu/modules/vm/libvirt/main.tf), not consumed
+directly — the non-`.tpl`, per-version names further down (`ks-rhel9.cfg`,
+`autoyast-leap.xml`, …) are this section's original aspirational
+listing for OS families not implemented yet, kept for the shape of what
+a future entry should look like, not a literal filename to expect.
+Windows and Debian-family are both **one shared template per family**
+(`os_variant`/the rendered hostname etc. are the only per-instance
+difference), not one file per version — confirmed for Windows Server
+2019/2022/2025 via `wiminfo` against each real ISO; the RHEL family is
+the one place that's genuinely per-`os_key` (`ks-<os_key>.cfg.tpl`),
+since each RHEL-family distro's package set/repo config differs enough
+to warrant its own file once added.
 
 Packer's `build.pkr.hcl` for each OS points at the shared answer file
 under `iso/answer-files/` rather than keeping its own copy.
@@ -162,6 +174,31 @@ first lab build before any templates exist yet:
   disk resources.
 - Trade-off is time, not capability: the full OS installer runs on every
   `tofu apply` for that host — until it's promoted (§5).
+
+**What the libvirt backend's `iso_direct` path actually does** (each
+family needs a genuinely different unattended-install delivery
+mechanism, not just a different answer-file format):
+  - **RHEL family**: `virt-install --location <iso> --initrd-inject
+    <rendered kickstart> --extra-args "inst.ks=file:/<basename>
+    console=ttyS0"` — the kickstart file is injected straight into the
+    boot initrd and referenced by a kernel argument.
+  - **Windows**: no kernel-argument hook exists for Windows Setup: it
+    auto-detects an `autounattend.xml` at the root of any attached
+    optical/floppy media instead, so a small ISO containing just that
+    file is built and attached as a second CD-ROM alongside the vendor
+    ISO (`--disk ...,device=cdrom` + `--cdrom <iso>`).
+  - **Debian family**: subiquity/cloud-init's NoCloud datasource
+    expects a labeled `CIDATA` volume containing exact-named
+    `user-data`/`meta-data` files at its root — closer to Windows'
+    second-CD-ROM pattern than to RHEL's single injected file. A small
+    `CIDATA`-labeled ISO is built from both rendered files and attached
+    as a second CD-ROM, booted via `--location <iso> --extra-args
+    "autoinstall ds=nocloud;s=file:///cdrom/ console=ttyS0"` (still
+    `--location`, same as RHEL, since both extract the installer's own
+    kernel/initrd the same way — only the seed-delivery mechanism
+    differs).
+  - See `tofu/modules/vm/libvirt/scripts/create-iso-direct.sh` for the
+    exact, current implementation of all three.
 
 ## 5. Promoting an ISO-built VM to a Template
 

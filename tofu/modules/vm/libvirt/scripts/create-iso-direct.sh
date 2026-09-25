@@ -49,6 +49,73 @@ disk_path="${VM_STORAGE_PATH}/${VM_NAME}.qcow2"
 # post-mortem inspection.
 console_log="/var/log/libvirt/qemu/${VM_NAME}-console.log"
 
+# Debian-family only (subiquity/cloud-init): confirmed via real testing
+# (docs/troubleshooting-log.md) that subiquity's serial-console TUI
+# blocks indefinitely on several one-time confirmation screens even
+# with `interactive-sections: []` in the autoinstall config — a
+# "Serial console started in basic mode" splash, a welcome/language
+# picker, and a network-configuration review screen were all hit in
+# testing, none suppressed by the autoinstall config itself, each
+# needing one Enter keypress. Rather than hardcode a marker string per
+# screen (fragile — the exact set of unavoidable pre-autoinstall
+# screens isn't documented and may differ across subiquity versions),
+# this detects "idle" generically: the console log only grows while
+# the TUI is actively animating/redrawing, so if its size hasn't
+# changed across two checks, something is very likely waiting on
+# input. A spurious Enter during a genuinely-automatic quiet patch
+# (e.g. curtin writing to disk) is assumed harmless — those screens
+# have no focused actionable control — so this errs toward sending
+# too many rather than too few, up to a bounded cap. Requires the
+# deploying account to have passwordless sudo for `cp` and `tee`
+# specifically (docs/base-images.md §4) — both the console log and the
+# console pty device are root-owned (0600) by libvirt/QEMU's own
+# defaults, unrelated to this repo's own config.
+dismiss_subiquity_prompts() {
+  local deadline=$((SECONDS + install_timeout_seconds))
+  local pty="" last_size=-1 idle_polls=0 sent_count=0
+  # max_sends started at 10 and was confirmed too low via real testing
+  # (docs/troubleshooting-log.md): idle gaps of 8s+ occur routinely
+  # during ordinary boot (disk-allocation progress ticks, kernel/udev
+  # messages) well before subiquity's TUI ever appears, and each one
+  # consumes a "send" — the budget was fully exhausted on boot noise
+  # before reaching the real interactive screens, silently disabling
+  # this function for the rest of the install. A stray Enter during
+  # boot is harmless (nothing focused/actionable to accidentally
+  # trigger), so raising the cap generously is a safe fix; the real
+  # constraint is still install_timeout_seconds overall.
+  local max_sends=50 idle_polls_required=2 poll_interval=4
+
+  while [ "$SECONDS" -lt "$deadline" ] && [ "$sent_count" -lt "$max_sends" ]; do
+    sleep "$poll_interval"
+    if [ -z "$pty" ]; then
+      # `|| true` is load-bearing, not defensive: with `pipefail` (set
+      # at the top of this script), grep finding no match yet (routine
+      # — the console element doesn't exist until the domain starts)
+      # makes the whole pipeline "fail", which set -e then treats as
+      # this entire script failing — silently orphaning the backgrounded
+      # virt-install and leaving OpenTofu's local-exec hung reading its
+      # now-parentless-but-still-open output pipe. Confirmed by hitting
+      # exactly that hang in real testing (docs/troubleshooting-log.md).
+      pty="$(virsh --connect "$LIBVIRT_URI" dumpxml "$VM_NAME" 2>/dev/null \
+        | grep -oP "(?<=<console type='pty' tty=')[^']+" | head -1 || true)"
+    fi
+    [ -z "$pty" ] && continue
+
+    cur_size="$(sudo -n /usr/bin/cp "$console_log" /dev/stdout 2>/dev/null | wc -c || true)"
+    if [ -n "$cur_size" ] && [ "$cur_size" = "$last_size" ]; then
+      idle_polls=$((idle_polls + 1))
+      if [ "$idle_polls" -ge "$idle_polls_required" ]; then
+        ( printf '\r'; sleep 2 ) | sudo -n tee "$pty" >/dev/null
+        sent_count=$((sent_count + 1))
+        idle_polls=0
+      fi
+    else
+      idle_polls=0
+    fi
+    last_size="$cur_size"
+  done
+}
+
 case "$OS_FAMILY" in
 linux)
   install_timeout_seconds=1800
@@ -73,6 +140,83 @@ linux)
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
     --wait -1; then
+    echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
+    echo "labape: the VM is left running for inspection — console log: $console_log (root-owned; e.g. sudo cat, or sudo cp --no-preserve=mode to a readable copy)." >&2
+    exit 1
+  fi
+  ;;
+
+debian)
+  : "${OS_VARIANT:?}"
+  : "${META_DATA_PATH:?}"
+  install_timeout_seconds=1800
+
+  # Debian-family autoinstall (subiquity/cloud-init) has no kernel-
+  # argument equivalent to kickstart's inst.ks=file:/<injected file> —
+  # its NoCloud datasource instead expects a labeled CIDATA volume
+  # containing exact-named user-data/meta-data files at its root, so
+  # this borrows the windows) branch's second-CD-ROM pattern (build a
+  # small ISO, attach it alongside the real install media) rather than
+  # the linux) branch's --initrd-inject. Still boots via --location
+  # (extracting the installer kernel/initrd) the same way linux) does,
+  # and keeps that branch's serial-console observability (--graphics
+  # none + a logged console) rather than windows)'s VNC, since
+  # subiquity, like Anaconda, is a text-mode installer.
+  #
+  # UNVERIFIED as of this writing: the exact ds= seed-URI form. If the
+  # install falls through to subiquity's interactive "no autoinstall
+  # config found" prompt (visible in the console log), try
+  # "ds=nocloud-net;s=file:///cdrom/" instead, or dropping ds= entirely
+  # (some cloud-init versions auto-detect a CIDATA-labeled attached
+  # volume by label alone) — don't assume this form works untested.
+  #
+  # kernel=/initrd= override on --location is REQUIRED, not optional,
+  # for Ubuntu 24.04 specifically (confirmed via real testing,
+  # docs/troubleshooting-log.md): osinfo-db's ubuntu24.04 entry marks
+  # its live/casper media installer-script="false" (its own comment:
+  # subiquity's autoinstall style "isn't supported yet in libosinfo and
+  # associated tools"), so virt-install's automatic kernel/initrd
+  # detection never consults that entry's declared
+  # casper/vmlinuz+casper/initrd paths at all — it falls back to a
+  # short hardcoded list of legacy locations (e.g. /install/vmlinuz),
+  # none of which exist on this ISO, and fails outright with "Couldn't
+  # find kernel for install tree." Passing the paths explicitly (which
+  # virt-install supports precisely for this "OS doesn't have tree
+  # metadata" case) bypasses that detection entirely.
+  seed_iso="${VM_STORAGE_PATH}/${VM_NAME}-seed.iso"
+  seed_stage_dir="$(mktemp -d)"
+  trap 'rm -rf "$seed_stage_dir"' EXIT
+  cp "$ANSWER_FILE_PATH" "$seed_stage_dir/user-data"
+  cp "$META_DATA_PATH" "$seed_stage_dir/meta-data"
+  xorrisofs -o "$seed_iso" -V CIDATA -J -r "$seed_stage_dir" >/dev/null
+  sync "$seed_iso"
+
+  # model=virtio (unlike Windows' sata/e1000e) — Ubuntu has in-box
+  # virtio drivers, so there's no equivalent reason to avoid it here.
+  #
+  # virt-install runs backgrounded (not `--wait -1` in the foreground)
+  # so dismiss_subiquity_prompts can run concurrently and unblock it —
+  # see that function's own comment for why this is needed at all.
+  timeout "$install_timeout_seconds" virt-install \
+    --connect "$LIBVIRT_URI" \
+    --name "$VM_NAME" \
+    --vcpus "$CPU_COUNT" \
+    --memory "$MEMORY_MB" \
+    --disk "path=${disk_path},size=${DISK_GB},format=qcow2" \
+    --disk "path=${seed_iso},device=cdrom" \
+    --location "${ISO_HOST_PATH},kernel=casper/vmlinuz,initrd=casper/initrd" \
+    --extra-args "autoinstall ds=nocloud;s=file:///cdrom/ console=ttyS0" \
+    --network "bridge=${BRIDGE_DEVICE},model=virtio" \
+    --os-variant "$OS_VARIANT" \
+    --graphics none \
+    --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
+    --noautoconsole \
+    --wait -1 &
+  vi_pid=$!
+
+  dismiss_subiquity_prompts
+
+  if ! wait "$vi_pid"; then
     echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
     echo "labape: the VM is left running for inspection — console log: $console_log (root-owned; e.g. sudo cat, or sudo cp --no-preserve=mode to a readable copy)." >&2
     exit 1
@@ -166,7 +310,7 @@ windows)
   ;;
 
 *)
-  echo "labape: unknown OS_FAMILY \"$OS_FAMILY\" — expected \"linux\" or \"windows\"." >&2
+  echo "labape: unknown OS_FAMILY \"$OS_FAMILY\" — expected \"linux\", \"debian\", or \"windows\"." >&2
   exit 1
   ;;
 esac

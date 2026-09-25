@@ -1,0 +1,44 @@
+# DESIGN.md §9's "medium" profile — a dual-role DC (domain_controller +
+# windows_server), extra Windows/Linux servers, and the first
+# Windows-client (windows_11) and Debian-family (ubuntu_lts) workstation
+# host groups, landing alongside that OS support (M5's deferred half).
+#
+# windows_11/ubuntu_lts are newer, less-exercised paths than the
+# server/Rocky combination above them — see docs/troubleshooting-log.md
+# for real bugs found getting them working, if that section exists yet.
+#
+# Copy this to medium.tfvars and adjust before use — it's checked in as
+# an example, not applied directly (.gitignore excludes real .tfvars).
+
+host_groups = [
+  {
+    name  = "dc"
+    count = 1
+    os    = "windows_server_2022"
+    roles = ["domain_controller", "windows_server"]
+  },
+  {
+    name  = "winsrv"
+    count = 2
+    os    = "windows_server_2022"
+    roles = ["windows_server"]
+  },
+  {
+    name  = "linsrv"
+    count = 3
+    os    = "rocky9"
+    roles = ["linux_server"]
+  },
+  {
+    name  = "winws"
+    count = 2
+    os    = "windows_11"
+    roles = ["windows_workstation"]
+  },
+  {
+    name  = "linws"
+    count = 2
+    os    = "ubuntu_lts"
+    roles = ["linux_workstation"]
+  },
+]
