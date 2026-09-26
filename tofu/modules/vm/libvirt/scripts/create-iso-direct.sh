@@ -146,6 +146,42 @@ linux)
   fi
   ;;
 
+debian_preseed)
+  : "${OS_VARIANT:?}"
+  install_timeout_seconds=1800
+
+  # Real Debian (not Ubuntu) — classic debian-installer/preseed.
+  # Mechanically almost identical to linux)'s kickstart branch (a
+  # single answer file injected into the initrd, referenced by a
+  # kernel command-line argument) — only the kernel-arg syntax differs
+  # (preseed/file=, not inst.ks=file:). bus=virtio is explicit (unlike
+  # linux)'s auto-detected bus) so the answer file's own
+  # partman-auto/disk and grub-installer/bootdev can safely hardcode
+  # /dev/vda — d-i, unlike Anaconda, has no disk-autodetection
+  # equivalent for either of those.
+  preseed_basename="$(basename "$ANSWER_FILE_PATH")"
+
+  if ! timeout "$install_timeout_seconds" virt-install \
+    --connect "$LIBVIRT_URI" \
+    --name "$VM_NAME" \
+    --vcpus "$CPU_COUNT" \
+    --memory "$MEMORY_MB" \
+    --disk "path=${disk_path},size=${DISK_GB},format=qcow2,bus=virtio" \
+    --location "$ISO_HOST_PATH" \
+    --initrd-inject "$ANSWER_FILE_PATH" \
+    --extra-args "auto=true priority=critical preseed/file=/${preseed_basename} console=ttyS0" \
+    --network "bridge=${BRIDGE_DEVICE},model=virtio" \
+    --os-variant "$OS_VARIANT" \
+    --graphics none \
+    --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
+    --noautoconsole \
+    --wait -1; then
+    echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
+    echo "labape: the VM is left running for inspection — console log: $console_log (root-owned; e.g. sudo cat, or sudo cp --no-preserve=mode to a readable copy)." >&2
+    exit 1
+  fi
+  ;;
+
 debian)
   : "${OS_VARIANT:?}"
   : "${META_DATA_PATH:?}"
@@ -310,7 +346,7 @@ windows)
   ;;
 
 *)
-  echo "labape: unknown OS_FAMILY \"$OS_FAMILY\" — expected \"linux\", \"debian\", or \"windows\"." >&2
+  echo "labape: unknown OS_FAMILY \"$OS_FAMILY\" — expected \"linux\", \"debian\", \"debian_preseed\", or \"windows\"." >&2
   exit 1
   ;;
 esac

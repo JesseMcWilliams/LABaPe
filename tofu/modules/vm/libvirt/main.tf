@@ -57,8 +57,14 @@ resource "terraform_data" "validate_os" {
 # ISO containing just that file and attaches it as a second CD-ROM.
 
 resource "local_file" "kickstart" {
-  count    = var.image_source == "iso_direct" && local.os_family == "linux" ? 1 : 0
-  filename = "${local.rendered_dir}/${var.name}-ks.cfg"
+  # debian_preseed shares this resource — same mechanism (a single
+  # answer file injected into the initrd, referenced by a kernel
+  # command-line argument), just a different answer-file format and
+  # kernel-arg syntax, both handled entirely in create-iso-direct.sh's
+  # os_family-specific case. Not worth a second near-identical resource
+  # for that.
+  count    = var.image_source == "iso_direct" && contains(["linux", "debian_preseed"], local.os_family) ? 1 : 0
+  filename = "${local.rendered_dir}/${var.name}-answer.cfg"
 
   content = templatefile(local.os_meta.answer_file_template, {
     hostname          = var.name

@@ -25,6 +25,7 @@ locals {
     windows_server_2022 = { os_variant = "win2k22", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
     windows_server_2025 = { os_variant = "win2k25", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
     windows_11           = { os_variant = "win11",   answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-client.xml.tpl" }
+    windows_10           = { os_variant = "win10",   answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-10.xml.tpl" }
   }
 
   # First-ever non-RHEL Linux family (M5's deferred workstation-support
@@ -43,6 +44,29 @@ locals {
     # as of this writing, so this hasn't been independently confirmed
     # beyond being the documented current-Ubuntu-LTS short-id).
     ubuntu_lts = { os_variant = "ubuntu24.04", answer_file_template = "${path.module}/../../../iso/answer-files/debian-family/user-data-ubuntu-lts.yaml.tpl" }
+
+    # ubuntu_26: added to test whether a newer subiquity build resolves
+    # the still-open guided-storage bug documented against ubuntu_lts
+    # (24.04.3) in docs/troubleshooting-log.md. os_variant falls back to
+    # "ubuntu24.04" — this host's osinfo-db (dated mid-2025) has no
+    # ubuntu-26.04 entry yet; harmless here since kernel/initrd are
+    # passed explicitly on --location rather than relying on osinfo
+    # tree/media detection anyway. Same answer-file template as
+    # ubuntu_lts — the subiquity/cloud-init install mechanism is
+    # unchanged between releases.
+    ubuntu_26 = { os_variant = "ubuntu24.04", answer_file_template = "${path.module}/../../../iso/answer-files/debian-family/user-data-ubuntu-lts.yaml.tpl" }
+  }
+
+  # Real Debian (not Ubuntu) — classic debian-installer/preseed, a
+  # genuinely different install mechanism from "debian" above (initrd-
+  # inject + kernel append, like "linux"/kickstart, not a NoCloud seed
+  # ISO), hence its own os_family rather than reusing either existing
+  # one. Added specifically to test whether it avoids the still-open
+  # guided-storage bug hit on Ubuntu (docs/troubleshooting-log.md) —
+  # d-i's preseed is a mature, fully-scriptable installer with no
+  # subiquity-style TUI confirmation screens at all.
+  debian_preseed_catalog = {
+    debian_latest = { os_variant = "debian13", answer_file_template = "${path.module}/../../../iso/answer-files/debian-family/preseed-debian.cfg.tpl" }
   }
 
   os_catalog = {
@@ -58,6 +82,11 @@ locals {
         os_family              = "debian"
         os_variant              = local.debian_catalog[os_key].os_variant
         meta_data_template     = "${path.module}/../../../iso/answer-files/debian-family/meta-data.yaml.tpl"
+      } : contains(keys(local.debian_preseed_catalog), os_key) ? {
+        iso_host_path         = iso_path
+        answer_file_template  = local.debian_preseed_catalog[os_key].answer_file_template
+        os_family              = "debian_preseed"
+        os_variant              = local.debian_preseed_catalog[os_key].os_variant
       } : {
         iso_host_path         = iso_path
         answer_file_template  = "${path.module}/../../../iso/answer-files/rhel-family/ks-${os_key}.cfg.tpl"

@@ -113,15 +113,20 @@ variable "os_catalog" {
     manual prerequisite for now, not something this module automates.
 
     answer_file_template is a kickstart .cfg.tpl for os_family "linux",
-    an autounattend .xml.tpl for "windows", or a cloud-init/subiquity
+    an autounattend .xml.tpl for "windows", a cloud-init/subiquity
     autoinstall .yaml.tpl for "debian" (Debian-family — first added
     alongside Windows 11 support; a distinct os_family from "linux"
     because the install mechanism differs — a NoCloud seed ISO, not
     kickstart's --initrd-inject — even though both connect over SSH
-    the same way afterward). os_variant is the libosinfo short-id
-    (e.g. "win2k22", "ubuntu24.04") virt-install's --os-variant needs
-    for Windows/Debian; unused (empty string) for RHEL-family Linux,
-    which relies on --os-variant detect=on,require=off instead.
+    the same way afterward), or a debian-installer preseed .cfg.tpl for
+    "debian_preseed" (real Debian, as opposed to Ubuntu — mechanically
+    closer to "linux"'s --initrd-inject than to "debian"'s NoCloud ISO,
+    but a distinct os_family anyway since the answer-file format and
+    kernel-arg syntax both differ from kickstart's). os_variant is the
+    libosinfo short-id (e.g. "win2k22", "ubuntu24.04", "debian13")
+    virt-install's --os-variant needs for Windows/Debian/debian_preseed;
+    unused (empty string) for RHEL-family Linux, which relies on
+    --os-variant detect=on,require=off instead.
 
     meta_data_template ("debian" only, empty string otherwise): cloud-
     init's NoCloud datasource needs a second file, meta-data, alongside

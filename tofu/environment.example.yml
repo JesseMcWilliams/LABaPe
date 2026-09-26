@@ -46,3 +46,9 @@ os_iso_paths:
   # The live-server ISO specifically — subiquity/autoinstall (M5) lives
   # there, not on the desktop image.
   ubuntu_lts: /data/OS_Images/ubuntu-24.04-live-server-amd64.iso
+  ubuntu_26: /data/OS_Images/ubuntu-26.04-live-server-amd64.iso
+  # debian-installer/preseed (real Debian, not Ubuntu) — a netinst ISO,
+  # not the multi-GB full DVD image (only netinst uses the classic
+  # installer download flow this template targets).
+  debian_latest: /data/OS_Images/debian-13-netinst-amd64.iso
+  windows_10: /data/OS_Images/Windows_10.iso
