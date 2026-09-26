@@ -137,6 +137,10 @@ variable "os_catalog" {
     ITS OWN path.module needs different ".." arithmetic than one built
     in the root module — simplest to only ever compute these paths in
     one place.
+
+    min_disk_gb (optional, 0 = no floor): the smallest disk_gb this OS's
+    installer accepts — validate_os fails the plan instead of letting
+    Setup stop mid-install on a too-small disk (Windows 11).
   EOT
   type = map(object({
     iso_host_path         = string
@@ -144,6 +148,7 @@ variable "os_catalog" {
     os_family             = string
     os_variant            = optional(string, "")
     meta_data_template    = optional(string, "")
+    min_disk_gb           = optional(number, 0)
   }))
 }
 

@@ -71,6 +71,10 @@
         </RunSynchronousCommand>
       </RunSynchronous>
       <UserData>
+        <ProductKey>
+          <Key></Key>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
         <AcceptEula>true</AcceptEula>
       </UserData>
       <ImageInstall>

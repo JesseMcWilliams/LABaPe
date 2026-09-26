@@ -20,11 +20,28 @@ locals {
   # client.xml.tpl's own comments for why (image selection by name, not
   # index; LabConfig hardware-check bypasses a Server eval ISO never
   # needed).
+  # windows_11 deliberately uses os_variant "win10", not "win11": the
+  # win11 libosinfo profile makes virt-install select OVMF/UEFI firmware
+  # plus an emulated TPM, and UEFI's "Press any key to boot from CD or
+  # DVD" prompt times out unattended, dropping into the OVMF Boot
+  # Manager. win10 is the same device model on plain SeaBIOS, matching
+  # Server. (`--boot firmware=bios` would say this explicitly, but libvirt
+  # then needs a SeaBIOS firmware descriptor, which this Debian host's
+  # qemu packages don't ship; only edk2 ones are in
+  # /usr/share/qemu/firmware/.) Windows 11 Setup's own TPM/Secure Boot/CPU
+  # checks are skipped by the LabConfig keys in the client template.
+  # Tradeoff: no Secure Boot/TPM-realistic testing on these VMs (not
+  # needed).
+  # min_disk_gb (optional, checked by the vm module's validate_os):
+  # Windows 11 Setup refuses a disk below its own floor ("The system
+  # drive needs to be at least 52 GB" on 24H2 — hit on the repo-wide 40
+  # GB default); 64 is Microsoft's published minimum. Everything else
+  # installs fine at 40.
   windows_catalog = {
     windows_server_2019 = { os_variant = "win2k19", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
     windows_server_2022 = { os_variant = "win2k22", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
     windows_server_2025 = { os_variant = "win2k25", answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-server.xml.tpl" }
-    windows_11           = { os_variant = "win11",   answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-client.xml.tpl" }
+    windows_11           = { os_variant = "win10",   answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-client.xml.tpl", min_disk_gb = 64 }
     windows_10           = { os_variant = "win10",   answer_file_template = "${path.module}/../../../iso/answer-files/windows/autounattend-windows-10.xml.tpl" }
   }
 
@@ -76,6 +93,7 @@ locals {
         answer_file_template  = local.windows_catalog[os_key].answer_file_template
         os_family              = "windows"
         os_variant              = local.windows_catalog[os_key].os_variant
+        min_disk_gb            = try(local.windows_catalog[os_key].min_disk_gb, 0)
       } : contains(keys(local.debian_catalog), os_key) ? {
         iso_host_path         = iso_path
         answer_file_template  = local.debian_catalog[os_key].answer_file_template

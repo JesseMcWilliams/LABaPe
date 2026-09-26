@@ -20,7 +20,7 @@ for the detailed, blow-by-blow history behind every bug found along the way.
 - **M2 (Hyper-V, Linux)** — done, end-to-end, but needs more operational care (a manual boot-order fix after every `tofu apply`) — prefer libvirt/KVM when it's an option.
 - **M4 (domain services)** — done, end-to-end: AD DS promotion, Windows + Linux domain join, software install, one playbook run.
 - **M5 (directory objects half)** — done, end-to-end: OUs, domain/local groups and users, both membership directions.
-- **M5 (workstation host types half)** — in progress: Windows 11 client and Ubuntu LTS support added; one open bug (Ubuntu subiquity storage config) blocks a full unattended Ubuntu install.
+- **M5 (workstation host types half)** — Windows 11 and Windows 10 clients done, end-to-end (unattended install, domain join, `site.yml`); Debian 13 installs fully unattended; Ubuntu LTS (24.04 and 26.04) still blocked by one open storage bug.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
 
@@ -90,7 +90,7 @@ full deploy.
 
 - DHCP-mode addressing, the full OS matrix, and Packer templates are all still out of scope — `Claude_Docs/Design_System-Overview.md` §18 has the milestone plan.
 - Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M2.
-- Ubuntu LTS workstation support has one open bug (guided storage/LUKS) blocking a full unattended install — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M5 (workstation support, Ubuntu LTS half).
-- Windows 11 workstation support hasn't started testing yet.
+- Ubuntu LTS workstation support (24.04 and 26.04) has one open bug (guided storage/LUKS) blocking a full unattended install — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M5 (workstation support, Ubuntu LTS half). Use `debian_latest` for a Linux workstation meanwhile.
+- Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing.
 
 Full bug-by-bug history for every milestone: `Claude_Docs/Testing_Troubleshooting-Log.md`.

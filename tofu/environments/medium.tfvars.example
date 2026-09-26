@@ -5,7 +5,9 @@
 #
 # windows_11/ubuntu_lts are newer, less-exercised paths than the
 # server/Rocky combination above them — see Claude_Docs/Testing_Troubleshooting-Log.md
-# for real bugs found getting them working, if that section exists yet.
+# for real bugs found getting them working. ubuntu_lts still has an open
+# unattended-storage bug there; swap in debian_latest for a Linux
+# workstation that installs fully unattended today.
 #
 # Copy this to medium.tfvars and adjust before use — it's checked in as
 # an example, not applied directly (.gitignore excludes real .tfvars).
@@ -34,6 +36,9 @@ host_groups = [
     count = 2
     os    = "windows_11"
     roles = ["windows_workstation"]
+    # Windows 11 Setup rejects the 40 GB default (validate_os enforces
+    # the 64 GB published minimum; see tofu/backends/libvirt/main.tf).
+    disk_gb = 80
   },
   {
     name  = "linws"

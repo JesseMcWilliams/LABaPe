@@ -26,7 +26,13 @@ safe_undefine() {
       | awk '$2=="disk"{print $4} $2=="cdrom" && $4 ~ /-autounattend\.iso$/{print $4}'
   )"
 
-  virsh --connect "$uri" undefine "$name"
+  # --nvram: a UEFI (OVMF) domain has a per-VM NVRAM variable store and
+  # plain undefine refuses it ("cannot undefine domain with nvram").
+  # Removes only that VM's own vars file; a no-op on BIOS domains, which
+  # every LABaPe VM is today (windows_11 uses os_variant win10 to avoid
+  # UEFI, see tofu/backends/libvirt/main.tf), kept so a hand-made or
+  # older UEFI leftover can't wedge a destroy.
+  virsh --connect "$uri" undefine "$name" --nvram
 
   # libvirtd creates these with dynamic_ownership (libvirt-qemu:kvm) in
   # a root-owned, non-world-writable directory — plain `rm` as this

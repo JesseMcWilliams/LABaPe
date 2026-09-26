@@ -186,7 +186,13 @@ mechanism, not just a different answer-file format):
     auto-detects an `autounattend.xml` at the root of any attached
     optical/floppy media instead, so a small ISO containing just that
     file is built and attached as a second CD-ROM alongside the vendor
-    ISO (`--disk ...,device=cdrom` + `--cdrom <iso>`).
+    ISO (`--disk ...,device=cdrom` + `--cdrom <iso>`). Every Windows
+    version boots legacy BIOS: `windows_11` is cataloged with
+    `os_variant = "win10"` because `win11` makes virt-install pick
+    UEFI + TPM, whose "press any key to boot from CD" prompt can't be
+    answered unattended. Windows 11's hardware checks are skipped with
+    `LabConfig` registry keys in the answer file instead. Windows 11 also
+    needs `disk_gb` >= 64 (`min_disk_gb`, enforced at plan time).
   - **Debian family**: subiquity/cloud-init's NoCloud datasource
     expects a labeled `CIDATA` volume containing exact-named
     `user-data`/`meta-data` files at its root — closer to Windows'

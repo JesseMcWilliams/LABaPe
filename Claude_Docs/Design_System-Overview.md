@@ -720,11 +720,11 @@ None blocking further scaffolding right now.
   afterward — see
   [Claude_Docs/Testing_Troubleshooting-Log.md § M4](./Testing_Troubleshooting-Log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs)
   for the two real bugs (a `become: true` mistake, and platform-opposite
-  domain-join credential formats) this took to get working. **Not yet
-  separately exercised**: the `windows_workstation`/`linux_workstation`
-  join path (same role, different target group — should work
-  identically in principle, untested in practice) and the dual-role
-  DC+member-server profile from §9's medium example.
+  domain-join credential formats) this took to get working. The
+  `windows_workstation` join path has since been confirmed (Windows 11
+  and 10, M5). **Not yet separately exercised**: the `linux_workstation`
+  join path and the dual-role DC+member-server profile from §9's medium
+  example.
 - **M5** — Workstation host type + medium profile, validated with
   domain join across all host types. `domain_directory` role +
   `directory-manifest.yml` (OUs, domain/local groups and users,
@@ -751,8 +751,14 @@ None blocking further scaffolding right now.
   honor either documented autoinstall storage directive on this Ubuntu
   24.04.3 build — see
   [Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu LTS half)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
-  No Ubuntu LTS host has completed a full unattended install yet;
-  Windows 11 testing hasn't started.
+  No Ubuntu LTS host has completed a full unattended install yet
+  (Ubuntu 26.04 hits the identical bug). The follow-on OS-matrix pass
+  ([Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu 26 / Debian / Windows client)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-26--debian--windows-client-os-matrix-pass))
+  confirmed **Windows 11 and Windows 10 clients end-to-end** (unattended
+  install on legacy BIOS, domain join as `windows_workstation`, clean
+  `site.yml`) and a fully unattended **Debian 13** install via the new
+  `debian_preseed` os_family. Still to do for M5: a Linux workstation
+  domain join (Debian) and a full medium-profile run.
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
   ISO-built lab VM into a reusable template; `refresh-template.sh`

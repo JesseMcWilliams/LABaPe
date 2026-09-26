@@ -36,6 +36,10 @@ resource "terraform_data" "validate_os" {
       condition     = local.os_meta != null
       error_message = "Unknown os \"${var.os}\" — not present in var.os_catalog. See tofu/environments/small.tfvars.example."
     }
+    precondition {
+      condition     = local.os_meta == null || var.disk_gb >= try(local.os_meta.min_disk_gb, 0)
+      error_message = "disk_gb = ${var.disk_gb} is below the ${try(local.os_meta.min_disk_gb, 0)} GB minimum for os \"${var.os}\" — set disk_gb on this host group (Claude_Docs/Design_Base-Images.md)."
+    }
   }
 }
 
