@@ -634,3 +634,85 @@ templating, kernel/initrd boot, the serial-console prompt chain, and
 apt/mirror configuration are all confirmed working unattended; disk
 provisioning is not, so no Ubuntu LTS host has yet completed a full
 unattended install through to a bootable, SSH-reachable final system.
+
+## M5 (workstation support, Ubuntu 26 / Debian / Windows client): OS-matrix pass
+
+Follow-on to the section above: after Ubuntu 24.04.3 blocked on storage,
+the remaining workstation candidates were each tried in isolation
+(single-host throwaway workspace, `test-<name>.tfvars`), then the two
+Windows clients were domain-joined against the existing `lab1` DC.
+
+| OS (`os` key) | Result |
+|---|---|
+| Ubuntu 26.04.1 (`ubuntu_26`) | Same storage/LUKS passphrase screen as 24.04.3, at the same point — not a point-release regression. Still open (section above). |
+| Debian 13 (`debian_latest`, new `debian_preseed` os_family) | Fully unattended install; SSH as `labape` and passwordless sudo confirmed. |
+| Windows 11 24H2 (`windows_11`) | Fully unattended install (~9 min), Windows 11 Pro, joined `labape.test`, `site.yml` clean. |
+| Windows 10 22H2 (`windows_10`) | Fully unattended install (~8 min), Windows 10 Pro, joined `labape.test`, `site.yml` clean. |
+
+This also closes M4's "not yet separately exercised" note: the
+`windows_workstation` join path works with the unchanged
+`windows_domain_join` role.
+
+### `--os-variant win11` silently switches the VM to UEFI + TPM
+
+libosinfo's `win11` profile makes `virt-install` define the domain with
+`<os firmware="efi">` and a `tpm-crb` device (Server's `win2k22` gets
+plain SeaBIOS). Under OVMF, the Windows ISO's "Press any key to boot
+from CD or DVD..." prompt times out unattended and drops into the OVMF
+Boot Manager, so the install never starts without a human. Two follow-on
+effects: `virsh undefine` refuses a UEFI domain without `--nvram`
+("cannot undefine domain with nvram"), and the manual workaround used
+during testing, `--remove-all-storage`, deleted the shared Windows 11
+ISO (see the next entry but one).
+
+The explicit fix, `--boot firmware=bios`, passes `--print-xml` but fails
+at define time: "Unable to find 'bios' firmware that is compatible with
+the current configuration". libvirt then wants a SeaBIOS firmware
+descriptor, and this Debian host's qemu packages only ship edk2 ones in
+`/usr/share/qemu/firmware/`. Fixed instead by cataloging `windows_11`
+with `os_variant = "win10"` (same device model, no firmware attribute,
+so plain SeaBIOS; `tofu/backends/libvirt/main.tf`). Windows 11 Setup's
+own TPM/Secure Boot/CPU/RAM checks are skipped by the existing
+`HKLM\SYSTEM\Setup\LabConfig` `Bypass*Check` keys in the client
+template's windowsPE `RunSynchronous`, the documented mechanism tools
+like Rufus automate. `safe_undefine` now passes `--nvram` anyway
+(harmless on BIOS domains, verified) so a UEFI leftover can't wedge a
+destroy.
+
+### Client media prompts for a product key despite `AcceptEula`
+
+Retail/multi-edition client ISOs stop on "Activate Windows" even with
+`<UserData><AcceptEula>true</AcceptEula></UserData>`; Server eval media
+doesn't. Fixed with an empty key under `UserData` in both client
+templates: `<ProductKey><Key></Key><WillShowUI>Never</WillShowUI></ProductKey>`.
+Edition selection still comes from `/IMAGE/NAME` (`Windows 11 Pro` in
+`install.wim`, `Windows 10 Pro` in `install.esd`, both confirmed with
+`wiminfo`; extract without mounting via `7z e -o<dir> <iso> sources/install.wim`).
+
+### Windows 11 needs a bigger disk than the repo default
+
+24H2 Setup stops with "The system drive needs to be at least 52 GB or
+larger" on the 40 GB `disk_gb` default. The catalog now carries an
+optional `min_disk_gb` (64 for `windows_11`, Microsoft's published
+minimum), and `validate_os` fails the plan with a clear message instead
+of letting Setup stall mid-install. Set `disk_gb` (80 used in testing)
+on Windows 11 host groups; `medium.tfvars.example` does.
+
+### Operational: `virsh undefine --remove-all-storage` deleted a shared ISO
+
+During manual cleanup of the first (UEFI) Windows 11 attempt,
+`virsh undefine winws1 --nvram --remove-all-storage` deleted
+`/data/OS_Images/Windows_11_24H2_2025_03.iso`: that flag removes every
+attached volume, including the read-only `--cdrom` install media. The
+ISO was restored by hand. The repo's own teardown path (`safe_undefine`
+in `tofu/modules/vm/libvirt/scripts/lib/safe-undefine.sh`) already avoids the flag and deletes
+only the VM's disk and generated answer ISO by path; confirmed with a
+real `tofu destroy` of both Windows client VMs, which left the shared
+ISOs intact. Never use `--remove-all-storage` on LABaPe domains.
+
+### CRLF shell scripts from a Windows checkout
+
+Copying `create-iso-direct.sh` from a Windows working copy
+(`core.autocrlf=true`) to the libvirt host failed on line 5:
+`set: pipefail: invalid option name`. `.gitattributes` now pins `*.sh`
+and `*.py` to LF in every working copy.

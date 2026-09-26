@@ -43,6 +43,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Design_Base-Images.md`, `Design_Directory-Objects.md`, `Design_Software-Manifest.md`: detail docs for the matching `Design_System-Overview.md` sections.
   - `Reference_Credentials.md`, `Reference_Networking.md`, `Reference_Validate-Setup.md`: interface contracts / stable checklists.
   - `Planning_Certificate-Authority.md`, `Planning_Environment-Templates.md`: proposals, not built yet (Design_System-Overview.md §19/§20).
+  - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history, filed per milestone. Over the ~500-line guideline (636 lines) — left as one file since every entry is still actively linked; split fully-closed entries into an `Archive_Testing_...` file if it grows further.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** (None exist yet.)
 - `User_Docs/`: end-user setup guides (`Install-OpenTofu.md`, `Install-Ansible.md`, and WSL variants of each).

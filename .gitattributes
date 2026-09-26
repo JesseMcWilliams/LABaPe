@@ -1,0 +1,5 @@
+# Scripts run on the Linux libvirt host, often copied straight from a
+# Windows checkout (core.autocrlf=true): keep them LF in every working
+# copy or bash fails on the first line ("set: pipefail: invalid option").
+*.sh text eol=lf
+*.py text eol=lf
