@@ -5,74 +5,24 @@ Linux servers and workstations) on either Hyper-V or KVM (Rocky/Debian),
 using OpenTofu for provisioning and Ansible for configuration/software
 installation.
 
-See [DESIGN.md](./DESIGN.md) for scope, architecture, and open decisions,
-`docs/` for the detailed design of base images, networking, credentials,
-the software manifest, directory objects, and future work (a
-`certificate_authority` role and a web interface for composable
-environment templates — DESIGN.md §19/§20, not yet implemented), and
-[docs/troubleshooting-log.md](./docs/troubleshooting-log.md) for the
-detailed, blow-by-blow history behind every bug mentioned below.
+See [Claude_Docs/Design_System-Overview.md](./Claude_Docs/Design_System-Overview.md)
+for scope, architecture, and open decisions (milestone-by-milestone status is
+in §18); `Claude_Docs/` for the detailed design of base images, networking,
+credentials, the software manifest, directory objects, and future work (a
+`certificate_authority` role and a web interface for composable environment
+templates — §19/§20, not yet implemented); and
+[Claude_Docs/Testing_Troubleshooting-Log.md](./Claude_Docs/Testing_Troubleshooting-Log.md)
+for the detailed, blow-by-blow history behind every bug found along the way.
 
 ## Status
 
-**M1 (libvirt/KVM backend, Linux + Windows) works end-to-end**,
-confirmed against real infrastructure: Linux via kickstart, Windows
-Server 2019/2022/2025 via `autounattend.xml`, both bootstrapped over
-SSH/WinRM and configured by Ansible. **Recommended backend** — see
-below.
+- **M1 (libvirt/KVM, Linux + Windows)** — done, end-to-end, confirmed against real infrastructure. **Recommended backend.**
+- **M2 (Hyper-V, Linux)** — done, end-to-end, but needs more operational care (a manual boot-order fix after every `tofu apply`) — prefer libvirt/KVM when it's an option.
+- **M4 (domain services)** — done, end-to-end: AD DS promotion, Windows + Linux domain join, software install, one playbook run.
+- **M5 (directory objects half)** — done, end-to-end: OUs, domain/local groups and users, both membership directions.
+- **M5 (workstation host types half)** — in progress: Windows 11 client and Ubuntu LTS support added; one open bug (Ubuntu subiquity storage config) blocks a full unattended Ubuntu install.
 
-**M2 (Hyper-V backend, Linux only) also works end-to-end** as of the
-latest fixes: `tofu apply` creates a network switch, VHD, and VM; the
-VM completes an unattended Rocky 9 kickstart install; reboots into the
-freshly installed OS; and is reachable over SSH. Getting here took
-tracking down a Hyper-V-specific BIOS default that made completed
-installs loop forever, plus a `taliesins/hyperv` provider crash — see
-Known Gaps.
-
-**Recommendation: prefer the libvirt/KVM backend.** M2 needed several
-real, hard-to-diagnose workarounds (a Hyper-V BIOS boot-order default,
-multiple distinct provider crashes, WinRM's general fragility vs. SSH)
-to reach the same end-to-end state M1 got to more directly. Use Hyper-V
-when KVM genuinely isn't an option, and budget more operational care —
-in particular, `scripts/set-boot-order.sh` must currently be run by
-hand after every `tofu apply` (Known Gaps).
-
-**M4 (domain services) works end-to-end**, confirmed against real
-infrastructure on the libvirt backend: a single, unmodified
-`ansible-playbook site.yml` run takes bare VMs through AD DS promotion
-(`domain_controller` role), Windows domain join
-(`microsoft.ad.membership`), Linux domain join (`realmd`/`sssd`), and
-software install, with zero failures. Getting there needed two
-non-obvious fixes: a `become: true` bug on Windows WinRM plays, and
-domain-join credentials that turned out to need *opposite* formats per
-platform (Linux: bare username; Windows: NetBIOS-qualified,
-`DOMAIN\user`) — see Known Gaps.
-
-**M5 (directory objects) works end-to-end**: OUs, domain groups, domain
-users, local groups/users, and both membership directions (domain group
-nesting, and a domain principal added to a local group), all driven by
-a single optional `directory-manifest.yml` and confirmed against real
-AD DS. Three more non-obvious fixes needed — a misconfigured
-filter-plugin search path, `microsoft.ad` parameters that look
-list-valued but actually need an `{add:/remove:/set:}` dict, and a
-documented manifest-field convention that turned out not to match how
-the inventory is actually built — see Known Gaps.
-
-**M5's other half (workstation host types + medium profile) is
-in progress, partially confirmed.** Windows 11 client support and
-Ubuntu LTS (first-ever Debian-family) support have been added; Ubuntu
-LTS testing in isolation found and fixed four real bugs (a
-`virt-install` kernel-detection failure specific to Ubuntu's live-server
-ISO, several one-time subiquity TUI screens that block forever over a
-serial console even with `interactive-sections: []`, and an apt
-GeoIP-mirror-lookup hang) but hit one still-open issue — subiquity's
-guided storage configuration doesn't honor either documented
-autoinstall storage directive on this Ubuntu 24.04.3 build, always
-falling back to an interactive (and inconsistently-encrypted) storage
-editor — see
-[troubleshooting-log.md § M5 (workstation support, Ubuntu LTS half)](./docs/troubleshooting-log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
-No Ubuntu LTS host has completed a full unattended install yet; Windows
-11 testing hasn't started.
+Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
 
 ## M1 quickstart (libvirt backend)
 
@@ -80,21 +30,21 @@ Prerequisites, none of which this repo automates yet:
 
 1. A libvirt host (Rocky/Debian) reachable via `qemu+ssh://` from your
    control machine, with a bridge device already set up
-   (docs/networking.md §1 — e.g. `nmcli connection add type bridge
+   (`Claude_Docs/Reference_Networking.md` §1 — e.g. `nmcli connection add type bridge
    ifname br0`, physical NIC enslaved to it).
 2. A Rocky 9 ISO staged on that host's filesystem (path goes in
-   `environment.yml`'s `os_iso_paths`, docs/base-images.md).
+   `environment.yml`'s `os_iso_paths`, `Claude_Docs/Design_Base-Images.md`).
 3. `virt-install`/`virsh` reachable from wherever OpenTofu runs against
    that same `qemu+ssh://` URI (tofu/modules/vm/libvirt shells out to
    `virt-install` directly — see that module's comments for why).
 4. OpenTofu, Ansible, and Python 3 with PyYAML on the control machine —
-   [docs/install-opentofu.md](./docs/install-opentofu.md) and
-   [docs/install-ansible.md](./docs/install-ansible.md) for a dedicated
+   [User_Docs/Install-OpenTofu.md](./User_Docs/Install-OpenTofu.md) and
+   [User_Docs/Install-Ansible.md](./User_Docs/Install-Ansible.md) for a dedicated
    Debian 13 control machine, or
-   [docs/install-opentofu-windows-wsl.md](./docs/install-opentofu-windows-wsl.md) /
-   [docs/install-ansible-windows-wsl.md](./docs/install-ansible-windows-wsl.md)
+   [User_Docs/Install-OpenTofu-WSL.md](./User_Docs/Install-OpenTofu-WSL.md) /
+   [User_Docs/Install-Ansible-WSL.md](./User_Docs/Install-Ansible-WSL.md)
    if the control machine is WSL2 on the same Windows/Hyper-V box.
-5. An SSH keypair for the Ansible bootstrap user (docs/credentials.md §5)
+5. An SSH keypair for the Ansible bootstrap user (`Claude_Docs/Reference_Credentials.md` §5)
    — `ssh-keygen -f ~/.ssh/labape_bootstrap`.
 
 Setup:
@@ -118,96 +68,29 @@ scripts/destroy.sh libvirt lab1 small
 ```
 
 `lab1` is the environment instance name (an OpenTofu workspace,
-DESIGN.md §6.3) — pick anything; running the same name again re-applies
-against that same environment instead of creating a new one.
+`Claude_Docs/Design_System-Overview.md` §6.3) — pick anything; running the same
+name again re-applies against that same environment instead of creating a new one.
 
 ## Validating your setup
 
 Before the first real `scripts/deploy.sh` run, or any time something's
 not working and it's unclear whether it's this repo or the underlying
-tooling: [docs/validate-setup.md](./docs/validate-setup.md) plus
-`scripts/test/run-all.sh` check that OpenTofu/Ansible are actually
-installed correctly, the playbook/HCL actually parse, and (whichever
-backend you're using) the libvirt or WinRM connection actually works —
-independently of running a full deploy.
+tooling: [Claude_Docs/Reference_Validate-Setup.md](./Claude_Docs/Reference_Validate-Setup.md) plus
 
 ```
 scripts/test/run-all.sh
 ```
 
-## Known gaps in this scaffold
+which check that OpenTofu/Ansible are actually installed correctly, the
+playbook/HCL actually parse, and (whichever backend you're using) the
+libvirt or WinRM connection actually works — independently of running a
+full deploy.
 
-- **M1 (libvirt/Linux)** works end-to-end; getting there fixed several
-  real bugs static review couldn't have caught (an invalid OpenTofu
-  precondition, a `virt-install` flag incompatibility, a libvirt race
-  on concurrent VM creation, a kickstart option this Anaconda version
-  silently hangs on, missing DNS/EPEL, a post-reboot timing race, and a
-  pre-flight network check confused by its own VMs). Full details:
-  [troubleshooting-log.md § M1](./docs/troubleshooting-log.md#m1-libvirt-bugs-found-getting-the-first-end-to-end-run-working).
-- **M1 (libvirt/Windows)** works end-to-end (2019/2022/2025, ahead of
-  DESIGN.md §18's original M3 schedule) after resolving a long-standing
-  intermittent install failure: Windows Setup's XML deserializer chokes
-  on multi-line comments in the answer file, so `create-iso-direct.sh`
-  now strips them from the copy Setup actually reads. Ten rounds of
-  investigation, most of them ruling out plausible-looking dead ends,
-  are kept in full at
-  [troubleshooting-log.md § Windows answer-file deserialization failure](./docs/troubleshooting-log.md#windows-answer-file-deserialization-failure-libvirt-backend).
-- **M2 (Hyper-V)** now works end-to-end. The long "SSH unreachable"/
-  "install stalled" mystery turned out to be neither: Generation 1
-  Hyper-V VMs default their BIOS boot order to DVD before hard disk, so
-  every completed install just rebooted straight back into itself,
-  forever — indistinguishable from a stall without a live console.
-  Fixed with `Set-VMBios -StartupOrder` (`scripts/set-boot-order.sh`),
-  which currently has to be run **by hand** after every `tofu apply` —
-  wiring it in as a Terraform resource hit a reproducible
-  `taliesins/hyperv` provider crash, root-caused and worked around
-  separately (pinning `dvd_drives.resource_pool_name` and an undeclared
-  `vm_processor` block that were causing permanent drift). A
-  debug-disk diagnostic aid (`var.debug_disk`, off by default) was
-  built and then shelved along the way. Full investigation, including
-  the three logging/capture channels that turned out to be chasing a
-  false premise:
-  [troubleshooting-log.md § M2](./docs/troubleshooting-log.md#m2-hyper-v-the-ssh-unreachable--install-stalled-investigation).
-- **M4 (domain services)** now works end-to-end: AD DS promotion, both
-  platforms' domain join, confirmed with a real forest and real joins
-  on the libvirt backend. Two bugs found along the way: a leftover
-  `become: true` on Windows WinRM plays (broke the instant the
-  previously-placeholder `domain_controller`/`domain_directory` roles
-  ran for real), and domain-join credentials needing *opposite* formats
-  per platform — Linux's `realm join` wants a bare username, Windows'
-  `Add-Computer`/`microsoft.ad.membership` wants a NetBIOS-qualified one
-  (`DOMAIN\user`) — each confirmed by reproducing the failure outside
-  Ansible entirely to rule out a module bug. Full investigation:
-  [troubleshooting-log.md § M4](./docs/troubleshooting-log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs).
-- **M5 (directory objects)** now works end-to-end: OUs, domain groups,
-  domain users, local groups/users, and both membership directions, all
-  via an optional `directory-manifest.yml`, confirmed against a real
-  domain. Three more bugs: a filter-plugin search-path mismatch (fixed
-  by configuring it explicitly in `ansible.cfg`, matching how
-  `roles_path` is already handled), `microsoft.ad` parameters that look
-  list-valued but actually need an `{add:/remove:/set:}` dict, and a
-  documented `hosts:` field convention on local objects that didn't
-  match how Ansible inventory groups are actually built (role names,
-  not a `host_groups` entry's own `name:` label) — every local-object
-  task silently matched zero hosts until this was corrected. Full
-  investigation:
-  [troubleshooting-log.md § M5](./docs/troubleshooting-log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working).
-- **M5's other half (workstation host types + medium profile)** is in
-  progress. Windows 11 client and Ubuntu LTS OS entries have been
-  added; Ubuntu LTS isolation testing found and fixed a `virt-install`
-  kernel-detection failure specific to Ubuntu's live-server ISO
-  (osinfo-db declares no `<tree>` entry for it — fixed with an explicit
-  `kernel=`/`initrd=` override), several one-time subiquity TUI screens
-  that block forever over a serial console even with
-  `interactive-sections: []` (fixed with a generic idle-detection
-  keystroke-injection loop in `create-iso-direct.sh`), and an apt
-  GeoIP-mirror-lookup hang (fixed by pinning a mirror and disabling
-  GeoIP). **Still open**: subiquity's guided storage configuration
-  doesn't honor either documented autoinstall storage directive on this
-  Ubuntu 24.04.3 build, falling back to an interactive (and
-  inconsistently-encrypted) storage editor — no Ubuntu LTS host has
-  completed a full unattended install yet, and Windows 11 testing
-  hasn't started. Full investigation:
-  [troubleshooting-log.md § M5 (workstation support, Ubuntu LTS half)](./docs/troubleshooting-log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
-- DHCP-mode addressing, the full OS matrix, and Packer templates are
-  all still out of scope — see DESIGN.md §18 for the milestone plan.
+## Known gaps
+
+- DHCP-mode addressing, the full OS matrix, and Packer templates are all still out of scope — `Claude_Docs/Design_System-Overview.md` §18 has the milestone plan.
+- Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M2.
+- Ubuntu LTS workstation support has one open bug (guided storage/LUKS) blocking a full unattended install — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M5 (workstation support, Ubuntu LTS half).
+- Windows 11 workstation support hasn't started testing yet.
+
+Full bug-by-bug history for every milestone: `Claude_Docs/Testing_Troubleshooting-Log.md`.

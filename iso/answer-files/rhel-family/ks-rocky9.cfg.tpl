@@ -1,9 +1,9 @@
 #version=RHEL9
 # Rendered by tofu/modules/vm/libvirt/main.tf via templatefile() — see
-# docs/base-images.md §3 (RHEL family) and §4 (direct ISO boot).
+# Claude_Docs/Design_Base-Images.md §3 (RHEL family) and §4 (direct ISO boot).
 #
 # Bootstrap account: "labape" — this design's fixed name for the
-# SSH-key-only bootstrap user (docs/credentials.md §5). Not meant for
+# SSH-key-only bootstrap user (Claude_Docs/Reference_Credentials.md §5). Not meant for
 # ongoing use once Ansible has configured the host; it's the initial
 # connection point only.
 
@@ -140,9 +140,9 @@ systemctl enable labape-debug-dump.service
 %{ endif ~}
 
 %{ if management_source != "" ~}
-# Firewall scoping — docs/credentials.md §7. Restrict SSH to the
+# Firewall scoping — Claude_Docs/Reference_Credentials.md §7. Restrict SSH to the
 # control machine's address/CIDR instead of leaving it open to the
-# whole (bridged, DESIGN.md §14) LAN segment.
+# whole (bridged, Claude_Docs/Design_System-Overview.md §14) LAN segment.
 firewall-cmd --permanent --zone=public --remove-service=ssh || true
 firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="${management_source}" service name="ssh" accept'
 firewall-cmd --reload
@@ -153,7 +153,7 @@ firewall-cmd --reload
 # port alongside the normal VGA console (tty0) — costs nothing on
 # backends that don't wire up a serial device, and was the only way to
 # actually see what a stuck/failed boot was doing on the Hyper-V backend
-# (DESIGN.md §6, no VNC-equivalent framebuffer readily available there
+# (Claude_Docs/Design_System-Overview.md §6, no VNC-equivalent framebuffer readily available there
 # the way libvirt's virsh screenshot gave the Windows-answer-file saga).
 bootloader --location=mbr --append="console=ttyS0,115200n8 console=tty0"
 zerombr

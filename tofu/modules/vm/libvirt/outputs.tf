@@ -7,11 +7,11 @@ output "roles" {
 }
 
 output "os_family" {
-  description = "\"windows\" | \"linux\" | \"debian\" | \"debian_preseed\", derived from os_catalog — tells the inventory generator whether to set ansible_connection=winrm or ssh (DESIGN.md §6.1). \"debian\"/\"debian_preseed\" connect over ssh exactly like \"linux\" — each is a distinct value because its *install* mechanism differs, not the Ansible-facing one."
+  description = "\"windows\" | \"linux\" | \"debian\" | \"debian_preseed\", derived from os_catalog — tells the inventory generator whether to set ansible_connection=winrm or ssh (Claude_Docs/Design_System-Overview.md §6.1). \"debian\"/\"debian_preseed\" connect over ssh exactly like \"linux\" — each is a distinct value because its *install* mechanism differs, not the Ansible-facing one."
   value       = local.os_family
 }
 
 output "ip_address" {
-  description = "For addressing.mode = \"static\", echoes the input. For \"dhcp\", null — the post-apply discovery step this would need is deferred (DESIGN.md §17.4/§6.1), so DHCP-mode hosts don't get a usable IP for inventory generation yet."
+  description = "For addressing.mode = \"static\", echoes the input. For \"dhcp\", null — the post-apply discovery step this would need is deferred (Claude_Docs/Design_System-Overview.md §17.4/§6.1), so DHCP-mode hosts don't get a usable IP for inventory generation yet."
   value       = var.addressing.mode == "static" ? var.addressing.address : null
 }

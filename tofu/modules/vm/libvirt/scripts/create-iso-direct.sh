@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Invoked by tofu/modules/vm/libvirt/main.tf's local-exec provisioner.
-# Not meant to be run by hand — see docs/base-images.md §4 for the
+# Not meant to be run by hand — see Claude_Docs/Design_Base-Images.md §4 for the
 # design this implements.
 set -euo pipefail
 
@@ -50,7 +50,7 @@ disk_path="${VM_STORAGE_PATH}/${VM_NAME}.qcow2"
 console_log="/var/log/libvirt/qemu/${VM_NAME}-console.log"
 
 # Debian-family only (subiquity/cloud-init): confirmed via real testing
-# (docs/troubleshooting-log.md) that subiquity's serial-console TUI
+# (Claude_Docs/Testing_Troubleshooting-Log.md) that subiquity's serial-console TUI
 # blocks indefinitely on several one-time confirmation screens even
 # with `interactive-sections: []` in the autoinstall config — a
 # "Serial console started in basic mode" splash, a welcome/language
@@ -67,14 +67,14 @@ console_log="/var/log/libvirt/qemu/${VM_NAME}-console.log"
 # have no focused actionable control — so this errs toward sending
 # too many rather than too few, up to a bounded cap. Requires the
 # deploying account to have passwordless sudo for `cp` and `tee`
-# specifically (docs/base-images.md §4) — both the console log and the
+# specifically (Claude_Docs/Design_Base-Images.md §4) — both the console log and the
 # console pty device are root-owned (0600) by libvirt/QEMU's own
 # defaults, unrelated to this repo's own config.
 dismiss_subiquity_prompts() {
   local deadline=$((SECONDS + install_timeout_seconds))
   local pty="" last_size=-1 idle_polls=0 sent_count=0
   # max_sends started at 10 and was confirmed too low via real testing
-  # (docs/troubleshooting-log.md): idle gaps of 8s+ occur routinely
+  # (Claude_Docs/Testing_Troubleshooting-Log.md): idle gaps of 8s+ occur routinely
   # during ordinary boot (disk-allocation progress ticks, kernel/udev
   # messages) well before subiquity's TUI ever appears, and each one
   # consumes a "send" — the budget was fully exhausted on boot noise
@@ -95,7 +95,7 @@ dismiss_subiquity_prompts() {
       # this entire script failing — silently orphaning the backgrounded
       # virt-install and leaving OpenTofu's local-exec hung reading its
       # now-parentless-but-still-open output pipe. Confirmed by hitting
-      # exactly that hang in real testing (docs/troubleshooting-log.md).
+      # exactly that hang in real testing (Claude_Docs/Testing_Troubleshooting-Log.md).
       pty="$(virsh --connect "$LIBVIRT_URI" dumpxml "$VM_NAME" 2>/dev/null \
         | grep -oP "(?<=<console type='pty' tty=')[^']+" | head -1 || true)"
     fi
@@ -208,7 +208,7 @@ debian)
   #
   # kernel=/initrd= override on --location is REQUIRED, not optional,
   # for Ubuntu 24.04 specifically (confirmed via real testing,
-  # docs/troubleshooting-log.md): osinfo-db's ubuntu24.04 entry marks
+  # Claude_Docs/Testing_Troubleshooting-Log.md): osinfo-db's ubuntu24.04 entry marks
   # its live/casper media installer-script="false" (its own comment:
   # subiquity's autoinstall style "isn't supported yet in libosinfo and
   # associated tools"), so virt-install's automatic kernel/initrd
@@ -265,7 +265,7 @@ windows)
 
   # Windows Setup auto-detects an autounattend.xml at the root of any
   # attached optical/floppy media — no kernel-argument hook like
-  # Linux's inst.ks= exists (docs/base-images.md §4), so build a tiny
+  # Linux's inst.ks= exists (Claude_Docs/Design_Base-Images.md §4), so build a tiny
   # ISO containing just that file and attach it as a second CD-ROM.
   # This is intermittently missed (~40% failure, README's Known Gaps —
   # see that doc for the full investigation, since this is the surviving
@@ -324,7 +324,7 @@ windows)
   # to inspect if it stalls — confirmed the hard way during development
   # (only a live VNC/screenshot attach ever showed anything useful).
   # listen=127.0.0.1 keeps it host-local; view it via Cockpit's Virtual
-  # Machines page (docs/install-opentofu.md §8) or, absent Cockpit,
+  # Machines page (User_Docs/Install-OpenTofu.md §8) or, absent Cockpit,
   # `virsh -c qemu:///system screenshot <name> out.png`.
   if ! timeout "$install_timeout_seconds" virt-install \
     --connect "$LIBVIRT_URI" \

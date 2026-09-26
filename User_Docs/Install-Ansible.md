@@ -1,6 +1,6 @@
 # Installing and Configuring Ansible (Debian 13)
 
-Control-machine only (DESIGN.md §15) — Ansible doesn't run as a control
+Control-machine only (Claude_Docs/Design_System-Overview.md §15) — Ansible doesn't run as a control
 node on Windows, so this never targets the Hyper-V host or a Windows
 VM, only the same Linux/WSL box `tofu` runs on.
 
@@ -74,12 +74,12 @@ ansible-galaxy collection install -r /tmp/labape-collections.yml
 ```
 
 What each is for in this repo: `ansible.windows` — `win_package`,
-`win_copy`, `win_group`/`win_user` (docs/credentials.md,
-docs/software-manifest.md, docs/directory-objects.md). `microsoft.ad` —
+`win_copy`, `win_group`/`win_user` (Claude_Docs/Reference_Credentials.md,
+Claude_Docs/Design_Software-Manifest.md, Claude_Docs/Design_Directory-Objects.md). `microsoft.ad` —
 OU/domain-group/domain-user/membership management
-(docs/directory-objects.md). `community.general` — `zypper` (openSUSE/
+(Claude_Docs/Design_Directory-Objects.md). `community.general` — `zypper` (openSUSE/
 SLES package installs) and, later, secrets lookup plugins
-(docs/credentials.md §13). `chocolatey.chocolatey` — `win_chocolatey`
+(Claude_Docs/Reference_Credentials.md §13). `chocolatey.chocolatey` — `win_chocolatey`
 for the Windows side of the software manifest.
 
 Verify:
@@ -92,7 +92,7 @@ ansible-galaxy collection list
 
 ```bash
 # Anything reasonably long and random — this is not itself a secret
-# checked into git, just kept out of it (docs/credentials.md §1)
+# checked into git, just kept out of it (Claude_Docs/Reference_Credentials.md §1)
 openssl rand -base64 32 > ~/.labape-vault-pass
 chmod 600 ~/.labape-vault-pass
 ```
@@ -103,7 +103,7 @@ chmod 600 ~/.labape-vault-pass
 ## 6. Set up the bootstrap SSH keypair
 
 Ansible's first connection to any freshly created Linux VM authenticates
-as the `labape` user via this key (docs/credentials.md §5) — it's the
+as the `labape` user via this key (Claude_Docs/Reference_Credentials.md §5) — it's the
 control machine's own key, not a separate one baked into the image:
 
 ```bash
@@ -119,7 +119,7 @@ Ansible's generated inventory at the private key.
 
 Already checked in at `ansible/ansible.cfg` — sets the inventory path,
 roles path, and disables host-key checking (disposable lab hosts reuse
-IPs across rebuilds, DESIGN.md §8/§14, so a stale `known_hosts` entry
+IPs across rebuilds, Claude_Docs/Design_System-Overview.md §8/§14, so a stale `known_hosts` entry
 would otherwise block every single deploy). Nothing to configure here
 beyond what's already committed.
 
@@ -150,7 +150,7 @@ key from §6.
   `pipx list` should show `pywinrm` injected under `ansible-core`.
 - **`UNREACHABLE` on a freshly created VM** — kickstart may not have
   finished yet (`virt-install --wait -1` should block until it has,
-  docs/base-images.md §4), or `labape`'s SSH key doesn't match what
+  Claude_Docs/Design_Base-Images.md §4), or `labape`'s SSH key doesn't match what
   `render_environment_tfvars.py`/the kickstart template actually baked
   in — check `secrets.vault.yml`'s `ansible_ssh_private_key_path` points
   at the *same* keypair used when the VM was created, not a newer one

@@ -9,9 +9,9 @@ terraform {
   }
 }
 
-# WinRM to the Hyper-V host itself (DESIGN.md §6, docs/credentials.md
-# §2) — insecure = true accepts the self-signed cert docs/
-# install-opentofu-windows-wsl.md §3 walks through setting up, same
+# WinRM to the Hyper-V host itself (Claude_Docs/Design_System-Overview.md §6, Claude_Docs/Reference_Credentials.md
+# §2) — insecure = true accepts the self-signed cert;
+# User_Docs/Install-OpenTofu-WSL.md §3 walks through setting up, same
 # reasoning as the libvirt backend's own self-hosted-lab posture.
 provider "hyperv" {
   user     = var.hyperv_user

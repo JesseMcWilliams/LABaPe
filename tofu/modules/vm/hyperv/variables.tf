@@ -1,4 +1,4 @@
-# Common `vm` module interface (DESIGN.md §6.1) — same variables as
+# Common `vm` module interface (Claude_Docs/Design_System-Overview.md §6.1) — same variables as
 # modules/vm/libvirt, this is the Hyper-V implementation. M2 scope:
 # Linux only, image_source = "iso_direct" only (mirrors M1's libvirt
 # scope exactly).
@@ -14,7 +14,7 @@ variable "os" {
 }
 
 variable "roles" {
-  description = "Passthrough only — this module doesn't interpret roles, it just carries them through to the generated inventory (DESIGN.md §9)."
+  description = "Passthrough only — this module doesn't interpret roles, it just carries them through to the generated inventory (Claude_Docs/Design_System-Overview.md §9)."
   type        = list(string)
   default     = []
 
@@ -35,7 +35,7 @@ variable "roles" {
 }
 
 variable "image_source" {
-  description = "\"packer_template\" | \"iso_direct\". Only iso_direct is implemented (DESIGN.md §18) — packer_template is a documented, deliberate fail-fast until M6."
+  description = "\"packer_template\" | \"iso_direct\". Only iso_direct is implemented (Claude_Docs/Design_System-Overview.md §18) — packer_template is a documented, deliberate fail-fast until M6."
   type        = string
 
   validation {
@@ -60,12 +60,12 @@ variable "disk_gb" {
 }
 
 variable "network_id" {
-  description = "Output of the network module (../network/hyperv) — the Hyper-V virtual switch name (DESIGN.md §6.2)."
+  description = "Output of the network module (../network/hyperv) — the Hyper-V virtual switch name (Claude_Docs/Design_System-Overview.md §6.2)."
   type        = string
 }
 
 variable "addressing" {
-  description = "{ mode = \"static\"|\"dhcp\", address, prefix_length, gateway }. DHCP is accepted here but the pipeline-level IP-discovery step is deferred (DESIGN.md §17.4) — only static is exercised end-to-end."
+  description = "{ mode = \"static\"|\"dhcp\", address, prefix_length, gateway }. DHCP is accepted here but the pipeline-level IP-discovery step is deferred (Claude_Docs/Design_System-Overview.md §17.4) — only static is exercised end-to-end."
   type = object({
     mode          = string
     address       = optional(string)
@@ -80,7 +80,7 @@ variable "addressing" {
 }
 
 variable "admin_credential" {
-  description = "Bootstrap credential from docs/credentials.md. Only ssh_public_key is used on this (Linux-only, M2) backend path."
+  description = "Bootstrap credential from Claude_Docs/Reference_Credentials.md. Only ssh_public_key is used on this (Linux-only, M2) backend path."
   type = object({
     ssh_public_key         = optional(string)
     windows_admin_password = optional(string)
@@ -89,7 +89,7 @@ variable "admin_credential" {
 }
 
 variable "template_vars" {
-  description = "Extra values rendered into the kickstart at provisioning time — e.g. management_source for firewall scoping (docs/credentials.md §7)."
+  description = "Extra values rendered into the kickstart at provisioning time — e.g. management_source for firewall scoping (Claude_Docs/Reference_Credentials.md §7)."
   type        = map(string)
   default     = {}
 }

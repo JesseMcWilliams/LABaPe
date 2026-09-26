@@ -1,11 +1,11 @@
-# Repo-committed, stable — docs/software-manifest.md §1. Generic name
+# Repo-committed, stable — Claude_Docs/Design_Software-Manifest.md §1. Generic name
 # -> per-package-manager spelling. Extend freely; nothing here is
 # specific to one environment or run.
 #
 # The custom-installer entries below (internal_agent, vendor_tool,
 # legacy_exe_tool) are illustrative only — their url/path values are
 # placeholders. Real entries of that shape need a real URL or a real
-# file staged in software-store/ (docs/software-manifest.md §8).
+# file staged in software-store/ (Claude_Docs/Design_Software-Manifest.md §8).
 
 packages:
   firefox:

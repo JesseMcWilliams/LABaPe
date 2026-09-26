@@ -1,5 +1,5 @@
 ---
-# docs/software-manifest.md §3 — added once per host, only if that
+# Claude_Docs/Design_Software-Manifest.md §3 — added once per host, only if that
 # host's resolved package list actually needs it (currently: vscode's
 # apt/dnf entries in package_catalog.yml).
 

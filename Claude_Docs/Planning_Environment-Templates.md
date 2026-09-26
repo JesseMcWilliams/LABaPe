@@ -1,19 +1,19 @@
 # Environment Templates & Web Interface
 
-Extends DESIGN.md §20 — a future (not yet implemented) web interface for
+Extends Claude_Docs/Design_System-Overview.md §20 — a future (not yet implemented) web interface for
 creating, duplicating, editing, and deploying **environment templates**,
 built out of composable, assemblable pieces, plus browsing an OS/
 software/feature "repository" instead of hand-editing YAML/HCL. This is
-explicitly aspirational, scoped further out than M1-M8 (DESIGN.md §18) —
+explicitly aspirational, scoped further out than M1-M8 (Claude_Docs/Design_System-Overview.md §18) —
 recorded now so later work has a starting design rather than a blank
 page, not because it's next up.
 
 ## 1. What a template actually is
 
 Today, describing an environment means editing three separate,
-hand-written files: a `.tfvars` profile (`host_groups`, DESIGN.md §9),
+hand-written files: a `.tfvars` profile (`host_groups`, Claude_Docs/Design_System-Overview.md §9),
 `software-manifest.yml` (§11), and `directory-manifest.yml`
-(docs/directory-objects.md). A **template** is those three merged into
+(Claude_Docs/Design_Directory-Objects.md). A **template** is those three merged into
 one object: for every host (group), how many, what OS, what roles
 (including the new `certificate_authority` role, docs/
 certificate-authority.md), what software, and what users/groups it has
@@ -81,12 +81,12 @@ includes:
 - **Versioning/pinning**: if `web-farm` is edited after `two-site-lab`
   already includes it, does `two-site-lab` pick up the change on its
   next deploy (live reference), or does it need to be re-pinned
-  explicitly (snapshot)? DESIGN.md §2's "idempotent, repeatable builds"
+  explicitly (snapshot)? Claude_Docs/Design_System-Overview.md §2's "idempotent, repeatable builds"
   goal leans toward snapshot/pinning being the safer default, but this
   needs a real decision before implementation, not an assumption.
 - **Role-conflict detection**: if two included templates both carry a
   singleton role (`domain_controller`, `certificate_authority` — §9,
-  docs/certificate-authority.md §3), should composing them be a hard
+  Claude_Docs/Planning_Certificate-Authority.md §3), should composing them be a hard
   error at "compile" time? Almost certainly yes, but not designed.
 - **Cycle detection**: a template including itself (directly or via a
   chain) needs to be caught, not just left to whatever OpenTofu/Ansible
@@ -99,7 +99,7 @@ relative to what already exists:
 
 1. **Browse/manage an OS, software, and feature "repository."** Largely
    a friendlier view onto data that's already designed to be
-   YAML/catalog-driven — the OS catalog (docs/base-images.md), the
+   YAML/catalog-driven — the OS catalog (Claude_Docs/Design_Base-Images.md), the
    software manifest's package catalog (§11), and (new) Windows Server
    Roles/Features as a similar toggle-able catalog. Not a new data
    model so much as a UI on top of existing ones, plus the new Features
@@ -114,13 +114,13 @@ relative to what already exists:
    project's own Hyper-V testing, and can fail partway needing
    visibility or intervention (this project hit provider crashes, stuck
    installs, and state that needed manual cleanup more than once — see
-   docs/troubleshooting-log.md). The UI needs an async job model — a
+   Claude_Docs/Testing_Troubleshooting-Log.md). The UI needs an async job model — a
    queue, live log streaming, retry/cancel — not a request/response
    button. This is realistically the biggest single piece of new
    engineering in this whole feature, bigger than the UI or the
    template model.
 4. **Live credentials lookup for a running environment**
-   (docs/credentials.md §8). Today, tester access credentials for a
+   (Claude_Docs/Reference_Credentials.md §8). Today, tester access credentials for a
    deployed environment come from a plain generated handout file
    (`ansible/inventory/credentials.generated`) — deliberately simple,
    built before this web interface existed. Once this UI exists, add a

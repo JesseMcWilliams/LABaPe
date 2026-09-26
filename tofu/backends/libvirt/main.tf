@@ -47,7 +47,7 @@ locals {
 
     # ubuntu_26: added to test whether a newer subiquity build resolves
     # the still-open guided-storage bug documented against ubuntu_lts
-    # (24.04.3) in docs/troubleshooting-log.md. os_variant falls back to
+    # (24.04.3) in Claude_Docs/Testing_Troubleshooting-Log.md. os_variant falls back to
     # "ubuntu24.04" — this host's osinfo-db (dated mid-2025) has no
     # ubuntu-26.04 entry yet; harmless here since kernel/initrd are
     # passed explicitly on --location rather than relying on osinfo
@@ -62,7 +62,7 @@ locals {
   # inject + kernel append, like "linux"/kickstart, not a NoCloud seed
   # ISO), hence its own os_family rather than reusing either existing
   # one. Added specifically to test whether it avoids the still-open
-  # guided-storage bug hit on Ubuntu (docs/troubleshooting-log.md) —
+  # guided-storage bug hit on Ubuntu (Claude_Docs/Testing_Troubleshooting-Log.md) —
   # d-i's preseed is a mature, fully-scriptable installer with no
   # subiquity-style TUI confirmation screens at all.
   debian_preseed_catalog = {

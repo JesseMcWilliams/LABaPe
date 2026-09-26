@@ -1,8 +1,8 @@
-# DESIGN.md §9's "small" profile — a single-purpose DC (M4, DESIGN.md
+# Claude_Docs/Design_System-Overview.md §9's "small" profile — a single-purpose DC (M4, Claude_Docs/Design_System-Overview.md
 # §8), two Linux servers, one Windows member server.
 #
 # winsrv below is real and works (M3 landed early for libvirt — see
-# DESIGN.md §17 Open Question 5 and README's Known Gaps). It used to
+# Claude_Docs/Design_System-Overview.md §17 Open Question 5 and README's Known Gaps). It used to
 # carry a caveat about intermittent answer-file failures; that's
 # resolved as of README's Known Gaps round 10 (a multi-line XML comment
 # in the answer-file template was tripping Windows Setup's XML

@@ -1,6 +1,6 @@
 ---
-# AD DS promotion — DESIGN.md §8/§18 (M4). Creates a brand-new forest
-# every time (DESIGN.md §8: "each rebuild creates a brand-new AD
+# AD DS promotion — Claude_Docs/Design_System-Overview.md §8/§18 (M4). Creates a brand-new forest
+# every time (Claude_Docs/Design_System-Overview.md §8: "each rebuild creates a brand-new AD
 # forest — no state carried over"), never joins an existing one.
 
 - name: Install the AD-Domain-Services Windows feature
@@ -11,7 +11,7 @@
 
 # microsoft.ad.domain promotes the CONNECTING account (the local
 # Administrator this play is already authenticated as, per
-# docs/credentials.md §4) into the new forest as Domain Administrator —
+# Claude_Docs/Reference_Credentials.md §4) into the new forest as Domain Administrator —
 # its password doesn't change. domain_admin_password (used by the join
 # roles, not this task) must match windows_bootstrap_admin_password
 # until M5 adds dedicated domain-admin accounts — see

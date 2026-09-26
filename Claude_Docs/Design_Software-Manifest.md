@@ -1,6 +1,6 @@
 # Software Manifest: Package Mapping Across Chocolatey/apt/dnf/zypper
 
-The original requirement (DESIGN.md's premise): the software list "isn't
+The original requirement (Claude_Docs/Design_System-Overview.md's premise): the software list "isn't
 always the same" between runs. This splits that into two files with
 different lifecycles, rather than one file trying to be both a stable
 reference and a per-run choice:
@@ -92,7 +92,7 @@ Windows-only; `vscode` has no `zypper` entry above because it isn't
 being packaged for openSUSE yet in this catalog). The resolution logic
 (§4) looks up the field for a host's platform and **silently skips**
 that package on hosts where the field is absent, rather than failing
-the whole run — the OS matrix (DESIGN.md §5) is wide enough that "not
+the whole run — the OS matrix (Claude_Docs/Design_System-Overview.md §5) is wide enough that "not
 available here" is the normal case, not an exception.
 
 ## 3. Packages needing a repo first
@@ -138,7 +138,7 @@ into the catalog for everyone).
 
 ## 5. Resolving a host's package list — the part that needs to be explicit
 
-A host can carry more than one role (DESIGN.md §9 — e.g. a domain
+A host can carry more than one role (Claude_Docs/Design_System-Overview.md §9 — e.g. a domain
 controller that's also a general-purpose Windows server), and Ansible's
 default variable behavior does **not** merge/union list-type variables
 across the multiple inventory groups a host belongs to — the
@@ -184,7 +184,7 @@ happened to load last.
 **`linux_common`**, for each entry:
 - Determine the package manager from `ansible_facts['pkg_mgr']`
   (`apt`/`dnf`/`zypper`) rather than hardcoding per-distro logic —
-  matches whichever OS family (DESIGN.md §5) the host actually is.
+  matches whichever OS family (Claude_Docs/Design_System-Overview.md §5) the host actually is.
 - Run any repo-setup tasks the resolved list needs first (§3), each
   exactly once.
 - `type: deb`/`rpm`, `source: url` → the native module's URL-install form
@@ -318,7 +318,7 @@ A string or list, passed straight through to `win_package`'s own
 
 ### `answer_file` — for an installer with its own response-file format
 
-Distinct from the OS-level answer files in `docs/base-images.md` (those
+Distinct from the OS-level answer files in `Claude_Docs/Design_Base-Images.md` (those
 answer autounattend.xml/kickstart/cloud-init questions the *OS
 installer* asks) — some Windows EXE installers (InstallShield being the
 classic case) have their **own** unattended mechanism: a response file

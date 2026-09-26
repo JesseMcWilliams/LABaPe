@@ -1,5 +1,5 @@
 ---
-# Linux domain join (realmd/sssd) — DESIGN.md §8/§18 (M4). Only ever
+# Linux domain join (realmd/sssd) — Claude_Docs/Design_System-Overview.md §8/§18 (M4). Only ever
 # runs when a domain_controller-role host exists in this environment
 # (site.yml's role-entry `when:` guard).
 
@@ -14,7 +14,7 @@
 
 # realm join depends on real DNS SRV record discovery against the
 # domain's own DNS server (which the DC becomes as part of promotion) —
-# the hosts-file snippet (docs/networking.md §4) is a human-convenience
+# the hosts-file snippet (Claude_Docs/Reference_Networking.md §4) is a human-convenience
 # file Ansible never reads, it doesn't substitute for this. Rocky 9's
 # kickstart sets a plain --nameserver (the LAN gateway), and
 # /etc/resolv.conf is NetworkManager-managed by default — a direct edit

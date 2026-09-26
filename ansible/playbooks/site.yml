@@ -1,15 +1,15 @@
 ---
-# DESIGN.md §4's ordered pipeline. M1 only has linux_server hosts, so
+# Claude_Docs/Design_System-Overview.md §4's ordered pipeline. M1 only has linux_server hosts, so
 # the domain_controller/domain_directory plays below simply match zero
 # hosts and no-op — kept here now rather than bolted on later, since
-# the ordering constraint (DESIGN.md §8) is easy to get wrong if it's
+# the ordering constraint (Claude_Docs/Design_System-Overview.md §8) is easy to get wrong if it's
 # retrofitted after the fact.
 
 - name: Wait for freshly-created hosts to actually accept connections
   # virt-install's --wait returns once the post-install reboot lands the
   # domain back in "running" state, but that's not the same moment
   # sshd/WinRM is actually up inside the guest — for the *last* host in
-  # a multi-host apply (serialized, DESIGN.md/deploy.sh -parallelism=1)
+  # a multi-host apply (serialized, Claude_Docs/Design_System-Overview.md/deploy.sh -parallelism=1)
   # there's effectively zero buffer between "just rebooted" and
   # ansible-playbook's very next task trying to connect. Hit as a real
   # UNREACHABLE failure in the M1 smoke test, not a hypothetical.
@@ -22,7 +22,7 @@
 
 - name: Promote domain controller(s) first — must complete before any join
   # No become: this play runs over WinRM as the local Administrator
-  # (docs/credentials.md §4), which already has full privileges — unlike
+  # (Claude_Docs/Reference_Credentials.md §4), which already has full privileges — unlike
   # SSH, Windows become needs ansible_become_user/ansible_become_pass
   # configured, which nothing here sets. Matches windows_common's play.
   hosts: domain_controller
@@ -43,7 +43,7 @@
   gather_facts: true
   vars:
     # errors='ignore' + the default(): directory-manifest.yml is
-    # entirely optional (M5, docs/directory-objects.md) — an
+    # entirely optional (M5, Claude_Docs/Design_Directory-Objects.md) — an
     # environment with no domain objects to add just shouldn't need to
     # create an empty file.
     directory_manifest: >-
@@ -58,7 +58,7 @@
 # --- Domain join (Windows/Linux) — after the domain (and its DNS)
 # exists, before per-role software config below. Both roles no-op via
 # the role-entry `when:` guard on any M1-M3-style environment with no
-# domain_controller-role host (DESIGN.md §8/§18, M4).
+# domain_controller-role host (Claude_Docs/Design_System-Overview.md §8/§18, M4).
 
 - name: Join Linux hosts to the domain
   hosts: linux_server:linux_workstation
@@ -81,7 +81,7 @@
   tags: [domain_join]
 
 # --- Per-role configuration (software + local accounts) ---
-# docs/software-manifest.md §5 — software_manifest_roles is computed
+# Claude_Docs/Design_Software-Manifest.md §5 — software_manifest_roles is computed
 # once here (lookup runs on the control machine) rather than per-host,
 # since the file it reads lives in the repo, not on any target.
 

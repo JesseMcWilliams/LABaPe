@@ -46,11 +46,11 @@ resource "terraform_data" "validate_os" {
 # shells out to virt-install directly per os_family instead of using a
 # plain libvirt_domain resource — the same practical workaround
 # real-world OpenTofu/libvirt-plus-unattended-install setups use.
-# docs/base-images.md §4 documents this as "the same mechanism Packer
+# Claude_Docs/Design_Base-Images.md §4 documents this as "the same mechanism Packer
 # uses, just driven by OpenTofu instead."
 #
 # Linux: virt-install --location + --initrd-inject injects a rendered
-# kickstart file straight into the boot initrd (docs/base-images.md
+# kickstart file straight into the boot initrd (Claude_Docs/Design_Base-Images.md
 # §4). Windows: Windows Setup has no equivalent kernel-argument hook —
 # it auto-detects an autounattend.xml at the root of any attached
 # optical/floppy media instead, so create-iso-direct.sh builds a tiny
@@ -192,7 +192,7 @@ resource "null_resource" "vm_iso_direct" {
   ]
 }
 
-# --- packer_template path (not implemented until M6, DESIGN.md §18) ---
+# --- packer_template path (not implemented until M6, Claude_Docs/Design_System-Overview.md §18) ---
 #
 # Deliberate fail-fast rather than a silent no-op or a half-working
 # clone: better to error clearly now than to produce a "successful"
@@ -208,7 +208,7 @@ resource "terraform_data" "packer_template_not_implemented" {
       # ("must refer to at least one object from elsewhere in the
       # configuration"), so the condition re-checks the same value.
       condition     = var.image_source != "packer_template"
-      error_message = "image_source = \"packer_template\" is not implemented on the libvirt backend yet (DESIGN.md §18 schedules it for M6). Use \"iso_direct\" for now."
+      error_message = "image_source = \"packer_template\" is not implemented on the libvirt backend yet (Claude_Docs/Design_System-Overview.md §18 schedules it for M6). Use \"iso_direct\" for now."
     }
   }
 }

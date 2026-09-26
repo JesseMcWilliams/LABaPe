@@ -1,6 +1,6 @@
 #cloud-config
 # Rendered by tofu/modules/vm/libvirt/main.tf via templatefile() — see
-# docs/base-images.md §3 (Debian family) and §4 (direct ISO boot).
+# Claude_Docs/Design_Base-Images.md §3 (Debian family) and §4 (direct ISO boot).
 # First-ever Debian-family answer file (M5's deferred workstation-
 # support pass) — subiquity's autoinstall schema, NOT generic
 # cloud-config and NOT kickstart. Mirrors
@@ -11,7 +11,7 @@
 #
 # UNVERIFIED against real infrastructure as of this writing — treat the
 # following as the most likely first-attempt failure points, not
-# settled fact (see docs/troubleshooting-log.md if a real test round
+# settled fact (see Claude_Docs/Testing_Troubleshooting-Log.md if a real test round
 # already happened and this comment wasn't updated):
 #   - identity.password accepting a bare "!" (the traditional shadow
 #     "no hash can ever match" placeholder, same convention `passwd -l`
@@ -22,7 +22,7 @@
 #     wrapper.
 #   - YAML indentation surviving the %%{ if ~}/%%{ endif ~} directives
 #     below intact — this template's equivalent of the Windows
-#     answer-file XML-comment bug (docs/troubleshooting-log.md), i.e.
+#     answer-file XML-comment bug (Claude_Docs/Testing_Troubleshooting-Log.md), i.e.
 #     render via `tofu console` + templatefile() and eyeball the output
 #     before ever booting a VM with it.
 autoinstall:
@@ -70,7 +70,7 @@ autoinstall:
 %{ endif ~}
 
   # Explicit, fully-specified (action-list) storage config — confirmed
-  # necessary via real testing (docs/troubleshooting-log.md): the
+  # necessary via real testing (Claude_Docs/Testing_Troubleshooting-Log.md): the
   # higher-level `storage.layout: {name: direct}` shorthand, which per
   # Canonical's own docs should mean "whole disk, no LVM, no
   # encryption," was STILL followed by a mandatory, unskippable LUKS
@@ -103,7 +103,7 @@ autoinstall:
         path: /
 
   # geoip: false + an explicit primary mirror — confirmed necessary via
-  # real testing (docs/troubleshooting-log.md): subiquity's default
+  # real testing (Claude_Docs/Testing_Troubleshooting-Log.md): subiquity's default
   # geoip-based mirror auto-selection hung indefinitely on "The mirror
   # location is being tested" even though archive.ubuntu.com itself was
   # directly reachable (confirmed via curl from a VM on the same

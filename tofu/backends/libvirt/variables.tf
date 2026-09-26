@@ -1,27 +1,27 @@
-# Root config for the libvirt backend (DESIGN.md §6.3). The OpenTofu
+# Root config for the libvirt backend (Claude_Docs/Design_System-Overview.md §6.3). The OpenTofu
 # workspace IS the environment instance — see terraform.workspace usage
 # in main.tf — so there's deliberately no separate "environment_name"
 # variable duplicating that.
 
 variable "libvirt_uri" {
-  description = "e.g. qemu:///system (control machine is the libvirt host) or qemu+ssh://user@host/system (docs/credentials.md §3)."
+  description = "e.g. qemu:///system (control machine is the libvirt host) or qemu+ssh://user@host/system (Claude_Docs/Reference_Credentials.md §3)."
   type        = string
 }
 
 variable "ssh_public_key" {
-  description = "Ansible control machine's own SSH public key, baked into every Linux VM's kickstart (docs/credentials.md §5). Passed as TF_VAR_ssh_public_key by scripts/deploy.sh."
+  description = "Ansible control machine's own SSH public key, baked into every Linux VM's kickstart (Claude_Docs/Reference_Credentials.md §5). Passed as TF_VAR_ssh_public_key by scripts/deploy.sh."
   type        = string
   sensitive   = true
 }
 
 variable "windows_admin_password" {
-  description = "Local Administrator password baked into every Windows VM's autounattend.xml (docs/credentials.md §4) — from the vault's windows_bootstrap_admin_password, passed as TF_VAR_windows_admin_password by scripts/deploy.sh. Empty/unset is fine for Linux-only environments; deploy.sh refuses to proceed if it's still the vault's CHANGE_ME placeholder and a Windows host is actually being deployed."
+  description = "Local Administrator password baked into every Windows VM's autounattend.xml (Claude_Docs/Reference_Credentials.md §4) — from the vault's windows_bootstrap_admin_password, passed as TF_VAR_windows_admin_password by scripts/deploy.sh. Empty/unset is fine for Linux-only environments; deploy.sh refuses to proceed if it's still the vault's CHANGE_ME placeholder and a Windows host is actually being deployed."
   type        = string
   sensitive   = true
   default     = ""
 }
 
-# --- from environment.yml (DESIGN.md §10), via environment.auto.tfvars.json ---
+# --- from environment.yml (Claude_Docs/Design_System-Overview.md §10), via environment.auto.tfvars.json ---
 
 variable "network_mode" {
   type    = string
@@ -29,7 +29,7 @@ variable "network_mode" {
 }
 
 variable "network_cidr" {
-  description = "network_address/subnet_mask from environment.yml, normalized to CIDR by scripts/deploy.sh's YAML->tfvars conversion (DESIGN.md §6.3)."
+  description = "network_address/subnet_mask from environment.yml, normalized to CIDR by scripts/deploy.sh's YAML->tfvars conversion (Claude_Docs/Design_System-Overview.md §6.3)."
   type        = string
 }
 
@@ -45,7 +45,7 @@ variable "bridge_device" {
 }
 
 variable "management_source" {
-  description = "Control machine IP/CIDR for firewall scoping (docs/credentials.md §7). Empty string disables scoping — not recommended beyond a fully trusted personal LAN."
+  description = "Control machine IP/CIDR for firewall scoping (Claude_Docs/Reference_Credentials.md §7). Empty string disables scoping — not recommended beyond a fully trusted personal LAN."
   type        = string
   default     = ""
 }
@@ -57,19 +57,19 @@ variable "static_ip_offset_start" {
 }
 
 variable "vm_storage_path" {
-  description = "Directory on the libvirt host where VM disks (and, for Windows, the generated answer-file ISO) are created — from environment.yml's vm_storage_path, via environment.auto.tfvars.json (DESIGN.md §6.3)."
+  description = "Directory on the libvirt host where VM disks (and, for Windows, the generated answer-file ISO) are created — from environment.yml's vm_storage_path, via environment.auto.tfvars.json (Claude_Docs/Design_System-Overview.md §6.3)."
   type        = string
 }
 
-# --- from environments/<size>.tfvars (DESIGN.md §9) ---
+# --- from environments/<size>.tfvars (Claude_Docs/Design_System-Overview.md §9) ---
 
 variable "os_iso_paths" {
-  description = "Per-OS ISO path already staged on the libvirt host (docs/base-images.md — ISO staging is a manual prerequisite, not automated). M1 only needs a \"rocky9\" entry."
+  description = "Per-OS ISO path already staged on the libvirt host (Claude_Docs/Design_Base-Images.md — ISO staging is a manual prerequisite, not automated). M1 only needs a \"rocky9\" entry."
   type        = map(string)
 }
 
 variable "host_groups" {
-  description = "DESIGN.md §9. M1 only exercises os = \"rocky9\" / image_source = \"iso_direct\" — see tofu/environments/small.tfvars.example."
+  description = "Claude_Docs/Design_System-Overview.md §9. M1 only exercises os = \"rocky9\" / image_source = \"iso_direct\" — see tofu/environments/small.tfvars.example."
   type = list(object({
     name         = string
     count        = number
@@ -83,7 +83,7 @@ variable "host_groups" {
 }
 
 variable "image_source_default" {
-  description = "environment.yml's image_source_default (DESIGN.md §10) — applies to any host_group that doesn't set its own image_source. M1 only implements \"iso_direct\"."
+  description = "environment.yml's image_source_default (Claude_Docs/Design_System-Overview.md §10) — applies to any host_group that doesn't set its own image_source. M1 only implements \"iso_direct\"."
   type        = string
   default     = "iso_direct"
 }

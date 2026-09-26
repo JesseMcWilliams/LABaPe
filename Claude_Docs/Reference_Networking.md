@@ -1,6 +1,6 @@
 # Networking: Bridged (default), NAT (opt-in), and Pre-flight Checks
 
-This documents the mechanics behind DESIGN.md §14. Default mode is
+This documents the mechanics behind Claude_Docs/Design_System-Overview.md §14. Default mode is
 **bridged** — environment VMs go straight on your physical LAN. NAT
 isolation is supported as an opt-in for environments that want it, and
 its Hyper-V setup is the more involved of the two, so it's documented in
@@ -49,7 +49,7 @@ Because the domain controller and its DNS/AD services are directly
 reachable on the physical segment in bridged mode, two things are worth
 being deliberate about, not because they're forbidden:
 
-- Pick a `domain_name` (DESIGN.md §8) that can't collide with a real
+- Pick a `domain_name` (Claude_Docs/Design_System-Overview.md §8) that can't collide with a real
   corporate domain reachable on the same network.
 - Don't enable the DC's DHCP Server role unless you actually want it
   answering DHCP for that physical segment — AD DS promotion alone
@@ -59,7 +59,7 @@ being deliberate about, not because they're forbidden:
 
 For an environment that should stay off the physical LAN entirely
 (isolated testing, or simply not wanting a throwaway AD forest visible
-to the rest of the network), set `network.mode: nat` (DESIGN.md §10).
+to the rest of the network), set `network.mode: nat` (Claude_Docs/Design_System-Overview.md §10).
 
 ### libvirt (native, no extra steps)
 
@@ -124,7 +124,7 @@ specifically to catch this before it happens mid-`apply`.
 own.** Two ways to handle it, pick one per environment:
 
 - Simplest: every host in this environment uses static addressing
-  (DESIGN.md §14, "Per-host addressing") — no DHCP server needed at all.
+  (Claude_Docs/Design_System-Overview.md §14, "Per-host addressing") — no DHCP server needed at all.
 - If DHCP-mode hosts are wanted anyway, install the Windows **DHCP
   Server** role on the Hyper-V host and scope it to the environment's
   subnet:
@@ -217,7 +217,7 @@ planned static addresses (and subnet, for NAT mode) from
 - Exit non-zero with the specific conflicting address/prefix on any hit,
   so the failure is actionable rather than a generic apply error.
 
-`scripts/deploy.sh` (DESIGN.md §15) runs this check as its first step,
+`scripts/deploy.sh` (Claude_Docs/Design_System-Overview.md §15) runs this check as its first step,
 before `tofu apply` — a rejected environment definition should never get
 as far as creating a VM.
 

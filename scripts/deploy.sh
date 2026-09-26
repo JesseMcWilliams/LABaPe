@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # vault decrypt -> check-network -> tofu apply -> generate inventory/hosts
-# -> ansible-playbook (DESIGN.md §12/§15, docs/credentials.md §6).
+# -> ansible-playbook (Claude_Docs/Design_System-Overview.md §12/§15, Claude_Docs/Reference_Credentials.md §6).
 #
 # Usage: deploy.sh <backend> <environment-instance-name> <profile>
 #   e.g. deploy.sh libvirt lab1 small
 #
 # Only the libvirt backend + small profile (Linux-only subset) are
-# implemented as of M1 (DESIGN.md §18).
+# implemented as of M1 (Claude_Docs/Design_System-Overview.md §18).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,7 +16,7 @@ ENV_INSTANCE="${2:?usage: deploy.sh <backend> <environment-instance-name> <profi
 PROFILE="${3:?usage: deploy.sh <backend> <environment-instance-name> <profile>}"
 
 if [ "$BACKEND" != "libvirt" ]; then
-  echo "labape: only the libvirt backend is implemented as of M1 (DESIGN.md §18) — got \"$BACKEND\"." >&2
+  echo "labape: only the libvirt backend is implemented as of M1 (Claude_Docs/Design_System-Overview.md §18) — got \"$BACKEND\"." >&2
   exit 1
 fi
 
@@ -68,7 +68,7 @@ echo "labape: planning..." >&2
 tofu plan -input=false -var-file="$PROFILE_FILE" -out=tfplan.bin
 tofu show -json tfplan.bin > tfplan.json
 
-echo "labape: pre-flight network check (docs/networking.md §3)..." >&2
+echo "labape: pre-flight network check (Claude_Docs/Reference_Networking.md §3)..." >&2
 python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
 
 echo "labape: applying..." >&2
@@ -92,5 +92,5 @@ ansible-playbook playbooks/site.yml \
   -e @software-manifest.yml \
   -e @../secrets.vault.yml --vault-password-file "$VAULT_PASS_FILE"
 
-echo "labape: done. Paste ansible/inventory/hosts.generated into your hosts file (docs/networking.md §4)." >&2
-echo "labape: tester access credentials for this environment: ansible/inventory/credentials.generated (docs/credentials.md §8)." >&2
+echo "labape: done. Paste ansible/inventory/hosts.generated into your hosts file (Claude_Docs/Reference_Networking.md §4)." >&2
+echo "labape: tester access credentials for this environment: ansible/inventory/credentials.generated (Claude_Docs/Reference_Credentials.md §8)." >&2

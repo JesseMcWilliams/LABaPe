@@ -1,5 +1,5 @@
 ---
-# Until M5 lands dedicated domain-admin accounts (docs/directory-objects.md),
+# Until M5 lands dedicated domain-admin accounts (Claude_Docs/Design_Directory-Objects.md),
 # this is the account AD DS promotion itself carried over — see
 # ansible/roles/domain_controller/tasks/main.yml and
 # secrets.vault.example.yml for the password-equality gotcha this implies.

@@ -52,8 +52,8 @@ module "network" {
 }
 
 # Once per distinct os value — see tofu/modules/vm/hyperv/scripts/
-# prepare-boot-iso.sh for what this actually does and why (docs/
-# base-images.md §4, Hyper-V section).
+# prepare-boot-iso.sh for what this actually does and why
+# (Claude_Docs/Design_Base-Images.md §4, Hyper-V section).
 resource "null_resource" "boot_iso" {
   for_each = toset(local.os_keys_in_use)
 

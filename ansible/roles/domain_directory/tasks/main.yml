@@ -1,8 +1,8 @@
 ---
-# Populates the domain — DESIGN.md §8, docs/directory-objects.md (M5).
+# Populates the domain — Claude_Docs/Design_System-Overview.md §8, Claude_Docs/Design_Directory-Objects.md (M5).
 # Runs on the domain_controller host, after promotion (site.yml's play
 # order). Everything here is domain-scope; local objects are folded
-# into windows_common/linux_common (docs/directory-objects.md §9).
+# into windows_common/linux_common (Claude_Docs/Design_Directory-Objects.md §9).
 
 - name: Compute every OU DN to ensure (explicit list + ancestors of any ou reference), shallowest first
   ansible.builtin.set_fact:
@@ -39,10 +39,10 @@
   tags: [directory_objects, domain_group]
 
 # password_vault_key names a key already loaded as a top-level var by
-# `-e @secrets.vault.yml` (docs/credentials.md §1); looked up
+# `-e @secrets.vault.yml` (Claude_Docs/Reference_Credentials.md §1); looked up
 # dynamically by name via the `vars` lookup since it's only known as a
 # string at this point. Falls back to the single default_user_password
-# vault key when omitted (docs/directory-objects.md §6).
+# vault key when omitted (Claude_Docs/Design_Directory-Objects.md §6).
 - name: Ensure domain users exist
   microsoft.ad.user:
     name: "{{ item.name }}"
@@ -62,7 +62,7 @@
   no_log: true
   tags: [directory_objects, domain_user]
 
-# Explicit domain-scope memberships (docs/directory-objects.md §7) —
+# Explicit domain-scope memberships (Claude_Docs/Design_Directory-Objects.md §7) —
 # group nested inside another domain group. Grouped by target group so
 # one task handles every configured member of that group in a single
 # call. `members.add` is additive (existing members neither removed nor

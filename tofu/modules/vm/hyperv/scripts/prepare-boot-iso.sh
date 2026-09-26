@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Invoked once per distinct `os` value by tofu/backends/hyperv/main.tf's
 # local-exec provisioner — NOT per VM instance, since every VM of the
-# same OS boots from the identical modified media (docs/base-images.md
+# same OS boots from the identical modified media (Claude_Docs/Design_Base-Images.md
 # §4, Hyper-V section).
 #
-# DESIGN.md §6.1: Hyper-V has no kernel-argument-injection hook like
+# Claude_Docs/Design_System-Overview.md §6.1: Hyper-V has no kernel-argument-injection hook like
 # libvirt's virt-install --initrd-inject, and Windows' own answer-file
 # auto-detection turned out to be unusable (README's Known Gaps for the
 # libvirt/Windows saga this repo went through first). For RHEL-family
@@ -53,7 +53,7 @@ fi
 # (matches every other entry) so this doesn't spam kernel boot logs
 # unnecessarily; inst.ks=cdrom scans attached optical media for ks.cfg
 # at its root, matching the second CD-ROM tofu/modules/vm/hyperv/main.tf
-# attaches (docs/base-images.md §4).
+# attaches (Claude_Docs/Design_Base-Images.md §4).
 python3 - "$isolinux_cfg" "$volume_id" <<'PYEOF'
 import re, sys
 

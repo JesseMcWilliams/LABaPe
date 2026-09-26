@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-flight address availability check (docs/networking.md §3).
+# Pre-flight address availability check (Claude_Docs/Reference_Networking.md §3).
 # Reads planned static IPs, one per line, from stdin — normally piped
 # in from scripts/lib/extract_planned_ips.py by scripts/deploy.sh.
 #

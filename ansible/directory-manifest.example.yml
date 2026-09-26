@@ -1,4 +1,4 @@
-# Copy to directory-manifest.yml and adjust — docs/directory-objects.md.
+# Copy to directory-manifest.yml and adjust — Claude_Docs/Design_Directory-Objects.md.
 # Per-run: OUs, domain/local groups, domain/local users, and membership
 # for this environment. .gitignore excludes the real file; this example
 # is the only version checked in. Entirely optional — an environment
@@ -34,7 +34,7 @@ local_users:
                                            # roles: key) -- domain_controller,
                                            # windows_server, windows_workstation,
                                            # linux_server, or linux_workstation
-                                           # (DESIGN.md §9), NOT a host_groups entry's
+                                           # (Claude_Docs/Design_System-Overview.md §9), NOT a host_groups entry's
                                            # own name: field, since that's not what
                                            # scripts/generate-inventory.py creates
                                            # Ansible inventory groups from.

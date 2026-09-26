@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs/validate-setup.md §6 — runs every check, in order, and prints a
+# Claude_Docs/Reference_Validate-Setup.md §6 — runs every check, in order, and prints a
 # pass/fail/skip summary. Backend-specific checks (§4) skip themselves
 # cleanly when that backend's vault keys aren't present, so this is
 # safe to run regardless of which backend(s) you've set up.

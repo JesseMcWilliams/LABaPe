@@ -1,4 +1,4 @@
-# Copy to software-manifest.yml and adjust — docs/software-manifest.md §4.
+# Copy to software-manifest.yml and adjust — Claude_Docs/Design_Software-Manifest.md §4.
 # Per-run: which package_catalog.yml entries apply to which role.
 # .gitignore excludes the real file; this example is the only version
 # checked in.

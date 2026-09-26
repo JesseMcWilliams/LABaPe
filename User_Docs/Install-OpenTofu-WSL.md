@@ -1,15 +1,15 @@
 # Installing and Configuring OpenTofu (Windows Host + Hyper-V + WSL2)
 
 Architecture: **one physical Windows box** runs both Hyper-V (the
-hypervisor) and WSL2 (the control machine, DESIGN.md §15). This is a
-different shape from docs/install-opentofu.md (a dedicated Debian
+hypervisor) and WSL2 (the control machine, Claude_Docs/Design_System-Overview.md §15). This is a
+different shape from User_Docs/Install-OpenTofu.md (a dedicated Debian
 control machine talking to a separate libvirt host) but the same
 underlying idea — OpenTofu and this repo's bash/Python scripts need a
 Linux environment, and WSL2 provides it on the same box that's also the
 hypervisor.
 
 **Where this repo actually stands**: `tofu/backends/hyperv` isn't
-implemented yet (DESIGN.md §18 schedules it for M2 — only
+implemented yet (Claude_Docs/Design_System-Overview.md §18 schedules it for M2 — only
 `tofu/backends/libvirt` exists today). This guide covers what's usable
 right now regardless (WSL2 itself, OpenTofu inside it) plus the
 Hyper-V-host-side WinRM setup that `tofu/backends/hyperv` will need
@@ -35,7 +35,7 @@ UNIX username/password on first launch).
 ## 2. Install OpenTofu inside WSL
 
 Once inside the WSL Debian prompt, this is **identical** to a native
-Debian box — follow [docs/install-opentofu.md](./install-opentofu.md)
+Debian box — follow [User_Docs/Install-OpenTofu.md](./Install-OpenTofu.md)
 §§1–3 (APT repo or standalone installer, verify with `tofu version`,
 set up the provider plugin cache). Nothing WSL-specific there.
 
@@ -60,7 +60,7 @@ Set-WSManInstance WinRM/Config/Service/Auth -ValueSet @{Negotiate = $true}
 ### HTTPS listener (recommended over plain HTTP)
 
 A self-signed certificate is fine here — this is a self-hosted lab, the
-same reasoning docs/credentials.md §2 already applies to the libvirt
+same reasoning Claude_Docs/Reference_Credentials.md §2 already applies to the libvirt
 provider's `insecure = true`:
 
 ```powershell
@@ -110,13 +110,13 @@ ipconfig
 ```
 
 That IP is what goes in `secrets.vault.yml` as `hyperv_host`
-(docs/credentials.md §1), and what `New-NetFirewallRule` above should
+(Claude_Docs/Reference_Credentials.md §1), and what `New-NetFirewallRule` above should
 actually be reachable on from WSL.
 
 ## 5. Test the WinRM connection before involving OpenTofu
 
 Confirm connectivity from WSL directly — `scripts/test/test-winrm-connectivity.py`
-(docs/validate-setup.md) does exactly this:
+(Claude_Docs/Reference_Validate-Setup.md) does exactly this:
 
 ```bash
 # from inside WSL
@@ -131,7 +131,7 @@ message will be much less direct about which of these steps is wrong.
 - **Usable today**: OpenTofu itself, `tofu/backends/libvirt` (if you
   also have a separate/nested libvirt target), and everything in §§1–5
   above regardless of backend.
-- **Pending M2** (DESIGN.md §18): `tofu/backends/hyperv` and
+- **Pending M2** (Claude_Docs/Design_System-Overview.md §18): `tofu/backends/hyperv` and
   `tofu/modules/vm/hyperv` / `tofu/modules/network/hyperv` don't exist
   yet. Once they land, they'll consume the same `hyperv_host`/
   `hyperv_user`/`hyperv_password` vault keys this guide's WinRM setup
@@ -155,5 +155,5 @@ message will be much less direct about which of these steps is wrong.
 - **Certificate errors from the provider** — expected with a
   self-signed cert; the provider config's `insecure = true` (once
   `tofu/backends/hyperv` exists) is what accepts that, matching the
-  reasoning docs/credentials.md §2 already documents for this exact
+  reasoning Claude_Docs/Reference_Credentials.md §2 already documents for this exact
   situation.

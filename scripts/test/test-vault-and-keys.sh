@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs/validate-setup.md §5 — the vault decrypts, and the bootstrap SSH
+# Claude_Docs/Reference_Validate-Setup.md §5 — the vault decrypts, and the bootstrap SSH
 # keypair it points at is actually a matching pair.
 set -uo pipefail
 
@@ -28,7 +28,7 @@ key_path="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_P
 rm -f /tmp/labape-vault-view.$$ /tmp/labape-vault-view-err.$$
 
 if [ -z "$key_path" ]; then
-  echo "FAIL: vault has no ansible_ssh_private_key_path key (docs/credentials.md §1)." >&2
+  echo "FAIL: vault has no ansible_ssh_private_key_path key (Claude_Docs/Reference_Credentials.md §1)." >&2
   exit 1
 fi
 
@@ -40,7 +40,7 @@ if [ ! -f "$key_path" ]; then
   fail=1
 fi
 if [ ! -f "${key_path}.pub" ]; then
-  echo "FAIL: ${key_path}.pub not found — docs/install-ansible.md §6 (ssh-keygen -f $key_path)." >&2
+  echo "FAIL: ${key_path}.pub not found — User_Docs/Install-Ansible.md §6 (ssh-keygen -f $key_path)." >&2
   fail=1
 fi
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs/validate-setup.md §2 — ansible-playbook --syntax-check against
+# Claude_Docs/Reference_Validate-Setup.md §2 — ansible-playbook --syntax-check against
 # the real playbook. Requires the collections from §1 to be installed;
 # module names are resolved even at syntax-check time, not just
 # YAML-parsed.

@@ -1,7 +1,7 @@
 # Validating an OpenTofu/Ansible Install and Configuration
 
 A structured checklist for confirming a control-machine setup
-(docs/install-opentofu.md, docs/install-ansible.md, or their
+(User_Docs/Install-OpenTofu.md, User_Docs/Install-Ansible.md, or their
 Windows/WSL equivalents) actually works, rather than just having run
 without visible errors. Each check below has a corresponding script
 under `scripts/test/` — run them individually while troubleshooting a
@@ -18,14 +18,14 @@ the scaffold works, in an environment where it can.
 
 **Script**: `scripts/test/test-tools-installed.sh`
 
-Checks: `tofu version` reports `>= 1.6.0` (DESIGN.md §6.3's
+Checks: `tofu version` reports `>= 1.6.0` (Claude_Docs/Design_System-Overview.md §6.3's
 `required_version`); `ansible --version` runs at all (catches the
 `pyo3`/`cryptography` ABI mismatch that can happen when a pip-installed
 `ansible-core` picks up a stale system `cryptography` package — a real
 failure mode, not hypothetical, hit while preparing this repo);
 `python3` has `yaml` importable (every helper in `scripts/lib/` needs
 it); and `ansible-galaxy collection list` shows all four collections
-docs/install-ansible.md §4 installs (`ansible.windows`, `microsoft.ad`,
+User_Docs/Install-Ansible.md §4 installs (`ansible.windows`, `microsoft.ad`,
 `community.general`, `chocolatey.chocolatey`).
 
 ## 2. The Ansible playbook and roles actually parse
@@ -62,7 +62,7 @@ scaffold that a manual review can approximate but can't fully replace.
 Run whichever applies; skip the other.
 
 **libvirt**: `scripts/test/test-libvirt-connectivity.sh` — confirms
-`virsh`/`virt-install` are installed locally (docs/install-opentofu.md
+`virsh`/`virt-install` are installed locally (User_Docs/Install-OpenTofu.md
 §4) and that `virsh --connect <libvirt_uri> list --all` succeeds using
 the URI from `secrets.vault.yml`. This is the single most common
 failure point in the whole pipeline (SSH key not authorized on the
@@ -71,7 +71,7 @@ isolation before ever running `tofu plan`.
 
 **Hyper-V**: `scripts/test/test-winrm-connectivity.py` — confirms WinRM
 is reachable and authenticates, using `hyperv_host`/`hyperv_user` from
-the vault (docs/install-opentofu-windows-wsl.md §5). Since
+the vault (User_Docs/Install-OpenTofu-WSL.md §5). Since
 `tofu/backends/hyperv` doesn't exist yet (M2), this validates the host
 prerequisite work now so it doesn't need re-checking once that backend
 lands.

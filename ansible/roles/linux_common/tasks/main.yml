@@ -1,8 +1,8 @@
 ---
-# docs/software-manifest.md §5 — union each role's package list rather
+# Claude_Docs/Design_Software-Manifest.md §5 — union each role's package list rather
 # than relying on Ansible's default variable behavior, which does not
 # merge list-type variables across the multiple groups a host belongs
-# to (a real, easy-to-miss gap for a multi-role host, DESIGN.md §9).
+# to (a real, easy-to-miss gap for a multi-role host, Claude_Docs/Design_System-Overview.md §9).
 - name: Union this host's role package lists (raw catalog keys / inline overrides)
   ansible.builtin.set_fact:
     linux_common_raw_packages: "{{ (linux_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"
@@ -19,7 +19,7 @@
     linux_common_package_entries: []
 
 # Each item is either a catalog key (string) or an inline override — a
-# dict with its own `name:` (docs/software-manifest.md §4). Normalize
+# dict with its own `name:` (Claude_Docs/Design_Software-Manifest.md §4). Normalize
 # both into {name, spec}. A catalog/inline entry has two possible
 # shapes: a flat per-package-manager entry (package_catalog.yml's
 # firefox/vscode/sevenzip — spec comes from packages[name][pkg_mgr]) or
@@ -46,8 +46,8 @@
   loop_control:
     label: "{{ item.name if item is mapping else item }}"
 
-# docs/software-manifest.md §2 — a missing platform field is a silent
-# skip, not an error. The OS matrix (DESIGN.md §5) is wide enough that
+# Claude_Docs/Design_Software-Manifest.md §2 — a missing platform field is a silent
+# skip, not an error. The OS matrix (Claude_Docs/Design_System-Overview.md §5) is wide enough that
 # "not packaged for this platform" is the normal case.
 - name: Drop entries with nothing applicable on this platform
   ansible.builtin.set_fact:
@@ -157,7 +157,7 @@
   loop_control:
     label: "{{ item.name }}"
 
-# --- Local accounts (docs/directory-objects.md §5/§4/§7) — this host's
+# --- Local accounts (Claude_Docs/Design_Directory-Objects.md §5/§4/§7) — this host's
 # role only, via the for_host_group filter (ansible/filter_plugins/
 # directory_objects.py); directory_manifest is loaded once at the play
 # level (playbooks/site.yml), same pattern as software_manifest_roles.
