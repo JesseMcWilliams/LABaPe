@@ -1,5 +1,5 @@
 ---
-# Windows domain join — DESIGN.md §8/§18 (M4). Only ever runs when a
+# Windows domain join — Claude_Docs/Design_System-Overview.md §8/§18 (M4). Only ever runs when a
 # domain_controller-role host exists in this environment (site.yml's
 # role-entry `when:` guard) and this host isn't itself the DC (DCs have
 # their own membership semantics — not touched via this generic role).
@@ -11,7 +11,7 @@
 # realm join / microsoft.ad.membership both depend on real DNS SRV
 # record discovery against the domain's own DNS server (which the DC
 # becomes as part of promotion) — the hosts-file snippet
-# (docs/networking.md §4) is a human-convenience file Ansible never
+# (Claude_Docs/Reference_Networking.md §4) is a human-convenience file Ansible never
 # reads, it doesn't substitute for this.
 - name: Point this host's DNS resolver at the domain controller
   ansible.windows.win_dns_client:

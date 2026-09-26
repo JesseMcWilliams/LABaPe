@@ -26,7 +26,7 @@ was reachable by static review alone.
 ## Windows answer-file deserialization failure (libvirt backend)
 
 Windows Server support (2019/2022/2025) exists on the libvirt backend —
-ahead of DESIGN.md §18's original M3 schedule — and the long-standing
+ahead of Claude_Docs/Design_System-Overview.md §18's original M3 schedule — and the long-standing
 intermittent-failure bug below is now **RESOLVED (round 10)**. All
 three versions use the same `autounattend.xml`-based unattended install
 as Linux's kickstart path (`iso/answer-files/windows/`): partitioning,
@@ -134,7 +134,7 @@ and ruled out a lot of plausible-looking dead ends):
    incompatibility with this specific Windows ISO's boot structure on
    this host, not a flag combination nobody had tried yet. Net result:
    the original secondary-CD-ROM approach remains the least-bad option
-   — reverted to it after this round (docs/base-images.md §4,
+   — reverted to it after this round (Claude_Docs/Design_Base-Images.md §4,
    `create-iso-direct.sh`) — and the underlying mechanism is now more
    thoroughly ruled *in* to Windows Setup's own search logic than ruled
    out of this repo's control, without a fix in hand.
@@ -350,7 +350,7 @@ roles were still `debug`-only placeholders. The moment real tasks ran
 against them: `[ERROR]: Task failed: Become plugin sudo is not
 supported by the Windows exec wrapper. Make sure to set the become
 method to runas.` WinRM connections already run as the local
-Administrator (docs/credentials.md §4) — fully privileged, no
+Administrator (Claude_Docs/Reference_Credentials.md §4) — fully privileged, no
 escalation needed — and nothing in this design sets
 `ansible_become_user`/`ansible_become_pass` for the `runas` method
 Windows actually requires. Fix: drop `become: true` from both plays,
@@ -410,7 +410,7 @@ Unrelated to the Ansible roles above, but hit while setting up the real
 test environment: inserting a new `dc` host group into `host_groups`
 (wherever in the list) unexpectedly renumbered `linsrv1`/`winsrv1`'s
 IPs and collided with the still-running VMs from a prior test, which
-`scripts/deploy.sh`'s pre-flight network check (docs/networking.md §3)
+`scripts/deploy.sh`'s pre-flight network check (Claude_Docs/Reference_Networking.md §3)
 correctly refused to proceed past. Reordering `host_groups` (`dc` first
 vs. last) made no difference — because OpenTofu's `for_each` over the
 flattened host map iterates in **sorted key order**, not list-insertion
@@ -466,16 +466,16 @@ authoritative group list.
 
 ### `directory-manifest.yml`'s `hosts:` field: the documented convention was wrong
 
-The original `docs/directory-objects.md` (and the example manifest that
+The original `Claude_Docs/Design_Directory-Objects.md` (and the example manifest that
 came with it) said a local object's `hosts:` field is "a role name
-(`winws`, `linsrv`, …) — the same names DESIGN.md §9's `host_groups`
+(`winws`, `linsrv`, …) — the same names Claude_Docs/Design_System-Overview.md §9's `host_groups`
 ... already use." That's not what the inventory actually contains:
 `scripts/generate-inventory.py` builds Ansible inventory groups from
 each host's `roles` list (`domain_controller`, `windows_server`,
 `windows_workstation`, `linux_server`, `linux_workstation` —
 `ALL_ROLE_GROUPS`), never from a `host_groups` block's own `name:`
 label (`winws`, `linsrv`, `dc`, …, which is only a hostname-generation
-convenience — DESIGN.md §9 itself says "each *role* a host carries
+convenience — Claude_Docs/Design_System-Overview.md §9 itself says "each *role* a host carries
 becomes an Ansible inventory group membership," not each host-group
 name). Every local-object task silently no-op'd — no error, just an
 empty `for_host_group` match on every host — until the manifest and doc

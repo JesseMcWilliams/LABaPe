@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert tofu/environment.yml into tofu/backends/<backend>/environment.auto.tfvars.json.
 
-DESIGN.md §6.3: environment.yml is the one human-edited file (shared
+Claude_Docs/Design_System-Overview.md §6.3: environment.yml is the one human-edited file (shared
 conceptually across OpenTofu and Ansible), but OpenTofu doesn't read
 YAML directly — this is the conversion step that bridges the two,
 including normalizing network_address/subnet_mask into the CIDR string

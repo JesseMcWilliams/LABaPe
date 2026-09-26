@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Extract planned static IPs from a `tofu show -json` plan, for the
-pre-flight check (docs/networking.md §3) to test before anything is
+pre-flight check (Claude_Docs/Reference_Networking.md §3) to test before anything is
 actually created.
 
 The vm module's ip_address output for a static-mode host is a pure
@@ -10,7 +10,7 @@ time — this doesn't need to wait for apply.
 
 Usage: extract_planned_ips.py <plan.json>
 Prints one IP per line. DHCP-mode hosts have a null ip_address
-(DESIGN.md §17.4) and are silently skipped, not an error here.
+(Claude_Docs/Design_System-Overview.md §17.4) and are silently skipped, not an error here.
 """
 import json
 import re

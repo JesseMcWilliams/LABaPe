@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Rendered by tofu/modules/vm/libvirt/main.tf via templatefile() — see
-     docs/base-images.md §3 (Windows) and §4 (direct ISO boot). Client
+     Claude_Docs/Design_Base-Images.md §3 (Windows) and §4 (direct ISO boot). Client
      counterpart to autounattend-windows-server.xml.tpl — same overall
      shape (same template vars: hostname, windows_admin_password,
      addressing, management_source; same FirstLogonCommands WinRM
@@ -8,7 +8,7 @@
      two real differences from Server, both UNVERIFIED against real
      hardware as of this writing (M5's workstation-support pass) —
      expect this to need iteration the same way the Server template did
-     (docs/troubleshooting-log.md's ten-round answer-file saga):
+     (Claude_Docs/Testing_Troubleshooting-Log.md's ten-round answer-file saga):
 
      1. Image selection by NAME, not INDEX. A client ISO ships multiple
         SKU images (Home/Pro/Education/...) in one install.wim/.esd,

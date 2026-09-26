@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs/validate-setup.md §1 — confirms the base tools and required
+# Claude_Docs/Reference_Validate-Setup.md §1 — confirms the base tools and required
 # Ansible collections are actually installed and importable, not just
 # "the command exists."
 set -uo pipefail
@@ -11,7 +11,7 @@ if command -v tofu >/dev/null 2>&1; then
   ver="$(tofu version | head -1)"
   echo "OK: $ver" >&2
 else
-  echo "FAIL: tofu not found on PATH (docs/install-opentofu.md)" >&2
+  echo "FAIL: tofu not found on PATH (User_Docs/Install-OpenTofu.md)" >&2
   fail=1
 fi
 
@@ -30,7 +30,7 @@ if command -v ansible >/dev/null 2>&1; then
   fi
   rm -f /tmp/labape-ansible-version.$$
 else
-  echo "FAIL: ansible not found on PATH (docs/install-ansible.md)" >&2
+  echo "FAIL: ansible not found on PATH (User_Docs/Install-Ansible.md)" >&2
   fail=1
 fi
 
@@ -49,7 +49,7 @@ if command -v ansible-galaxy >/dev/null 2>&1; then
     if echo "$installed" | grep -qi "^$coll "; then
       echo "OK: $coll installed" >&2
     else
-      echo "FAIL: $coll not installed (docs/install-ansible.md §4: ansible-galaxy collection install $coll)" >&2
+      echo "FAIL: $coll not installed (User_Docs/Install-Ansible.md §4: ansible-galaxy collection install $coll)" >&2
       fail=1
     fi
   done

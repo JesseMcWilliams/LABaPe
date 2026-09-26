@@ -1,10 +1,10 @@
 # Directory Objects: OUs, Groups, Users, and Membership
 
-Extends DESIGN.md §8 beyond "stand up the domain and join computers" to
+Extends Claude_Docs/Design_System-Overview.md §8 beyond "stand up the domain and join computers" to
 populating it — organizational units, domain and local groups, domain
 and local users, and group membership. One manifest file,
 `directory-manifest.yml`, changed between runs the same way
-`software-manifest.yml` is (DESIGN.md §11) — this is lab test data, not
+`software-manifest.yml` is (Claude_Docs/Design_System-Overview.md §11) — this is lab test data, not
 stable reference data, so unlike the software catalog there's no
 separate repo-committed "catalog" half to split out.
 
@@ -14,7 +14,7 @@ separate repo-committed "catalog" half to split out.
 |---|---|---|
 | Modules | `microsoft.ad.ou` / `.group` / `.user` / `.membership` | `ansible.windows.win_group`/`win_user`/`win_group_membership` (Windows); `ansible.builtin.group`/`user` (Linux) |
 | Runs against | The `domain_controller`-role host (needs the ActiveDirectory PowerShell module, present by default post-promotion) | Whichever specific host(s) the entry targets |
-| Only needs | The domain to exist (DESIGN.md §8) | That specific host to exist and be joined |
+| Only needs | The domain to exist (Claude_Docs/Design_System-Overview.md §8) | That specific host to exist and be joined |
 
 **Membership direction is constrained, not just a style choice**: a
 domain user or domain group can be a member of either a domain group or
@@ -82,7 +82,7 @@ local_users:
 
 `hosts:` on a local object is a **role name** — one of
 `domain_controller`, `windows_server`, `windows_workstation`,
-`linux_server`, `linux_workstation` (DESIGN.md §9), the same values
+`linux_server`, `linux_workstation` (Claude_Docs/Design_System-Overview.md §9), the same values
 `software-manifest.yml`'s `roles:` key is already keyed by — not a
 literal hostname, and **not** a `host_groups` entry's own `name:`
 field (e.g. a profile's `winws`/`linsrv` labels). This matters because
@@ -93,7 +93,7 @@ inventory groups from (`ALL_ROLE_GROUPS`) — a `host_groups` block's
 the hard way during M5's implementation: an earlier draft of this doc
 and the example manifest both used host-group names here, and every
 local-object task silently no-op'd (an empty `for_host_group` match,
-docs/directory-objects.md's own local-object implementation) until
+Claude_Docs/Design_Directory-Objects.md's own local-object implementation) until
 corrected to real role names.
 
 ## 5. Local groups
@@ -108,7 +108,7 @@ local_groups:
 
 ## 6. Passwords
 
-`password_vault_key` names a key in `secrets.vault.yml` (docs/credentials.md
+`password_vault_key` names a key in `secrets.vault.yml` (Claude_Docs/Reference_Credentials.md
 §1), consistent with how every other credential in this design is
 handled — never a plaintext value in the manifest. Since this is lab
 test data and often many disposable users are wanted at once, an entry
@@ -162,7 +162,7 @@ Within a single apply, order matters and isn't left implicit:
 ## 9. Where this runs, and the two kinds of "different steps"
 
 **Structural staging** (domain vs. local) already falls out of the
-existing pipeline (DESIGN.md §4) rather than needing a new phase system:
+existing pipeline (Claude_Docs/Design_System-Overview.md §4) rather than needing a new phase system:
 domain objects (§2–§4, §7's domain-scope entries) run as part of a new
 `domain_directory` role, right after `domain_controller`'s promotion —
 they only need the domain to exist. Local objects (§5, §7's local-scope

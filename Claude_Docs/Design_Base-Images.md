@@ -16,7 +16,7 @@ update.
 | Extra pipeline/state to maintain | Yes — template library | No | Template library, but built lazily | Template library (updates it) |
 | Best for | OS versions already known to be reused often | One-off/rarely used OS versions; evaluating a new release | **Recommended default day-one workflow** — stand a lab up fast from ISO, then convert the VMs worth keeping into templates instead of reinstalling next time | **A software package or OS patch needs to land in a template you already have** — see §6 |
 
-`image_source_default: packer_template` (DESIGN.md §10) is the default
+`image_source_default: packer_template` (Claude_Docs/Design_System-Overview.md §10) is the default
 for new host groups, but nothing stops a host group from starting on
 `iso_direct` and moving to a promoted template once it's proven out —
 that transition is exactly what §5 below covers. §6 covers keeping an
@@ -224,7 +224,7 @@ does, against the already-installed VM:
    even though this template didn't come from a Packer build — the
    consuming side, OpenTofu, doesn't care how a template was produced).
 
-This is a **manually-triggered** step (DESIGN.md §17.2) — you decide
+This is a **manually-triggered** step (Claude_Docs/Design_System-Overview.md §17.2) — you decide
 when a lab VM is done enough to become a reusable template, rather than
 the tooling guessing.
 
@@ -261,7 +261,7 @@ work. Instead, `scripts/refresh-template.sh <backend> <template-name>
    using the same OpenTofu `vm` module every other VM uses —
    `image_source: packer_template` — not from ISO.
 2. Runs the **same Ansible** that would configure a normal lab host
-   against it: either the regular software manifest (§11 in DESIGN.md)
+   against it: either the regular software manifest (§11 in Claude_Docs/Design_System-Overview.md)
    with the updated package version, or a dedicated OS-patch playbook
    (`apt/dnf/zypper upgrade`, Windows Update) — whichever is actually
    driving the change. This is deliberately the same playbook path

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Rendered by tofu/modules/vm/libvirt/main.tf via templatefile() — see
-     docs/base-images.md §3 (Windows) and §4 (direct ISO boot). Mirrors
+     Claude_Docs/Design_Base-Images.md §3 (Windows) and §4 (direct ISO boot). Mirrors
      iso/answer-files/rhel-family/ks-rocky9.cfg.tpl's role for Linux:
      partitioning, network, and first-boot bootstrap (WinRM here, an
      SSH key there) all live in this one rendered file.
@@ -148,7 +148,7 @@
         <SynchronousCommand wcm:action="add">
           <Order>5</Order>
           <Description>Create self-signed cert and HTTPS listener</Description>
-          <!-- Same reasoning as docs/install-opentofu-windows-wsl.md
+          <!-- Same reasoning as User_Docs/Install-OpenTofu-WSL.md
                §3 (WinRM HTTPS on the Hyper-V host) applied here to the
                guest: self-signed is normal for a self-hosted lab. -->
           <CommandLine>powershell -NoProfile -Command "$c = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My; New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $c.Thumbprint -Force"</CommandLine>

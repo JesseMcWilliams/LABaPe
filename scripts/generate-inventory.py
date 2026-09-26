@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Build the Ansible inventory + hosts.generated/credentials.generated
-from `tofu output -json hosts` (DESIGN.md §11, docs/networking.md §4).
+from `tofu output -json hosts` (Claude_Docs/Design_System-Overview.md §11, Claude_Docs/Reference_Networking.md §4).
 
 Usage: generate-inventory.py <hosts.json> <environment.yml> <ssh-private-key-path> <out-dir> [windows-admin-password]
 Writes <out-dir>/generated (Ansible YAML inventory),
 <out-dir>/hosts.generated (the pasteable hosts-file snippet), and
 <out-dir>/credentials.generated (a per-environment access handout for
-testers — docs/credentials.md §8. Deliberately a plain generated file,
+testers — Claude_Docs/Reference_Credentials.md §8. Deliberately a plain generated file,
 not a service: this is "option 1" of that section's tradeoff writeup;
-once a web interface exists (DESIGN.md §20) this should become a
+once a web interface exists (Claude_Docs/Design_System-Overview.md §20) this should become a
 selectable alternative to a live credentials lookup there, not the only
-way to get this information — see docs/environment-templates.md).
+way to get this information — see Claude_Docs/Planning_Environment-Templates.md).
 """
 import json
 import os
@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import yaml
 
-# Every role this design defines (DESIGN.md §9), emitted even when
+# Every role this design defines (Claude_Docs/Design_System-Overview.md §9), emitted even when
 # empty so site.yml's `hosts: domain_controller` etc. always resolve
 # to a real (possibly empty) group rather than an undefined one.
 ALL_ROLE_GROUPS = [
@@ -48,7 +48,7 @@ def main() -> int:
     with open(env_path, encoding="utf-8") as f:
         env = yaml.safe_load(f) or {}
     domain_name = env.get("domain_name", "")
-    # DESIGN.md §17 Open Question 1's resolution: first label of
+    # Claude_Docs/Design_System-Overview.md §17 Open Question 1's resolution: first label of
     # domain_name, uppercased, unless explicitly overridden.
     netbios_name = env.get("netbios_name") or (
         domain_name.split(".")[0].upper() if domain_name else ""
@@ -59,7 +59,7 @@ def main() -> int:
             "hosts": {},
             # Written even when empty — domain_name/netbios_name
             # previously reached only this script's own hosts.generated
-            # output, never Ansible itself (M4, DESIGN.md §8). Every
+            # output, never Ansible itself (M4, Claude_Docs/Design_System-Overview.md §8). Every
             # consumer (domain_controller, windows_domain_join,
             # linux_domain_join) is already behind a
             # domain_controller-group-non-empty guard, so an empty value
@@ -94,10 +94,10 @@ def main() -> int:
             # HTTPS (5986), matching the WinRM listener
             # iso/answer-files/windows/autounattend-win2022.xml.tpl
             # actually sets up (self-signed cert, hence
-            # cert_validation: ignore) — docs/credentials.md §4/§2.
+            # cert_validation: ignore) — Claude_Docs/Reference_Credentials.md §4/§2.
             # Basic auth transport matches that same answer file
             # enabling it explicitly for this first (non-domain)
-            # connection, per docs/install-opentofu-windows-wsl.md §3.
+            # connection, per User_Docs/Install-OpenTofu-WSL.md §3.
             host_vars["ansible_connection"] = "winrm"
             host_vars["ansible_port"] = 5986
             host_vars["ansible_winrm_transport"] = "basic"
@@ -107,7 +107,7 @@ def main() -> int:
                 host_vars["ansible_password"] = windows_admin_password
         else:
             host_vars["ansible_connection"] = "ssh"
-            host_vars["ansible_user"] = "labape"  # docs/credentials.md §5
+            host_vars["ansible_user"] = "labape"  # Claude_Docs/Reference_Credentials.md §5
             host_vars["ansible_ssh_private_key_file"] = ssh_key_path
 
         inventory["all"]["hosts"][name] = host_vars
@@ -146,12 +146,12 @@ def main() -> int:
             creds_lines.append(
                 f"Also valid as Domain Administrator ({netbios_name}\\Administrator) on "
                 "domain-joined hosts — same password until M5 adds dedicated named "
-                "accounts (docs/credentials.md §6)."
+                "accounts (Claude_Docs/Reference_Credentials.md §6)."
             )
         creds_lines.append("")
     if linux_hosts:
         creds_lines.append(f"## Linux ({', '.join(sorted(linux_hosts))})")
-        creds_lines.append("User: labape (SSH key auth, no password — docs/credentials.md §5)")
+        creds_lines.append("User: labape (SSH key auth, no password — Claude_Docs/Reference_Credentials.md §5)")
         creds_lines.append(f"ssh -i {ssh_key_path} labape@<host-ip>")
         creds_lines.append("sudo: passwordless (NOPASSWD, bootstrap-only)")
         creds_lines.append("")

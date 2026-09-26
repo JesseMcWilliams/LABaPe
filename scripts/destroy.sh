@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tears down one environment instance. DESIGN.md §12/§15.
+# Tears down one environment instance. Claude_Docs/Design_System-Overview.md §12/§15.
 #
 # Usage: destroy.sh <backend> <environment-instance-name> <profile>
 set -euo pipefail
@@ -11,7 +11,7 @@ ENV_INSTANCE="${2:?usage: destroy.sh <backend> <environment-instance-name> <prof
 PROFILE="${3:?usage: destroy.sh <backend> <environment-instance-name> <profile>}"
 
 if [ "$BACKEND" != "libvirt" ]; then
-  echo "labape: only the libvirt backend is implemented as of M1 (DESIGN.md §18) — got \"$BACKEND\"." >&2
+  echo "labape: only the libvirt backend is implemented as of M1 (Claude_Docs/Design_System-Overview.md §18) — got \"$BACKEND\"." >&2
   exit 1
 fi
 

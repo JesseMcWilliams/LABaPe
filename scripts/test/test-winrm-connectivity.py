@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""docs/validate-setup.md §4 (Hyper-V) / docs/install-opentofu-windows-wsl.md §5.
+"""Claude_Docs/Reference_Validate-Setup.md §4 (Hyper-V) / User_Docs/Install-OpenTofu-WSL.md §5.
 
 Confirms WinRM is reachable and authenticates against a Windows host —
 the Hyper-V host itself before tofu/backends/hyperv exists (M2), or any
-Windows VM once M3 lands (docs/install-ansible-windows-wsl.md §3).
+Windows VM once M3 lands (User_Docs/Install-Ansible-WSL.md §3).
 
 Usage:
   test-winrm-connectivity.py                    # reads hyperv_host/hyperv_user/
@@ -12,8 +12,8 @@ Usage:
                                                  # -p, HYPERV_PASSWORD, or a prompt
 
 Tries HTTPS (5986) with NTLM and certificate validation disabled — the
-self-signed-cert setup docs/install-opentofu-windows-wsl.md §3 walks
-through, same reasoning as docs/credentials.md §2's insecure=true.
+self-signed-cert setup User_Docs/Install-OpenTofu-WSL.md §3 walks
+through, same reasoning as Claude_Docs/Reference_Credentials.md §2's insecure=true.
 """
 import argparse
 import getpass
@@ -71,7 +71,7 @@ def main() -> int:
         print(
             "labape: FAIL — pywinrm not installed. `pip install --user pywinrm` "
             "(or `pipx inject ansible-core pywinrm` if ansible-core is pipx-managed, "
-            "docs/install-ansible.md §3).",
+            "User_Docs/Install-Ansible.md §3).",
             file=sys.stderr,
         )
         return 1
@@ -88,7 +88,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - report whatever winrm/requests raised, verbatim
         print(f"labape: FAIL — could not connect/authenticate: {exc}", file=sys.stderr)
         print(
-            "labape: check docs/install-opentofu-windows-wsl.md §3 (WinRM/firewall setup) "
+            "labape: check User_Docs/Install-OpenTofu-WSL.md §3 (WinRM/firewall setup) "
             "and §4 (using the host's real LAN IP, not localhost).",
             file=sys.stderr,
         )

@@ -1,4 +1,4 @@
-# Copy to environment.yml and fill in — see DESIGN.md §10.
+# Copy to environment.yml and fill in — see Claude_Docs/Design_System-Overview.md §10.
 # .gitignore excludes the real file; this example is the only version
 # checked in.
 
@@ -7,24 +7,24 @@ domain_name: company.com      # placeholder — not yet consumed by anything in 
                                # so the file's shape matches later milestones.
 netbios_name: COMPANY
 
-# M1 only implements the iso_direct image source (DESIGN.md §18) —
+# M1 only implements the iso_direct image source (Claude_Docs/Design_System-Overview.md §18) —
 # packer_template becomes the real default once M6 lands Packer
-# templates for the full OS matrix (DESIGN.md §5).
+# templates for the full OS matrix (Claude_Docs/Design_System-Overview.md §5).
 image_source_default: iso_direct
 
 network:
   mode: bridged                # only mode implemented as of M1 — nat lands in M7
   network_address: 192.168.1.0 # a /24 (or whatever mask below) on your real LAN —
-  subnet_mask: 255.255.255.0   # see docs/networking.md §1's Caution before reusing
+  subnet_mask: 255.255.255.0   # see Claude_Docs/Reference_Networking.md §1's Caution before reusing
                                 # an address range that's actually in use elsewhere
   gateway: 192.168.1.1         # optional; scripts/deploy.sh derives network_cidr's
                                 # .1 if omitted (tofu/backends/libvirt/main.tf)
   management_source: 192.168.1.50   # your control machine's IP/CIDR — SSH firewall
-                                     # scoping, docs/credentials.md §7
+                                     # scoping, Claude_Docs/Reference_Credentials.md §7
 
 software_store_path: ./software-store   # not yet used in M1 — no locally-sourced
                                          # installers exercised until the software
-                                         # manifest lands (M6, docs/software-manifest.md)
+                                         # manifest lands (M6, Claude_Docs/Design_Software-Manifest.md)
 
 # Directory on the libvirt host where VM disks (and, for Windows, the
 # generated answer-file ISO) get created. Convention on this project's
@@ -34,7 +34,7 @@ vm_storage_path: /data/VMs/LABaPe
 
 # Per-OS ISO path already staged on the libvirt host's filesystem —
 # tofu/modules/vm/libvirt's iso_direct path shells out to virt-install
-# on that host, which needs a local path, not a URL (docs/base-images.md).
+# on that host, which needs a local path, not a URL (Claude_Docs/Design_Base-Images.md).
 os_iso_paths:
   rocky9: /data/OS_Images/Rocky-9-x86_64-minimal.iso
   # Windows and Debian-family entries are all optional — only needed if

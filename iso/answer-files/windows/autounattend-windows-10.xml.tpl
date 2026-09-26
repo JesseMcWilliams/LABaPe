@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Rendered by tofu/modules/vm/libvirt/main.tf via templatefile() — see
-     docs/base-images.md §3 (Windows) and §4 (direct ISO boot). Windows
+     Claude_Docs/Design_Base-Images.md §3 (Windows) and §4 (direct ISO boot). Windows
      10 counterpart to autounattend-windows-client.xml.tpl — identical
      in every respect except the /IMAGE/NAME value below ("Windows 10
      Pro" vs "Windows 11 Pro"), since client ISOs select an edition by

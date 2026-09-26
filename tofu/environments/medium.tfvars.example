@@ -1,10 +1,10 @@
-# DESIGN.md §9's "medium" profile — a dual-role DC (domain_controller +
+# Claude_Docs/Design_System-Overview.md §9's "medium" profile — a dual-role DC (domain_controller +
 # windows_server), extra Windows/Linux servers, and the first
 # Windows-client (windows_11) and Debian-family (ubuntu_lts) workstation
 # host groups, landing alongside that OS support (M5's deferred half).
 #
 # windows_11/ubuntu_lts are newer, less-exercised paths than the
-# server/Rocky combination above them — see docs/troubleshooting-log.md
+# server/Rocky combination above them — see Claude_Docs/Testing_Troubleshooting-Log.md
 # for real bugs found getting them working, if that section exists yet.
 #
 # Copy this to medium.tfvars and adjust before use — it's checked in as

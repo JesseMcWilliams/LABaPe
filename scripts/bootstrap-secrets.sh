@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstraps everything docs/credentials.md §1 and docs/install-ansible.md
+# Bootstraps everything Claude_Docs/Reference_Credentials.md §1 and User_Docs/Install-Ansible.md
 # §5-6 otherwise have you do by hand: a vault password file, a bootstrap
 # SSH keypair, and secrets.vault.yml itself (M1 fields filled in, then
 # vault-encrypted). M2+/M3+/M4+ fields are left as the example's
@@ -24,7 +24,7 @@ sed_escape_repl() {
   printf '%s' "$1" | sed -e 's/[&#\\]/\\&/g'
 }
 
-# 1. Vault password file (docs/install-ansible.md §5)
+# 1. Vault password file (User_Docs/Install-Ansible.md §5)
 if [ -f "$VAULT_PASS_FILE" ]; then
   echo "labape: using existing vault password file $VAULT_PASS_FILE" >&2
 else
@@ -33,7 +33,7 @@ else
   chmod 600 "$VAULT_PASS_FILE"
 fi
 
-# 2. Bootstrap SSH keypair (docs/install-ansible.md §6)
+# 2. Bootstrap SSH keypair (User_Docs/Install-Ansible.md §6)
 if [ -f "$SSH_KEY_PATH" ]; then
   echo "labape: using existing SSH keypair $SSH_KEY_PATH" >&2
 else
@@ -55,7 +55,7 @@ sed \
   -e "s#^ansible_ssh_private_key_path:.*#ansible_ssh_private_key_path: $(sed_escape_repl "$SSH_KEY_PATH")#" \
   "$EXAMPLE_FILE" > "$VAULT_FILE"
 
-# 5. Encrypt in place (docs/credentials.md §1)
+# 5. Encrypt in place (Claude_Docs/Reference_Credentials.md §1)
 ansible-vault encrypt "$VAULT_FILE" --vault-password-file "$VAULT_PASS_FILE"
 
 echo "labape: done. $VAULT_FILE is vault-encrypted; vault password file: $VAULT_PASS_FILE" >&2

@@ -1,6 +1,6 @@
 # Certificate Authorities
 
-Extends DESIGN.md §19 — a `certificate_authority` role (future work, not
+Extends Claude_Docs/Design_System-Overview.md §19 — a `certificate_authority` role (future work, not
 yet implemented) issuing trusted certs to hosts in the environment,
 mirroring how `domain_controller` (§8) is "just a role" rather than a
 fixed host type.
@@ -42,7 +42,7 @@ not, the Linux CA is its own root.**
 **Ordering constraint** (same shape as §8's domain-controller-before-join
 rule): when both roles are present, the Windows CA must be provisioned
 and its Enterprise CA operational *before* the Linux CA's intermediate
-CSR is submitted — a new dependency edge in the pipeline (DESIGN.md §4),
+CSR is submitted — a new dependency edge in the pipeline (Claude_Docs/Design_System-Overview.md §4),
 conceptually "certificate_authority (Windows) → certificate_authority
 (Linux)" the same way "domain_controller → everything else" already
 works.

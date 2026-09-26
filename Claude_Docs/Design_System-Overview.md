@@ -134,8 +134,8 @@ which one it's talking to:
 | `cpu_count`, `memory_mb`, `disk_gb` | number | |
 | `network_id` | string | output of the `network` module (§6.2) — which switch/bridge/libvirt-network this VM attaches to |
 | `addressing` | object | `{ mode = "static"\|"dhcp", address, prefix_length, gateway }` — `address` etc. only meaningful when `mode = "static"` |
-| `admin_credential` | sensitive object | bootstrap password (Windows) or SSH public key (Linux), from `docs/credentials.md` |
-| `template_vars` | map(string) | extra values rendered into the answer file/finalize scripts at OS-provisioning time — e.g. `management_source` for firewall scoping (docs/credentials.md §7). **Not** where domain-related config goes: `domain_name`/`dns_forward_ip` (§10) are consumed directly by the `domain_controller` Ansible role during AD DS promotion (§8), not baked into an answer file — the domain doesn't exist yet when a VM is first provisioned, so there'd be nothing for it to join at that point anyway. |
+| `admin_credential` | sensitive object | bootstrap password (Windows) or SSH public key (Linux), from `Claude_Docs/Reference_Credentials.md` |
+| `template_vars` | map(string) | extra values rendered into the answer file/finalize scripts at OS-provisioning time — e.g. `management_source` for firewall scoping (Claude_Docs/Reference_Credentials.md §7). **Not** where domain-related config goes: `domain_name`/`dns_forward_ip` (§10) are consumed directly by the `domain_controller` Ansible role during AD DS promotion (§8), not baked into an answer file — the domain doesn't exist yet when a VM is first provisioned, so there'd be nothing for it to join at that point anyway. |
 
 **Outputs:**
 
@@ -151,7 +151,7 @@ which one it's talking to:
 the same pattern: `environment_name`, `mode` (`bridged`\|`nat`),
 `network_address`/`subnet_mask`/`gateway`, plus `physical_nic`
 (bridged) or nothing extra (nat, since libvirt/Hyper-V handle DHCP/NAT
-internally per `docs/networking.md`). Output: `network_id`, consumed by
+internally per `Claude_Docs/Reference_Networking.md`). Output: `network_id`, consumed by
 every `vm` module call for that environment.
 
 ### 6.3 Backend selection and state (a real Terraform/OpenTofu constraint)
@@ -237,7 +237,7 @@ into Packer-equivalent templates rather than reinstalling from ISO every
 time. Both paths use the *same* answer files, and the promotion path
 reuses the same generalize/sysprep steps a Packer build would run. Full
 process, including promotion, in
-[`docs/base-images.md`](./docs/base-images.md).
+[`Claude_Docs/Design_Base-Images.md`](./Design_Base-Images.md).
 
 ## 8. Directory Services (Domain Controller & Domain Join)
 
@@ -278,7 +278,7 @@ is rejected, not just documented. Every task also carries a
 `directory_objects` tag so a change can be pushed to an already-running
 environment (`--tags directory_objects`) without re-running domain join
 or software install. Full design in
-[`docs/directory-objects.md`](./docs/directory-objects.md) — this
+[`Claude_Docs/Design_Directory-Objects.md`](./Design_Directory-Objects.md) — this
 already covers both "users into groups" and "groups assigned to a
 server's local groups or nested into other groups" (its §7
 `memberships:` list), the full scope needed when §19/§20 (below) were
@@ -286,7 +286,7 @@ added; no separate design was needed for that part.
 
 Future work (§19) adds a `certificate_authority` role using the same
 flexible-role model as `domain_controller` above — see
-[`docs/certificate-authority.md`](./docs/certificate-authority.md).
+[`Claude_Docs/Planning_Certificate-Authority.md`](./Planning_Certificate-Authority.md).
 
 ## 9. Environment Profiles & Host Roles
 
@@ -328,10 +328,10 @@ just a different `host_groups` list — no separate code path.
 
 Future work (§20) wraps this `host_groups` profile, the software
 manifest (§11), and the directory manifest
-(docs/directory-objects.md) into one composable **environment
+(Claude_Docs/Design_Directory-Objects.md) into one composable **environment
 template**, managed from a future web interface rather than three
 hand-edited files — see
-[`docs/environment-templates.md`](./docs/environment-templates.md).
+[`Claude_Docs/Planning_Environment-Templates.md`](./Planning_Environment-Templates.md).
 
 ## 10. Environment Configuration
 
@@ -355,9 +355,9 @@ network:
     - 1.1.1.1
     - 9.9.9.9
   management_source: 192.168.1.50   # control machine IP/CIDR — WinRM/SSH
-                                     # firewall scoping, docs/credentials.md §7
+                                     # firewall scoping, Claude_Docs/Reference_Credentials.md §7
 software_store_path: ./software-store   # optional override — local installer
-                                         # files, docs/software-manifest.md §8
+                                         # files, Claude_Docs/Design_Software-Manifest.md §8
 ```
 
 `domain_name` is never hardcoded — `company.com` above is only the
@@ -380,7 +380,7 @@ Package naming isn't consistent across `chocolatey`/`apt`/`dnf`/`zypper`
 for "the same" software, and some packages need extra setup (a repo
 added first) or aren't in any package manager at all. Full design,
 including exactly how a multi-role host's package list is resolved, is
-in [`docs/software-manifest.md`](./docs/software-manifest.md). Summary:
+in [`Claude_Docs/Design_Software-Manifest.md`](./Design_Software-Manifest.md). Summary:
 
 - **Two files, two lifecycles**: `ansible/package_catalog.yml`
   (repo-committed, stable — generic name → per-package-manager name,
@@ -407,7 +407,7 @@ in [`docs/software-manifest.md`](./docs/software-manifest.md). Summary:
   as a file on your own machine. `win_copy`/`copy` pushes it from the
   control machine to the target over the existing WinRM/SSH connection
   before installing, from a `.gitignore`d **software store** directory
-  (`docs/software-manifest.md` §8) rather than committing binaries to
+  (`Claude_Docs/Design_Software-Manifest.md` §8) rather than committing binaries to
   git.
 - **Versioning** is optional per entry; omitted means "latest," which is
   the practical default for a disposable environment.
@@ -419,27 +419,31 @@ in [`docs/software-manifest.md`](./docs/software-manifest.md). Summary:
   `answer_file` covers installers with their own response-file format
   (InstallShield's `.iss`, distinct from the OS-level answer files in
   §7); `debconf_selections` pre-seeds a `.deb`'s configuration prompts
-  before install (`docs/software-manifest.md` §9).
+  before install (`Claude_Docs/Design_Software-Manifest.md` §9).
 
 ## 12. Proposed Repository Layout
 
 ```
 LABaPe/
   README.md
-  DESIGN.md
-  docs/
-    base-images.md
-    networking.md
-    credentials.md
-    software-manifest.md
-    directory-objects.md
-    install-opentofu.md            # control-machine setup, Debian 13
-    install-ansible.md             # control-machine setup, Debian 13
-    install-opentofu-windows-wsl.md  # control machine = WSL2 on the Hyper-V host itself
-    install-ansible-windows-wsl.md   # same
-    validate-setup.md              # checklist backing scripts/test/
-  secrets.vault.example.yml   # unencrypted shape only — see docs/credentials.md §1
-  software-store/             # .gitignore'd — local installer files, docs/software-manifest.md §8
+  Claude_Docs/
+    Design_System-Overview.md
+    Design_Base-Images.md
+    Design_Directory-Objects.md
+    Design_Software-Manifest.md
+    Reference_Credentials.md
+    Reference_Networking.md
+    Reference_Validate-Setup.md    # checklist backing scripts/test/
+    Planning_Certificate-Authority.md
+    Planning_Environment-Templates.md
+    Testing_Troubleshooting-Log.md
+  User_Docs/
+    Install-OpenTofu.md            # control-machine setup, Debian 13
+    Install-Ansible.md             # control-machine setup, Debian 13
+    Install-OpenTofu-WSL.md        # control machine = WSL2 on the Hyper-V host itself
+    Install-Ansible-WSL.md         # same
+  secrets.vault.example.yml   # unencrypted shape only — see Claude_Docs/Reference_Credentials.md §1
+  software-store/             # .gitignore'd — local installer files, Claude_Docs/Design_Software-Manifest.md §8
   tofu/
     modules/
       vm/               # common interface, §6.1
@@ -462,18 +466,18 @@ LABaPe/
     environment.example.yml
   ansible/
     group_vars/
-    package_catalog.yml   # repo-committed, stable — §11 / docs/software-manifest.md
+    package_catalog.yml   # repo-committed, stable — §11 / Claude_Docs/Design_Software-Manifest.md
     roles/
       domain_controller/
-      domain_directory/   # OUs, domain groups/users, domain-scope membership — §8 / docs/directory-objects.md
+      domain_directory/   # OUs, domain groups/users, domain-scope membership — §8 / Claude_Docs/Design_Directory-Objects.md
       windows_common/     # resolves group_names -> package_catalog -> win_chocolatey/win_package
-                           # + local groups/users/membership, docs/directory-objects.md §9
+                           # + local groups/users/membership, Claude_Docs/Design_Directory-Objects.md §9
       linux_common/       # resolves group_names -> package_catalog -> apt/dnf/zypper + repo setup
-                           # + local groups/users/membership, docs/directory-objects.md §9
+                           # + local groups/users/membership, Claude_Docs/Design_Directory-Objects.md §9
     playbooks/
       site.yml          # ordered: domain_controller -> domain_directory -> domain-join -> per-role software/local accounts
-    software-manifest.example.yml   # per-run — §11 / docs/software-manifest.md
-    directory-manifest.example.yml  # per-run — §8 / docs/directory-objects.md
+    software-manifest.example.yml   # per-run — §11 / Claude_Docs/Design_Software-Manifest.md
+    directory-manifest.example.yml  # per-run — §8 / Claude_Docs/Design_Directory-Objects.md
   packer/
     windows/
       2019/ 2022/ 2025/
@@ -488,12 +492,12 @@ LABaPe/
   scripts/
     deploy.sh            # vault decrypt -> check-network -> tofu apply -> generate inventory/hosts -> ansible-playbook
     destroy.sh
-    check-network.sh     # pre-flight address/subnet availability check (docs/networking.md §3)
+    check-network.sh     # pre-flight address/subnet availability check (Claude_Docs/Reference_Networking.md §3)
     check-network.ps1
     promote-to-template.sh   # generalize + export a live VM (from ISO or a template clone) into a template
     refresh-template.sh      # clone existing template -> apply update via Ansible -> promote as new version
     lib/                 # environment.yml/vault/plan-JSON helpers used by deploy.sh/destroy.sh
-    test/                 # docs/validate-setup.md — tool/collection presence, playbook syntax,
+    test/                 # Claude_Docs/Reference_Validate-Setup.md — tool/collection presence, playbook syntax,
                            # tofu validate, libvirt/WinRM connectivity, vault+key consistency
 ```
 
@@ -508,7 +512,7 @@ Ansible gets its very first connection to a VM nothing has configured
 yet. Both share the **same** vault rather than inventing separate
 credential paths — full mechanics, including the exact `deploy.sh`
 credential flow, are in
-[`docs/credentials.md`](./docs/credentials.md). Summary:
+[`Claude_Docs/Reference_Credentials.md`](./Reference_Credentials.md). Summary:
 
 - Hyper-V auth (WinRM to the host) and libvirt auth (SSH URI) both come
   from `secrets.vault.yml`, exported as `TF_VAR_*` before `tofu apply`.
@@ -520,7 +524,7 @@ credential flow, are in
   credential model.
 - Given bridged-by-default networking (§14), WinRM is more exposed than
   it would be behind NAT — prefer HTTPS and firewall-scoping the WinRM
-  listener where practical (`docs/credentials.md` §7).
+  listener where practical (`Claude_Docs/Reference_Credentials.md` §7).
 
 Ansible's own secrets-at-rest options, from simplest to most integrated:
 
@@ -555,13 +559,13 @@ to be locked in now.
 Default mode is **bridged**: environment VMs go straight on the
 physical LAN, matching how the lab is actually used — heavy hands-on
 testing against it, with hostnames managed by hand-editing a hosts file
-(`docs/networking.md` §4) rather than via DNS lookups. **NAT isolation remains available
+(`Claude_Docs/Reference_Networking.md` §4) rather than via DNS lookups. **NAT isolation remains available
 as an opt-in** (`network.mode: nat`) for an environment that should stay
 off the physical network entirely.
 
 Full mechanics — the exact Hyper-V and libvirt steps for both modes, the
 pre-flight availability check, and hosts-file generation — are in
-[`docs/networking.md`](./docs/networking.md). Summary:
+[`Claude_Docs/Reference_Networking.md`](./Reference_Networking.md). Summary:
 
 - **Bridged (default)**: an `External` Hyper-V switch or a bridge device
   (`br0`) on libvirt — both providers support this natively, no
@@ -573,7 +577,7 @@ pre-flight availability check, and hosts-file generation — are in
   needs no extra steps. Hyper-V has no single resource for this —
   creating the Internal switch, assigning the gateway address, and
   binding `New-NetNat` is a WinRM-executed provisioner sequence, fully
-  documented in `docs/networking.md` §2 since it's the more involved
+  documented in `Claude_Docs/Reference_Networking.md` §2 since it's the more involved
   path of the two.
 - **Pre-flight check** (`scripts/check-network.sh`/`.ps1`): before
   `tofu apply`, verifies the environment's planned static addresses
@@ -613,7 +617,7 @@ controller should generally be static (it's also serving DNS). In
 bridged mode, DHCP-mode hosts get their lease from whatever DHCP server
 already serves that LAN segment — LABaPe doesn't manage it. In NAT mode,
 DHCP is either the libvirt network's built-in `dnsmasq`, or, on Hyper-V,
-a Windows DHCP Server role scoped to the environment (`docs/networking.md`
+a Windows DHCP Server role scoped to the environment (`Claude_Docs/Reference_Networking.md`
 §2 step 4) since a custom Internal+NAT switch has no DHCP of its own.
 **In practice, `mode: dhcp` doesn't work end-to-end yet** — the
 IP-discovery step it depends on is deferred (§17.4/§6.1). Static
@@ -654,7 +658,7 @@ None blocking further scaffolding right now.
 
 1. ~~NetBIOS derivation~~ — resolved: first label of `domain_name`,
    uppercased, with `netbios_name` as an explicit override. Confirmed.
-2. ~~Promote-to-template trigger~~ — resolved as manual (docs/base-images.md
+2. ~~Promote-to-template trigger~~ — resolved as manual (Claude_Docs/Design_Base-Images.md
    §5), and extended: `promote-to-template.sh` is now one building block
    of two distinct, both-manual workflows — promoting a fresh ISO-built
    VM (§5) and refreshing an *existing* template when a package or patch
@@ -671,13 +675,13 @@ None blocking further scaffolding right now.
    until then; the discovery step gets built only once a real need for
    DHCP-mode hosts actually shows up, not preemptively. Left here as a
    documented, known gap rather than something silently unhandled.
-5. ~~**Windows Setup answer-file reliability**~~ — **resolved** (README's
-   Known Gaps, round 10). The libvirt Windows path (§18 M3, landed
+5. ~~**Windows Setup answer-file reliability**~~ — **resolved** (Claude_Docs/Testing_Troubleshooting-Log.md's
+   Windows answer-file deserialization entry, round 10). The libvirt Windows path (§18 M3, landed
    early — see below) mounts `autounattend.xml` on a separate CD-ROM
    rather than modifying the vendor ISO, matching this section's own
    direct-ISO-boot approach for Linux. Nine rounds of behavioral
    investigation (delivery mechanism, media type, file naming, CVE
-   research, vendor-ISO modification — all documented in README) never
+   research, vendor-ISO modification — all documented there) never
    found the cause; round 10 finally pulled Windows Setup's own
    `setupact.log` via a WinPE shell during a live failure, which showed
    it immediately: Setup found the file every time but failed to
@@ -699,12 +703,13 @@ None blocking further scaffolding right now.
   `windows_common` role. **Landed early for libvirt, and solid** (Server
   2019/2022/2025, `autounattend.xml`-based, real WinRM bootstrap, a
   working `windows_common` role) — see Open Question 5 above and
-  README's Known Gaps round 10 for the answer-file reliability bug that
-  blocked this for a long stretch and is now fixed. Hyper-V still
+  Claude_Docs/Testing_Troubleshooting-Log.md's Windows answer-file
+  deserialization entry (round 10) for the answer-file reliability bug
+  that blocked this for a long stretch and is now fixed. Hyper-V still
   pending M2.
 - **M4** — Domain controller role: AD DS promotion, configurable domain
   name, Windows domain join (server + workstation), Linux realm join
-  (`realmd`/`sssd`), hosts-file snippet generation (`docs/networking.md`
+  (`realmd`/`sssd`), hosts-file snippet generation (`Claude_Docs/Reference_Networking.md`
   §4). Validate the flexible-role model (DC as single-purpose vs.
   dual-role host).
 
@@ -712,8 +717,8 @@ None blocking further scaffolding right now.
   infrastructure (libvirt backend, a single-purpose `dc` +
   `linsrv`/`winsrv` small profile): a real forest promoted, both
   platforms' domain join succeeded, software install ran cleanly
-  afterward — see README's Known Gaps and
-  [docs/troubleshooting-log.md § M4](./docs/troubleshooting-log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs)
+  afterward — see
+  [Claude_Docs/Testing_Troubleshooting-Log.md § M4](./Testing_Troubleshooting-Log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs)
   for the two real bugs (a `become: true` mistake, and platform-opposite
   domain-join credential formats) this took to get working. **Not yet
   separately exercised**: the `windows_workstation`/`linux_workstation`
@@ -723,31 +728,39 @@ None blocking further scaffolding right now.
 - **M5** — Workstation host type + medium profile, validated with
   domain join across all host types. `domain_directory` role +
   `directory-manifest.yml` (OUs, domain/local groups and users,
-  membership, `--tags directory_objects` re-apply) — docs/directory-objects.md.
+  membership, `--tags directory_objects` re-apply) — Claude_Docs/Design_Directory-Objects.md.
 
   **The directory-objects half is now confirmed working end-to-end**
   against real infrastructure: OUs, domain groups, domain users (with
   inline group membership), explicit domain-group nesting, local groups,
   local users, and a domain principal added to a local group, all via a
   single optional `directory-manifest.yml`. Three real bugs found along
-  the way — see README's Known Gaps and
-  [docs/troubleshooting-log.md § M5](./docs/troubleshooting-log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working)
-  — most notably that `docs/directory-objects.md`'s original `hosts:`
+  the way — see
+  [Claude_Docs/Testing_Troubleshooting-Log.md § M5](./Testing_Troubleshooting-Log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working)
+  — most notably that `Claude_Docs/Design_Directory-Objects.md`'s original `hosts:`
   field convention (host-group *names* like `winsrv`/`linsrv`) didn't
   match what the inventory actually groups by (role names); corrected in
   that doc. **Workstation host type + medium profile — the other half of
-  M5 as originally scoped — deliberately deferred**, scoped out of this
-  pass as a separate, mostly-unrelated OS-matrix expansion (new
-  Windows-client answer-file template, a new Debian-family
-  kickstart-equivalent, `medium.tfvars.example`).
+  M5 as originally scoped — is now in progress.** Windows 11 client and
+  Ubuntu LTS (first Debian-family OS) support have been added; Ubuntu
+  LTS isolation testing found and fixed four real bugs (a
+  `virt-install` kernel-detection failure specific to the live-server
+  ISO, several one-time subiquity TUI screens that block forever over a
+  serial console, and an apt GeoIP-mirror-lookup hang) but hit one
+  still-open issue — subiquity's guided storage configuration doesn't
+  honor either documented autoinstall storage directive on this Ubuntu
+  24.04.3 build — see
+  [Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu LTS half)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
+  No Ubuntu LTS host has completed a full unattended install yet;
+  Windows 11 testing hasn't started.
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
   ISO-built lab VM into a reusable template; `refresh-template.sh`
-  (docs/base-images.md §6) for updating an existing template without a
+  (Claude_Docs/Design_Base-Images.md §6) for updating an existing template without a
   full rebuild; software manifest system finalized.
 - **M7** — NAT isolation mode (opt-in) for both backends, including the
   Hyper-V Internal-switch + `New-NetNat` provisioning sequence
-  (`docs/networking.md` §2).
+  (`Claude_Docs/Reference_Networking.md` §2).
 - **M8** — Secrets/vault integration, CI validation (`tflint`,
   `ansible-lint`), docs polish.
 - **M9** — `certificate_authority` role (§19): AD CS for Windows,
@@ -761,8 +774,8 @@ Both M9 and M10 are recorded now (design discussion, not yet
 implementation) because a design exists — see §19/§20 — not because
 they're scheduled next; M4 and M5's directory-objects half are both now
 confirmed working end-to-end (see above). The more immediate next steps
-per README's Status are M5's deferred other half (workstation host
-type + medium profile) and M6 (Packer base images).
+are M5's other half (workstation host type + medium profile, now in
+progress — see above) and M6 (Packer base images).
 
 ## 19. Certificate Authorities (Future)
 
@@ -774,13 +787,13 @@ of the Windows CA (one cross-trusted PKI); otherwise the Linux CA is its
 own root. Full design, including what's still unresolved (client trust
 distribution, renewal automation, where per-service cert requests are
 modeled):
-[`docs/certificate-authority.md`](./docs/certificate-authority.md).
+[`Claude_Docs/Planning_Certificate-Authority.md`](./Planning_Certificate-Authority.md).
 
 ## 20. Environment Templates & Web Interface (Future)
 
 A web interface for creating, duplicating, and editing **environment
 templates** — §9's `host_groups` profile, §11's software manifest, and
-docs/directory-objects.md's directory manifest, merged into one
+Claude_Docs/Design_Directory-Objects.md's directory manifest, merged into one
 composable object — and deploying them ("hit go") instead of hand-editing
 three separate files. Templates are self-similar: any template can be
 deployed standalone or included as a component ("sub-assembly") inside a
@@ -789,8 +802,8 @@ field-level overrides from the including template. The deploy step
 itself needs a real async job model (queue, live logs, retry/cancel) —
 a `tofu apply` + multi-role Ansible run took 15-40+ minutes and needed
 hands-on recovery more than once in this project's own testing
-(docs/troubleshooting-log.md), so a synchronous request/response UI
+(Claude_Docs/Testing_Troubleshooting-Log.md), so a synchronous request/response UI
 isn't viable. Full design, including what's still unresolved (template
 storage, versioning/pinning of included sub-assemblies, auth model,
 relationship to the existing CLI):
-[`docs/environment-templates.md`](./docs/environment-templates.md).
+[`Claude_Docs/Planning_Environment-Templates.md`](./Planning_Environment-Templates.md).

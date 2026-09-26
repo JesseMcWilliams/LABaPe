@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Decrypt secrets.vault.yml and print one key's value (or the whole
 thing as JSON) to stdout. Wraps `ansible-vault view` rather than
-reimplementing vault decryption — docs/credentials.md §6.
+reimplementing vault decryption — Claude_Docs/Reference_Credentials.md §6.
 
 Usage: vault_get.py <vault-file> <vault-password-file> [key]
 """

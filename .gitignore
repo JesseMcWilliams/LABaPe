@@ -4,7 +4,7 @@ environment.yml
 software-manifest.yml
 directory-manifest.yml
 
-# OpenTofu state and working directories (docs/credentials.md §6.3 / DESIGN.md §6.3)
+# OpenTofu state and working directories (Claude_Docs/Reference_Credentials.md §6.3 / Claude_Docs/Design_System-Overview.md §6.3)
 **/.terraform/
 **/.terraform.lock.hcl
 *.tfstate
@@ -27,7 +27,7 @@ directory-manifest.yml
 **/hosts.json
 **/.rendered/
 
-# Local installer files (docs/software-manifest.md §8) — never committed
+# Local installer files (Claude_Docs/Design_Software-Manifest.md §8) — never committed
 software-store/*
 !software-store/.gitkeep
 

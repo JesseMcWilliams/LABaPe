@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# docs/validate-setup.md §3 — `tofu init -backend=false` + `tofu
+# Claude_Docs/Reference_Validate-Setup.md §3 — `tofu init -backend=false` + `tofu
 # validate` against every backend directory that actually has
 # configuration in it yet (tofu/backends/hyperv is still empty as of
-# M1, DESIGN.md §18 — skipped cleanly, not failed).
+# M1, Claude_Docs/Design_System-Overview.md §18 — skipped cleanly, not failed).
 set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

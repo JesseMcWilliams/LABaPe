@@ -1,6 +1,6 @@
 ---
 # Windows counterpart to linux_common/tasks/main.yml — same union/
-# normalize/install shape (docs/software-manifest.md §5), simplified
+# normalize/install shape (Claude_Docs/Design_Software-Manifest.md §5), simplified
 # since there's only one package manager to branch on. win_chocolatey
 # bootstraps Chocolatey itself on first use, so there's no separate
 # "install Chocolatey" step needed here.
@@ -23,7 +23,7 @@
 # A catalog entry has two possible shapes: a flat chocolatey: <name>
 # string (package_catalog.yml's firefox/vscode/sevenzip/
 # notepadplusplus) or a custom-installer entry nested under windows:
-# (internal_agent/vendor_tool, docs/software-manifest.md §8/§9).
+# (internal_agent/vendor_tool, Claude_Docs/Design_Software-Manifest.md §8/§9).
 - name: Normalize into {name, spec} for this host's package manager
   ansible.builtin.set_fact:
     windows_common_package_entries: >-
@@ -45,7 +45,7 @@
   loop_control:
     label: "{{ item.name if item is mapping else item }}"
 
-# docs/software-manifest.md §2 — a missing platform field is a silent
+# Claude_Docs/Design_Software-Manifest.md §2 — a missing platform field is a silent
 # skip, not an error.
 - name: Drop entries with nothing applicable on this platform
   ansible.builtin.set_fact:
@@ -91,7 +91,7 @@
   loop_control:
     label: "{{ item.name }}"
 
-# --- Local accounts (docs/directory-objects.md §5/§4/§7) — this host's
+# --- Local accounts (Claude_Docs/Design_Directory-Objects.md §5/§4/§7) — this host's
 # role only, via the for_host_group filter (ansible/filter_plugins/
 # directory_objects.py); directory_manifest is loaded once at the play
 # level (playbooks/site.yml), same pattern as software_manifest_roles.

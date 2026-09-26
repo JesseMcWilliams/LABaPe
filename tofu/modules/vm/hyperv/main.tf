@@ -190,14 +190,14 @@ resource "hyperv_machine_instance" "this" {
 # `tofu apply` until that provider bug is understood well enough to
 # automate around.
 
-# --- packer_template path (not implemented until M6, DESIGN.md §18) ---
+# --- packer_template path (not implemented until M6, Claude_Docs/Design_System-Overview.md §18) ---
 resource "terraform_data" "packer_template_not_implemented" {
   count = var.image_source == "packer_template" ? 1 : 0
 
   lifecycle {
     precondition {
       condition     = var.image_source != "packer_template"
-      error_message = "image_source = \"packer_template\" is not implemented on the Hyper-V backend yet (DESIGN.md §18 schedules it for M6). Use \"iso_direct\" for now."
+      error_message = "image_source = \"packer_template\" is not implemented on the Hyper-V backend yet (Claude_Docs/Design_System-Overview.md §18 schedules it for M6). Use \"iso_direct\" for now."
     }
   }
 }

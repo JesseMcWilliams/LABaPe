@@ -1,7 +1,7 @@
 # Installing and Configuring OpenTofu (Debian 13)
 
 This targets the **control machine** — the Linux/WSL box that runs
-`tofu`/`ansible-playbook` (DESIGN.md §15), not necessarily the libvirt
+`tofu`/`ansible-playbook` (Claude_Docs/Design_System-Overview.md §15), not necessarily the libvirt
 host itself. If this same Debian 13 box is *also* your libvirt host
 (a common single-box self-hosted setup), §5 below covers the extra
 host-side packages; everything else is identical either way.
@@ -94,7 +94,7 @@ sudo apt-get install -y libvirt-clients virtinst
 ```
 
 `virtinst` provides `virt-install`, which `tofu/modules/vm/libvirt`
-shells out to directly for the `iso_direct` path (docs/base-images.md
+shells out to directly for the `iso_direct` path (Claude_Docs/Design_Base-Images.md
 §4 — the libvirt *provider* has no native kickstart-injection
 primitive, so this repo uses `virt-install --initrd-inject` instead;
 see that module's `main.tf` comments for the full reasoning).
@@ -116,13 +116,13 @@ sudo usermod -aG libvirt,kvm "$USER"
 newgrp libvirt
 ```
 
-Bridge setup for VM networking (docs/networking.md §1) is a separate
+Bridge setup for VM networking (Claude_Docs/Reference_Networking.md §1) is a separate
 step from installing these packages — see that doc.
 
 ## 6. Configure access to the libvirt host
 
 If the libvirt host is remote, OpenTofu and `virt-install` both connect
-over SSH via a `qemu+ssh://` URI (docs/credentials.md §3). This is a
+over SSH via a `qemu+ssh://` URI (Claude_Docs/Reference_Credentials.md §3). This is a
 one-time manual prerequisite, not something OpenTofu sets up for you:
 
 ```bash
@@ -136,7 +136,7 @@ virsh --connect qemu+ssh://user@your-libvirt-host/system list --all
 If that `virsh` command hangs or refuses, fix it there first — OpenTofu
 will fail the same way, just with a less direct error.
 
-`libvirt_uri` in `secrets.vault.yml` (docs/credentials.md §1) is this
+`libvirt_uri` in `secrets.vault.yml` (Claude_Docs/Reference_Credentials.md §1) is this
 same connection string, e.g.
 `qemu+ssh://user@your-libvirt-host/system`.
 
@@ -205,6 +205,6 @@ Linux, a sign something's misconfigured for Windows.
   locally if the control machine and host are the same box).
 - **`tofu apply` hangs during VM creation** — that's
   `virt-install --wait -1` blocking on the kickstart install
-  (docs/base-images.md §4); check the VM's console
+  (Claude_Docs/Design_Base-Images.md §4); check the VM's console
   (`virsh --connect <uri> console <name>`) for what Anaconda is
   actually doing before assuming it's stuck.

@@ -11,7 +11,7 @@ than each inventing its own:
 
 ## 1. One vault, not several
 
-`secrets.vault.yml` (Ansible Vault–encrypted, per DESIGN.md §13) is the
+`secrets.vault.yml` (Ansible Vault–encrypted, per Claude_Docs/Design_System-Overview.md §13) is the
 **single** source of truth for every credential this project needs —
 hypervisor auth, VM bootstrap credentials, and the AD domain admin
 password all live in the same file, unlocked with the same vault
@@ -28,7 +28,7 @@ libvirt_ssh_key_path: ~/.ssh/labape_libvirt
 
 windows_bootstrap_admin_password: "..."   # shared local Administrator password, §4
 domain_admin_password: "..."              # authenticates domain JOIN, not promotion — §6
-dsrm_password: "..."                      # AD DS promotion's DSRM account, DESIGN.md §8
+dsrm_password: "..."                      # AD DS promotion's DSRM account, Claude_Docs/Design_System-Overview.md §8
 ```
 
 ## 2. Hyper-V host authentication
@@ -45,7 +45,7 @@ file that could get committed.
 
 `dmacvicar/libvirt` connects via a libvirt URI. Since the control
 machine is a separate Linux/WSL box rather than the libvirt host itself
-(DESIGN.md §15), the realistic default is
+(Claude_Docs/Design_System-Overview.md §15), the realistic default is
 `qemu+ssh://user@<host>/system` — SSH, not a password. This is a
 **one-time manual prerequisite**, not an ongoing secret to store: run
 `ssh-copy-id` once from the control machine to the libvirt host. The
@@ -100,7 +100,7 @@ vault.
      -e @secrets.vault.yml --vault-password-file ~/.labape-vault-pass
    (first connection to every host uses the same bootstrap credential
     the answer file set; dsrm_password is used by the domain_controller
-    role during AD DS promotion, DESIGN.md §8 — domain_admin_password is
+    role during AD DS promotion, Claude_Docs/Design_System-Overview.md §8 — domain_admin_password is
     used afterward, by windows_domain_join/linux_domain_join, to
     authenticate each host's domain join. Promotion itself runs as the
     connecting WinRM credential, i.e. windows_bootstrap_admin_password,
@@ -117,7 +117,7 @@ both tools need for that run.
 
 ## 7. Firewall scoping (given bridged-by-default networking)
 
-Since DESIGN.md §14 defaults to bridged — VMs directly reachable on the
+Since Claude_Docs/Design_System-Overview.md §14 defaults to bridged — VMs directly reachable on the
 physical LAN rather than behind NAT — the management protocols this
 whole document is about (WinRM, SSH) are more exposed than they'd be
 behind NAT. The fix in both cases is the same shape: restrict the
@@ -125,11 +125,11 @@ listener to the control machine's address instead of leaving it open to
 the whole LAN.
 
 This needs a new, non-secret config value — `network.management_source`
-in `environment.yml` (DESIGN.md §10): the control machine's IP (or a
+in `environment.yml` (Claude_Docs/Design_System-Overview.md §10): the control machine's IP (or a
 small CIDR, if that IP isn't perfectly stable — see the caveat below).
 It's not sensitive, so it lives in `environment.yml` rather than the
 vault, and gets passed through as one of the `template_vars` the `vm`
-module renders into answer files/finalize scripts (§6.1 of DESIGN.md).
+module renders into answer files/finalize scripts (§6.1 of Claude_Docs/Design_System-Overview.md).
 
 ```yaml
 network:
@@ -142,7 +142,7 @@ The vault (§1) is for whoever runs `scripts/deploy.sh` — testers using
 the resulting environment shouldn't need the vault password or shell
 access to the control machine just to log into a VM. `deploy.sh`
 generates `ansible/inventory/credentials.generated` alongside
-`hosts.generated` (docs/networking.md §4): a plain-text, per-environment
+`hosts.generated` (Claude_Docs/Reference_Networking.md §4): a plain-text, per-environment
 handout listing each account a tester actually needs (today: the shared
 Windows local/domain Administrator password, and the Linux `labape`
 SSH-key access details) — never the vault itself, and gitignored the
@@ -152,8 +152,8 @@ share any other credential (not by committing it, obviously).
 This is a deliberately simple starting point ("option 1" of a few
 considered), not a growth path toward its own credential-distribution
 service — see
-[docs/environment-templates.md](./environment-templates.md) §3/§4:
-once the future web interface (DESIGN.md §20) exists, a live
+[Claude_Docs/Planning_Environment-Templates.md](./Planning_Environment-Templates.md) §3/§4:
+once the future web interface (Claude_Docs/Design_System-Overview.md §20) exists, a live
 credentials lookup there is expected to be the nicer option, and this
 generated file should become a *selectable alternative* to that (some
 teams may still want a plain handout instead of routing every access
@@ -194,7 +194,7 @@ ufw deny 22/tcp
 ```
 
 Both run as a provisioner step in the same place the OS-family finalize
-steps already run (docs/base-images.md §3), so it's part of every
+steps already run (Claude_Docs/Design_Base-Images.md §3), so it's part of every
 template/promoted image rather than a manual per-VM step.
 
 ### Caveat: the control machine's IP has to be knowable at build time

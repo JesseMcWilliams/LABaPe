@@ -1,5 +1,5 @@
 ---
-# Until M5 lands dedicated domain-admin accounts (docs/directory-objects.md),
+# Until M5 lands dedicated domain-admin accounts (Claude_Docs/Design_Directory-Objects.md),
 # this is the account AD DS promotion itself carried over — see
 # ansible/roles/domain_controller/tasks/main.yml and
 # secrets.vault.example.yml for the password-equality gotcha this implies.
@@ -18,7 +18,7 @@ domain_admin_user: "Administrator"
 # Fixed prerequisite packages for realmd/sssd domain join — infrastructure
 # config, deliberately NOT routed through package_catalog.yml/
 # software-manifest.yml (that system is for the per-run, user-chosen
-# software list, docs/software-manifest.md; this is a fixed dependency
+# software list, Claude_Docs/Design_Software-Manifest.md; this is a fixed dependency
 # of the join mechanism itself).
 linux_domain_join_packages:
   dnf:

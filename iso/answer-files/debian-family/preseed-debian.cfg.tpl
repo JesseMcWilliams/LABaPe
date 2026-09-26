@@ -1,6 +1,6 @@
 #_preseed_V1
 # Rendered by tofu/modules/vm/libvirt/main.tf via templatefile() — see
-# docs/base-images.md §3 (Debian family) and §4 (direct ISO boot).
+# Claude_Docs/Design_Base-Images.md §3 (Debian family) and §4 (direct ISO boot).
 # Real Debian (not Ubuntu) uses the classic debian-installer (d-i) with
 # preseed, NOT subiquity/cloud-init — a genuinely different installer
 # from ubuntu_lts/ubuntu_26 (iso/answer-files/debian-family/user-data-
@@ -14,7 +14,7 @@
 #
 # UNVERIFIED against real infrastructure as of this writing — treat the
 # following as the most likely first-attempt failure points, not
-# settled fact (see docs/troubleshooting-log.md if a real test round
+# settled fact (see Claude_Docs/Testing_Troubleshooting-Log.md if a real test round
 # already happened and this comment wasn't updated):
 #   - partman-auto/disk assumes /dev/vda (create-iso-direct.sh's
 #     debian_preseed case pins --disk ...,bus=virtio specifically so

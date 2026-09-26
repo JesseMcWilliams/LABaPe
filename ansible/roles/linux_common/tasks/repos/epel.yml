@@ -1,4 +1,4 @@
-# docs/software-manifest.md §3 — added once per host, only if that
+# Claude_Docs/Design_Software-Manifest.md §3 — added once per host, only if that
 # host's resolved package list actually needs it (currently: sevenzip's
 # dnf entry in package_catalog.yml — p7zip isn't in RHEL/Rocky's default
 # BaseOS/AppStream repos, only EPEL).
