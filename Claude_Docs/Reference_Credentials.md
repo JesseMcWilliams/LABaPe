@@ -233,7 +233,10 @@ credential: `microsoft.ad.user` on the DC, `ansible.windows.win_user` on
 the others, `update_password: always`, `no_log: true`), confirm
 `win_ping` with the new one, then update every vault key that held the
 old value and regenerate or patch the inventory files. If a host fails,
-the vault still matches everything else.
+the vault still matches everything else. Expect the password task
+itself to report FAILED: it changes the password of the account the
+WinRM session is using, so the result can't come back. Check whether
+the new password works before retrying (Claude_Docs/Testing_Troubleshooting-Log.md).
 
 Rotation doesn't reinstall VMs: the reinstall trigger hashes the answer
 file with the password masked (`tofu/modules/vm/libvirt/main.tf`). The

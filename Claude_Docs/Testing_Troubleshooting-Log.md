@@ -800,7 +800,10 @@ the planned `answer_file_md5` values into those `null_resource` entries'
 push`) before its next deploy. `lab1` also shows older drift: commit
 `f94bb8d` renamed the rendered kickstart (`<vm>-ks.cfg` to
 `<vm>-answer.cfg`) and changed its content, so `linsrv1` would be rebuilt
-on its next deploy too, independent of this change.
+on its next deploy too, independent of this change. Done for `lab1` (2026-10-09): after a targeted apply of
+the three answer-file resources, each to-be-replaced `null_resource`'s
+planned `triggers` map was copied into state; `tofu plan` then reported
+no changes.
 
 ### ISO renames make existing VMs look changed
 
@@ -810,8 +813,10 @@ keeps working only because `lab1`'s VMs already exist; `iso_host_path`
 is also a reinstall trigger, so correcting the paths makes `lab1`'s next
 deploy rebuild `dc1`/`winsrv1`/`linsrv1`, and a fresh environment can't
 use those entries at all. The medium-profile run used a copy of
-`environment.yml` with corrected paths. Fix the real file when `lab1` is
-next rebuilt.
+`environment.yml` with corrected paths. Fixed on 2026-10-09: the real
+`environment.yml` now has the current names, and `lab1`'s state
+`iso_host_path` triggers were aligned in the same pass as the answer-file
+triggers above, so the fix didn't rebuild anything.
 
 ### Dual-role DC failed on local accounts
 
@@ -835,3 +840,15 @@ planned address (`.117`) belonged to another device on the LAN (the VM
 came up behind it; moved by hand). `lab1`'s `directory-manifest.yml`
 hard-codes `DC=labape,DC=test`, so a second domain needs its own manifest
 (passed here as an extra-vars `directory_manifest` override).
+
+### Changing the connected account's password reports failure
+
+Rotating the Windows bootstrap password (Claude_Docs/Reference_Credentials.md §9):
+`microsoft.ad.user` on the DC and `ansible.windows.win_user` on the
+member server and Hyper-V host all came back FAILED, yet each had
+changed the password. The task changes the password of the very account
+the WinRM session authenticates as, so the module's result can't be
+returned over that session. The run looked like a failure with nothing
+changed; the next attempt with the old password got "credentials
+rejected". Afterwards, test the new password before retrying anything,
+and only then update the vault.
