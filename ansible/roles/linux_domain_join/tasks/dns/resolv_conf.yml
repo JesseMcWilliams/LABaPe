@@ -1,0 +1,12 @@
+---
+# Debian preseed installs (ifupdown, no NetworkManager, no resolvconf
+# package): /etc/resolv.conf is a plain file d-i wrote once, so nothing
+# regenerates it and a direct write is the documented way to change it.
+- name: Point /etc/resolv.conf at the domain controller
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      # Managed by LABaPe (ansible/roles/linux_domain_join).
+      search {{ domain_name }}
+      nameserver {{ domain_controller_ip }}
+    mode: "0644"

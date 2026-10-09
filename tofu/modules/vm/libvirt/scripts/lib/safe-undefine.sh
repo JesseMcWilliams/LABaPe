@@ -13,7 +13,8 @@
 # media out from under every other environment on this host. This
 # actually happened once during development. Undefine without it, then
 # remove only what create-iso-direct.sh actually created for this VM:
-# its own disk, and (Windows) the generated per-VM answer-file ISO —
+# its own disk, and the generated per-VM answer-file ISO (Windows
+# -autounattend.iso, Ubuntu NoCloud -seed.iso) —
 # identified by path, not "every attached disk."
 #
 # Usage: safe_undefine <libvirt-uri> <vm-name>
@@ -23,7 +24,7 @@ safe_undefine() {
   local disk_paths
   disk_paths="$(
     virsh --connect "$uri" domblklist "$name" --details 2>/dev/null \
-      | awk '$2=="disk"{print $4} $2=="cdrom" && $4 ~ /-autounattend\.iso$/{print $4}'
+      | awk '$2=="disk"{print $4} $2=="cdrom" && $4 ~ /-(autounattend|seed)\.iso$/{print $4}'
   )"
 
   # --nvram: a UEFI (OVMF) domain has a per-VM NVRAM variable store and

@@ -495,7 +495,7 @@ changed — an idempotency wrinkle in the module (or in how this role
 calls it) worth revisiting, but not blocking: it's cosmetic (a spurious
 `changed` in the run summary), not a correctness problem.
 
-## M5 (workstation support, Ubuntu LTS half): five real bugs, one still open
+## M5 (workstation support, Ubuntu LTS half): five real bugs, all resolved
 
 First-ever Debian-family (subiquity/cloud-init) install attempt, tested
 in isolation per the M5 workstation-support plan. Real infrastructure
@@ -584,7 +584,28 @@ is the part this network can't reach. Fixed by pinning a known mirror
 and skipping GeoIP entirely: `apt: {geoip: false, primary: [{arches:
 [amd64], uri: "http://archive.ubuntu.com/ubuntu/"}]}`.
 
-### OPEN: guided storage configuration doesn't honor either `layout` or `config`, defaults to a mandatory encryption prompt
+### RESOLVED: the autoinstall seed was never found (misdiagnosed as a storage bug)
+
+**Root cause, found in the follow-on pass below:** the boot line was
+`autoinstall ds=nocloud;s=file:///cdrom/`. Booting via `--location`,
+`/cdrom` in the live environment is the Ubuntu ISO itself, not the
+attached `CIDATA` seed ISO, so cloud-init never found `user-data` and
+subiquity ran **fully interactive**. That one mistake explains every
+symptom in this section: the welcome/network/proxy screens the dismiss
+loop was pressing Enter through, the ignored `storage:` directives, and
+the guided-storage/LUKS screens (the interactive defaults, not our
+config). Subiquity's docs say an autoinstall shows no screens at all;
+that was the tell. Fixed by dropping the `s=` path (`autoinstall
+ds=nocloud`), which lets cloud-init find the seed by its `CIDATA`
+label. Once the config was really applied, the hand-written `storage:
+config:` list failed properly ("autoinstall config did not create needed
+bootloader partition"), so the template went back to the documented
+`storage: {layout: {name: direct}}`. Ubuntu 24.04.3 then installed
+end-to-end unattended (SSH, sudo, `vda1` bios_grub + `vda2` root) and
+joined the domain. The original investigation notes follow, kept for
+the record.
+
+#### Original notes (superseded)
 
 Neither of subiquity's two documented storage directives produced a
 non-interactive result on this Ubuntu 24.04.3 build:
@@ -629,7 +650,7 @@ unlock with — undesirable (breaks unattended reboot without extra
 plumbing) but would at least unblock forward progress on Windows 11
 testing (Stage 4) while this is revisited.
 
-Stage 3 (Ubuntu LTS in isolation) is therefore **partially confirmed**:
+(Superseded by the resolution above.) Stage 3 (Ubuntu LTS in isolation) was at this point **partially confirmed**:
 templating, kernel/initrd boot, the serial-console prompt chain, and
 apt/mirror configuration are all confirmed working unattended; disk
 provisioning is not, so no Ubuntu LTS host has yet completed a full
@@ -644,7 +665,7 @@ Windows clients were domain-joined against the existing `lab1` DC.
 
 | OS (`os` key) | Result |
 |---|---|
-| Ubuntu 26.04.1 (`ubuntu_26`) | Same storage/LUKS passphrase screen as 24.04.3, at the same point — not a point-release regression. Still open (section above). |
+| Ubuntu 26.04.1 (`ubuntu_26`) | Same storage/LUKS passphrase screen as 24.04.3, at the same point. Later traced to the seed-discovery bug (resolved above), not a subiquity bug. |
 | Debian 13 (`debian_latest`, new `debian_preseed` os_family) | Fully unattended install; SSH as `labape` and passwordless sudo confirmed. |
 | Windows 11 24H2 (`windows_11`) | Fully unattended install (~9 min), Windows 11 Pro, joined `labape.test`, `site.yml` clean. |
 | Windows 10 22H2 (`windows_10`) | Fully unattended install (~8 min), Windows 10 Pro, joined `labape.test`, `site.yml` clean. |
@@ -716,3 +737,101 @@ Copying `create-iso-direct.sh` from a Windows working copy
 (`core.autocrlf=true`) to the libvirt host failed on line 5:
 `set: pipefail: invalid option name`. `.gitattributes` now pins `*.sh`
 and `*.py` to LF in every working copy.
+
+## M5 (workstation support, completion pass): Ubuntu fixed, Linux workstation join, medium profile
+
+### Ubuntu's autoinstall seed was never found
+
+See the RESOLVED entry in the Ubuntu LTS section above: `ds=nocloud;s=file:///cdrom/`
+pointed at the install ISO, not the seed, so every Ubuntu attempt so far
+had been an interactive install. Fixed with `autoinstall ds=nocloud`
+(find the seed by its `CIDATA` label) plus `storage: layout: direct`.
+
+### `safe_undefine` left the Ubuntu seed ISO behind
+
+Cleaning up an interrupted Ubuntu install removed the disk but not
+`<vm>-seed.iso` (the path match only knew Windows' `-autounattend.iso`).
+The libvirt-owned leftover then made the rebuild's `xorrisofs` fail:
+"libburn: Failed to open device (a pseudo-drive): Permission denied".
+The match now covers `-(autounattend|seed)\.iso`; confirmed by a real
+destroy that removed both files.
+
+### Two environments with the same host-group names shared VMs
+
+libvirt domain names are host-global, but tofu workspaces aren't. A
+medium-profile workspace whose groups were named `dc`/`winsrv`/`linsrv`
+(like `lab1`'s) got `dc1`, `winsrv1`, `linsrv1`: `create-iso-direct.sh`
+saw them already running and "skipped (idempotent no-op)", so the new
+workspace's state adopted `lab1`'s VMs, and destroying it would have
+deleted them. Caught before any destroy; the adopted entries were
+removed with `tofu state rm`. Every VM is now created with
+`--metadata description=labape-workspace=<workspace>`, and an existing
+VM without this workspace's tag makes the create fail loudly instead of
+being adopted. VMs built before the tag existed need a one-time
+`virsh desc <vm> 'labape-workspace=<workspace>'`. The shared
+`modules/vm/libvirt/.rendered/` directory is keyed by VM name too, so
+unique host-group names across environments on one host are still
+required.
+
+### Linux domain join assumed NetworkManager
+
+`linux_domain_join` set the DC as resolver with `nmcli`, which only
+exists on the Rocky hosts. Ubuntu server (netplan + systemd-resolved) and
+Debian preseed installs (ifupdown, plain `/etc/resolv.conf`) have no
+NetworkManager. The role now picks by what's running: nmcli
+(NetworkManager), a `resolved.conf.d` drop-in with `Domains=~<domain>`
+(systemd-resolved), or a written `/etc/resolv.conf`. It also runs
+`pam-auth-update --enable mkhomedir` on Debian-family hosts, the
+counterpart of RHEL's oddjobd. Passing the task file to `include_tasks`
+as a folded multi-line expression in free form failed ("Invalid options
+for ansible.builtin.include_tasks"); it has to go under `file:`.
+
+### Rotating the Windows bootstrap password would have reinstalled every Windows VM
+
+The VM reinstall trigger is an md5 of the rendered answer file, and the
+Windows answer file embeds `windows_bootstrap_admin_password`, so a
+vault rotation changed the trigger for every Windows VM. The trigger now
+hashes the answer file rendered with the password masked; template or
+addressing changes still force a reinstall. Changing the formula changes
+existing VMs' trigger values once: a `lab1` plan after this change wants
+to replace `dc1` and `winsrv1`. To keep an existing environment, write
+the planned `answer_file_md5` values into those `null_resource` entries'
+`triggers` in state (`tofu state pull`, edit, bump `serial`, `tofu state
+push`) before its next deploy. `lab1` also shows older drift: commit
+`f94bb8d` renamed the rendered kickstart (`<vm>-ks.cfg` to
+`<vm>-answer.cfg`) and changed its content, so `linsrv1` would be rebuilt
+on its next deploy too, independent of this change.
+
+### ISO renames make existing VMs look changed
+
+`/data/OS_Images/` was renamed (`Linux_`/`Windows_` prefixes) after
+`lab1` was built, but `tofu/environment.yml` still has the old names. It
+keeps working only because `lab1`'s VMs already exist; `iso_host_path`
+is also a reinstall trigger, so correcting the paths makes `lab1`'s next
+deploy rebuild `dc1`/`winsrv1`/`linsrv1`, and a fresh environment can't
+use those entries at all. The medium-profile run used a copy of
+`environment.yml` with corrected paths. Fix the real file when `lab1` is
+next rebuilt.
+
+### Dual-role DC failed on local accounts
+
+The medium profile's `dc` group is `["domain_controller", "windows_server"]`,
+so `windows_common` applied `local_users`/`local_groups` entries aimed at
+`windows_server` to the DC. A DC has no local account database:
+`win_group` there creates a domain group, and `win_user` failed. The
+three local-scope tasks now skip hosts in `domain_controller` and print
+a note instead. First run of the dual-role profile, so this path had
+never executed before.
+
+### Medium profile, end to end
+
+Ten VMs (dual-role DC, 2 Windows Server 2022, 3 Rocky 9, 2 Windows 11,
+Ubuntu 24.04 and Debian 13 workstations) in their own `medium.test`
+domain: all installed unattended, all joined (10 computer objects in AD),
+directory objects created, `site.yml` clean on all ten after the fixes
+above. Two test-procedure problems, not repo bugs: the run used a
+scratch helper that skipped `deploy.sh`'s pre-flight IP check, and one
+planned address (`.117`) belonged to another device on the LAN (the VM
+came up behind it; moved by hand). `lab1`'s `directory-manifest.yml`
+hard-codes `DC=labape,DC=test`, so a second domain needs its own manifest
+(passed here as an extra-vars `directory_manifest` override).

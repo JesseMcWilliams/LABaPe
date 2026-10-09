@@ -722,9 +722,8 @@ None blocking further scaffolding right now.
   for the two real bugs (a `become: true` mistake, and platform-opposite
   domain-join credential formats) this took to get working. The
   `windows_workstation` join path has since been confirmed (Windows 11
-  and 10, M5). **Not yet separately exercised**: the `linux_workstation`
-  join path and the dual-role DC+member-server profile from §9's medium
-  example.
+  and 10, M5), and so have the `linux_workstation` join path (Ubuntu,
+  Debian) and §9's dual-role DC+member-server medium profile.
 - **M5** — Workstation host type + medium profile, validated with
   domain join across all host types. `domain_directory` role +
   `directory-manifest.yml` (OUs, domain/local groups and users,
@@ -750,15 +749,20 @@ None blocking further scaffolding right now.
   still-open issue — subiquity's guided storage configuration doesn't
   honor either documented autoinstall storage directive on this Ubuntu
   24.04.3 build — see
-  [Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu LTS half)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-one-still-open).
+  [Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu LTS half)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-all-resolved).
   No Ubuntu LTS host has completed a full unattended install yet
   (Ubuntu 26.04 hits the identical bug). The follow-on OS-matrix pass
   ([Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu 26 / Debian / Windows client)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-26--debian--windows-client-os-matrix-pass))
   confirmed **Windows 11 and Windows 10 clients end-to-end** (unattended
   install on legacy BIOS, domain join as `windows_workstation`, clean
   `site.yml`) and a fully unattended **Debian 13** install via the new
-  `debian_preseed` os_family. Still to do for M5: a Linux workstation
-  domain join (Debian) and a full medium-profile run.
+  `debian_preseed` os_family. The completion pass
+  ([Claude_Docs/Testing_Troubleshooting-Log.md § M5 (completion pass)](./Testing_Troubleshooting-Log.md#m5-workstation-support-completion-pass-ubuntu-fixed-linux-workstation-join-medium-profile))
+  traced the Ubuntu "storage bug" to a seed-discovery mistake (the
+  installer had been running interactive all along), after which Ubuntu
+  24.04 and 26.04 install unattended; made the Linux domain join work
+  without NetworkManager (Ubuntu, Debian); and ran the full medium
+  profile (10 VMs, dual-role DC) end to end. **M5 is complete.**
 - **M6** — Packer base images for the full OS matrix in §5, set as the
   default image source; `promote-to-template.sh` for turning an
   ISO-built lab VM into a reusable template; `refresh-template.sh`

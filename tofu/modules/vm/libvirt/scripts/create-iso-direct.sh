@@ -17,6 +17,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/safe-undefine.sh"
 : "${BRIDGE_DEVICE:?}"
 : "${OS_FAMILY:?}"
 : "${VM_STORAGE_PATH:?}"
+: "${LABAPE_WORKSPACE:?}"
+
+workspace_tag="labape-workspace=${LABAPE_WORKSPACE}"
 
 # A domain merely *existing* isn't enough to call this idempotent — an
 # interrupted/failed previous install (crash, kill, timeout below) can
@@ -25,6 +28,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/safe-undefine.sh"
 # rebuilt from scratch, since this is a one-shot install, not a
 # reconciled resource (see answer_file_md5 in main.tf's triggers).
 if existing_state="$(virsh --connect "$LIBVIRT_URI" domstate "$VM_NAME" 2>/dev/null)"; then
+  # libvirt domain names are host-global but tofu workspaces aren't: a
+  # second environment reusing a host-group name (dc1, winsrv1, ...)
+  # would otherwise "adopt" another environment's running VM here, and
+  # that environment's later destroy would delete it. Every VM is tagged
+  # with its workspace (--metadata below); only a VM carrying this
+  # workspace's tag is treated as ours.
+  existing_desc="$(virsh --connect "$LIBVIRT_URI" desc "$VM_NAME" 2>/dev/null || true)"
+  if [ "$existing_desc" != "$workspace_tag" ]; then
+    echo "labape: a VM named '$VM_NAME' already exists on $LIBVIRT_URI but isn't tagged '$workspace_tag' (found: '${existing_desc}'). It belongs to another environment or predates tagging; refusing to adopt or replace it. Rename this host group, or tag an untagged VM you own with: virsh desc $VM_NAME '$workspace_tag'" >&2
+    exit 1
+  fi
   if [ "$existing_state" = "running" ]; then
     echo "labape: VM '$VM_NAME' already exists and is running on $LIBVIRT_URI — skipping create (idempotent no-op)." >&2
     exit 0
@@ -139,6 +153,7 @@ linux)
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
+    --metadata "description=${workspace_tag}" \
     --wait -1; then
     echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
     echo "labape: the VM is left running for inspection — console log: $console_log (root-owned; e.g. sudo cat, or sudo cp --no-preserve=mode to a readable copy)." >&2
@@ -175,6 +190,7 @@ debian_preseed)
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
+    --metadata "description=${workspace_tag}" \
     --wait -1; then
     echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
     echo "labape: the VM is left running for inspection — console log: $console_log (root-owned; e.g. sudo cat, or sudo cp --no-preserve=mode to a readable copy)." >&2
@@ -199,12 +215,12 @@ debian)
   # none + a logged console) rather than windows)'s VNC, since
   # subiquity, like Anaconda, is a text-mode installer.
   #
-  # UNVERIFIED as of this writing: the exact ds= seed-URI form. If the
-  # install falls through to subiquity's interactive "no autoinstall
-  # config found" prompt (visible in the console log), try
-  # "ds=nocloud-net;s=file:///cdrom/" instead, or dropping ds= entirely
-  # (some cloud-init versions auto-detect a CIDATA-labeled attached
-  # volume by label alone) — don't assume this form works untested.
+  # ds=nocloud with NO s= path: cloud-init finds the seed by its CIDATA
+  # volume label. The earlier "s=file:///cdrom/" pointed at the live
+  # install ISO (that's what /cdrom is under --location), so the seed was
+  # never read and subiquity silently ran fully interactive, which is
+  # what all the screens dismiss_subiquity_prompts was built for were
+  # (Claude_Docs/Testing_Troubleshooting-Log.md, Ubuntu LTS section).
   #
   # kernel=/initrd= override on --location is REQUIRED, not optional,
   # for Ubuntu 24.04 specifically (confirmed via real testing,
@@ -241,12 +257,13 @@ debian)
     --disk "path=${disk_path},size=${DISK_GB},format=qcow2" \
     --disk "path=${seed_iso},device=cdrom" \
     --location "${ISO_HOST_PATH},kernel=casper/vmlinuz,initrd=casper/initrd" \
-    --extra-args "autoinstall ds=nocloud;s=file:///cdrom/ console=ttyS0" \
+    --extra-args "autoinstall ds=nocloud console=ttyS0" \
     --network "bridge=${BRIDGE_DEVICE},model=virtio" \
     --os-variant "$OS_VARIANT" \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
+    --metadata "description=${workspace_tag}" \
     --wait -1 &
   vi_pid=$!
 
@@ -338,6 +355,7 @@ windows)
     --os-variant "$OS_VARIANT" \
     --graphics vnc,listen=127.0.0.1 \
     --noautoconsole \
+    --metadata "description=${workspace_tag}" \
     --wait -1; then
     echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
     echo "labape: the VM is left running for inspection — view its console via Cockpit's Virtual Machines page, or 'virsh -c $LIBVIRT_URI screenshot $VM_NAME out.png'." >&2

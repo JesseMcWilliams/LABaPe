@@ -69,47 +69,16 @@ autoinstall:
         dhcp4: true
 %{ endif ~}
 
-  # Explicit, fully-specified (action-list) storage config — confirmed
-  # necessary via real testing (Claude_Docs/Testing_Troubleshooting-Log.md): the
-  # higher-level `storage.layout: {name: direct}` shorthand, which per
-  # Canonical's own docs should mean "whole disk, no LVM, no
-  # encryption," was STILL followed by a mandatory, unskippable LUKS
-  # "Passphrase must be set" screen on this Ubuntu 24.04.3 build — the
-  # `layout:` directive was seemingly not honored at all (possibly a
-  # real subiquity bug/regression on this point release). Bypassing it
-  # entirely with an explicit action list avoids subiquity's "guided
-  # storage" flow altogether, which is where that unwanted encryption
-  # prompt lives. msdos (MBR), not gpt, to match this VM's legacy BIOS
-  # boot (virt-install's default here) without needing a separate
-  # bios_grub partition.
+  # layout: direct = whole disk, one partition, no LVM, no encryption;
+  # subiquity adds whatever bootloader partition the firmware needs.
+  # An earlier "layout ignored, LUKS passphrase demanded" finding was a
+  # misdiagnosis: the seed was never found (bad ds= path), so subiquity
+  # ran fully interactive (Claude_Docs/Testing_Troubleshooting-Log.md).
+  # A hand-written storage: config: list is rejected once the config is
+  # really applied ("did not create needed bootloader partition").
   storage:
-    config:
-      - type: disk
-        id: disk0
-        ptable: msdos
-        match:
-          size: largest
-      - type: partition
-        id: root-partition
-        device: disk0
-        size: -1
-      - type: format
-        id: root-fs
-        fstype: ext4
-        volume: root-partition
-      - type: mount
-        id: root-mount
-        device: root-fs
-        path: /
-
-  # geoip: false + an explicit primary mirror — confirmed necessary via
-  # real testing (Claude_Docs/Testing_Troubleshooting-Log.md): subiquity's default
-  # geoip-based mirror auto-selection hung indefinitely on "The mirror
-  # location is being tested" even though archive.ubuntu.com itself was
-  # directly reachable (confirmed via curl from a VM on the same
-  # network) — the geoip lookup service subiquity contacts to pick a
-  # country mirror was the unreachable part, not the mirror itself.
-  # Pinning a known-good mirror sidesteps that lookup entirely.
+    layout:
+      name: direct
   apt:
     geoip: false
     primary:

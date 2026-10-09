@@ -15,9 +15,25 @@ locals {
   )
   rendered_answer_file_md5 = coalesce(
     try(local_file.kickstart[0].content_md5, null),
-    try(local_file.windows_answer_file[0].content_md5, null),
+    try(local.windows_answer_file_md5_masked, null),
     try(local_file.debian_user_data[0].content_md5, null),
   )
+
+  windows_answer_file_vars = {
+    hostname               = var.name
+    windows_admin_password = coalesce(var.admin_credential.windows_admin_password, "")
+    addressing             = var.addressing
+    management_source      = lookup(var.template_vars, "management_source", "")
+  }
+  # The reinstall trigger hashes the Windows answer file with the
+  # password masked, so rotating windows_bootstrap_admin_password in the
+  # vault doesn't reinstall every Windows VM on the next deploy. Template
+  # or addressing changes still do. The password has to be changed on
+  # running hosts separately (Claude_Docs/Reference_Credentials.md).
+  windows_answer_file_md5_masked = local.os_family == "windows" ? md5(templatefile(
+    local.os_meta.answer_file_template,
+    merge(local.windows_answer_file_vars, { windows_admin_password = "masked" }),
+  )) : null
   # Empty string (not null) when not debian — passed straight through to
   # create-iso-direct.sh's environment map, which requires a string.
   rendered_meta_data_path = try(local_file.debian_meta_data[0].filename, "")
@@ -90,12 +106,7 @@ resource "local_file" "windows_answer_file" {
   count    = var.image_source == "iso_direct" && local.os_family == "windows" ? 1 : 0
   filename = "${local.rendered_dir}/${var.name}-autounattend.xml"
 
-  content = templatefile(local.os_meta.answer_file_template, {
-    hostname                = var.name
-    windows_admin_password  = coalesce(var.admin_credential.windows_admin_password, "")
-    addressing               = var.addressing
-    management_source        = lookup(var.template_vars, "management_source", "")
-  })
+  content = templatefile(local.os_meta.answer_file_template, local.windows_answer_file_vars)
 
   # Contains a real plaintext secret (the local Administrator password),
   # unlike the Linux kickstart which only ever holds a public key —
@@ -169,6 +180,7 @@ resource "null_resource" "vm_iso_direct" {
       OS_FAMILY       = local.os_family
       OS_VARIANT      = try(local.os_meta.os_variant, "")
       VM_STORAGE_PATH = var.vm_storage_path
+      LABAPE_WORKSPACE = terraform.workspace
     }
   }
 
