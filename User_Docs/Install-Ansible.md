@@ -51,6 +51,15 @@ pipx inject ansible-core pywinrm
 Safe to do now even though nothing in M1 exercises it yet — one less
 thing to remember when M3 lands Windows support.
 
+`scripts/test/test-winrm-connectivity.py` runs under the *system*
+`python3`, not pipx's environment, so it needs its own copy. Debian 13
+marks the system Python as externally managed (`pip install --user`
+is refused), so use the distro package:
+
+```bash
+sudo apt-get install python3-winrm
+```
+
 ## 4. Install the collections this repo uses
 
 ```bash

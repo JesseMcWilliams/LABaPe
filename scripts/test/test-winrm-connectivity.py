@@ -69,9 +69,10 @@ def main() -> int:
         import winrm
     except ImportError:
         print(
-            "labape: FAIL — pywinrm not installed. `pip install --user pywinrm` "
-            "(or `pipx inject ansible-core pywinrm` if ansible-core is pipx-managed, "
-            "User_Docs/Install-Ansible.md §3).",
+            "labape: FAIL — pywinrm not installed for this python3. On Debian: "
+            "`sudo apt-get install python3-winrm` (pip --user is refused on an "
+            "externally managed Python); Ansible's own pipx environment needs "
+            "`pipx inject ansible-core pywinrm` separately (User_Docs/Install-Ansible.md §3).",
             file=sys.stderr,
         )
         return 1
