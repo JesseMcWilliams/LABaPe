@@ -3,5 +3,7 @@
 User-visible changes not yet covered in `User_Docs/`. One line each; remove a line once a user doc covers it.
 
 - Windows 10 and Windows 11 workstations (`windows_10`, `windows_11`) install unattended and domain-join; Windows 11 host groups must set `disk_gb` >= 64 or the plan fails.
-- `debian_latest` (Debian 13, preseed) is a working Linux workstation OS; `ubuntu_lts`/`ubuntu_26` still stop at an interactive storage screen.
+- `ubuntu_lts`, `ubuntu_26` and `debian_latest` all install unattended and join the domain as Linux workstations.
+- Host-group names must be unique across environments sharing one libvirt host; a create refuses another workspace's VM.
+- Rotating the Windows bootstrap password: change it on running hosts first, then the vault (Claude_Docs/Reference_Credentials.md §9); VMs aren't reinstalled.
 - Windows VMs on the libvirt backend use legacy BIOS, so Secure Boot/TPM scenarios aren't supported.

@@ -1,0 +1,38 @@
+---
+# Rocky 9's kickstart sets a plain --nameserver (the LAN gateway), and
+# /etc/resolv.conf is NetworkManager-managed by default — a direct edit
+# would likely get silently clobbered, so this goes through nmcli
+# instead, editing only the DNS fields of the existing connection
+# profile rather than redescribing the whole profile (which risks
+# clobbering the existing static/DHCP config).
+- name: Find the active NetworkManager connection profile
+  ansible.builtin.command: >-
+    nmcli -g GENERAL.CONNECTION device show {{ ansible_facts.default_ipv4.interface }}
+  register: nm_conn
+  changed_when: false
+
+- name: Check the connection profile's current DNS servers
+  ansible.builtin.command: >-
+    nmcli -g ipv4.dns connection show "{{ nm_conn.stdout }}"
+  register: nm_current_dns
+  changed_when: false
+
+- name: Point this host's DNS resolver at the domain controller
+  ansible.builtin.command: >-
+    nmcli connection modify "{{ nm_conn.stdout }}"
+    ipv4.dns "{{ domain_controller_ip }}" ipv4.ignore-auto-dns yes
+  when: domain_controller_ip not in nm_current_dns.stdout
+  register: nm_dns_changed
+
+# device reapply applies the pending config without tearing the link
+# down — gentler than `connection up`, which can briefly drop the
+# interface this very SSH session is riding on.
+- name: Apply the DNS change
+  ansible.builtin.command: >-
+    nmcli device reapply {{ ansible_facts.default_ipv4.interface }}
+  when: nm_dns_changed is changed
+
+- name: Reconnect after the DNS change (defensive)
+  ansible.builtin.wait_for_connection:
+    timeout: 60
+  when: nm_dns_changed is changed

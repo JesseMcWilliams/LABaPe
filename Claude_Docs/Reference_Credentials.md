@@ -213,3 +213,32 @@ Neither this nor HTTPS-only WinRM is a hard requirement to start
 building — both are known gaps named now rather than discovered later,
 and worth closing before this sees any use beyond a fully trusted
 personal LAN.
+
+## 9. Rotating the Windows bootstrap password on a running environment
+
+`windows_bootstrap_admin_password` is live in several places at once, so
+changing only the vault locks Ansible out:
+
+- the local Administrator on every Windows member server and
+  workstation, and the Hyper-V host if `hyperv_password` holds the same
+  value;
+- the domain Administrator on the DC (promotion carried the local
+  account over, §4);
+- `domain_admin_password`, which must stay equal to it (secrets.vault.example.yml);
+- the generated inventory and tester handout (`ansible/inventory/generated`,
+  `credentials.generated`).
+
+Order: set the new password on the running hosts first (as the old
+credential: `microsoft.ad.user` on the DC, `ansible.windows.win_user` on
+the others, `update_password: always`, `no_log: true`), confirm
+`win_ping` with the new one, then update every vault key that held the
+old value and regenerate or patch the inventory files. If a host fails,
+the vault still matches everything else. Expect the password task
+itself to report FAILED: it changes the password of the account the
+WinRM session is using, so the result can't come back. Check whether
+the new password works before retrying (Claude_Docs/Testing_Troubleshooting-Log.md).
+
+Rotation doesn't reinstall VMs: the reinstall trigger hashes the answer
+file with the password masked (`tofu/modules/vm/libvirt/main.tf`). The
+rendered `.rendered/*-autounattend.xml` files and the state's copy of
+their content are refreshed on the next apply.

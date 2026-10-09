@@ -96,6 +96,16 @@
 # directory_objects.py); directory_manifest is loaded once at the play
 # level (playbooks/site.yml), same pattern as software_manifest_roles.
 
+# A domain controller has no local account database: win_group/win_user
+# there create *domain* objects instead, which would quietly put
+# "local" manifest entries into AD (and win_user then failed outright on
+# the medium profile's dual-role DC). Skip local scope on DCs, visibly.
+- name: Note that local-scope directory objects are skipped on a domain controller
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} is a domain controller; local_groups/local_users/local memberships targeting its other roles are skipped."
+  when: "'domain_controller' in group_names"
+  tags: [directory_objects]
+
 - name: Ensure local groups exist
   ansible.windows.win_group:
     name: "{{ item.name }}"
@@ -103,6 +113,7 @@
   loop: "{{ (directory_manifest.local_groups | default([])) | for_host_group(group_names) }}"
   loop_control:
     label: "{{ item.name }}"
+  when: "'domain_controller' not in group_names"
   tags: [directory_objects, local_group]
 
 - name: Ensure local users exist
@@ -115,6 +126,7 @@
   loop_control:
     label: "{{ item.name }}"
   no_log: true
+  when: "'domain_controller' not in group_names"
   tags: [directory_objects, local_user]
 
 # state: present is additive (existing members untouched) — state: pure
@@ -132,4 +144,5 @@
        | for_host_group(group_names) }}
   loop_control:
     label: "{{ item.member }} -> {{ item.group }}"
+  when: "'domain_controller' not in group_names"
   tags: [directory_objects, membership]

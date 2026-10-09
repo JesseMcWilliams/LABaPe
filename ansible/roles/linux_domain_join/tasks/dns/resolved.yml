@@ -1,0 +1,28 @@
+---
+# Ubuntu server (netplan + systemd-resolved). A global drop-in with the
+# domain as a routing domain (~) sends every labape.test lookup,
+# including realm's SRV discovery, to the DC while leaving other names
+# on the netplan-configured resolver. Doesn't touch netplan, so the
+# host's own addressing can't be clobbered.
+- name: Ensure the resolved drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Route the domain's DNS lookups to the domain controller (systemd-resolved)
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/labape-domain.conf
+    content: |
+      # Managed by LABaPe (ansible/roles/linux_domain_join).
+      [Resolve]
+      DNS={{ domain_controller_ip }}
+      Domains=~{{ domain_name }}
+    mode: "0644"
+  register: resolved_dropin
+
+- name: Restart systemd-resolved
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+  when: resolved_dropin is changed

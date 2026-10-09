@@ -15,44 +15,21 @@
 # realm join depends on real DNS SRV record discovery against the
 # domain's own DNS server (which the DC becomes as part of promotion) —
 # the hosts-file snippet (Claude_Docs/Reference_Networking.md §4) is a human-convenience
-# file Ansible never reads, it doesn't substitute for this. Rocky 9's
-# kickstart sets a plain --nameserver (the LAN gateway), and
-# /etc/resolv.conf is NetworkManager-managed by default — a direct edit
-# would likely get silently clobbered, so this goes through nmcli
-# instead, editing only the DNS fields of the existing connection
-# profile rather than redescribing the whole profile (which risks
-# clobbering the existing static/DHCP config).
-- name: Find the active NetworkManager connection profile
-  ansible.builtin.command: >-
-    nmcli -g GENERAL.CONNECTION device show {{ ansible_facts.default_ipv4.interface }}
-  register: nm_conn
-  changed_when: false
+# file Ansible never reads, it doesn't substitute for this. How DNS is
+# owned differs per distro, so pick the method from what's running:
+# NetworkManager (Rocky), systemd-resolved (Ubuntu), else a plain
+# /etc/resolv.conf (Debian preseed/ifupdown).
+- name: Detect which service owns DNS configuration
+  ansible.builtin.service_facts:
 
-- name: Check the connection profile's current DNS servers
-  ansible.builtin.command: >-
-    nmcli -g ipv4.dns connection show "{{ nm_conn.stdout }}"
-  register: nm_current_dns
-  changed_when: false
-
-- name: Point this host's DNS resolver at the domain controller
-  ansible.builtin.command: >-
-    nmcli connection modify "{{ nm_conn.stdout }}"
-    ipv4.dns "{{ domain_controller_ip }}" ipv4.ignore-auto-dns yes
-  when: domain_controller_ip not in nm_current_dns.stdout
-  register: nm_dns_changed
-
-# device reapply applies the pending config without tearing the link
-# down — gentler than `connection up`, which can briefly drop the
-# interface this very SSH session is riding on.
-- name: Apply the DNS change
-  ansible.builtin.command: >-
-    nmcli device reapply {{ ansible_facts.default_ipv4.interface }}
-  when: nm_dns_changed is changed
-
-- name: Reconnect after the DNS change (defensive)
-  ansible.builtin.wait_for_connection:
-    timeout: 60
-  when: nm_dns_changed is changed
+- name: Point DNS at the domain controller
+  ansible.builtin.include_tasks:
+    file: >-
+      {{ 'dns/networkmanager.yml'
+         if ansible_facts.services.get('NetworkManager.service', {}).get('state') == 'running'
+         else 'dns/resolved.yml'
+         if ansible_facts.services.get('systemd-resolved.service', {}).get('state') == 'running'
+         else 'dns/resolv_conf.yml' }}
 
 - name: Check current realm membership
   ansible.builtin.command: realm list
@@ -78,3 +55,10 @@
     state: started
     enabled: true
   when: ansible_facts['os_family'] == "RedHat"
+
+# Debian family: realm join configures sssd but not PAM home-directory
+# creation, so a first domain login would land without a home directory.
+- name: Enable pam_mkhomedir (Debian family)
+  ansible.builtin.command: pam-auth-update --enable mkhomedir
+  when: ansible_facts['os_family'] == "Debian"
+  changed_when: false
