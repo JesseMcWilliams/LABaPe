@@ -6,6 +6,8 @@ set -euo pipefail
 
 # shellcheck source=lib/safe-undefine.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/safe-undefine.sh"
+# shellcheck source=lib/existing-domain.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/existing-domain.sh"
 
 : "${LIBVIRT_URI:?}"
 : "${VM_NAME:?}"
@@ -21,32 +23,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/safe-undefine.sh"
 
 workspace_tag="labape-workspace=${LABAPE_WORKSPACE}"
 
-# A domain merely *existing* isn't enough to call this idempotent — an
-# interrupted/failed previous install (crash, kill, timeout below) can
-# leave a defined-but-not-running domain behind. Only a running domain
-# is treated as "already done"; anything else is assumed broken and
-# rebuilt from scratch, since this is a one-shot install, not a
-# reconciled resource (see answer_file_md5 in main.tf's triggers).
-if existing_state="$(virsh --connect "$LIBVIRT_URI" domstate "$VM_NAME" 2>/dev/null)"; then
-  # libvirt domain names are host-global but tofu workspaces aren't: a
-  # second environment reusing a host-group name (dc1, winsrv1, ...)
-  # would otherwise "adopt" another environment's running VM here, and
-  # that environment's later destroy would delete it. Every VM is tagged
-  # with its workspace (--metadata below); only a VM carrying this
-  # workspace's tag is treated as ours.
-  existing_desc="$(virsh --connect "$LIBVIRT_URI" desc "$VM_NAME" 2>/dev/null || true)"
-  if [ "$existing_desc" != "$workspace_tag" ]; then
-    echo "labape: a VM named '$VM_NAME' already exists on $LIBVIRT_URI but isn't tagged '$workspace_tag' (found: '${existing_desc}'). It belongs to another environment or predates tagging; refusing to adopt or replace it. Rename this host group, or tag an untagged VM you own with: virsh desc $VM_NAME '$workspace_tag'" >&2
-    exit 1
-  fi
-  if [ "$existing_state" = "running" ]; then
-    echo "labape: VM '$VM_NAME' already exists and is running on $LIBVIRT_URI — skipping create (idempotent no-op)." >&2
-    exit 0
-  fi
-  echo "labape: VM '$VM_NAME' exists but is not running (state: $existing_state) — treating as a leftover from an interrupted install and removing it before recreating." >&2
-  virsh --connect "$LIBVIRT_URI" destroy "$VM_NAME" >/dev/null 2>&1 || true
-  safe_undefine "$LIBVIRT_URI" "$VM_NAME"
-fi
+handle_existing_domain "$LIBVIRT_URI" "$VM_NAME" "$workspace_tag"
 
 mkdir -p "$VM_STORAGE_PATH"
 disk_path="${VM_STORAGE_PATH}/${VM_NAME}.qcow2"
@@ -62,73 +39,6 @@ disk_path="${VM_STORAGE_PATH}/${VM_NAME}.qcow2"
 # deploy indefinitely; the VM itself is left running either way for
 # post-mortem inspection.
 console_log="/var/log/libvirt/qemu/${VM_NAME}-console.log"
-
-# Debian-family only (subiquity/cloud-init): confirmed via real testing
-# (Claude_Docs/Testing_Troubleshooting-Log.md) that subiquity's serial-console TUI
-# blocks indefinitely on several one-time confirmation screens even
-# with `interactive-sections: []` in the autoinstall config — a
-# "Serial console started in basic mode" splash, a welcome/language
-# picker, and a network-configuration review screen were all hit in
-# testing, none suppressed by the autoinstall config itself, each
-# needing one Enter keypress. Rather than hardcode a marker string per
-# screen (fragile — the exact set of unavoidable pre-autoinstall
-# screens isn't documented and may differ across subiquity versions),
-# this detects "idle" generically: the console log only grows while
-# the TUI is actively animating/redrawing, so if its size hasn't
-# changed across two checks, something is very likely waiting on
-# input. A spurious Enter during a genuinely-automatic quiet patch
-# (e.g. curtin writing to disk) is assumed harmless — those screens
-# have no focused actionable control — so this errs toward sending
-# too many rather than too few, up to a bounded cap. Requires the
-# deploying account to have passwordless sudo for `cp` and `tee`
-# specifically (Claude_Docs/Design_Base-Images.md §4) — both the console log and the
-# console pty device are root-owned (0600) by libvirt/QEMU's own
-# defaults, unrelated to this repo's own config.
-dismiss_subiquity_prompts() {
-  local deadline=$((SECONDS + install_timeout_seconds))
-  local pty="" last_size=-1 idle_polls=0 sent_count=0
-  # max_sends started at 10 and was confirmed too low via real testing
-  # (Claude_Docs/Testing_Troubleshooting-Log.md): idle gaps of 8s+ occur routinely
-  # during ordinary boot (disk-allocation progress ticks, kernel/udev
-  # messages) well before subiquity's TUI ever appears, and each one
-  # consumes a "send" — the budget was fully exhausted on boot noise
-  # before reaching the real interactive screens, silently disabling
-  # this function for the rest of the install. A stray Enter during
-  # boot is harmless (nothing focused/actionable to accidentally
-  # trigger), so raising the cap generously is a safe fix; the real
-  # constraint is still install_timeout_seconds overall.
-  local max_sends=50 idle_polls_required=2 poll_interval=4
-
-  while [ "$SECONDS" -lt "$deadline" ] && [ "$sent_count" -lt "$max_sends" ]; do
-    sleep "$poll_interval"
-    if [ -z "$pty" ]; then
-      # `|| true` is load-bearing, not defensive: with `pipefail` (set
-      # at the top of this script), grep finding no match yet (routine
-      # — the console element doesn't exist until the domain starts)
-      # makes the whole pipeline "fail", which set -e then treats as
-      # this entire script failing — silently orphaning the backgrounded
-      # virt-install and leaving OpenTofu's local-exec hung reading its
-      # now-parentless-but-still-open output pipe. Confirmed by hitting
-      # exactly that hang in real testing (Claude_Docs/Testing_Troubleshooting-Log.md).
-      pty="$(virsh --connect "$LIBVIRT_URI" dumpxml "$VM_NAME" 2>/dev/null \
-        | grep -oP "(?<=<console type='pty' tty=')[^']+" | head -1 || true)"
-    fi
-    [ -z "$pty" ] && continue
-
-    cur_size="$(sudo -n /usr/bin/cp "$console_log" /dev/stdout 2>/dev/null | wc -c || true)"
-    if [ -n "$cur_size" ] && [ "$cur_size" = "$last_size" ]; then
-      idle_polls=$((idle_polls + 1))
-      if [ "$idle_polls" -ge "$idle_polls_required" ]; then
-        ( printf '\r'; sleep 2 ) | sudo -n tee "$pty" >/dev/null
-        sent_count=$((sent_count + 1))
-        idle_polls=0
-      fi
-    else
-      idle_polls=0
-    fi
-    last_size="$cur_size"
-  done
-}
 
 case "$OS_FAMILY" in
 linux)
@@ -219,8 +129,8 @@ debian)
   # volume label. The earlier "s=file:///cdrom/" pointed at the live
   # install ISO (that's what /cdrom is under --location), so the seed was
   # never read and subiquity silently ran fully interactive, which is
-  # what all the screens dismiss_subiquity_prompts was built for were
-  # (Claude_Docs/Testing_Troubleshooting-Log.md, Ubuntu LTS section).
+  # what the old Enter-pressing dismiss loop was working around
+  # (removed; Claude_Docs/Testing_Troubleshooting-Log.md, Ubuntu LTS section).
   #
   # kernel=/initrd= override on --location is REQUIRED, not optional,
   # for Ubuntu 24.04 specifically (confirmed via real testing,
@@ -245,11 +155,7 @@ debian)
 
   # model=virtio (unlike Windows' sata/e1000e) — Ubuntu has in-box
   # virtio drivers, so there's no equivalent reason to avoid it here.
-  #
-  # virt-install runs backgrounded (not `--wait -1` in the foreground)
-  # so dismiss_subiquity_prompts can run concurrently and unblock it —
-  # see that function's own comment for why this is needed at all.
-  timeout "$install_timeout_seconds" virt-install \
+  if ! timeout "$install_timeout_seconds" virt-install \
     --connect "$LIBVIRT_URI" \
     --name "$VM_NAME" \
     --vcpus "$CPU_COUNT" \
@@ -264,12 +170,7 @@ debian)
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
     --metadata "description=${workspace_tag}" \
-    --wait -1 &
-  vi_pid=$!
-
-  dismiss_subiquity_prompts
-
-  if ! wait "$vi_pid"; then
+    --wait -1; then
     echo "labape: '$VM_NAME' install did not finish within ${install_timeout_seconds}s (or virt-install failed outright)." >&2
     echo "labape: the VM is left running for inspection — console log: $console_log (root-owned; e.g. sudo cat, or sudo cp --no-preserve=mode to a readable copy)." >&2
     exit 1

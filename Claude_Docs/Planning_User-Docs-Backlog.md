@@ -7,3 +7,5 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Host-group names must be unique across environments sharing one libvirt host; a create refuses another workspace's VM.
 - Rotating the Windows bootstrap password: change it on running hosts first, then the vault (Claude_Docs/Reference_Credentials.md §9); VMs aren't reinstalled.
 - Windows VMs on the libvirt backend use legacy BIOS, so Secure Boot/TPM scenarios aren't supported.
+- `deploy.sh`/`destroy.sh` options: `--test`, `--no-ansible`, `--env-file`, `--directory-manifest` (throwaway test environments next to a long-lived one).
+- Templates: `scripts/promote-to-template.sh` and host-group `image_source = "packer_template"` + `template = "<name>"`; `template_storage_path` in environment.yml.

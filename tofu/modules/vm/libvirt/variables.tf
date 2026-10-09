@@ -34,8 +34,20 @@ variable "roles" {
   }
 }
 
+variable "template_name" {
+  description = "Template to clone when image_source = \"packer_template\" (file <template_storage_path>/<template_name>.qcow2). Ignored for iso_direct."
+  type        = string
+  default     = ""
+}
+
+variable "template_storage_path" {
+  description = "Directory of the template library on the libvirt host."
+  type        = string
+  default     = ""
+}
+
 variable "image_source" {
-  description = "\"packer_template\" | \"iso_direct\". Only iso_direct is implemented as of M1 (Claude_Docs/Design_System-Overview.md §18) — packer_template is a documented, deliberate fail-fast until M6."
+  description = "\"iso_direct\" (install from ISO + answer file) | \"packer_template\" (clone template_name from the template library; Claude_Docs/Design_Base-Images.md). Both are supported side by side, per host group."
   type        = string
 
   validation {

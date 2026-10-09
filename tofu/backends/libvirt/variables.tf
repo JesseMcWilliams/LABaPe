@@ -76,10 +76,20 @@ variable "host_groups" {
     os           = string
     roles        = list(string)
     image_source = optional(string) # null means "use var.image_source_default", main.tf
+    # Template name for image_source = "packer_template", e.g.
+    # "rocky9-base-2026.10" -> <template_storage_path>/rocky9-base-2026.10.qcow2
+    # (Claude_Docs/Design_Base-Images.md §8 naming).
+    template     = optional(string)
     cpu_count    = optional(number, 2)
     memory_mb    = optional(number, 4096)
     disk_gb      = optional(number, 40)
   }))
+}
+
+variable "template_storage_path" {
+  description = "Directory of the template library on the libvirt host (environment.yml's template_storage_path). Empty means <vm_storage_path>/templates. Claude_Docs/Design_Base-Images.md §8."
+  type        = string
+  default     = ""
 }
 
 variable "image_source_default" {

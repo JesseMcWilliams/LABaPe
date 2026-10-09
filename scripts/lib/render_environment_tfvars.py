@@ -48,6 +48,8 @@ def main() -> int:
         "image_source_default": env.get("image_source_default", "iso_direct"),
         "os_iso_paths": env.get("os_iso_paths", {}),
         "vm_storage_path": vm_storage_path,
+        # Optional; empty means "<vm_storage_path>/templates" (backend main.tf).
+        "template_storage_path": env.get("template_storage_path", ""),
     }
 
     out_path = f"{backend_dir}/environment.auto.tfvars.json"

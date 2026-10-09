@@ -2,7 +2,10 @@ locals {
   os_meta   = lookup(var.os_catalog, var.os, null)
   os_family = local.os_meta != null ? local.os_meta.os_family : null
 
-  rendered_dir = "${path.module}/.rendered"
+  # Per workspace: VM names repeat across environments (lab1 and a
+  # test env can both have dc1), and one shared directory let them
+  # overwrite each other's answer files.
+  rendered_dir = "${path.module}/.rendered/${terraform.workspace}"
 
   vhd_path             = "${var.vm_storage_path}\\${var.name}.vhdx"
   debug_vhd_path        = "${var.vm_storage_path}\\${var.name}-debug.vhdx"

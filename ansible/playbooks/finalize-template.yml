@@ -1,0 +1,11 @@
+---
+# Generalize one VM so it can become a template — run by
+# scripts/promote-to-template.sh with --limit <vm>, never as part of
+# site.yml (Claude_Docs/Design_Base-Images.md §5). Ends with the VM
+# shutting itself down; promote-to-template.sh waits for that, then
+# copies the disk into the template library.
+- name: Finalize a VM into a template
+  hosts: all
+  gather_facts: true
+  roles:
+    - role: template_finalize

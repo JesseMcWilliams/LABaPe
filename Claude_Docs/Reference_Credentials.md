@@ -240,5 +240,5 @@ the new password works before retrying (Claude_Docs/Testing_Troubleshooting-Log.
 
 Rotation doesn't reinstall VMs: the reinstall trigger hashes the answer
 file with the password masked (`tofu/modules/vm/libvirt/main.tf`). The
-rendered `.rendered/*-autounattend.xml` files and the state's copy of
+rendered `.rendered/<workspace>/*-autounattend.xml` files and the state's copy of
 their content are refreshed on the next apply.

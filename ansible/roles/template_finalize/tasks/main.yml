@@ -1,0 +1,10 @@
+---
+# Same finalize steps whether the VM came from ISO or from an existing
+# template (refresh, Claude_Docs/Design_Base-Images.md §6).
+- name: Finalize Windows
+  ansible.builtin.include_tasks: windows.yml
+  when: ansible_facts['os_family'] == "Windows"
+
+- name: Finalize Linux
+  ansible.builtin.include_tasks: linux.yml
+  when: ansible_facts['os_family'] != "Windows"

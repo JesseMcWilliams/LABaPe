@@ -1,0 +1,87 @@
+---
+- name: Refuse a domain-joined VM (its machine account would be cloned)
+  # realmd is only installed once a host has been joined.
+  ansible.builtin.shell: if command -v realm >/dev/null; then realm list; fi
+  register: finalize_realm
+  changed_when: false
+  failed_when: finalize_realm.stdout | trim | length > 0
+  become: true
+
+# Clones get their identity from a cloud-init NoCloud seed
+# (iso/answer-files/cloud-init/). Rocky's minimal install and Debian's
+# preseed don't include cloud-init; Ubuntu does.
+- name: Install cloud-init and root-partition growth
+  ansible.builtin.package:
+    name: "{{ finalize_cloud_packages[ansible_facts['pkg_mgr']] }}"
+    state: present
+  vars:
+    finalize_cloud_packages:
+      dnf: [cloud-init, cloud-utils-growpart]
+      apt: [cloud-init, cloud-guest-utils]
+  become: true
+
+# Subiquity leaves config behind that disables cloud-init (datasource
+# None, networking off) for the installed system.
+- name: Find installer-written cloud-init overrides
+  ansible.builtin.find:
+    paths: /etc/cloud/cloud.cfg.d
+    patterns: ["*installer*", "*subiquity*", "*curtin*"]
+  register: finalize_installer_cfg
+  become: true
+
+- name: Remove installer-written cloud-init overrides
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ finalize_installer_cfg.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+
+# The install-time static address would otherwise come back on every
+# clone alongside (or instead of) cloud-init's network-config. These
+# take effect at next boot, so this SSH session survives until shutdown.
+- name: Find install-time network configuration
+  ansible.builtin.find:
+    paths: [/etc/NetworkManager/system-connections, /etc/netplan]
+    patterns: ["*"]
+  register: finalize_netcfg
+  become: true
+
+- name: Remove install-time network configuration
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ finalize_netcfg.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+
+- name: Reset ifupdown to loopback only (Debian preseed installs)
+  ansible.builtin.copy:
+    dest: /etc/network/interfaces
+    content: |
+      # Managed by LABaPe template finalize: cloud-init writes the real
+      # interface config to interfaces.d/ on each clone.
+      source /etc/network/interfaces.d/*
+      auto lo
+      iface lo inet loopback
+    mode: "0644"
+  when: ansible_facts['pkg_mgr'] == 'apt'
+  become: true
+
+- name: Clear cloud-init state, machine-id and SSH host keys
+  ansible.builtin.shell: |
+    set -e
+    cloud-init clean --logs --seed
+    truncate -s 0 /etc/machine-id
+    rm -f /var/lib/dbus/machine-id /etc/ssh/ssh_host_*
+  changed_when: true
+  become: true
+
+- name: Shut down (promote-to-template.sh waits for it)
+  ansible.builtin.shell: sleep 2 && shutdown -h now
+  async: 30
+  poll: 0
+  changed_when: true
+  become: true

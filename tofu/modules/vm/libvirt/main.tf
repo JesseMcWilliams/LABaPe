@@ -2,22 +2,52 @@ locals {
   os_meta   = lookup(var.os_catalog, var.os, null)
   os_family = local.os_meta != null ? local.os_meta.os_family : null
 
-  rendered_dir = "${path.module}/.rendered"
+  # Per workspace: VM names repeat across environments (lab1 and a
+  # test env can both have dc1), and one shared directory let them
+  # overwrite each other's answer files.
+  rendered_dir = "${path.module}/.rendered/${terraform.workspace}"
 
   # try() guards against Terraform evaluating the *other* family's
   # resource[0] reference (count = 0 in the branch not taken) while
   # building its dependency graph — coalesce then picks whichever one
   # actually exists for this instance.
-  rendered_answer_file_path = coalesce(
+  # Empty for packer_template VMs, which have no ISO answer file.
+  rendered_answer_file_path = try(coalesce(
     try(local_file.kickstart[0].filename, null),
     try(local_file.windows_answer_file[0].filename, null),
     try(local_file.debian_user_data[0].filename, null),
-  )
-  rendered_answer_file_md5 = coalesce(
-    try(local_file.kickstart[0].content_md5, null),
+  ), "")
+  # Computed from the rendered content, not read back from the
+  # local_file resources: a resource's content_md5 is unknown whenever the
+  # file itself is being replaced (e.g. moved to another directory), and
+  # an unknown trigger forces the VM to be reinstalled even though the
+  # content didn't change. md5(content) is the same value content_md5 has.
+  rendered_answer_file_md5 = try(coalesce(
+    try(md5(local.kickstart_content), null),
     try(local.windows_answer_file_md5_masked, null),
-    try(local_file.debian_user_data[0].content_md5, null),
-  )
+    try(md5(local.debian_user_data_content), null),
+  ), "")
+
+  kickstart_content = contains(["linux", "debian_preseed"], coalesce(local.os_family, "none")) ? templatefile(local.os_meta.answer_file_template, {
+    hostname          = var.name
+    ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
+    addressing        = var.addressing
+    management_source = lookup(var.template_vars, "management_source", "")
+    syslog_host       = lookup(var.template_vars, "syslog_host", "")
+    # The debug disk (README's Known Gaps, M2) is Hyper-V-specific —
+    # modules/vm/hyperv attaches the actual extra disk this needs;
+    # nothing here does, so always false. Still has to be passed:
+    # templatefile() requires every variable the template references.
+    debug_disk = false
+  }) : null
+
+  debian_user_data_content = local.os_family == "debian" ? templatefile(local.os_meta.answer_file_template, {
+    hostname          = var.name
+    ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
+    addressing        = var.addressing
+    management_source = lookup(var.template_vars, "management_source", "")
+    syslog_host       = lookup(var.template_vars, "syslog_host", "")
+  }) : null
 
   windows_answer_file_vars = {
     hostname               = var.name
@@ -41,9 +71,8 @@ locals {
 
 # Fail fast and clearly on an unknown `os` key, rather than a confusing
 # "attempt to index null value" error deeper in the module. Only
-# meaningful for iso_direct — os_catalog isn't consumed by the
-# packer_template path (which has its own, more specific precondition
-# below), so this shouldn't fire and mask that clearer error.
+# meaningful for iso_direct — the packer_template path has its own
+# validate_template below with template-specific messages.
 resource "terraform_data" "validate_os" {
   count = var.image_source == "iso_direct" ? 1 : 0
 
@@ -59,7 +88,7 @@ resource "terraform_data" "validate_os" {
   }
 }
 
-# --- iso_direct path (M1's only implemented image_source) ---
+# --- iso_direct path (install from ISO + answer file) ---
 #
 # Neither the dmacvicar/libvirt provider nor virt-install has one
 # unattended-install mechanism that covers every OS family, so this
@@ -86,18 +115,7 @@ resource "local_file" "kickstart" {
   count    = var.image_source == "iso_direct" && contains(["linux", "debian_preseed"], local.os_family) ? 1 : 0
   filename = "${local.rendered_dir}/${var.name}-answer.cfg"
 
-  content = templatefile(local.os_meta.answer_file_template, {
-    hostname          = var.name
-    ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
-    addressing        = var.addressing
-    management_source = lookup(var.template_vars, "management_source", "")
-    syslog_host       = lookup(var.template_vars, "syslog_host", "")
-    # The debug disk (README's Known Gaps, M2) is Hyper-V-specific —
-    # modules/vm/hyperv attaches the actual extra disk this needs;
-    # nothing here does, so always false. Still has to be passed:
-    # templatefile() requires every variable the template references.
-    debug_disk = false
-  })
+  content = local.kickstart_content
 
   depends_on = [terraform_data.validate_os]
 }
@@ -124,13 +142,7 @@ resource "local_file" "debian_user_data" {
   count    = var.image_source == "iso_direct" && local.os_family == "debian" ? 1 : 0
   filename = "${local.rendered_dir}/${var.name}-user-data"
 
-  content = templatefile(local.os_meta.answer_file_template, {
-    hostname          = var.name
-    ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
-    addressing        = var.addressing
-    management_source = lookup(var.template_vars, "management_source", "")
-    syslog_host       = lookup(var.template_vars, "syslog_host", "")
-  })
+  content = local.debian_user_data_content
 
   depends_on = [terraform_data.validate_os]
 }
@@ -208,23 +220,138 @@ resource "null_resource" "vm_iso_direct" {
   ]
 }
 
-# --- packer_template path (not implemented until M6, Claude_Docs/Design_System-Overview.md §18) ---
+# --- packer_template path (M6, Claude_Docs/Design_Base-Images.md §5/§8) ---
 #
-# Deliberate fail-fast rather than a silent no-op or a half-working
-# clone: better to error clearly now than to produce a "successful"
-# apply that didn't actually create anything.
-resource "terraform_data" "packer_template_not_implemented" {
-  count = var.image_source == "packer_template" ? 1 : 0
+# Clones a template from the library as a thin qcow2 overlay (the
+# template is the read-only backing file, never modified) and hands the
+# VM its identity on a small CD on first boot: a cloud-init NoCloud seed
+# for Linux (hostname, static network, SSH key, root-partition growth),
+# an oobeSystem answer file for a sysprepped Windows template (computer
+# name, Administrator password, static IP, WinRM). Either way the result
+# looks to Ansible exactly like an iso_direct VM.
+
+locals {
+  is_template       = var.image_source == "packer_template"
+  template_path     = "${var.template_storage_path}/${var.template_name}.qcow2"
+  clone_seed_dir    = "${local.rendered_dir}/${var.name}-clone"
+  clone_is_windows  = local.os_family == "windows"
+  # Fixed per environment + VM so cloud-init can match the NIC by MAC:
+  # its sysconfig renderer (Rocky) can't do name globs (Testing_Troubleshooting-Log.md).
+  # 52:54:00 is QEMU/KVM's locally administered prefix.
+  clone_mac_hex = md5("${terraform.workspace}/${var.name}")
+  clone_mac     = format("52:54:00:%s:%s:%s", substr(local.clone_mac_hex, 0, 2), substr(local.clone_mac_hex, 2, 2), substr(local.clone_mac_hex, 4, 2))
+
+  clone_linux_files = local.is_template && !local.clone_is_windows && local.os_meta != null ? {
+    "user-data" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/user-data-clone.yaml.tpl", {
+      hostname       = var.name
+      ssh_public_key = coalesce(var.admin_credential.ssh_public_key, "")
+    })
+    "meta-data" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/meta-data-clone.yaml.tpl", {
+      hostname = var.name
+    })
+    "network-config" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/network-config.yaml.tpl", {
+      addressing  = var.addressing
+      mac_address = local.clone_mac
+    })
+  } : {}
+
+  clone_windows_vars = local.windows_answer_file_vars
+  clone_windows_template = "${path.module}/../../../../iso/answer-files/windows/autounattend-windows-clone.xml.tpl"
+
+  # Reinstall trigger for clones: same idea as rendered_answer_file_md5
+  # (content-derived, password masked).
+  clone_seed_md5 = !local.is_template ? "" : local.clone_is_windows ? md5(templatefile(
+    local.clone_windows_template,
+    merge(local.clone_windows_vars, { windows_admin_password = "masked" }),
+  )) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) : local.clone_linux_files[k]]))
+}
+
+resource "terraform_data" "validate_template" {
+  count = local.is_template ? 1 : 0
 
   lifecycle {
     precondition {
-      # count above already gates this resource's existence on
-      # image_source == "packer_template", so this always fails when it
-      # runs — but a bare `false` literal is rejected at validate time
-      # ("must refer to at least one object from elsewhere in the
-      # configuration"), so the condition re-checks the same value.
-      condition     = var.image_source != "packer_template"
-      error_message = "image_source = \"packer_template\" is not implemented on the libvirt backend yet (Claude_Docs/Design_System-Overview.md §18 schedules it for M6). Use \"iso_direct\" for now."
+      condition     = var.template_name != ""
+      error_message = "Host \"${var.name}\" uses image_source = \"packer_template\" but its host group sets no template (e.g. template = \"rocky9-base-2026.10\")."
+    }
+    precondition {
+      condition     = local.os_meta != null
+      error_message = "Unknown os \"${var.os}\" — not present in var.os_catalog (the template's os key still needs an os_iso_paths entry so its os_family is known)."
+    }
+    precondition {
+      condition     = local.os_meta == null || var.disk_gb >= try(local.os_meta.min_disk_gb, 0)
+      error_message = "disk_gb = ${var.disk_gb} is below the ${try(local.os_meta.min_disk_gb, 0)} GB minimum for os \"${var.os}\"."
     }
   }
+}
+
+resource "local_file" "clone_linux_seed" {
+  for_each = local.clone_linux_files
+  filename = "${local.clone_seed_dir}/${each.key}"
+  content  = each.value
+
+  depends_on = [terraform_data.validate_template]
+}
+
+resource "local_file" "clone_windows_answer_file" {
+  count    = local.is_template && local.clone_is_windows ? 1 : 0
+  filename = "${local.clone_seed_dir}/autounattend.xml"
+  content  = templatefile(local.clone_windows_template, local.clone_windows_vars)
+
+  # Plaintext Administrator password, same as the iso_direct answer file.
+  file_permission = "0600"
+
+  depends_on = [terraform_data.validate_template]
+}
+
+resource "null_resource" "vm_from_template" {
+  count = local.is_template ? 1 : 0
+
+  triggers = {
+    name            = var.name
+    libvirt_uri     = var.libvirt_uri
+    template_path   = local.template_path
+    bridge_device   = var.network_id
+    cpu_count       = tostring(var.cpu_count)
+    memory_mb       = tostring(var.memory_mb)
+    disk_gb         = tostring(var.disk_gb)
+    vm_storage_path = var.vm_storage_path
+    seed_md5        = local.clone_seed_md5
+  }
+
+  provisioner "local-exec" {
+    command     = "${path.module}/scripts/create-from-template.sh"
+    interpreter = ["/usr/bin/env", "bash"]
+    environment = {
+      LIBVIRT_URI      = var.libvirt_uri
+      VM_NAME          = var.name
+      CPU_COUNT        = tostring(var.cpu_count)
+      MEMORY_MB        = tostring(var.memory_mb)
+      DISK_GB          = tostring(var.disk_gb)
+      TEMPLATE_PATH    = local.template_path
+      SEED_DIR         = local.clone_seed_dir
+      BRIDGE_DEVICE    = var.network_id
+      MAC_ADDRESS      = local.clone_mac
+      OS_FAMILY        = local.os_family
+      OS_VARIANT       = try(local.os_meta.os_variant, "")
+      VM_STORAGE_PATH  = var.vm_storage_path
+      LABAPE_WORKSPACE = terraform.workspace
+    }
+  }
+
+  provisioner "local-exec" {
+    when        = destroy
+    command     = "${path.module}/scripts/destroy-vm.sh"
+    interpreter = ["/usr/bin/env", "bash"]
+    environment = {
+      LIBVIRT_URI = self.triggers.libvirt_uri
+      VM_NAME     = self.triggers.name
+    }
+  }
+
+  depends_on = [
+    terraform_data.validate_template,
+    local_file.clone_linux_seed,
+    local_file.clone_windows_answer_file,
+  ]
 }
