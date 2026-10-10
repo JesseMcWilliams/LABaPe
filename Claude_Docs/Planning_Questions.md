@@ -9,21 +9,17 @@ Claude_Docs/Design_Base-Images.md (templates).
 
 ## Web interface (M10)
 
-1. Who will use it, and roughly how many people?
+1. ~~Who will use it, and roughly how many people?~~ **Answered (2026-10-10):** Admins and developers; a small team. (Claude_Docs/Planning_Web-Interface-Options.md)
 2. ~~What authentication does it need?~~ **Answered (2026-10-10):**
    Authentik as the identity provider (local accounts, SAML, OIDC,
    LDAP/Active Directory, MFA, optional Kerberos), the app as an OIDC
    client plus a local break-glass admin, app-issued API tokens, roles
    mapped from groups.
-3. Should some users only deploy from templates while others can edit
-   them, or can everyone do everything? (See also 25.)
+3. ~~Should some users only deploy from templates while others can edit them, or can everyone do everything?~~ **Answered (2026-10-10):** Yes: roles admin / template editor / deployer / viewer, plus ownership (decision 9). (Claude_Docs/Planning_Web-Interface-Options.md)
 4. ~~Semaphore hybrid or one custom app?~~ **Answered (2026-10-10):** one
    custom app (UI, REST API, job runner); Semaphore dropped once the web
    UI became primary (second UI and user system; no SAML).
-5. Where should environment templates be stored: git-backed YAML in this
-   repo (reviewable, consistent with everything else) or the app's
-   database? (Now that the UI is primary, a database with export/import
-   to YAML is also an option.)
+5. ~~Where should environment templates be stored: git-backed YAML in this repo (reviewable, consistent with everything else) or the app's database?~~ **Answered (2026-10-10):** Git-backed YAML in a repository the app keeps in its own volume (works offline), optional sync with an external remote, bundle export/import for disconnected sites (decision 11). (Claude_Docs/Planning_Web-Interface-Options.md)
 6. ~~Does the CLI stay first-class?~~ **Answered (2026-10-10):** the web UI
    is the primary interface; the existing scripts remain the engine the
    job runner calls and stay usable from a shell.
@@ -31,15 +27,9 @@ Claude_Docs/Design_Base-Images.md (templates).
    container stack (Docker primary, Podman supported) on the KVM host by
    default; remote libvirt (`qemu+ssh://`) also supported so it can run
    elsewhere.
-8. How is it reached: LAN only, over a VPN, or from the internet? Is a
-   self-signed HTTPS certificate acceptable, or is there an internal CA
-   to use? (See also 32.)
-9. Any language or framework preference for the app (the suggestion is
-   Python with FastAPI, matching the repo's helpers; the UI could be
-   server-rendered HTMX or a Vue/React single-page app)?
-10. Who may see an environment's credentials in the web UI: anyone who
-    can see the environment, or only its owner/admins?
-
+8. ~~How is it reached: LAN only, over a VPN, or from the internet?~~ **Answered (2026-10-10):** LAN only, over HTTPS; self-signed to start, ACME supported, hostname asked at setup (decision 16). (Claude_Docs/Planning_Web-Interface-Options.md)
+9. ~~Any language or framework preference for the app (the suggestion is Python with FastAPI, matching the repo's helpers; the UI could be server-rendered HTMX or a Vue/React single-page app)?~~ **Answered (2026-10-10):** React single-page app over a Python/FastAPI API; comparison in the "UI technology" section. (Claude_Docs/Planning_Web-Interface-Options.md)
+10. ~~Who may see an environment's credentials in the web UI: anyone who can see the environment, or only its owner/admins?~~ **Answered (2026-10-10):** Owners and admins only (decision 9). (Claude_Docs/Planning_Web-Interface-Options.md)
 ## KVM vs Hyper-V parity
 
 11. Is Hyper-V still a target backend? If not, it could be marked
@@ -85,36 +75,29 @@ Claude_Docs/Design_Base-Images.md (templates).
 
 ## Web interface: follow-up questions (added 2026-10-10)
 
-25. Roles: is admin / template editor / deployer / viewer the right set?
-    Should environments have owners, so a deployer can only change or
-    destroy their own?
-26. Should Authentik be part of the LABaPe container stack, or should
-    LABaPe use an Authentik instance you already run?
-27. Which sign-in sources are needed on day one: Authentik local
-    accounts only, Active Directory (which domain), and/or an upstream
-    SAML or OIDC provider (e.g. Entra ID)?
-28. MFA policy: required for everyone, required for admins only, or
-    optional?
+25. ~~Roles: is admin / template editor / deployer / viewer the right set?~~ **Answered (2026-10-10):** Roles confirmed. Environments have owners; templates have owners and users; plus a file manager for ISOs, installers and other files (decisions 9, 10). (Claude_Docs/Planning_Web-Interface-Options.md)
+26. ~~Should Authentik be part of the LABaPe container stack, or should LABaPe use an Authentik instance you already run?~~ **Answered (2026-10-10):** Use an existing Authentik instance by default; optionally deploy and configure one in the stack if none is available (decision 12). (Claude_Docs/Planning_Web-Interface-Options.md)
+27. ~~Which sign-in sources are needed on day one: Authentik local accounts only, Active Directory (which domain), and/or an upstream SAML or OIDC provider (e.g. Entra ID)?~~ **Answered (2026-10-10):** Authentik local accounts (decision 13). (Claude_Docs/Planning_Web-Interface-Options.md)
+28. ~~MFA policy: required for everyone, required for admins only, or optional?~~ **Answered (2026-10-10):** Optional (decision 14). (Claude_Docs/Planning_Web-Interface-Options.md)
 29. Kerberos (Windows integrated sign-on): needed at launch, or later?
-30. Podman: rootful only (simplest, given the libvirt socket and
-    `/dev/kvm`), or must rootless Podman work too? Are systemd Quadlet
-    units wanted alongside the compose file?
-31. Where should the container image be published: GitHub Container
-    Registry (public or private), or a local registry?
-32. HTTPS: should the stack include a reverse proxy (e.g. Caddy or
-    Traefik) that terminates TLS, or will it sit behind an existing
-    proxy? What hostname will it use?
-33. Remote libvirt: how many KVM hosts should one LABaPe instance manage?
-    Should environments be able to span several hosts, or is it one host
-    per environment?
+30. ~~Podman: rootful only (simplest, given the libvirt socket and `/dev/kvm`), or must rootless Podman work too?~~ **Answered (2026-10-10):** Rootless must work too; Quadlet units provided (decision 17). (Claude_Docs/Planning_Web-Interface-Options.md)
+31. ~~Where should the container image be published: GitHub Container Registry (public or private), or a local registry?~~ **Answered (2026-10-10):** Local by default, external registry optional, all sources in one central repository configuration (decisions 18, 19). (Claude_Docs/Planning_Web-Interface-Options.md)
+32. ~~HTTPS: should the stack include a reverse proxy (e.g. Caddy or Traefik) that terminates TLS, or will it sit behind an existing proxy?~~ **Answered (2026-10-10):** Self-signed to start, ACME supported, hostname asked at setup; whether a reverse proxy container terminates TLS is a design detail (decision 16). (Claude_Docs/Planning_Web-Interface-Options.md)
+33. ~~Remote libvirt: how many KVM hosts should one LABaPe instance manage?~~ **Answered (2026-10-10):** Up to 4 KVM hosts, configurable (decision 20). (Claude_Docs/Planning_Web-Interface-Options.md)
 34. Remote libvirt: when the app doesn't run on a KVM host, where should
     Packer template builds run: on the app's container host (needs
     `/dev/kvm`), or on each KVM host?
 35. Backups: who backs up PostgreSQL (app and Authentik data) and the
     template library, and how often?
 36. How long should job logs and the audit log be kept?
-37. Should the app take over existing environments (lab1's OpenTofu state,
-    the vault, `environment.yml`) on first start, or start empty and run
-    alongside the current CLI setup until migrated?
+37. ~~Should the app take over existing environments (lab1's OpenTofu state, the vault, `environment.yml`) on first start, or start empty and run alongside the current CLI setup until migrated?~~ **Answered (2026-10-10):** Optional import of existing CLI-built environments; most will be new (decision 15). (Claude_Docs/Planning_Web-Interface-Options.md)
 38. Notifications on job completion or failure: email, Teams, Slack, a
     webhook, or none?
+
+## Web interface: design questions (added 2026-10-10, second round)
+
+39. ~~File manager: is there a maximum upload size (Windows ISOs are 5-8 GB), and should uploads be limited to admins, or can any developer add installers and other files?~~ **Answered (2026-10-10):** Admins and the file manager role upload/delete; chunked, resumable uploads with no fixed size limit (decision 10). (Claude_Docs/Planning_Web-Interface-Options.md)
+40. ~~Template and environment sharing: should "users" of a template be picked individually, by Authentik group, or both?~~ **Answered (2026-10-10):** Both, on the same object (decision 9). (Claude_Docs/Planning_Web-Interface-Options.md)
+41. ~~Where do new files land: the existing directories on the KVM host (`/data/OS_Images`, `software-store/`), or a new LABaPe-managed directory that the engine is pointed at?~~ **Answered (2026-10-10):** Default `/data/<type>`, each location configurable; VM storage is configurable per KVM host, with moving VMs between storage locations (decisions 10, 23). (Claude_Docs/Planning_Web-Interface-Options.md)
+42. ~~Secrets manager: which would you use first, OpenBao (or HashiCorp Vault) or CyberArk Conjur, and is there an instance available to test against?~~ **Answered (2026-10-10):** Modular provider interface; OpenBao/Vault and Conjur first. No instance exists: the repo will include a script and doc to deploy throwaway OpenBao and Conjur containers for testing (decision 22). (Claude_Docs/Planning_Web-Interface-Options.md)
+43. ~~VM storage migration: is an offline move (VM shut down during the copy) acceptable for the first version, with live migration later?~~ **Answered (2026-10-10):** Yes: offline move first, live move later (decision 23). (Claude_Docs/Planning_Web-Interface-Options.md)
