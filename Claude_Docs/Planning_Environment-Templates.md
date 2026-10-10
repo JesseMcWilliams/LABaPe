@@ -134,13 +134,12 @@ relative to what already exists:
 
 ## 4. Open questions (not yet resolved)
 
-- **Storage**: are templates git-backed YAML files (fits this repo's
-  existing everything-is-a-file philosophy, easy to diff/review) or
-  rows in a database the web app owns? Git-backed is the more
-  consistent choice with the rest of this design, but means the web app
-  needs its own git-write capability, which has its own questions
-  (commit as whom, review/approval before a template change ships,
-  etc.).
+- ~~**Storage**~~ — **resolved (2026-10-10):** git-backed YAML in a
+  repository the app keeps in its own data volume (works fully offline),
+  optionally synced with an external remote when configured and
+  reachable, with bundle export/import for disconnected sites. Templates
+  have owners (edit/share/delete) and users (see/deploy).
+  Claude_Docs/Planning_Web-Interface-Options.md decisions 9 and 11.
 - ~~**Auth / multi-tenancy**~~ — **resolved (2026-10-10):** multiple
   users with role-based permissions; sign-in through Authentik (local,
   SAML, OIDC, LDAP/AD, MFA, optional Kerberos), API tokens issued by the

@@ -30,8 +30,8 @@ Claude_Docs/Planning_Questions.md.
    and checked by the app (the API replaces the CLI as the main entry
    point).
 5. **Roles from groups.** Authentik/AD groups map to app roles, so access
-   is managed in one place (proposed: admin, template editor, deployer,
-   viewer; see the questions file).
+   is managed in one place: admin, template editor, deployer, file
+   manager, viewer (see decision 9 for ownership on top of roles).
 6. **Delivered as containers, Docker primary, Podman supported.** A
    Compose stack runs the LABaPe app, PostgreSQL and Authentik. Docker
    (Compose v2) is the supported, tested runtime; Podman (with
@@ -41,6 +41,98 @@ Claude_Docs/Planning_Questions.md.
    explicit volume and device mappings).
 7. **Runs on the KVM host by default, remote libvirt also supported.**
    See "Deployment" below.
+
+### Further decisions (2026-10-10, second round)
+
+8. **Users:** admins and developers. A small team; no multi-tenant
+   separation beyond roles and ownership.
+9. **Ownership on top of roles.**
+   - Every **environment** has an owner. Deployers change or destroy only
+     environments they own; admins can act on any.
+   - Every **environment template** has owners (edit, share, delete) and
+     users (see and deploy from it). Template editors create templates
+     and own what they create.
+   - Owners and users can be granted **individually and by Authentik
+     group**, both on the same object.
+   - Credentials of a running environment are visible to its **owner and
+     admins only**.
+10. **File manager.** The UI manages the files the engine depends on:
+    OS ISOs, application installers (the software store) and other files
+    (e.g. scripts, certificates, licence files). Upload, download, list,
+    delete, with checksums and who/when metadata. **Admins and file
+    managers** upload and delete; everyone else can use the files.
+    Uploads are chunked and resumable (Windows ISOs are 5-8 GB; no fixed
+    size limit). Files are stored under **`/data/<type>`** by default
+    (e.g. `/data/isos`, `/data/installers`, `/data/files`), each type's
+    location configurable; the engine reads the same paths, so the CLI
+    keeps working.
+11. **Environment templates are git-backed YAML, with a built-in
+    repository.** The app keeps templates in its own git repository inside
+    its data volume (works with no network access at all). Optionally it
+    syncs with an external remote (GitHub, GitLab, Gitea, ...) when one is
+    configured and reachable: push on save, pull on request, conflicts
+    surfaced in the UI rather than auto-resolved. For disconnected sites,
+    templates can be exported and imported as a bundle (git bundle or
+    archive). The repository is the source of truth; the database only
+    indexes it for search and permissions.
+12. **Authentik: use an existing instance by default.** LABaPe connects
+    to an Authentik instance the organisation already runs (an OIDC
+    provider and application are configured there). If none is
+    available, the stack can deploy and configure its own Authentik
+    (optional Compose profile, with the LABaPe OIDC application created
+    automatically).
+13. **Day-one sign-in: Authentik local accounts.** SAML, upstream OIDC,
+    LDAP/AD and Kerberos stay supported through Authentik for later.
+14. **MFA is optional** (users may enrol; not enforced). Can be enforced
+    later in Authentik without app changes.
+15. **Migration is optional.** Most environments will be created in the
+    app; an import path brings existing CLI-built environments (OpenTofu
+    workspace state, `environment.yml`, vault secrets, inventory) under
+    the app's management for those that need it.
+16. **LAN only, over HTTPS.** Starts with a self-signed certificate;
+    ACME is supported (an internal ACME CA or a public one where the
+    host is reachable). The hostname is asked for at setup.
+17. **Rootless Podman must work too** (in addition to rootful Podman and
+    Docker). Systemd Quadlet units are provided as the Podman-native way
+    to run the stack as services (see "Container runtimes").
+18. **Container images: local registry by default, external optional.**
+    Images are built and kept locally (a local registry in the stack, or
+    the runtime's own image store); publishing to an external registry is
+    optional.
+19. **One central repository configuration.** A single settings area
+    (file and UI) lists every external source the app and engine use, so a
+    disconnected or mirrored site changes them in one place: container
+    image registry, template git remote, OpenTofu provider mirror,
+    Packer plugin mirror, Ansible collection source, OS package mirrors
+    and Chocolatey sources. (A provider mirror would also have avoided the
+    transient registry timeout seen in M6.)
+20. **Up to 4 KVM hosts per LABaPe instance**, configurable (the limit is
+    a setting, default 4).
+21. **UI built with React** (a single-page app over the REST API);
+    backend Python/FastAPI. See "UI technology".
+22. **Optional secrets-manager integration.** Secrets (the vault
+    password, lab/bootstrap credentials, per-environment credentials)
+    can live in an external secrets manager instead of the app's own
+    encrypted store: **OpenBao** (Vault-compatible API, so HashiCorp
+    Vault works the same way) and **CyberArk Conjur** as the first
+    providers. **Modular:** each secrets manager is a provider plugin
+    behind one small interface (get, put, list, delete, test connection),
+    selected per installation, so others (e.g. Azure Key Vault, AWS
+    Secrets Manager, Bitwarden Secrets Manager) can be added later
+    without touching the rest of the app. The built-in store stays the
+    default. For testing, the repo will include a script and doc that
+    deploy throwaway OpenBao and Conjur instances as containers on the
+    lab host (none exists today).
+23. **Configurable VM storage, with migration.** Where each KVM host
+    keeps VM disks and seed ISOs is a per-host setting (default
+    `/data/VMs/LABaPe`, as today), and the template library location is
+    configurable too. Existing VMs can be moved to another storage
+    location from the UI: offline move by default (shut down, copy the
+    disk through libvirt into the target storage pool, redefine the
+    domain, start) in the first version, live move (`virsh blockcopy`)
+    later; a
+    cloned VM's backing template must be reachable from the target, or
+    the disk is flattened during the move.
 
 ## What the interface has to do
 
@@ -79,7 +171,27 @@ From Claude_Docs/Planning_Environment-Templates.md §3, in order of effort:
 - **Secrets** (vault password, lab credentials, OIDC client secret) move
   from files in a home directory into app-managed secrets (container
   secrets / environment, encrypted at rest in the database where stored
-  there).
+  there), or optionally into an external secrets manager (OpenBao,
+  Vault, CyberArk Conjur; decision 22).
+
+## UI technology
+
+The API has to exist anyway (API tokens, decision 4), so the choice is
+how the browser side is built on top of it:
+
+| | Server-rendered (FastAPI + Jinja + HTMX) | Vue (SPA) | React (SPA) |
+|---|---|---|---|
+| Languages | Python + HTML; little JavaScript | TypeScript/JavaScript front end + Python API | TypeScript/JavaScript front end + Python API |
+| Build tooling | None beyond Python | Vite build step | Vite build step |
+| Forms, tables, CRUD | Very good | Very good | Very good |
+| Rich editors (template composer, drag and drop) | Possible, gets awkward | Strong | Strong |
+| Live job logs | Server-Sent Events, simple | Server-Sent Events/WebSocket, simple | Same as Vue |
+| Component libraries | Few | PrimeVue, Vuetify, Quasar | MUI, Ant Design, Chakra, many more |
+| Learning curve | Lowest | Low-moderate (single-file components, built-in state/router choices) | Moderate (more choices to make: state, routing, data fetching) |
+| Fit here | Fastest start, limits the composer UI | Matches the other project (shared skills, components, conventions) | Largest ecosystem, no existing use |
+
+**Chosen: React** with TypeScript and Vite; component library (e.g.
+MUI or Ant Design) to be picked in the design; backend Python/FastAPI.
 
 ## Deployment
 
@@ -106,9 +218,9 @@ libvirt, KVM and a container runtime.
 
 ### Remote libvirt (also supported)
 
-The app can drive a libvirt host it doesn't run on, over
-`qemu+ssh://`, so it can live on a management VM and drive one or more
-KVM hosts. Required changes to the engine:
+The app can drive libvirt hosts it doesn't run on, over
+`qemu+ssh://`, so it can live on a management VM and drive up to 4 KVM
+hosts (configurable). Required changes to the engine:
 
 - Disks and config ISOs are created **through libvirt** instead of
   written to a local `/data` path: storage-pool volumes, uploaded with
@@ -131,12 +243,17 @@ Hyper-V is already remote (WinRM) and works the same from a container.
 
 - **Docker** (Engine + Compose v2): primary; the reference `compose.yaml`
   is written and CI-tested against it.
-- **Podman**: supported. The same compose file runs under
-  `podman compose`; Quadlet units may be provided for systemd-managed
-  hosts. Device and socket mappings and SELinux volume labels (`:z`/`:Z`)
-  are documented for Podman; whether rootless Podman is supported is an
-  open question (libvirt socket and `/dev/kvm` access make rootful the
-  simpler default).
+- **Podman**: supported, rootful and rootless. The same compose file runs
+  under `podman compose`, and **Quadlet** units are provided: Podman's way
+  of running containers as ordinary systemd services, from small unit
+  files (`.container`, `.volume`, `.network`) that systemd starts,
+  restarts and logs like any other service, including rootless services
+  under a user account that start at boot. Rootless needs the running
+  user in the `libvirt` and `kvm` groups, the groups carried into the
+  container (`--group-add keep-groups`), the libvirt socket and
+  `/dev/kvm` passed through, and SELinux volume labels (`:z`/`:Z`) where
+  enforcing; the design spells these out and CI tests rootless as well
+  as rootful.
 
 ## Options considered
 
