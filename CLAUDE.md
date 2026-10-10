@@ -47,6 +47,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.
   - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number).
+  - `Planning_Web-Interface-Design.md`: M10 design draft (components, data model, permissions, job runner, deployment, build phases 10a-10g).
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history, filed per milestone. Over the ~500-line guideline (636 lines) — left as one file since every entry is still actively linked; split fully-closed entries into an `Archive_Testing_...` file if it grows further.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** (None exist yet.)
 - `User_Docs/`: end-user setup guides (`Install-OpenTofu.md`, `Install-Ansible.md`, and WSL variants of each).

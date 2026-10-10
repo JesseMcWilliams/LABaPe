@@ -839,4 +839,5 @@ custom app (UI, REST API, job runner that calls the existing scripts),
 with sign-in through Authentik (local, SAML, OIDC, LDAP/AD, MFA,
 optional Kerberos), app-issued API tokens and group-mapped roles;
 delivered as a container stack (Docker primary, Podman supported) on
-the KVM host, with remote libvirt (`qemu+ssh://`) also supported.
+the KVM host, with remote libvirt (`qemu+ssh://`) also supported. Design draft and build phases (10a-10g):
+[`Claude_Docs/Planning_Web-Interface-Design.md`](./Planning_Web-Interface-Design.md).
