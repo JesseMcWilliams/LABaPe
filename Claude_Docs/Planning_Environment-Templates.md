@@ -141,15 +141,13 @@ relative to what already exists:
   needs its own git-write capability, which has its own questions
   (commit as whom, review/approval before a template change ships,
   etc.).
-- **Auth / multi-tenancy**: single trusted internal tool (no real auth
-  needed beyond network access), or multiple users with different
-  permissions (who can edit shared templates vs. just deploy from
-  them)? Changes the shape of everything else.
-- **Relationship to the CLI**: does `scripts/deploy.sh` remain a
-  first-class, independently useful interface once the web UI exists,
-  or does the web UI become the primary path with the CLI as a fallback?
-  Leaning toward "CLI stays first-class" (consistent with M1-M8 already
-  being CLI-only and working), but worth confirming before the web UI's
-  job-runner is designed, since that answer affects whether the job
-  runner shells out to the *existing* scripts or reimplements their
-  logic directly against OpenTofu/Ansible.
+- ~~**Auth / multi-tenancy**~~ — **resolved (2026-10-10):** multiple
+  users with role-based permissions; sign-in through Authentik (local,
+  SAML, OIDC, LDAP/AD, MFA, optional Kerberos), API tokens issued by the
+  app, roles mapped from groups. Claude_Docs/Planning_Web-Interface-Options.md.
+- ~~**Relationship to the CLI**~~ — **resolved (2026-10-10):** the web UI
+  is the primary interface; the job runner shells out to the *existing*
+  scripts, which stay the engine and stay usable from a shell, rather
+  than reimplementing their logic. Delivered as a container stack
+  (Docker primary, Podman supported) on the KVM host, with remote
+  libvirt also supported. Claude_Docs/Planning_Web-Interface-Options.md.

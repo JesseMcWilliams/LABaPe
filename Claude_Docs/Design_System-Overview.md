@@ -829,6 +829,14 @@ a `tofu apply` + multi-role Ansible run took 15-40+ minutes and needed
 hands-on recovery more than once in this project's own testing
 (Claude_Docs/Testing_Troubleshooting-Log.md), so a synchronous request/response UI
 isn't viable. Full design, including what's still unresolved (template
-storage, versioning/pinning of included sub-assemblies, auth model,
-relationship to the existing CLI):
+storage, versioning/pinning of included sub-assemblies):
 [`Claude_Docs/Planning_Environment-Templates.md`](./Planning_Environment-Templates.md).
+
+Decided 2026-10-10
+([`Claude_Docs/Planning_Web-Interface-Options.md`](./Planning_Web-Interface-Options.md)):
+the web interface becomes the primary way to use LABaPe, built as one
+custom app (UI, REST API, job runner that calls the existing scripts),
+with sign-in through Authentik (local, SAML, OIDC, LDAP/AD, MFA,
+optional Kerberos), app-issued API tokens and group-mapped roles;
+delivered as a container stack (Docker primary, Podman supported) on
+the KVM host, with remote libvirt (`qemu+ssh://`) also supported.
