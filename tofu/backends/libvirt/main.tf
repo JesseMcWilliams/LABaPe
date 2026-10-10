@@ -12,9 +12,10 @@ locals {
   # the full §5 OS matrix beyond what's actually implemented is still
   # out of scope.
   # The three Server versions share one answer-file template — confirmed
-  # via `wiminfo` against each real eval ISO that install image index 1
-  # ("SERVERSTANDARDCORE") is consistent across all of them, so nothing
-  # in the XML itself is actually version-specific there. Windows 11
+  # via `wiminfo` against each real eval ISO that the image indexes are
+  # identical (1 = Standard Core, 2 = Standard with Desktop Experience),
+  # so nothing in the XML itself is version-specific; the vm module picks
+  # index 2 unless the host group sets windows_core = true. Windows 11
   # (client) is a genuinely different template, not just a different
   # os_variant — see iso/answer-files/windows/autounattend-windows-
   # client.xml.tpl's own comments for why (image selection by name, not
@@ -123,6 +124,7 @@ locals {
         roles        = hg.roles
         image_source = coalesce(hg.image_source, var.image_source_default)
         template     = hg.template == null ? "" : hg.template
+        windows_core = hg.windows_core
         cpu_count    = hg.cpu_count
         memory_mb    = hg.memory_mb
         disk_gb      = hg.disk_gb
@@ -157,6 +159,7 @@ module "vm" {
   roles        = each.value.roles
   image_source = each.value.image_source
   template_name = each.value.template
+  windows_core = each.value.windows_core
   template_storage_path = var.template_storage_path != "" ? var.template_storage_path : "${var.vm_storage_path}/templates"
   cpu_count    = each.value.cpu_count
   memory_mb    = each.value.memory_mb

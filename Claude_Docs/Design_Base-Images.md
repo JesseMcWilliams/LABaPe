@@ -122,6 +122,14 @@ same library `promote-to-template.sh` (§5) fills. Each build:
   `shutdown_command` then powers the VM off (Linux) or starts the role's
   sysprep task (Windows).
 
+**Windows Server edition:** the Desktop Experience (image index 2,
+"SERVERSTANDARD") unless Server Core is asked for, in which case index 1
+("SERVERSTANDARDCORE"); same layout on the 2019/2022/2025 evaluation
+ISOs (checked with `wiminfo`). ISO installs ask with `windows_core = true`
+on the host group; Packer builds with `build-template.sh ... --core`
+(name such templates `...-core-...`). A cloned VM gets its template's
+edition. Client Windows always has the desktop.
+
 A Packer-built template and a promoted one are interchangeable from the
 cloning side. Built and clone-tested: Rocky 9, Ubuntu 24.04 and 26.04,
 Debian 13, Windows Server 2019/2022/2025, Windows 10 and 11. Build times are roughly an ISO install plus a few

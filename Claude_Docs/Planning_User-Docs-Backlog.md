@@ -11,3 +11,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Templates: `scripts/promote-to-template.sh` and host-group `image_source = "packer_template"` + `template = "<name>"`; `template_storage_path` in environment.yml.
 - `scripts/build-template.sh <os-key> <template-name>`: build a template with Packer (installed on the libvirt host in ~/.local/bin, plugins via `packer init`).
 - Windows hosts get .NET Framework 4.8 automatically where an older 4.x is installed (Server 2019); Firefox can't be installed on Server 2019 Core.
+- Windows Server installs the Desktop Experience by default; host group `windows_core = true` (ISO) or `build-template.sh --core` (template) for Server Core.

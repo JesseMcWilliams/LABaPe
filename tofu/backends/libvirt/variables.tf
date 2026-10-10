@@ -80,6 +80,9 @@ variable "host_groups" {
     # "rocky9-base-2026.10" -> <template_storage_path>/rocky9-base-2026.10.qcow2
     # (Claude_Docs/Design_Base-Images.md §8 naming).
     template     = optional(string)
+    # Windows Server installs the Desktop Experience unless this is true
+    # (Server Core). iso_direct only: a clone gets its template's edition.
+    windows_core = optional(bool, false)
     cpu_count    = optional(number, 2)
     memory_mb    = optional(number, 4096)
     disk_gb      = optional(number, 40)
