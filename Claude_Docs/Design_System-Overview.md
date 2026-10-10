@@ -740,7 +740,7 @@ None blocking further scaffolding right now.
   field convention (host-group *names* like `winsrv`/`linsrv`) didn't
   match what the inventory actually groups by (role names); corrected in
   that doc. **Workstation host type + medium profile — the other half of
-  M5 as originally scoped — is now in progress.** Windows 11 client and
+  M5 as originally scoped — is done (details below).** Windows 11 client and
   Ubuntu LTS (first Debian-family OS) support have been added; Ubuntu
   LTS isolation testing found and fixed four real bugs (a
   `virt-install` kernel-detection failure specific to the live-server
@@ -768,6 +768,15 @@ None blocking further scaffolding right now.
   ISO-built lab VM into a reusable template; `refresh-template.sh`
   (Claude_Docs/Design_Base-Images.md §6) for updating an existing template without a
   full rebuild; software manifest system finalized.
+
+  **In progress.** Phase A is done on the libvirt backend:
+  `image_source = "packer_template"` clones a template as a qcow2
+  overlay with a cloud-init seed (Linux) or `unattend.xml` (sysprepped
+  Windows) for its identity, and `scripts/promote-to-template.sh`
+  turns any ISO-built VM into a template (Claude_Docs/Design_Base-Images.md §5;
+  bugs in Claude_Docs/Testing_Troubleshooting-Log.md § M6 phase A). Next:
+  Packer builds per OS (phase B), `refresh-template.sh` (phase C). ISO
+  installs stay a fully supported image source alongside templates.
 - **M7** — NAT isolation mode (opt-in) for both backends, including the
   Hyper-V Internal-switch + `New-NetNat` provisioning sequence
   (`Claude_Docs/Reference_Networking.md` §2).
@@ -782,10 +791,10 @@ None blocking further scaffolding right now.
 
 Both M9 and M10 are recorded now (design discussion, not yet
 implementation) because a design exists — see §19/§20 — not because
-they're scheduled next; M4 and M5's directory-objects half are both now
-confirmed working end-to-end (see above). The more immediate next steps
-are M5's other half (workstation host type + medium profile, now in
-progress — see above) and M6 (Packer base images).
+they're scheduled next. M1-M5 are all confirmed working end-to-end
+(see above); the immediate next step is M6 (Packer base images), with
+ISO-direct installs kept as a fully supported image source alongside the
+Packer templates rather than replaced by them.
 
 ## 19. Certificate Authorities (Future)
 

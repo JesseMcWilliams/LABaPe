@@ -768,10 +768,11 @@ removed with `tofu state rm`. Every VM is now created with
 `--metadata description=labape-workspace=<workspace>`, and an existing
 VM without this workspace's tag makes the create fail loudly instead of
 being adopted. VMs built before the tag existed need a one-time
-`virsh desc <vm> 'labape-workspace=<workspace>'`. The shared
-`modules/vm/libvirt/.rendered/` directory is keyed by VM name too, so
-unique host-group names across environments on one host are still
-required.
+`virsh desc <vm> 'labape-workspace=<workspace>'`. Rendered answer files
+now live in `modules/vm/*/.rendered/<workspace>/` (they used to share one
+directory keyed by VM name, so environments overwrote each other's);
+unique host-group names are still required because libvirt VM names are
+host-global.
 
 ### Linux domain join assumed NetworkManager
 
@@ -852,3 +853,95 @@ returned over that session. The run looked like a failure with nothing
 changed; the next attempt with the old password got "credentials
 rejected". Afterwards, test the new password before retrying anything,
 and only then update the vault.
+
+### Follow-ups after M5
+
+- The Ubuntu `dismiss_subiquity_prompts` loop (Enter into the serial
+  console whenever it went idle) is removed: it only existed because the
+  autoinstall seed was never found. It also kept running after
+  virt-install had finished, until it had sent 50 Enters or hit the
+  install timeout, and it needed passwordless sudo for `cp`/`tee` on the
+  console log and pty. The `debian)` branch now runs virt-install in the
+  foreground like every other branch.
+- `scripts/deploy.sh --test` / `destroy.sh --test` replace the scratch
+  helper used during M5 testing: test inventory goes to
+  `ansible/inventory/<instance>/`, the pre-flight IP check always runs
+  (skipping it is what let the `.117` conflict through), and teardown
+  removes the workspace, inventory and rendered files. `--env-file` and
+  `--directory-manifest` cover a second domain.
+
+## M6 phase A (templates on libvirt): promote and clone
+
+Rocky 9 and Windows Server 2022 VMs built from ISO were promoted with
+`scripts/promote-to-template.sh` and cloned via
+`image_source = "packer_template"` (Claude_Docs/Design_Base-Images.md §5).
+Cloning a VM takes 2-4 seconds; the clones then boot and personalize
+themselves. Bugs found on the way:
+
+### Windows ignored `Autounattend.xml` on the clone's CD
+
+The first Windows clone came up at "Enter new credentials for
+Administrator": none of the answer file had been applied. Setup only
+reads `Autounattend.xml` from removable media for the windowsPE and
+offlineServicing passes; the specialize and oobeSystem passes a
+sysprepped image runs look for **`unattend.xml`** (Microsoft, "Windows
+Setup Automation Overview"). The file on the clone CD is now
+`unattend.xml`. Related: the cached `C:\Windows\Panther\unattend.xml`
+must be deleted before sysprep, or the image keeps using the install-time
+answer file instead of any supplied later (and it contains the
+Administrator password in plain text).
+
+### A Windows template kept its source VM's static IP
+
+The same clone held `172.21.20.106`, the template source VM's address,
+which collided with another planned clone. Static IP settings survive
+`sysprep /generalize`. Finalize now resets every NIC to DHCP first, so a
+clone boots on DHCP until its FirstLogonCommands set its own address.
+
+### cloud-init rejected `to: default`
+
+Rocky's cloud-init 24.4 failed its whole network stage on
+`routes: [{to: default, ...}]` ("Address default is not a valid ip
+address"); netplan accepts it, cloud-init's own v2 parser doesn't. The
+NIC fell back to DHCP. Now `to: 0.0.0.0/0`.
+
+### cloud-init's sysconfig renderer can't match a name glob
+
+With the route fixed, the network config was "applied" but the NIC
+still took DHCP: on Rocky, cloud-init picks its `sysconfig` renderer,
+which wrote a profile for a device literally named after the config key
+(`primary`) instead of honouring `match: {name: "e*"}`. Clones now get a
+deterministic MAC (from environment + VM name) passed to virt-install,
+and the network config matches `macaddress` and sets the name `eth0`,
+which every renderer handles.
+
+### LVM root didn't grow into a bigger clone disk
+
+cloud-init's `growpart`/`resize_rootfs` only handle a filesystem on a
+plain partition; Rocky's root is an LVM logical volume, so a 60 GB clone
+of a 40 GB template kept a 35 GB root. The clone user-data now runs
+growpart on the PV's partition, `pvresize`, and `lvextend -r`. First
+attempt failed because `lsblk -no pkname <pv>` also prints the LVs inside
+the partition (`vda vda2 vda2`); `-d` limits it to the device.
+
+### Smaller things
+
+- The ISO-path locals (`coalesce()` over the ISO answer-file resources)
+  error when every argument is empty, which is the case for a cloned VM;
+  wrapped in `try(..., "")`.
+- `extract_planned_ips.py` only looked at `vm_iso_direct`, so clones
+  skipped the pre-flight IP-conflict check; it now includes
+  `vm_from_template`.
+- `windows_common` failed on lab1's directory manifest in a test
+  environment without a DC (a `LABAPE\Sales-Users` local membership).
+  Domain-qualified members are now skipped when the environment has no
+  domain controller.
+- One run's `dnf` install (firefox, from the software manifest) on a
+  fresh Rocky clone sat for 17 minutes with its packages already
+  downloaded, the module sleeping while holding dnf's own download lock.
+  Killed and re-run, the same playbook finished in 2 minutes; the
+  identical task had also passed on the previous clone run. Not
+  template-related, recorded in case it recurs.
+- After clones of a template have run, libvirt's dynamic ownership leaves
+  the template file owned by `libvirt-qemu` (mode stays 0444, so it's
+  still read-only). Harmless; noted so it isn't mistaken for tampering.

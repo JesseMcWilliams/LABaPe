@@ -8,8 +8,10 @@ domain_name: company.com      # placeholder — not yet consumed by anything in 
 netbios_name: COMPANY
 
 # M1 only implements the iso_direct image source (Claude_Docs/Design_System-Overview.md §18) —
-# packer_template becomes the real default once M6 lands Packer
-# templates for the full OS matrix (Claude_Docs/Design_System-Overview.md §5).
+# iso_direct installs from ISO every time; packer_template clones a
+# template from the library (a host group then also sets `template`).
+# Both stay supported side by side, per host group
+# (Claude_Docs/Design_Base-Images.md).
 image_source_default: iso_direct
 
 network:
@@ -31,6 +33,11 @@ software_store_path: ./software-store   # not yet used in M1 — no locally-sour
 # real test host is a dedicated /data volume rather than the small root
 # filesystem — adjust to whatever's right for yours.
 vm_storage_path: /data/VMs/LABaPe
+
+# Template library (image_source: packer_template). Optional; defaults to
+# <vm_storage_path>/templates. scripts/promote-to-template.sh registers it
+# as the libvirt storage pool "labape-templates" on first use.
+# template_storage_path: /data/VMs/LABaPe/templates
 
 # Per-OS ISO path already staged on the libvirt host's filesystem —
 # tofu/modules/vm/libvirt's iso_direct path shells out to virt-install

@@ -46,7 +46,8 @@ def main() -> int:
     # already-existing no-op case.
     creating = set()
     for change in plan.get("resource_changes", []):
-        if change.get("type") != "null_resource" or change.get("name") != "vm_iso_direct":
+        # vm_iso_direct (install from ISO) or vm_from_template (clone).
+        if change.get("type") != "null_resource" or change.get("name") not in ("vm_iso_direct", "vm_from_template"):
             continue
         if change.get("change", {}).get("actions", []) != ["create"]:
             continue

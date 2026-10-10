@@ -31,3 +31,14 @@ host_groups = [
     roles = ["windows_server"]
   },
 ]
+
+# Cloning from a template instead of installing from ISO, per host group
+# (Claude_Docs/Design_Base-Images.md §5/§7), e.g.:
+#   {
+#     name         = "linsrv"
+#     count        = 1
+#     os           = "rocky9"
+#     roles        = ["linux_server"]
+#     image_source = "packer_template"
+#     template     = "rocky9-base-2026.10"
+#   },

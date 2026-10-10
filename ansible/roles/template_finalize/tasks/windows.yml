@@ -1,0 +1,42 @@
+---
+- name: Check domain membership
+  ansible.windows.win_shell: (Get-CimInstance Win32_ComputerSystem).PartOfDomain
+  register: finalize_domain
+  changed_when: false
+
+- name: Refuse a domain-joined VM (its machine account would be cloned)
+  ansible.builtin.fail:
+    msg: "{{ inventory_hostname }} is domain-joined; promote a VM from an environment without a domain controller."
+  when: finalize_domain.stdout | trim == "True"
+
+# Removing the WinRM listener ends this very session, and WinRM kills
+# processes started from a session when it closes, so the last steps run
+# from a one-shot SYSTEM scheduled task instead. Panther's cached
+# unattend.xml holds the install-time Administrator password in plain
+# text; deleting it keeps that out of every template. The clone's own
+# answer file (autounattend-windows-clone.xml.tpl) recreates the
+# listener, certificate and firewall rule with the clone's name.
+- name: Write the finalize script
+  ansible.windows.win_copy:
+    dest: C:\Windows\Temp\labape-finalize.ps1
+    content: |
+      Start-Sleep -Seconds 10
+      Remove-Item -Path WSMan:\localhost\Listener\* -Recurse -Force -ErrorAction SilentlyContinue
+      Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -eq "CN=$env:COMPUTERNAME" } | Remove-Item -Force
+      Remove-NetFirewallRule -Name WinRMHTTPSIn -ErrorAction SilentlyContinue
+      Remove-Item -Force -ErrorAction SilentlyContinue C:\Windows\Panther\unattend.xml, C:\Windows\Panther\Unattend\*
+      # Back to DHCP: a static address survives generalize, and every
+      # clone would boot on the source VM's IP until its first logon.
+      Get-NetAdapter | ForEach-Object {
+        Remove-NetRoute -InterfaceIndex $_.ifIndex -DestinationPrefix 0.0.0.0/0 -Confirm:$false -ErrorAction SilentlyContinue
+        Set-NetIPInterface -InterfaceIndex $_.ifIndex -Dhcp Enabled
+        Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses
+      }
+      schtasks /Delete /TN LabapeFinalize /F
+      & C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /quiet /mode:vm
+
+- name: Run it detached as SYSTEM (sysprep shuts the VM down)
+  ansible.windows.win_shell: |
+    schtasks /Create /TN LabapeFinalize /RU SYSTEM /SC ONCE /ST 00:00 /F /TR "powershell -NoProfile -ExecutionPolicy Bypass -File C:\Windows\Temp\labape-finalize.ps1"
+    schtasks /Run /TN LabapeFinalize
+  changed_when: true

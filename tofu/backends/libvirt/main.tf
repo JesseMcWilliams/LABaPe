@@ -122,6 +122,7 @@ locals {
         os           = hg.os
         roles        = hg.roles
         image_source = coalesce(hg.image_source, var.image_source_default)
+        template     = hg.template == null ? "" : hg.template
         cpu_count    = hg.cpu_count
         memory_mb    = hg.memory_mb
         disk_gb      = hg.disk_gb
@@ -155,6 +156,8 @@ module "vm" {
   os           = each.value.os
   roles        = each.value.roles
   image_source = each.value.image_source
+  template_name = each.value.template
+  template_storage_path = var.template_storage_path != "" ? var.template_storage_path : "${var.vm_storage_path}/templates"
   cpu_count    = each.value.cpu_count
   memory_mb    = each.value.memory_mb
   disk_gb      = each.value.disk_gb

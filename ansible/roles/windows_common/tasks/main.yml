@@ -144,5 +144,10 @@
        | for_host_group(group_names) }}
   loop_control:
     label: "{{ item.member }} -> {{ item.group }}"
-  when: "'domain_controller' not in group_names"
+  # A DOMAIN-qualified member (backslash) can't be resolved in an environment without a
+  # domain controller (e.g. a --test environment of member servers), so
+  # those entries are skipped there instead of failing the play.
+  when:
+    - "'domain_controller' not in group_names"
+    - '(groups["domain_controller"] | default([]) | length > 0) or ("\\" not in item.member)'
   tags: [directory_objects, membership]

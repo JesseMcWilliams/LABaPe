@@ -72,8 +72,15 @@ iso/
       user-data-mint.yaml.tpl
     opensuse/
       autoyast-leap.xml.tpl                 # not yet
+    cloud-init/
+      user-data-clone.yaml.tpl              # implemented — first boot of a cloned Linux VM
+      meta-data-clone.yaml.tpl              # implemented
+      network-config.yaml.tpl               # implemented
+    windows/
+      autounattend-windows-clone.xml.tpl    # implemented — first boot of a cloned Windows VM
 scripts/
-  promote-to-template.sh   # generalize + export a live ISO-built VM into a template
+  promote-to-template.sh   # implemented — generalize + copy a live VM into the template library (§5)
+ansible/roles/template_finalize/   # implemented — the generalize steps promote runs
 ```
 
 Every real file above ends in `.tpl` and is rendered via OpenTofu's
@@ -211,28 +218,75 @@ mechanism, not just a different answer-file format):
 This is the intended on-ramp: build the first environment entirely from
 ISO (fast to get started, no template pipeline needed yet), then convert
 the VMs worth reusing into templates instead of reinstalling from ISO
-every rebuild.
+every rebuild. **Implemented on the libvirt backend (M6 phase A).**
 
-`scripts/promote-to-template.sh <backend> <vm-name> <template-name>`
-does, against the already-installed VM:
+```
+scripts/deploy.sh libvirt test-tpl test-tpl --test --no-ansible     # source VMs from ISO
+scripts/promote-to-template.sh libvirt test-tpl rocky1 rocky9-base-2026.10
+scripts/destroy.sh libvirt test-tpl test-tpl --test
+```
 
-1. Runs the **same finalize steps** §3 lists for that OS family over the
-   VM's existing WinRM/SSH connection — `sysprep` for Windows,
-   `cloud-init clean` + machine-id/SSH-host-key removal for the RHEL,
-   Debian, and Fedora families, AutoYaST-equivalent cleanup + `zypper
-   clean` for openSUSE/SLES.
-2. Shuts the VM down.
-3. Exports/converts its disk into the template library using the same
-   naming convention Packer output uses (§8) — a Hyper-V export or a
-   libvirt qcow2 conversion, depending on backend.
-4. Registers the result so any host group can reference it going forward
-   via `image_source: packer_template` (the name is kept for consistency
-   even though this template didn't come from a Packer build — the
-   consuming side, OpenTofu, doesn't care how a template was produced).
+`promote-to-template.sh <backend> <environment-instance> <vm-name> <template-name>`:
 
-This is a **manually-triggered** step (Claude_Docs/Design_System-Overview.md §17.2) — you decide
-when a lab VM is done enough to become a reusable template, rather than
-the tooling guessing.
+1. Checks the VM is tagged for that environment and that no template of
+   that name exists yet (templates are never overwritten, §8).
+2. Runs `ansible/playbooks/finalize-template.yml` (role
+   `template_finalize`) against the VM over its existing connection, and
+   refuses a domain-joined VM (its machine account would be cloned):
+   - **Linux:** installs cloud-init (+ growpart) if missing (Rocky's
+     minimal install and Debian's preseed don't have it), removes
+     installer-written cloud-init overrides (Ubuntu's disable networking)
+     and the install-time network config (NetworkManager keyfiles,
+     netplan, ifupdown), runs `cloud-init clean`, empties
+     `/etc/machine-id`, deletes the SSH host keys, shuts down.
+   - **Windows:** from a one-shot SYSTEM scheduled task (removing the
+     WinRM listener ends the Ansible session, and WinRM kills processes
+     started from a session when it closes): removes the WinRM HTTPS
+     listener, its self-signed certificate and firewall rule, deletes
+     the cached `C:\Windows\Panther\unattend.xml` (it holds the
+     install-time Administrator password in plain text), resets the NIC
+     to DHCP (a static address survives generalize), then
+     `sysprep /generalize /oobe /shutdown /mode:vm`.
+3. Waits for the VM to shut itself down.
+4. Copies its disk into the template library with libvirt
+   (`virsh vol-create-from` into the `labape-templates` storage pool, a
+   full, flattened copy, mode 0444). The pool is created on first use
+   at `template_storage_path` (environment.yml; default
+   `<vm_storage_path>/templates`).
+
+The source VM is left shut off and generalized; tear its environment
+down afterwards. This is a **manually-triggered** step
+(Claude_Docs/Design_System-Overview.md §17.2).
+
+### How a VM is cloned from a template (libvirt)
+
+A host group with `image_source = "packer_template"` and
+`template = "<name>"` gets, per VM (`tofu/modules/vm/libvirt`,
+`scripts/create-from-template.sh`):
+
+- a qcow2 **overlay** disk whose read-only backing file is the template
+  (`virt-install --import`, `backing_store=`), sized `disk_gb` — creating
+  a VM takes seconds, and the template is never written to;
+- a small CD with the VM's first-boot identity:
+  - **Linux:** a cloud-init NoCloud seed (`CIDATA`) from
+    `iso/answer-files/cloud-init/`: hostname, the `labape` user with the
+    SSH key and passwordless sudo, static network matched by the VM's
+    MAC (fixed per environment + VM name, so every cloud-init renderer
+    can match it), and root-filesystem growth, including an LVM root
+    (Rocky);
+  - **Windows:** `unattend.xml` from
+    `iso/answer-files/windows/autounattend-windows-clone.xml.tpl` (the
+    specialize/oobeSystem half of the install answer file: computer
+    name, Administrator password, AutoLogon once, FirstLogonCommands for
+    the static IP and WinRM, and extending C: into a bigger disk). It
+    must be named `unattend.xml`: Setup only reads `Autounattend.xml`
+    from removable media for the windowsPE pass.
+
+Disk bus and NIC model match what the template was installed with
+(virtio for Linux; SATA + e1000e for Windows), and Windows stays on
+legacy BIOS (§4). From Ansible's side a clone is indistinguishable from
+an iso_direct VM: same inventory, same `site.yml`. Destroying a clone
+deletes only its overlay and seed CD (`safe_undefine`).
 
 ## 6. Refreshing an Existing Template
 
