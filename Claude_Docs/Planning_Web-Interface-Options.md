@@ -17,9 +17,9 @@ Claude_Docs/Planning_Questions.md.
    dropped once the UI became primary: it would have meant two web
    interfaces and two sets of accounts and permissions, and it doesn't
    support SAML (see "Options considered" below).
-3. **Authentication through Authentik.** The app implements OIDC only,
-   plus one local break-glass admin account for when Authentik is down.
-   Authentik provides:
+3. **Authentication through Authentik.** The app is an OIDC client of
+   Authentik (plus direct LDAP/AD, decision 24, and break-glass access by
+   command, decision 25). Authentik provides:
    - local user accounts;
    - SAML 2.0 to upstream providers (Entra ID, ADFS, Okta, ...);
    - OIDC to upstream providers (Entra ID, Google, GitHub, ...);
@@ -107,7 +107,7 @@ Claude_Docs/Planning_Questions.md.
     and Chocolatey sources. (A provider mirror would also have avoided the
     transient registry timeout seen in M6.)
 20. **Up to 4 KVM hosts per LABaPe instance**, configurable (the limit is
-    a setting, default 4).
+    a setting, default 4); one environment may span several (decision 26).
 21. **UI built with React** (a single-page app over the REST API);
     backend Python/FastAPI. See "UI technology".
 22. **Optional secrets-manager integration.** Secrets (the vault
@@ -133,6 +133,30 @@ Claude_Docs/Planning_Questions.md.
     later; a
     cloned VM's backing template must be reachable from the target, or
     the disk is flattened during the move.
+24. **Modular authentication providers, LDAP and Active Directory
+    alongside Authentik.** Sign-in goes through pluggable providers behind
+    one interface, several enabled at once in a configured order: OIDC
+    (Authentik, or any OIDC provider), LDAP, and Active Directory (LDAP
+    with AD defaults: `sAMAccountName`/UPN logins, nested groups via
+    `LDAP_MATCHING_RULE_IN_CHAIN`, LDAPS or StartTLS, optional Kerberos
+    later). Groups from any provider map to the same roles. New providers
+    (e.g. direct SAML, Kerberos/SPNEGO) are added as plugins.
+25. **Break-glass access by command, not by standing password.** When
+    every provider is down, an operator runs a command inside the
+    container (e.g. `docker exec labape labape breakglass enable`), which
+    prints a one-time password or sign-in link valid for 5 minutes
+    (configurable), usable once, for a session of limited length (default
+    1 hour). Running it proves control of the host or container runtime;
+    the command and everything done in the session are audited. Optionally
+    the one-time login is accepted only from the host itself. The same
+    tool can show provider status and disable a broken provider so normal
+    sign-in can be repaired. There is no permanently enabled local admin
+    password.
+26. **Environments can span KVM hosts.** Each host group is placed on a
+    host named in the template, or the app picks one ("best fit") from
+    free memory, CPU, disk in the target storage, running jobs and
+    whether the needed template or ISO is already on that host. All hosts
+    in one environment must share the lab network segment (the bridge).
 
 ## What the interface has to do
 
