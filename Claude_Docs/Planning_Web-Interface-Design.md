@@ -69,6 +69,12 @@ tools/secrets-test/  scripts + doc to deploy throwaway OpenBao and Conjur
 The existing `scripts/`, `tofu/`, `ansible/`, `packer/`, `iso/` stay as
 they are and are copied into the image.
 
+As built in phase 10a, the backend is one Python package,
+`app/labape/`: `api/`, `auth/` (provider plugins), `engine/` (runner),
+`models.py`, `security.py`, `permissions.py`, `config.py`, `cli.py`,
+with tests in `app/tests/`. The test Authentik lives in
+`tools/authentik-test/`. Section 19 has the details.
+
 ## 4. Data model (PostgreSQL)
 
 | Table | Purpose / key columns |
@@ -395,3 +401,36 @@ exercised end to end, like the M1-M6 work.
 Remaining for this design (Claude_Docs/Planning_Questions.md): 29 (Kerberos timing),
 34 (Packer builds with a remote app), 35 (backups), 36 (log and audit
 retention), 38 (notifications). None blocks phase 10a.
+
+## 19. Phase 10a as built
+
+Phase 10a was deployed on the lab host under Docker and exercised end to
+end. Findings are in Claude_Docs/Testing_Troubleshooting-Log.md, "M10
+phase 10a". Where the build differs from, or adds detail to, the
+sections above:
+
+**Code and UI**
+
+| Area | As built |
+|---|---|
+| Backend | `app/labape/` with FastAPI, SQLAlchemy 2 and Authlib. Tables come from `create_all`; Alembic arrives with the first schema change. `pytest app/tests` runs the API, break-glass, permission and claim tests on SQLite. |
+| Web UI | React 19, TypeScript and Vite, with **MUI** as the component library (question 9). Pages: sign-in, break-glass, environments (list, create form, detail with deploy/destroy/credentials), jobs (list, detail with live log, cancel, retry), hosts, audit. |
+
+**Jobs and state**
+
+| Area | As built |
+|---|---|
+| Job claim | A `pg_advisory_xact_lock` serializes claims so per-host `concurrency_limit` holds across workers, plus `FOR UPDATE SKIP LOCKED`. Workers heartbeat every 10 s, and a job whose worker stops for 2 minutes is marked failed. The global limit and Packer's double weight wait for 10b. |
+| Working directory | Per **environment**, not per job: `/var/lib/labape/environments/<name>/engine`, refreshed from the image's engine snapshot before each job. That keeps `.rendered/` answer files and `.terraform` between deploy and destroy. Only one job per environment runs at a time, so environments never share a directory. It's removed after a successful destroy. |
+| Inputs | The runner writes `environment.yml` (the instance base from `/etc/labape` plus the host's storage paths) and `tofu/environments/labape-ui.tfvars`. The tfvars holds the host groups, `static_ip_offset_start`, the host's bridge and `libvirt_uri`; a `-var-file` beats the vault's `TF_VAR_libvirt_uri`. It also copies the software and directory manifests and the vault, and adds `labape_backend_override.tf` (`backend "pg"`, with `PG_CONN_STR` from the environment). |
+| Script changes | `destroy.sh` gained `--yes`, `--delete-workspace` and a `tofu init` when `.terraform` is missing. `deploy.sh` and `destroy.sh` honor `LABAPE_SSH_PRIVATE_KEY_PATH`. `safe-undefine.sh` skips sudo when it's root. `create-from-template.sh` raises a disk smaller than its template to the template's size. |
+| Outputs | `hosts.generated` is stored on the environment and shown to anyone who can see it. The full inventory and `credentials.generated` go to the encrypted `secrets` table and are deleted from disk. |
+
+**Security and packaging**
+
+| Area | As built |
+|---|---|
+| Break-glass host-only | Section 12 assumed a loopback client IP. Behind the runtime's port publishing, a host-local browser arrives from the bridge gateway instead. So Caddy runs a second listener published on `127.0.0.1:8443` that sets `X-LABaPe-Local: 1`, and the public listener strips that header. The API also refuses cross-origin writes, except from that listener. |
+| Image | Debian trixie with OpenTofu 1.12.6 and Packer 1.16.1 (checksum-verified), and ansible-core 2.21.4 plus pywinrm and the four collections. The venv uses `--system-site-packages` for virt-install. OpenTofu providers are mirrored into `/opt/labape/tofu-mirror` (`TF_CLI_CONFIG_FILE`), and Packer plugins are pre-installed. About 950 MB. |
+| Stack | `container/compose.yaml` (postgres, labape-api, labape-worker, caddy; `init: true`), `container/setup.sh` (`.env` and generated secrets), and Quadlet units in `container/quadlet/`. The containers run as root in rootful Docker. Rootless Podman and the Quadlets are written but not yet exercised on the lab host. |
+| Hosts | Only local `qemu:///system` hosts are accepted; `qemu+ssh` is refused until 10e. |

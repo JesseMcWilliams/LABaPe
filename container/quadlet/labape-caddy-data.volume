@@ -1,0 +1,3 @@
+# LABaPe named volume (Podman Quadlet).
+[Volume]
+VolumeName=labape-caddy-data

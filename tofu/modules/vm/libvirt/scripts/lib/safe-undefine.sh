@@ -40,8 +40,11 @@ safe_undefine() {
   # unprivileged user can't unlink them regardless of the file's own
   # permissions (Unix unlink needs write on the *parent dir*, not the
   # file). sudo is scoped to exactly this command, not a blanket
-  # escalation.
+  # escalation. The web UI's job runner is already root in its container
+  # (no sudo there), so it removes them directly.
+  local rm_cmd=(sudo -n /usr/bin/rm -f)
+  [ "$(id -u)" -eq 0 ] && rm_cmd=(rm -f)
   while IFS= read -r p; do
-    [ -n "$p" ] && [ -f "$p" ] && sudo -n /usr/bin/rm -f "$p"
+    [ -n "$p" ] && [ -f "$p" ] && "${rm_cmd[@]}" "$p"
   done <<<"$disk_paths"
 }

@@ -1109,3 +1109,117 @@ host, which the reset undid. All entry-point scripts are now 100755 in
 Git (`git update-index --chmod=+x`); the sourced `lib/*.sh` files stay
 100644. When adding a script from Windows, run
 `git update-index --chmod=+x <file>` before committing.
+
+## M10 phase 10a (web interface)
+
+The container stack (`container/`) ran on the lab host under Docker with
+a throwaway Authentik (`tools/authentik-test/`). Verified there:
+- **Sign-in:** OIDC sign-in for the three test users, with roles taken
+  from their Authentik groups.
+- **Permissions:** a viewer is refused when creating an environment, and
+  can't see another user's environment or its credentials.
+- **Host registration:** a KVM host registered through the API.
+- **Jobs:** a Rocky template clone deployed and destroyed through the
+  API, with OpenTofu state in PostgreSQL, the live log streamed over SSE,
+  and cancel through the API. The deploy got through plan, the network
+  check, apply, inventory generation and Ansible's connection to the
+  clone. Ansible then failed at `linux_common`'s package step, because of
+  the LAN problem below.
+
+### Open: lab VMs can't reach the LAN gateway (2026-10-10)
+
+The UI's test clone could ping the KVM host but not the LAN gateway,
+and DNS queries to the gateway timed out, so `dnf` couldn't
+resolve the Rocky mirrors. lab1's long-lived `linsrv1` has the same
+problem. The host reaches the gateway fine, and the VMs do resolve its
+ARP entry, so the router itself isn't answering bridged VMs. This is
+environmental, not a code bug, and needs a look at the router.
+
+Separately, `rocky9-packer-2026.10.1`'s `/etc/resolv.conf` still lists
+`nameserver 10.0.2.3`, QEMU's user-mode DNS from the Packer build, ahead
+of the real server. NetworkManager runs with `dns = none`, so nothing
+rewrites the file. That isn't the cause above, but it adds a timeout to
+every lookup. `template_finalize` should clear the file.
+- **Break-glass, live through Caddy:**
+  - A one-time credential signed in once, and its reuse was refused.
+  - A `--local-only` credential was refused on the public listener, even
+    with a spoofed `X-LABaPe-Local` header, and accepted on
+    `https://localhost:8443`.
+
+### Authentik refused every grant for a blueprint-made provider
+
+Authorize failed with `invalid_request` ("The request is otherwise
+malformed"). Authentik's log said "Invalid grant_type for provider:
+authorization_code". Authentik 2026.8's OAuth2 provider has a
+`grant_types` list, and a provider created by a blueprint gets an empty
+one, which allows no grant at all. The test blueprint now sets
+`grant_types: [authorization_code, refresh_token]`. A provider made in the
+Authentik UI doesn't hit this, because the form fills the list in.
+
+### Caddy failed the TLS handshake when reached by IP address
+
+With `LABAPE_HOSTNAME` set to an IP address, `curl https://<ip>/` got
+"tlsv1 alert internal error". Clients send no SNI for IP addresses, so
+Caddy had no name to pick a certificate by. The fix is the
+`default_sni {$LABAPE_HOSTNAME}` global option in `container/caddy/Caddyfile`.
+
+### virt-install couldn't import `gi` inside the image
+
+`virt-install` starts with `#!/usr/bin/env python3`. In the image, the
+app's venv comes first on `PATH`, so virt-install ran under the venv's
+Python and failed with "No module named 'gi'". The venv is now created
+with `--system-site-packages`, so it sees Debian's `python3-gi` and
+`python3-libvirt`.
+
+### The vault's SSH key path belongs to the CLI host
+
+`deploy.sh` reads `ansible_ssh_private_key_path` from the vault, and that
+names a path under the CLI user's home, which doesn't exist in the
+container. `deploy.sh` and `destroy.sh` now honor
+`LABAPE_SSH_PRIVATE_KEY_PATH` ahead of the vault. The job runner sets it
+to its copy of the key pair from `container/engine-secrets/ssh/`.
+
+### `safe-undefine.sh` needed sudo, which the container doesn't have
+
+The destroy job undefined the VM, then failed with "sudo: command not
+found" while removing its disk and seed ISO. On the CLI host,
+`sudo -n rm` is needed because the files sit in a root-owned directory.
+The job runner is root in its container, so the script now runs plain
+`rm` when it's already root.
+
+### A disk smaller than the template broke the clone
+
+A host group asked for `disk_gb = 20` from a template with a 40 GB
+virtual size. The clone dropped to a dracut emergency shell ("/dev/mapper/
+rlm_template-root does not exist"): the overlay truncated the disk, so the
+root LV's tail was missing. `create-from-template.sh` now raises a smaller
+request to the template's size and prints a warning.
+
+### Operational: cancelled jobs left zombie processes
+
+Cancelling a job (SIGTERM to its process group) worked, but the killed
+tools' children became zombies under the worker. As PID 1, the worker
+doesn't reap orphans. The app containers now run an init process:
+`init: true` in compose, `RunInit=true` in the Quadlets.
+
+### Operational: syncing a Windows checkout gave CRLF line endings
+
+Copying this Windows working tree to the host with `tar` shipped CRLF
+endings from `core.autocrlf`: "env: 'bash\r': No such file". Sync from a
+git tree instead. Build a temporary index with `git add -A`, write it
+with `git write-tree`, and pipe `git archive <tree>` to the host. This
+normalizes to LF and needs no commit.
+
+### Other setup notes
+
+- **PostgreSQL password file:** PostgreSQL reads its password file as
+  uid 70, so `container/setup.sh` makes the files in `container/secrets/`
+  0644 inside a 0700 directory.
+- **pydantic patterns:** pydantic's Rust regex engine has no look-ahead,
+  so the environment name's `test-` exclusion is a validator, not part of
+  the pattern.
+- **Host-only break-glass:** this can't rely on a loopback client IP,
+  because behind the runtime's port publishing a host-local browser
+  arrives from the bridge gateway. Caddy's loopback-only listener
+  (`127.0.0.1:8443`) adds an `X-LABaPe-Local` header instead, and the
+  public listener strips it.

@@ -36,6 +36,16 @@ if [ ! -f "$TEMPLATE_PATH" ]; then
   exit 1
 fi
 
+# An overlay smaller than its template truncates the guest's disk: the
+# root LV's tail goes missing and the clone drops to a dracut emergency
+# shell (Claude_Docs/Testing_Troubleshooting-Log.md). The template's size
+# is the floor, so raise a smaller request to it.
+template_gb="$(qemu-img info -U --output=json "$TEMPLATE_PATH" | python3 -c 'import json, math, sys; print(math.ceil(json.load(sys.stdin)["virtual-size"] / 2**30))')"
+if [ "$DISK_GB" -lt "$template_gb" ]; then
+  echo "labape: $VM_NAME: disk_gb $DISK_GB is smaller than template $(basename "$TEMPLATE_PATH") ($template_gb GB); using $template_gb GB." >&2
+  DISK_GB="$template_gb"
+fi
+
 handle_existing_domain "$LIBVIRT_URI" "$VM_NAME" "$workspace_tag"
 
 mkdir -p "$VM_STORAGE_PATH"

@@ -1,0 +1,3 @@
+# LABaPe container network (Podman Quadlet). Containers find each other by name.
+[Network]
+NetworkName=labape

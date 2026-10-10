@@ -20,14 +20,19 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `packer/{windows,linux}/` — base-image templates (Claude_Docs/Design_Base-Images.md).
 - `iso/answer-files/` — unattended-install answer files shared by Packer/direct-ISO-boot/template promotion.
 - `scripts/` — `deploy.sh`/`destroy.sh` (entry points), `bootstrap-secrets.sh`, `check-network.sh`, `generate-inventory.py`, `lib/`, `test/` (see Tests below).
+- `app/` — web interface backend (Python package `app/labape/`: FastAPI API, auth provider plugins, job runner in `engine/runner.py`, `cli.py`), tests in `app/tests/`.
+- `web/` — React + TypeScript + Vite + MUI single-page app; `package-lock.json` committed, `node_modules/`/`dist/` gitignored.
+- `container/` — Dockerfile, compose.yaml, Caddyfile, Quadlet units, `setup.sh`, README. Generated `.env`, `secrets/`, `config/`, `engine-secrets/` are gitignored; never read or commit them.
+- `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.
 - No file exceeds ~1,000 lines (largest: `create-iso-direct.sh`, 354 lines).
 
 ## Tests
 - `scripts/test/run-all.sh` — runs every check (tools/collections installed, Ansible syntax, `tofu validate`, libvirt/WinRM connectivity, vault+SSH key consistency), prints a PASS/FAIL summary.
 - Individual checks: `scripts/test/test-opentofu-config.sh`, `scripts/test/test-ansible-playbook-syntax.sh`, `python3 scripts/test/test-winrm-connectivity.py`.
+- Web backend: `pip install -e app pytest` in a venv, then `python -m pytest app/tests` (SQLite, no services needed). Web UI type-check/build: `npm ci && npm run build` in `web/` (no Node on the Windows box; build in a `node:22` container on the lab host).
 - Redirect test output to a file and read only the summary or failures. Don't stream full test output into the conversation.
-<!-- TODO: no unit-test framework (pytest/Molecule) exists yet. tflint/ansible-lint/Molecule are Claude_Docs/Design_System-Overview.md §16 goals, not implemented. -->
+<!-- TODO: pytest covers only the web backend (app/tests); no Molecule for roles yet. tflint/ansible-lint/Molecule are Claude_Docs/Design_System-Overview.md §16 goals, not implemented. -->
 
 ## Code rules (details in the linked sections, not repeated here)
 - Backend implementations (`tofu/modules/{vm,network}/*`) must expose identical inputs/outputs so environments stay backend-agnostic — Claude_Docs/Design_System-Overview.md §6.1/§6.2.

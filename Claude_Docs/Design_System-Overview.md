@@ -839,5 +839,13 @@ custom app (UI, REST API, job runner that calls the existing scripts),
 with sign-in through Authentik (local, SAML, OIDC, LDAP/AD, MFA,
 optional Kerberos), app-issued API tokens and group-mapped roles;
 delivered as a container stack (Docker primary, Podman supported) on
-the KVM host, with remote libvirt (`qemu+ssh://`) also supported. Design draft and build phases (10a-10g):
+the KVM host, with remote libvirt (`qemu+ssh://`) also supported. Design draft and build phases (10a-10h):
 [`Claude_Docs/Planning_Web-Interface-Design.md`](./Planning_Web-Interface-Design.md).
+
+Phase 10a is built. It consists of:
+- `app/labape/`, the FastAPI backend and job worker;
+- `web/`, the React UI;
+- `container/`, the Docker/Podman stack with Caddy TLS;
+- `tools/authentik-test/`, a throwaway Authentik for testing.
+
+The worker runs the same `scripts/deploy.sh` and `destroy.sh` the CLI uses, so the CLI keeps working unchanged. What was built and how it differs from the draft: that doc's §19.

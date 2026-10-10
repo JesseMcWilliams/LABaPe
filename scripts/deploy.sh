@@ -84,7 +84,9 @@ echo "labape: reading vault..." >&2
 export TF_VAR_libvirt_uri
 TF_VAR_libvirt_uri="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" libvirt_uri)"
 
-SSH_PRIVATE_KEY_PATH="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" ansible_ssh_private_key_path)"
+# LABAPE_SSH_PRIVATE_KEY_PATH overrides the vault's path (the web UI's job runner
+# keeps its own copy of the key; the vault's path belongs to the CLI host).
+SSH_PRIVATE_KEY_PATH="${LABAPE_SSH_PRIVATE_KEY_PATH:-$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" ansible_ssh_private_key_path)}"
 SSH_PRIVATE_KEY_PATH="${SSH_PRIVATE_KEY_PATH/#\~/$HOME}"
 if [ ! -f "${SSH_PRIVATE_KEY_PATH}.pub" ]; then
   echo "labape: ${SSH_PRIVATE_KEY_PATH}.pub not found — ansible_ssh_private_key_path in the vault must point at a keypair with a matching .pub file." >&2
