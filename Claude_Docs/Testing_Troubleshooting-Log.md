@@ -1050,11 +1050,28 @@ Server 2019 host went through `site.yml`; not a template issue.
 
 ### Known gap: Firefox doesn't install on Windows Server 2019 Core
 
-The Server templates install the Server Core edition (image index 1).
+Windows Server used to install Server Core (image index 1) everywhere.
 Firefox's installer, from Chocolatey 1.x or 2.x alike, runs indefinitely
 on Server 2019 Core (it needs desktop components 2019 Core doesn't have;
-it does install on 2022/2025 Core). Everything else in `site.yml`
-completes. Leave Firefox out of Server 2019 hosts' software manifest.
+it does install on 2022/2025 Core). Server now installs the Desktop
+Experience by default (index 2; `windows_core = true` or
+`build-template.sh --core` for Core), so this only applies to Server
+2019 hosts that ask for Core: leave Firefox out of their software
+manifest. Verified: a Server 2019 Desktop Experience clone got .NET 4.8
+and Firefox through `site.yml` with no failures.
+
+### Windows Server: Desktop Experience by default
+
+Server installs (ISO and Packer) now use the Desktop Experience unless
+Core is requested. Existing Core VMs keep working: lab1's two Windows
+host groups set `windows_core = true`, so their answer files render as
+before. The VM reinstall trigger now hashes the answer file with XML
+comments stripped as well (they're stripped from the copy Setup reads
+anyway), so documentation edits in a template never reinstall VMs; that
+formula change needed one more `lab1` state-trigger alignment (no VM
+rebuilt). `site.yml`'s first play now waits up to 30 minutes for hosts
+to answer: a Desktop Experience install was still at "Getting ready"
+after 5.
 
 ### Operational: a cancelled build's cleanup deleted its successor's disk
 

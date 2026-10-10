@@ -54,16 +54,22 @@ locals {
     windows_admin_password = coalesce(var.admin_credential.windows_admin_password, "")
     addressing             = var.addressing
     management_source      = lookup(var.template_vars, "management_source", "")
+    # Server answer file only (client templates select by image name):
+    # 2 = Standard with Desktop Experience (default), 1 = Standard Core.
+    server_image_index = var.windows_core ? 1 : 2
   }
   # The reinstall trigger hashes the Windows answer file with the
   # password masked, so rotating windows_bootstrap_admin_password in the
   # vault doesn't reinstall every Windows VM on the next deploy. Template
   # or addressing changes still do. The password has to be changed on
   # running hosts separately (Claude_Docs/Reference_Credentials.md).
-  windows_answer_file_md5_masked = local.os_family == "windows" ? md5(templatefile(
+  # Comments are stripped before hashing too (as they are from the copy
+  # Setup reads), so editing a template's documentation doesn't reinstall
+  # VMs either.
+  windows_answer_file_md5_masked = local.os_family == "windows" ? md5(replace(templatefile(
     local.os_meta.answer_file_template,
     merge(local.windows_answer_file_vars, { windows_admin_password = "masked" }),
-  )) : null
+  ), "/(?s)<!--.*?-->/", "")) : null
   # Empty string (not null) when not debian — passed straight through to
   # create-iso-direct.sh's environment map, which requires a string.
   rendered_meta_data_path = try(local_file.debian_meta_data[0].filename, "")
@@ -269,10 +275,10 @@ locals {
 
   # Reinstall trigger for clones: same idea as rendered_answer_file_md5
   # (content-derived, password masked).
-  clone_seed_md5 = !local.is_template ? "" : local.clone_is_windows ? md5(join("", [templatefile(
+  clone_seed_md5 = !local.is_template ? "" : local.clone_is_windows ? md5(join("", [replace(templatefile(
     local.clone_windows_template,
     merge(local.clone_windows_vars, { windows_admin_password = "masked" }),
-  ), local.clone_windows_firstboot])) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) : local.clone_linux_files[k]]))
+  ), "/(?s)<!--.*?-->/", ""), local.clone_windows_firstboot])) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) : local.clone_linux_files[k]]))
 }
 
 resource "terraform_data" "validate_template" {

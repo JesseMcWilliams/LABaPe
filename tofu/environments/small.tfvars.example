@@ -42,3 +42,7 @@ host_groups = [
 #     image_source = "packer_template"
 #     template     = "rocky9-base-2026.10"
 #   },
+
+# Windows Server installs the Desktop Experience unless a host group sets
+# windows_core = true (Server Core). Applies to ISO installs; a cloned VM
+# gets its template's edition (Claude_Docs/Design_Base-Images.md §3).

@@ -13,12 +13,17 @@
   # there's effectively zero buffer between "just rebooted" and
   # ansible-playbook's very next task trying to connect. Hit as a real
   # UNREACHABLE failure in the M1 smoke test, not a hypothetical.
+  # 30 minutes, not 5: a cloned VM's create step returns as soon as it
+  # boots, and Windows then runs specialize/OOBE/first logon (plus
+  # driver setup for a "new" NIC); Desktop Experience installs and busy
+  # hosts took well over 5 minutes in M6 testing. Hosts that are already
+  # up answer immediately, so the longer cap costs nothing.
   hosts: all
   gather_facts: false
   tasks:
     - name: Wait for connection
       ansible.builtin.wait_for_connection:
-        timeout: 300
+        timeout: 1800
 
 - name: Promote domain controller(s) first — must complete before any join
   # No become: this play runs over WinRM as the local Administrator

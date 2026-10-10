@@ -7,13 +7,14 @@
 
      Shared across Windows Server 2019/2022/2025 (backends/libvirt's
      windows_catalog local picks this same template for all three) —
-     confirmed via `wiminfo` against each real eval ISO that install
-     image index 1 is "SERVERSTANDARDCORE" (no Desktop Experience) on
-     every one of them, so there's nothing actually version-specific
-     in here. --os-variant (win2k19/win2k22/win2k25) is the only thing
-     that varies per version, and that's a virt-install CLI flag, not
-     anything in this file. Ansible/WinRM manages the host, so no GUI
-     is needed.
+     confirmed via `wiminfo` against each real eval ISO that the image
+     indexes are the same on every one of them (1 = SERVERSTANDARDCORE,
+     2 = SERVERSTANDARD with the Desktop Experience, 3/4 = Datacenter
+     Core/Desktop), so there's nothing actually version-specific in
+     here. server_image_index picks the edition: 2 (Desktop Experience)
+     by default, 1 when a host group sets windows_core = true.
+     --os-variant (win2k19/win2k22/win2k25) is the only thing that
+     varies per version, and that's a virt-install CLI flag.
 
      Disk bus is SATA and the NIC model is e1000e (not virtio) on
      purpose — both have in-box drivers on all three versions, avoiding
@@ -40,7 +41,7 @@
           <InstallFrom>
             <MetaData wcm:action="add">
               <Key>/IMAGE/INDEX</Key>
-              <Value>1</Value>
+              <Value>${server_image_index}</Value>
             </MetaData>
           </InstallFrom>
           <InstallTo>

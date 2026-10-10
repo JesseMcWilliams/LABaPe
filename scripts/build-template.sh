@@ -4,7 +4,7 @@
 # is scripts/promote-to-template.sh; both produce the same thing, used via
 # image_source = "packer_template" + template = "<name>".
 #
-# Usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N]
+# Usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N] [--core]
 #   e.g. build-template.sh rocky9 rocky9-base-2026.10
 #
 # <os-key> is an os_iso_paths key in environment.yml (the ISO to install
@@ -12,17 +12,19 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N]"
+USAGE="usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N] [--core]"
 
 OS_KEY="${1:?$USAGE}"
 TEMPLATE_NAME="${2:?$USAGE}"
 shift 2
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 DISK_GB=""
+CORE=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
     --disk-gb) DISK_GB="${2:?--disk-gb needs a number}"; shift ;;
+    --core) CORE=true ;;   # Windows Server: Server Core instead of the Desktop Experience
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
   esac
   shift
@@ -92,6 +94,7 @@ case "$PACKER_DIR" in
     chmod 600 "$ansible_vars_file"
     python3 -c 'import json, os, sys; json.dump({"ansible_password": os.environ["PKR_VAR_admin_password"]}, open(sys.argv[1], "w"))' "$ansible_vars_file"
     packer_vars+=(-var "answer_template=$ANSWER_TEMPLATE" -var "ansible_vars_file=$ansible_vars_file")
+    if $CORE; then packer_vars+=(-var "server_image_index=1"); fi
     ;;
 esac
 

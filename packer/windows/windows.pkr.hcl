@@ -30,6 +30,10 @@ variable "admin_password" {
   sensitive = true
 }
 variable "ansible_vars_file" { type = string } # 0600 JSON with the WinRM password
+variable "server_image_index" {
+  type    = number
+  default = 2 # Server Desktop Experience; 1 = Server Core (build-template.sh --core)
+}
 variable "disk_gb" {
   type    = number
   default = 40
@@ -60,6 +64,7 @@ source "qemu" "windows" {
         windows_admin_password = var.admin_password
         addressing             = { mode = "dhcp", address = "", prefix_length = 0, gateway = "" }
         management_source      = ""
+        server_image_index     = var.server_image_index
       }),
       "(?s)<!--.*?-->", ""
     )

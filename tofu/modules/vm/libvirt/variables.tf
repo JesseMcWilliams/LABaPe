@@ -34,6 +34,12 @@ variable "roles" {
   }
 }
 
+variable "windows_core" {
+  description = "Windows Server only, iso_direct only: install Server Core (image index 1) instead of the Desktop Experience (index 2, the default). Same index layout on the 2019/2022/2025 evaluation ISOs (checked with wiminfo)."
+  type        = bool
+  default     = false
+}
+
 variable "template_name" {
   description = "Template to clone when image_source = \"packer_template\" (file <template_storage_path>/<template_name>.qcow2). Ignored for iso_direct."
   type        = string
