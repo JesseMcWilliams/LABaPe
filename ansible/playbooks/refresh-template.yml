@@ -1,0 +1,86 @@
+---
+# Default update step for scripts/refresh-template.sh
+# (Claude_Docs/Design_Base-Images.md §6, Option B): bring a VM cloned from a
+# template fully up to date, then the script promotes it as a new template.
+# Pass a different playbook with --playbook to apply something else (e.g.
+# a software change) instead.
+
+- name: Wait for the refresh VM to answer
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for connection
+      ansible.builtin.wait_for_connection:
+        timeout: 1800
+
+# No play-level become: fact gathering also runs against Windows hosts
+# (over WinRM), where become isn't configured. Linux tasks escalate
+# individually.
+- name: Update Linux
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Linux only
+      ansible.builtin.meta: end_host
+      when: ansible_facts['os_family'] == "Windows"
+
+    - name: Upgrade every package (dnf)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_cache: true
+      become: true
+      when: ansible_facts['pkg_mgr'] == 'dnf'
+
+    - name: Upgrade every package (apt)
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+      become: true
+      when: ansible_facts['pkg_mgr'] == 'apt'
+
+    - name: Check whether a reboot is needed (dnf)
+      ansible.builtin.command: dnf needs-restarting -r
+      register: refresh_needs_restart
+      changed_when: false
+      failed_when: false
+      become: true
+      when: ansible_facts['pkg_mgr'] == 'dnf'
+
+    - name: Check whether a reboot is needed (apt)
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: refresh_reboot_required
+      when: ansible_facts['pkg_mgr'] == 'apt'
+
+    - name: Reboot to finish the updates
+      ansible.builtin.reboot:
+        reboot_timeout: 1800
+      become: true
+      when: >-
+        (refresh_needs_restart.rc | default(0)) == 1
+        or (refresh_reboot_required.stat.exists | default(false))
+
+- name: Update Windows
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Windows only
+      ansible.builtin.meta: end_host
+      when: ansible_facts['os_family'] != "Windows"
+
+    # Security/critical updates and rollups, rebooting as often as needed.
+    # Can take an hour or more on an older image.
+    - name: Install Windows updates
+      ansible.windows.win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+        reboot: true
+        reboot_timeout: 3600
+      register: refresh_win_updates
+
+    - name: Report what was installed
+      ansible.builtin.debug:
+        msg: "{{ refresh_win_updates.installed_update_count | default(0) }} update(s) installed, {{ refresh_win_updates.failed_update_count | default(0) }} failed"

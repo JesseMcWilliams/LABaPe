@@ -1081,3 +1081,31 @@ successful sysprep. The previous, cancelled build of the same name was
 still cleaning up its output directory, which is the same path. Let a
 cancelled build exit fully (or use a new template name) before
 rebuilding.
+
+## M6 phase C (template refresh)
+
+`scripts/refresh-template.sh` (Claude_Docs/Design_Base-Images.md §6 Option B)
+verified on Rocky: `rocky9-packer-2026.10` cloned into a throwaway
+`test-refresh-<id>` environment, all packages upgraded (rebooting when
+`dnf needs-restarting -r` asked), promoted as `rocky9-packer-2026.10.1`
+(a flattened, self-contained copy), environment destroyed; about 18
+minutes. A clone of the refreshed template came up normally. Windows:
+`win2022-desktop-2026.10` refreshed to `win2022-desktop-2026.10.1`
+(Windows security/critical updates and rollups, including the month's
+cumulative update, then sysprep) in about 90 minutes, most of it
+Windows' own servicing; a clone came up with the new updates installed
+and `site.yml` clean. A transient `registry.opentofu.org` timeout during
+`tofu init` once failed two runs at the same moment, so `deploy.sh` now
+retries `tofu init` three times.
+
+### Scripts committed from Windows lost their executable bit
+
+Build and promote failed on the lab host with "Permission denied"
+(`nohup: failed to run command 'scripts/build-template.sh'`) after the
+host checkout was reset to `main`. Files created in this Windows checkout
+were committed as mode 100644 — Git on Windows doesn't pick up `chmod` —
+and earlier runs had only worked because of a manual `chmod` on the
+host, which the reset undid. All entry-point scripts are now 100755 in
+Git (`git update-index --chmod=+x`); the sourced `lib/*.sh` files stay
+100644. When adding a script from Windows, run
+`git update-index --chmod=+x <file>` before committing.

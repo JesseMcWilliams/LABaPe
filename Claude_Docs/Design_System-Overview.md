@@ -778,9 +778,11 @@ None blocking further scaffolding right now.
   added Packer builds (`scripts/build-template.sh`, `packer/`) using the
   same answer files and finalize role: every supported OS key (Rocky 9,
   Ubuntu 24.04/26.04, Debian 13, Windows Server 2019/2022/2025, Windows
-  10/11) built and clone-tested. Next:
-  `refresh-template.sh` (phase C). ISO installs stay a fully supported
-  image source alongside templates.
+  10/11) built and clone-tested. Phase C
+  added `scripts/refresh-template.sh` (clone, update, promote as a new
+  dated template). **M6 is complete** for the libvirt backend; the
+  Hyper-V side is tracked in Claude_Docs/Reference_Backend-Parity.md. ISO installs
+  stay a fully supported image source alongside templates.
 - **M7** — NAT isolation mode (opt-in) for both backends, including the
   Hyper-V Internal-switch + `New-NetNat` provisioning sequence
   (`Claude_Docs/Reference_Networking.md` §2).

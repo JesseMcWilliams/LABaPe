@@ -42,8 +42,11 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Design_System-Overview.md`: the numbered-section (§1-§20) architecture/design hub — other docs and code comments cite it by section number (e.g. `§8`, `§13`). Keep current; keep the section numbers stable since so much else points at them.
   - `Design_Base-Images.md`, `Design_Directory-Objects.md`, `Design_Software-Manifest.md`: detail docs for the matching `Design_System-Overview.md` sections.
   - `Reference_Credentials.md`, `Reference_Networking.md`, `Reference_Validate-Setup.md`: interface contracts / stable checklists.
+  - `Reference_Backend-Parity.md`: libvirt vs Hyper-V feature/interface matrix and the order to close gaps.
   - `Planning_Certificate-Authority.md`, `Planning_Environment-Templates.md`: proposals, not built yet (Design_System-Overview.md §19/§20).
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
+  - `Planning_Web-Interface-Options.md`: build/adopt options for the M10 web interface, with a recommendation.
+  - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number).
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history, filed per milestone. Over the ~500-line guideline (636 lines) — left as one file since every entry is still actively linked; split fully-closed entries into an `Archive_Testing_...` file if it grows further.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** (None exist yet.)
 - `User_Docs/`: end-user setup guides (`Install-OpenTofu.md`, `Install-Ansible.md`, and WSL variants of each).

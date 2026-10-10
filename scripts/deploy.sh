@@ -104,7 +104,15 @@ echo "labape: rendering $(basename "$ENV_FILE") -> environment.auto.tfvars.json.
 python3 "$ROOT_DIR/scripts/lib/render_environment_tfvars.py" "$ENV_FILE" "$BACKEND_DIR"
 
 cd "$BACKEND_DIR"
-tofu init -input=false
+# `tofu init` contacts registry.opentofu.org on every run even when the
+# providers are already installed; a transient registry timeout once
+# failed two unattended runs at the same moment. Retry before giving up.
+for attempt in 1 2 3; do
+  tofu init -input=false && break
+  [ "$attempt" -eq 3 ] && { echo "labape: tofu init failed 3 times; giving up." >&2; exit 1; }
+  echo "labape: tofu init failed (attempt $attempt); retrying in $((attempt * 20))s..." >&2
+  sleep $((attempt * 20))
+done
 tofu workspace select "$ENV_INSTANCE" 2>/dev/null || tofu workspace new "$ENV_INSTANCE"
 
 echo "labape: planning..." >&2

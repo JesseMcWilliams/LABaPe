@@ -351,6 +351,25 @@ package."
 
 ### Option B — Incremental refresh (recommended for small changes)
 
+**Implemented on the libvirt backend (M6 phase C):**
+
+```
+scripts/refresh-template.sh libvirt rocky9-base-2026.10 rocky9-base-2026.10.1 --os rocky9
+scripts/refresh-template.sh libvirt win2022-desktop-2026.10 win2022-desktop-2026.11 --os windows_server_2022
+```
+
+It clones the template into a throwaway `test-refresh-<id>` environment
+(`deploy.sh --test --no-ansible`, the clone's disk sized from the
+template's own virtual size), runs `ansible/playbooks/refresh-template.yml`
+(all package upgrades on Linux, Windows security/critical updates and
+rollups, rebooting as often as needed) or the playbook given with
+`--playbook`, promotes the result with `promote-to-template.sh`
+(flattening the overlay into a self-contained copy), and destroys the
+environment. `--os` is required because a template name doesn't reliably
+say which OS it is; `--ip-offset` picks the throwaway VM's address (the
+pre-flight check still guards it). On failure the environment is left for
+inspection and the script prints the teardown command.
+
 For the case you described — one package needs a newer version, nothing
 else about the image is changing — rebuilding the OS from ISO is wasted
 work. Instead, `scripts/refresh-template.sh <backend> <template-name>
