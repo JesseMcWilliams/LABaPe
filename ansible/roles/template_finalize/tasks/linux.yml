@@ -85,3 +85,4 @@
   poll: 0
   changed_when: true
   become: true
+  when: finalize_shutdown | bool

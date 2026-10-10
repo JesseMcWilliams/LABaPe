@@ -774,9 +774,13 @@ None blocking further scaffolding right now.
   overlay with a cloud-init seed (Linux) or `unattend.xml` (sysprepped
   Windows) for its identity, and `scripts/promote-to-template.sh`
   turns any ISO-built VM into a template (Claude_Docs/Design_Base-Images.md §5;
-  bugs in Claude_Docs/Testing_Troubleshooting-Log.md § M6 phase A). Next:
-  Packer builds per OS (phase B), `refresh-template.sh` (phase C). ISO
-  installs stay a fully supported image source alongside templates.
+  bugs in Claude_Docs/Testing_Troubleshooting-Log.md § M6 phase A). Phase B
+  added Packer builds (`scripts/build-template.sh`, `packer/`) using the
+  same answer files and finalize role: every supported OS key (Rocky 9,
+  Ubuntu 24.04/26.04, Debian 13, Windows Server 2019/2022/2025, Windows
+  10/11) built and clone-tested. Next:
+  `refresh-template.sh` (phase C). ISO installs stay a fully supported
+  image source alongside templates.
 - **M7** — NAT isolation mode (opt-in) for both backends, including the
   Hyper-V Internal-switch + `New-NetNat` provisioning sequence
   (`Claude_Docs/Reference_Networking.md` §2).

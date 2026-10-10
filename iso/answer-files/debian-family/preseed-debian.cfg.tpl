@@ -78,7 +78,13 @@ d-i clock-setup/ntp boolean true
 # kickstart template already makes.
 d-i partman-auto/disk string /dev/vda
 d-i partman-auto/method string regular
-d-i partman-auto/choose_recipe select atomic
+# One ext4 root partition filling the disk, no swap partition: the
+# stock "atomic" recipe puts swap in an extended partition *after* root,
+# so a clone with a bigger disk couldn't grow / (cloud-init growpart)
+# (Claude_Docs/Testing_Troubleshooting-Log.md, M6 phase B). Lab VMs don't need swap.
+d-i partman-auto/expert_recipe string       labape-root ::         1000 1000 -1 ext4           $primary{ } $bootable{ }           method{ format } format{ }           use_filesystem{ } filesystem{ ext4 }           mountpoint{ / }         .
+d-i partman-auto/choose_recipe select labape-root
+d-i partman-basicfilesystems/no_swap boolean false
 d-i partman-partitioning/confirm_write_new_label boolean true
 d-i partman/choose_partition select finish
 d-i partman/confirm boolean true

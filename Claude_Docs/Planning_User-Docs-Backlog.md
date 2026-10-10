@@ -9,3 +9,5 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Windows VMs on the libvirt backend use legacy BIOS, so Secure Boot/TPM scenarios aren't supported.
 - `deploy.sh`/`destroy.sh` options: `--test`, `--no-ansible`, `--env-file`, `--directory-manifest` (throwaway test environments next to a long-lived one).
 - Templates: `scripts/promote-to-template.sh` and host-group `image_source = "packer_template"` + `template = "<name>"`; `template_storage_path` in environment.yml.
+- `scripts/build-template.sh <os-key> <template-name>`: build a template with Packer (installed on the libvirt host in ~/.local/bin, plugins via `packer init`).
+- Windows hosts get .NET Framework 4.8 automatically where an older 4.x is installed (Server 2019); Firefox can't be installed on Server 2019 Core.

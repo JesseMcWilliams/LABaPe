@@ -41,19 +41,12 @@ finalize steps.
 
 ```
 packer/
-  windows/
-    2019/ 2022/ 2025/
-      build.pkr.hcl
-      variables.pkr.hcl
-      scripts/
-        provision.ps1
+  windows/windows.pkr.hcl        # implemented — every Windows version (Server 2019/2022/2025, 10, 11)
   linux/
-    rocky/ rhel/ almalinux/ fedora/ opensuse/ oraclelinux/ ubuntu/ debian/ mint/
-      <version>/
-        build.pkr.hcl
-        variables.pkr.hcl
-        scripts/
-          provision.sh
+    rocky/rocky.pkr.hcl          # implemented — RHEL-family kickstart (rocky9)
+    ubuntu/ubuntu.pkr.hcl        # implemented — subiquity autoinstall (ubuntu_lts, ubuntu_26)
+    debian/debian.pkr.hcl        # implemented — preseed (debian_latest)
+    rhel/ almalinux/ fedora/ opensuse/ oraclelinux/ mint/   # not yet
 iso/
   answer-files/
     windows/
@@ -101,6 +94,42 @@ Packer's `build.pkr.hcl` for each OS points at the shared answer file
 under `iso/answer-files/` rather than keeping its own copy.
 
 ## 3. Per-OS-family build process
+
+### What's implemented (libvirt, M6 phase B)
+
+```
+scripts/build-template.sh rocky9 rocky9-base-2026.10
+scripts/build-template.sh windows_server_2022 win2022-base-2026.10
+```
+
+`scripts/build-template.sh <os-key> <template-name>` takes the ISO from
+environment.yml's `os_iso_paths`, runs the matching Packer build with
+Packer's QEMU builder on the libvirt host, and moves the result into the
+template library (mode 0444, never overwriting an existing name), the
+same library `promote-to-template.sh` (§5) fills. Each build:
+
+- renders **the same answer-file template** the iso_direct path uses
+  (Packer's `templatefile()` has OpenTofu's syntax) with DHCP addressing,
+  since the build VM sits on QEMU's user-mode network, and an empty
+  `management_source`; delivers it the installer's usual way (kickstart
+  and preseed over Packer's HTTP server via the boot command, Ubuntu's
+  seed and Windows' `Autounattend.xml` on a CD);
+- builds on the virtual hardware clones will use: virtio disk/NIC for
+  Linux; q35 + SATA (IDE on q35) + e1000e for Windows; legacy BIOS;
+  `-cpu host` (EL9 needs x86-64-v2, which QEMU's default CPU lacks);
+- generalizes with the **same `template_finalize` role** as promotion,
+  via Packer's Ansible provisioner with `finalize_shutdown=false`; Packer's
+  `shutdown_command` then powers the VM off (Linux) or starts the role's
+  sysprep task (Windows).
+
+A Packer-built template and a promoted one are interchangeable from the
+cloning side. Built and clone-tested: Rocky 9, Ubuntu 24.04 and 26.04,
+Debian 13, Windows Server 2019/2022/2025, Windows 10 and 11. Build times are roughly an ISO install plus a few
+minutes when run one at a time; six in parallel saturated the host's
+disks and took over an hour.
+
+The per-family notes below are the original design, which also covers
+Hyper-V (`hyperv-iso`), not built yet.
 
 ### Windows (Server 2019/2022/2025, Windows 10/11)
 
@@ -278,7 +307,9 @@ A host group with `image_source = "packer_template"` and
     `iso/answer-files/windows/autounattend-windows-clone.xml.tpl` (the
     specialize/oobeSystem half of the install answer file: computer
     name, Administrator password, AutoLogon once, FirstLogonCommands for
-    the static IP and WinRM, and extending C: into a bigger disk). It
+    WinRM, and extending C: into a bigger disk) plus `firstboot.ps1`,
+    which sets the static IP by interface index once the NIC is up and
+    logs to `C:\Windows\Temp\labape-firstboot.log`. The answer file
     must be named `unattend.xml`: Setup only reads `Autounattend.xml`
     from removable media for the windowsPE pass.
 
