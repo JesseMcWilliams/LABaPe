@@ -70,6 +70,30 @@
 
 # --- Install: chocolatey entries (a bare package-name spec, no `type`) ---
 
+# .NET Framework 4.8 on every host that has an older 4.x (Windows Server
+# 2019 ships 4.7.2; 2022/2025/10/11 already have 4.8 or newer). Chocolatey
+# 2.x needs it ("Chocolatey 2.0.0 requires .NET Framework 4.8"), and it's
+# the supported in-place update for anything still on 4.x. Release key
+# 528040 = 4.8. Microsoft's offline installer; it asks for a reboot.
+- name: Read the installed .NET Framework 4.x release
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full
+    name: Release
+  register: windows_common_dotnet
+
+- name: Install .NET Framework 4.8 where an older 4.x is present
+  ansible.windows.win_package:
+    path: https://go.microsoft.com/fwlink/?linkid=2088631   # ndp48-x86-x64-allos-enu.exe
+    arguments: /q /norestart
+    expected_return_code: [0, 3010]
+  register: windows_common_dotnet48
+  when: (windows_common_dotnet.value | default(0) | int) < 528040
+
+- name: Reboot to finish the .NET Framework 4.8 install
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+  when: windows_common_dotnet48 is changed and windows_common_dotnet48.reboot_required | default(false)
+
 - name: Install chocolatey entries
   chocolatey.chocolatey.win_chocolatey:
     name: "{{ item.spec if item.spec is string else item.spec.package }}"

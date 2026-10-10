@@ -24,6 +24,18 @@
       Remove-Item -Path WSMan:\localhost\Listener\* -Recurse -Force -ErrorAction SilentlyContinue
       Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -eq "CN=$env:COMPUTERNAME" } | Remove-Item -Force
       Remove-NetFirewallRule -Name WinRMHTTPSIn -ErrorAction SilentlyContinue
+      # Client Windows: the Store installs apps for the logged-on user while
+      # a build has internet access (Microsoft.Copilot on Windows 11), and
+      # sysprep then refuses to generalize ("installed for a user, but not
+      # provisioned for all users", 0x80073cf2). Stop Store auto-installs,
+      # then remove every app package that isn't provisioned for all users.
+      New-Item -Path HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore -Force | Out-Null
+      Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore -Name AutoDownload -Value 2 -Type DWord
+      New-Item -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent -Force | Out-Null
+      Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent -Name DisableWindowsConsumerFeatures -Value 1 -Type DWord
+      $provisioned = @(Get-AppxProvisionedPackage -Online | ForEach-Object DisplayName)
+      Get-AppxPackage -AllUsers | Where-Object { -not $_.NonRemovable -and $_.SignatureKind -ne 'System' -and $provisioned -notcontains $_.Name } |
+        ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue }
       Remove-Item -Force -ErrorAction SilentlyContinue C:\Windows\Panther\unattend.xml, C:\Windows\Panther\Unattend\*
       # Back to DHCP: a static address survives generalize, and every
       # clone would boot on the source VM's IP until its first logon.
@@ -35,8 +47,14 @@
       schtasks /Delete /TN LabapeFinalize /F
       & C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /quiet /mode:vm
 
-- name: Run it detached as SYSTEM (sysprep shuts the VM down)
+- name: Register it as a one-shot SYSTEM scheduled task
   ansible.windows.win_shell: |
     schtasks /Create /TN LabapeFinalize /RU SYSTEM /SC ONCE /ST 00:00 /F /TR "powershell -NoProfile -ExecutionPolicy Bypass -File C:\Windows\Temp\labape-finalize.ps1"
-    schtasks /Run /TN LabapeFinalize
   changed_when: true
+
+# Packer builds (finalize_shutdown: false) start the same task from their
+# shutdown_command instead: `schtasks /Run /TN LabapeFinalize`.
+- name: Run it detached (sysprep shuts the VM down)
+  ansible.windows.win_shell: schtasks /Run /TN LabapeFinalize
+  changed_when: true
+  when: finalize_shutdown | bool

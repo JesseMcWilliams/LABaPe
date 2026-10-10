@@ -1,0 +1,5 @@
+---
+# true: the role shuts the VM down itself (scripts/promote-to-template.sh
+# waits for that). Packer builds set false and run their own
+# shutdown_command, since Packer has to trigger and watch the shutdown.
+finalize_shutdown: true

@@ -57,33 +57,27 @@
         </Password>
       </AutoLogon>
       <FirstLogonCommands>
-%{ if addressing.mode == "static" ~}
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <Description>Set static IP</Description>
-          <CommandLine>netsh interface ip set address name="Ethernet" static ${addressing.address} ${cidrnetmask("${addressing.address}/${addressing.prefix_length}")} ${addressing.gateway}</CommandLine>
+          <Description>Network setup (firstboot.ps1 on this CD)</Description>
+          <!-- Static IP by interface index, waiting for the NIC and
+               verifying it stuck; logs to C:\Windows\Temp\labape-firstboot.log.
+               See iso/answer-files/windows/clone-firstboot.ps1.tpl for why
+               it's a script and not by NIC name. -->
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = (Get-Volume -FileSystemLabel AUTOUNATTEND).DriveLetter; &amp; ($d + ':\firstboot.ps1')"</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>2</Order>
-          <Description>Set DNS</Description>
-          <!-- No dedicated DNS field in environment.yml yet — same
-               gateway-as-resolver default as the Linux kickstart
-               (iso/answer-files/rhel-family/ks-rocky9.cfg.tpl). -->
-          <CommandLine>netsh interface ip set dns name="Ethernet" static ${addressing.gateway}</CommandLine>
-        </SynchronousCommand>
-%{ endif ~}
-        <SynchronousCommand wcm:action="add">
-          <Order>3</Order>
           <Description>Enable PSRemoting</Description>
           <CommandLine>powershell -NoProfile -Command "Enable-PSRemoting -Force -SkipNetworkProfileCheck"</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>4</Order>
+          <Order>3</Order>
           <Description>WinRM quickconfig</Description>
           <CommandLine>winrm quickconfig -quiet</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>5</Order>
+          <Order>4</Order>
           <Description>Create self-signed cert and HTTPS listener</Description>
           <!-- Same reasoning as User_Docs/Install-OpenTofu-WSL.md
                §3 (WinRM HTTPS on the Hyper-V host) applied here to the
@@ -91,17 +85,17 @@
           <CommandLine>powershell -NoProfile -Command "$c = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My; New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $c.Thumbprint -Force"</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>6</Order>
+          <Order>5</Order>
           <Description>Open WinRM HTTPS firewall port</Description>
           <CommandLine>powershell -NoProfile -Command "New-NetFirewallRule -DisplayName 'WinRM HTTPS' -Name WinRMHTTPSIn -Profile Any -LocalPort 5986 -Protocol TCP -Action Allow%{ if management_source != "" }  -RemoteAddress ${management_source}%{ endif }"</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>7</Order>
+          <Order>6</Order>
           <Description>Allow Basic auth over HTTPS for the first Ansible connection</Description>
           <CommandLine>winrm set winrm/config/service/auth "@{Basic=\"true\"}"</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>8</Order>
+          <Order>7</Order>
           <Description>Extend C: into a clone's larger disk</Description>
           <CommandLine>powershell -NoProfile -Command "$p = Get-Partition -DriveLetter C; $max = (Get-PartitionSupportedSize -DriveLetter C).SizeMax; if ($max -gt $p.Size) { Resize-Partition -DriveLetter C -Size $max }"</CommandLine>
         </SynchronousCommand>

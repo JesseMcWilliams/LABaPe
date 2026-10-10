@@ -945,3 +945,122 @@ the partition (`vda vda2 vda2`); `-d` limits it to the device.
 - After clones of a template have run, libvirt's dynamic ownership leaves
   the template file owned by `libvirt-qemu` (mode stays 0444, so it's
   still read-only). Harmless; noted so it isn't mistaken for tampering.
+
+## M6 phase B (Packer builds)
+
+`scripts/build-template.sh <os-key> <template-name>` builds a template
+from ISO with Packer's QEMU builder, rendering the same answer-file
+templates as the iso_direct path (Packer's `templatefile()` has the same
+syntax) and generalizing with the same `template_finalize` role, then
+moves the qcow2 into the template library. Built and clone-tested:
+Rocky 9 (~10 min), Windows Server 2022 (~10 min), Ubuntu 24.04 (~17 min,
+mostly security updates), Debian 13 (~18 min). Bugs found:
+
+### QEMU's default CPU model can't run EL9
+
+The first Rocky build kernel-panicked ("Attempted to kill init!"); the
+serial log had "Fatal glibc error: CPU does not support x86-64-v2".
+Packer's QEMU builder uses QEMU's default `qemu64` CPU model, and EL9 is
+built for x86-64-v2. libvirt picks a modern model for the iso_direct
+path, which is why that never showed up there. All builds pass
+`-cpu host`.
+
+### Packer's Ansible inventory broke the WinRM connection
+
+With `use_proxy = false`, the Ansible provisioner's generated inventory
+sets a shell type the WinRM connection plugin rejects ("should have the
+shell type of cmd"), followed by "-EncodedCommand is not properly
+encoded". The Windows build supplies its own `inventory_file_template`
+with the same connection settings as `scripts/generate-inventory.py`.
+The WinRM password reaches Packer via `PKR_VAR_admin_password` and
+Ansible via a 0600 extra-vars file, never on a command line.
+
+### A Packer-built Windows template's clones saw the NIC as "Ethernet 2"
+
+The clone answer file set its static IP with
+`netsh ... name="Ethernet"`. In a template built on Packer's QEMU VM, the
+NIC sat on a different PCI address than libvirt gives clones, so the
+clone's NIC is a new device named "Ethernet 2", and the template's old
+NIC survives as a hidden device still holding "Ethernet" (a
+`Rename-NetAdapter` to "Ethernet" was tried and silently didn't happen).
+The clone answer file now sets IP, gateway and DNS by interface index.
+Promoted templates were unaffected (same virtual hardware as their
+clones).
+
+That still failed on Server 2019 clones, silently: run by hand the same
+command worked. On a fresh clone Windows may still be installing the
+"new" NIC when first logon starts, so the command found no adapter. The
+network step is now `firstboot.ps1` on the clone's CD
+(`iso/answer-files/windows/clone-firstboot.ps1.tpl`, run as the first
+FirstLogonCommand): it waits up to 5 minutes for the adapter, sets the
+address, verifies it stuck and retries, and logs to
+`C:\Windows\Temp\labape-firstboot.log`.
+
+### Debian's default partitioning blocked root growth
+
+Debian clones kept a 38 GB root on a 60 GB disk: the preseed's stock
+`atomic` recipe puts swap in an extended partition after root, so
+growpart has nowhere to grow it. The preseed now uses an explicit recipe
+with one ext4 root partition and no swap partition (iso_direct Debian
+installs get the same layout).
+
+### Operational: `pkill -x packer` stops every build
+
+Stopping one broken build with `pkill -x packer` also cancelled a
+parallel Ubuntu build, since both are `packer` processes. Stop a single
+build by its PID.
+
+### Ubuntu 26.04 clones ignored their static address
+
+cloud-init couldn't rename the NIC to `eth0` ("[busy] Error renaming"):
+26.04's dracut-based initramfs brings the NIC up first. Netplan's
+generated `.network` file then matched the name `eth0`, which never
+existed, and dracut's catch-all `zzzz-dracut-default.network` gave the
+NIC DHCP. Netplan matches by MAC natively, so the clone network config
+now renders `set-name: eth0` only for the non-netplan families (Rocky's
+sysconfig and Debian's eni renderers need a device name, and the rename
+works there).
+
+### Windows 11 sysprep refused to generalize
+
+The Windows 11 build sat at its desktop until Packer's shutdown timeout:
+`C:\Windows\System32\Sysprep\Panther\setuperr.log` had "SYSPRP
+Package Microsoft.Copilot_... was installed for a user, but not
+provisioned for all users" (0x80073cf2). With internet access during the
+build, the Store installs apps for the logged-on user. The finalize
+script now sets the Store `AutoDownload=2` and
+`DisableWindowsConsumerFeatures` policies and removes every app package
+that isn't provisioned for all users before running sysprep. (Packer VMs
+aren't libvirt domains, so `virsh screenshot` can't see them; a
+`vncdotool` venv on the host, `vncdo -s 127.0.0.1::<port> capture`,
+can, using the VNC port Packer logs.)
+
+### .NET Framework 4.8 missing on Windows Server 2019
+
+`site.yml` on a Server 2019 host failed every Chocolatey package:
+"Chocolatey 2.0.0 requires .NET Framework 4.8"; 2019 ships 4.7.2.
+`windows_common` now installs .NET Framework 4.8 (Microsoft's offline
+installer, then a reboot) on any Windows host whose 4.x release is older
+(release key < 528040); 2022/2025/10/11 already have 4.8 or newer and
+skip it. Verified on a Server 2019 clone: release 528049 after the
+reboot, Chocolatey 2.7.4 bootstrapped itself, packages installed. (A
+first attempt pinned Chocolatey 1.4.0 instead; replaced, since 4.8 is the
+supported update for any host still on an older 4.x.) First time a
+Server 2019 host went through `site.yml`; not a template issue.
+
+### Known gap: Firefox doesn't install on Windows Server 2019 Core
+
+The Server templates install the Server Core edition (image index 1).
+Firefox's installer, from Chocolatey 1.x or 2.x alike, runs indefinitely
+on Server 2019 Core (it needs desktop components 2019 Core doesn't have;
+it does install on 2022/2025 Core). Everything else in `site.yml`
+completes. Leave Firefox out of Server 2019 hosts' software manifest.
+
+### Operational: a cancelled build's cleanup deleted its successor's disk
+
+A rebuilt Windows 11 template failed at the very end ("Could not open
+.../win11-packer-2026.10.qcow2: No such file or directory") after a
+successful sysprep. The previous, cancelled build of the same name was
+still cleaning up its output directory, which is the same path. Let a
+cancelled build exit fully (or use a new template name) before
+rebuilding.

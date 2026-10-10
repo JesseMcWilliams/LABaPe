@@ -54,6 +54,7 @@ if [ "$OS_FAMILY" = "windows" ]; then
   # came up ignoring it, asking for a new Administrator password).
   seed_iso="${VM_STORAGE_PATH}/${VM_NAME}-autounattend.iso"
   perl -0777 -pe 's/<!--.*?-->//gs' "$SEED_DIR/autounattend.xml" > "$stage_dir/unattend.xml"
+  cp "$SEED_DIR/firstboot.ps1" "$stage_dir/firstboot.ps1"
   xorrisofs -o "$seed_iso" -V AUTOUNATTEND -J -r "$stage_dir" >/dev/null
   disk_bus=sata          # what the template was installed on
   nic_model=e1000e       # in-box driver; the answer file names it "Ethernet"

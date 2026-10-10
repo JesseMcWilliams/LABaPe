@@ -252,18 +252,27 @@ locals {
     "network-config" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/network-config.yaml.tpl", {
       addressing  = var.addressing
       mac_address = local.clone_mac
+      # Rename to eth0 only where the renderer needs a device name
+      # (sysconfig on Rocky, eni on Debian). Netplan (Ubuntu, os_family
+      # "debian") matches by MAC natively, and on 26.04 the rename fails
+      # anyway (dracut brings the NIC up first).
+      set_name = local.os_family != "debian"
     })
   } : {}
 
   clone_windows_vars = local.windows_answer_file_vars
   clone_windows_template = "${path.module}/../../../../iso/answer-files/windows/autounattend-windows-clone.xml.tpl"
+  clone_windows_firstboot = local.is_template && local.clone_is_windows ? templatefile(
+    "${path.module}/../../../../iso/answer-files/windows/clone-firstboot.ps1.tpl",
+    { addressing = var.addressing },
+  ) : ""
 
   # Reinstall trigger for clones: same idea as rendered_answer_file_md5
   # (content-derived, password masked).
-  clone_seed_md5 = !local.is_template ? "" : local.clone_is_windows ? md5(templatefile(
+  clone_seed_md5 = !local.is_template ? "" : local.clone_is_windows ? md5(join("", [templatefile(
     local.clone_windows_template,
     merge(local.clone_windows_vars, { windows_admin_password = "masked" }),
-  )) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) : local.clone_linux_files[k]]))
+  ), local.clone_windows_firstboot])) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) : local.clone_linux_files[k]]))
 }
 
 resource "terraform_data" "validate_template" {
@@ -300,6 +309,14 @@ resource "local_file" "clone_windows_answer_file" {
 
   # Plaintext Administrator password, same as the iso_direct answer file.
   file_permission = "0600"
+
+  depends_on = [terraform_data.validate_template]
+}
+
+resource "local_file" "clone_windows_firstboot" {
+  count    = local.is_template && local.clone_is_windows ? 1 : 0
+  filename = "${local.clone_seed_dir}/firstboot.ps1"
+  content  = local.clone_windows_firstboot
 
   depends_on = [terraform_data.validate_template]
 }
@@ -353,5 +370,6 @@ resource "null_resource" "vm_from_template" {
     terraform_data.validate_template,
     local_file.clone_linux_seed,
     local_file.clone_windows_answer_file,
+    local_file.clone_windows_firstboot,
   ]
 }

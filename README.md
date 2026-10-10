@@ -21,7 +21,7 @@ for the detailed, blow-by-blow history behind every bug found along the way.
 - **M4 (domain services)** — done, end-to-end: AD DS promotion, Windows + Linux domain join, software install, one playbook run.
 - **M5 (directory objects half)** — done, end-to-end: OUs, domain/local groups and users, both membership directions.
 - **M5 (workstation host types half)** — Windows 11/10, Ubuntu 24.04/26.04 and Debian 13 workstations install fully unattended and domain-join (`windows_workstation` and `linux_workstation`).
-- **M6 (base images)** — in progress: templates on libvirt work (promote an ISO-built VM with `scripts/promote-to-template.sh`, clone it with `image_source = "packer_template"`; Rocky 9 and Windows Server 2022 verified). Packer builds and template refresh are next. ISO installs stay fully supported.
+- **M6 (base images)** — in progress: templates on libvirt, built with Packer (`scripts/build-template.sh`) or promoted from an ISO-built VM (`scripts/promote-to-template.sh`), cloned with `image_source = "packer_template"`. Verified for Rocky 9, Ubuntu 24.04/26.04, Debian 13, Windows Server 2019/2022/2025, Windows 10 and 11. Template refresh is next. ISO installs stay fully supported.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
 
@@ -97,7 +97,7 @@ full deploy.
 
 ## Known gaps
 
-- DHCP-mode addressing, the full OS matrix, and Packer-built templates (promoted templates already work) are still to come — `Claude_Docs/Design_System-Overview.md` §18 has the milestone plan.
+- DHCP-mode addressing, the full OS matrix, and template refresh are still to come — `Claude_Docs/Design_System-Overview.md` §18 has the milestone plan.
 - Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M2.
 - Hosts in different environments on the same libvirt host need unique host-group names: VM names are host-global, and a create refuses a VM tagged for another workspace (rendered answer files are already kept per workspace) — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M5 (completion pass).
 - Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing.
