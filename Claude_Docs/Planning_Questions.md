@@ -79,10 +79,7 @@ Claude_Docs/Design_Base-Images.md (templates).
 26. ~~Should Authentik be part of the LABaPe container stack, or should LABaPe use an Authentik instance you already run?~~ **Answered (2026-10-10):** Use an existing Authentik instance by default; optionally deploy and configure one in the stack if none is available (decision 12). (Claude_Docs/Planning_Web-Interface-Options.md)
 27. ~~Which sign-in sources are needed on day one: Authentik local accounts only, Active Directory (which domain), and/or an upstream SAML or OIDC provider (e.g. Entra ID)?~~ **Answered (2026-10-10):** Authentik local accounts (decision 13). (Claude_Docs/Planning_Web-Interface-Options.md)
 28. ~~MFA policy: required for everyone, required for admins only, or optional?~~ **Answered (2026-10-10):** Optional (decision 14). (Claude_Docs/Planning_Web-Interface-Options.md)
-29. Kerberos (Windows integrated sign-on, so users on domain-joined
-    Windows machines are signed in with their Windows login): needed at
-    launch, or later? It would be an option of the Active Directory or
-    Authentik provider (decision 24).
+29. ~~Kerberos (Windows integrated sign-on, so users on domain-joined Windows machines are signed in with their Windows login): needed at launch, or later?~~ **Answered (2026-10-10):** Later; an option on the Active Directory or Authentik provider, not needed at launch (decision 24). (Claude_Docs/Planning_Web-Interface-Options.md)
 30. ~~Podman: rootful only (simplest, given the libvirt socket and `/dev/kvm`), or must rootless Podman work too?~~ **Answered (2026-10-10):** Rootless must work too; Quadlet units provided (decision 17). (Claude_Docs/Planning_Web-Interface-Options.md)
 31. ~~Where should the container image be published: GitHub Container Registry (public or private), or a local registry?~~ **Answered (2026-10-10):** Local by default, external registry optional, all sources in one central repository configuration (decisions 18, 19). (Claude_Docs/Planning_Web-Interface-Options.md)
 32. ~~HTTPS: should the stack include a reverse proxy (e.g. Caddy or Traefik) that terminates TLS, or will it sit behind an existing proxy?~~ **Answered (2026-10-10):** Self-signed to start, ACME supported, hostname asked at setup; whether a reverse proxy container terminates TLS is a design detail (decision 16). (Claude_Docs/Planning_Web-Interface-Options.md)
@@ -104,9 +101,5 @@ Claude_Docs/Design_Base-Images.md (templates).
 41. ~~Where do new files land: the existing directories on the KVM host (`/data/OS_Images`, `software-store/`), or a new LABaPe-managed directory that the engine is pointed at?~~ **Answered (2026-10-10):** Default `/data/<type>`, each location configurable; VM storage is configurable per KVM host, with moving VMs between storage locations (decisions 10, 23). (Claude_Docs/Planning_Web-Interface-Options.md)
 42. ~~Secrets manager: which would you use first, OpenBao (or HashiCorp Vault) or CyberArk Conjur, and is there an instance available to test against?~~ **Answered (2026-10-10):** Modular provider interface; OpenBao/Vault and Conjur first. No instance exists: the repo will include a script and doc to deploy throwaway OpenBao and Conjur containers for testing (decision 22). (Claude_Docs/Planning_Web-Interface-Options.md)
 43. ~~VM storage migration: is an offline move (VM shut down during the copy) acceptable for the first version, with live migration later?~~ **Answered (2026-10-10):** Yes: offline move first, live move later (decision 23). (Claude_Docs/Planning_Web-Interface-Options.md)
-44. Break-glass: is the recommended design right (a command run in the
-    container enables a one-time login for 5 minutes, single use, 1-hour
-    session, audited; optionally host-only)? Should the session length
-    or the 5-minute window differ?
-45. Direct LDAP/AD on day one, or after Authentik sign-in works (the
-    design puts it in phase 10h)? If needed early, which domain?
+44. ~~Break-glass: is the recommended design right (a command run in the container enables a one-time login for 5 minutes, single use, 1-hour session, audited; optionally host-only)?~~ **Answered (2026-10-10):** Yes: one-time login enabled by a command run in the container, 5 minutes, single use, 1-hour session, audited, optionally host-only (decision 25). (Claude_Docs/Planning_Web-Interface-Options.md)
+45. ~~Direct LDAP/AD on day one, or after Authentik sign-in works (the design puts it in phase 10h)?~~ **Answered (2026-10-10):** No: direct LDAP/AD comes after Authentik sign-in works (phase 10h). (Claude_Docs/Planning_Web-Interface-Options.md)
