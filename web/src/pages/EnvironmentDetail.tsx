@@ -4,7 +4,8 @@ import {
   Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Link, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
-import { api, Environment, fmtTime, Job } from "../api";
+import { api, CredentialSection, Environment, fmtTime, Job } from "../api";
+import Credentials from "../components/Credentials";
 import { StateChip } from "../components";
 
 export default function EnvironmentDetail() {
@@ -12,7 +13,7 @@ export default function EnvironmentDetail() {
   const navigate = useNavigate();
   const [env, setEnv] = useState<Environment | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [creds, setCreds] = useState<string | null>(null);
+  const [creds, setCreds] = useState<CredentialSection[] | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,7 +46,7 @@ export default function EnvironmentDetail() {
 
   const showCreds = async () => {
     try {
-      setCreds((await api.get<{ credentials: string }>(`/api/environments/${id}/credentials`)).credentials);
+      setCreds((await api.get<{ sections: CredentialSection[] }>(`/api/environments/${id}/credentials`)).sections);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -87,7 +88,7 @@ export default function EnvironmentDetail() {
       {creds !== null && (
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle2">Tester credentials (viewing is audited)</Typography>
-          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{creds || "None stored."}</pre>
+          <Credentials envId={id!} sections={creds} />
         </Paper>
       )}
       <Typography variant="h6">Host groups</Typography>
@@ -110,7 +111,7 @@ export default function EnvironmentDetail() {
               <TableCell>{g.cpu_count} vCPU · {g.memory_mb} MB · {g.disk_gb} GB</TableCell>
               <TableCell>{g.network ?? "host default"} · {g.addressing ?? "static"}</TableCell>
               <TableCell>
-                {Array.from({ length: g.count ?? 1 }, (_, k) => `${g.name}${k + 1}`)
+                {Array.from({ length: g.count ?? 1 }, (_, k) => g.names?.[k] || `${g.name}${k + 1}`)
                   .map((vm) => `${vm} ${env.addresses?.[vm] ?? (g.addressing === "dhcp" ? "(DHCP)" : "")}`)
                   .join(", ")}
               </TableCell>

@@ -129,10 +129,11 @@ locals {
   }
 
   # Flatten host_groups (each with a `count`) into one map keyed by a
-  # unique per-instance name, e.g. "linsrv1", "linsrv2".
+  # unique per-instance name: the name given in `names`, else e.g.
+  # "linsrv1", "linsrv2" (app/labape/naming.py follows the same rule).
   vm_instances = merge([
     for hg in var.host_groups : {
-      for i in range(hg.count) : "${hg.name}${i + 1}" => {
+      for i in range(hg.count) : (try(trimspace(hg.names[i]), "") != "" ? trimspace(hg.names[i]) : "${hg.name}${i + 1}") => {
         os           = hg.os
         roles        = hg.roles
         image_source = coalesce(hg.image_source, var.image_source_default)

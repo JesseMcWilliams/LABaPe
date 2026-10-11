@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api import admin, auth, environments, hosts, jobs, networks
+from .api import admin, auth, environments, hosts, jobs, networks, reports, templates
 from .config import get_settings
+from .errors import on_http_error, on_validation_error
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -21,6 +23,8 @@ def create_app() -> FastAPI:
     origin = f"{public.scheme}://{public.netloc}"
 
     app = FastAPI(title="LABaPe", docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    app.add_exception_handler(RequestValidationError, on_validation_error)
+    app.add_exception_handler(HTTPException, on_http_error)
 
     @app.middleware("http")
     async def same_origin_writes(request: Request, call_next):
@@ -37,7 +41,8 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=s.secret_key, session_cookie="labape_session",
                        max_age=s.session_hours * 3600, same_site="lax", https_only=public.scheme == "https")
 
-    for r in (auth.router, hosts.router, networks.router, environments.router, jobs.router, admin.router):
+    for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, jobs.router,
+              admin.router, reports.router):
         app.include_router(r)
 
     @app.get("/api/health")

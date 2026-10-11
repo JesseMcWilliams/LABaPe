@@ -13,7 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Environment, Grant, IpAllocation, Job, KvmHost
+from ..errors import FieldError
+from ..models import Environment, Grant, IpAllocation, Job, KvmHost, Template
+from ..naming import HOSTNAME_RE, instance_names
 from ..netpolicy import PolicyError, allocate, resolve
 from ..permissions import add_owner, can_see, is_owner, visible_ids
 from ..security import Principal, audit, client_ip, current_principal, get_secret, require_roles
@@ -37,6 +39,17 @@ class HostGroup(BaseModel):
     # Catalog network (design §20); None means the KVM host's default network.
     network: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,62}$")
     addressing: Literal["static", "dhcp"] = "static"
+    # Optional VM names, one per host in order; blanks are generated
+    # (<group><n>). Unique across the KVM host (question 60).
+    names: list[str] = Field(default=[], max_length=20)
+
+    @field_validator("names")
+    @classmethod
+    def _names(cls, v: list[str]) -> list[str]:
+        for n in v:
+            if n.strip() and not HOSTNAME_RE.match(n.strip()):
+                raise ValueError(f"{n!r} isn't a valid host name")
+        return [n.strip() for n in v]
 
 
 class EnvironmentIn(BaseModel):
@@ -71,14 +84,60 @@ def _check_networks(db: Session, p: Principal, kvm_host_id: int, groups: list[di
     """Resolve each host group's network against the catalog and the host;
     returns the groups with the resolved network name filled in."""
     out = []
-    for g in groups:
+    for i, g in enumerate(groups):
         try:
             _, net = resolve(db, p, kvm_host_id, g.get("network"), g.get("addressing", "static"),
                              g.get("roles", []), g["name"])
         except PolicyError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            field = "addressing" if exc.field == "addressing" else "network"
+            raise FieldError(f"host_groups.{i}.{field}", str(exc)) from exc
         out.append({**g, "network": net.name, "addressing": g.get("addressing", "static")})
     return out
+
+
+def _check_names(db: Session, kvm_host_id: int, groups: list[dict], env_id: int | None = None) -> None:
+    """VM names are host-wide (libvirt): refuse any name another environment
+    on this KVM host already uses, or that repeats inside this one."""
+    taken: dict[str, str] = {}
+    others = db.scalars(select(Environment).where(Environment.kvm_host_id == kvm_host_id,
+                                                  Environment.status != "destroyed"))
+    for other in others:
+        if other.id == env_id:
+            continue
+        for og in (other.spec or {}).get("host_groups", []):
+            for n in instance_names(og):
+                taken[n.lower()] = other.name
+    seen: dict[str, int] = {}
+    for i, g in enumerate(groups):
+        for j, n in enumerate(instance_names(g)):
+            field = f"host_groups.{i}.names.{j}" if j < len(g.get("names") or []) and g["names"][j] else \
+                f"host_groups.{i}.name"
+            if n.lower() in taken:
+                raise FieldError(field, f"The VM name {n} is already used by environment {taken[n.lower()]} on "
+                                        "this KVM host. VM names must be unique across the host; choose another "
+                                        "name (or group name).")
+            if n.lower() in seen:
+                raise FieldError(field, f"The VM name {n} appears twice in this environment.")
+            seen[n.lower()] = i
+
+
+def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
+    """A template must exist on the host and match the group's OS (when the
+    host's template library has been synced)."""
+    known = {t.name: t for t in db.scalars(select(Template).where(Template.kvm_host_id == kvm_host_id,
+                                                                  Template.present.is_(True)))}
+    if not known:
+        return
+    for i, g in enumerate(groups):
+        if g.get("image_source") != "packer_template":
+            continue
+        t = known.get(g.get("template") or "")
+        if t is None:
+            raise FieldError(f"host_groups.{i}.template", f"There's no template {g.get('template')!r} on this "
+                                                          "KVM host. Choose one from the list.")
+        if t.os_key and t.os_key != g.get("os"):
+            raise FieldError(f"host_groups.{i}.template", f"Template {t.name} holds {t.os_key}, not {g.get('os')}. "
+                                                          "Choose a template for this OS.")
 
 
 def _allocate(db: Session, p: Principal, e: Environment) -> None:
@@ -89,7 +148,7 @@ def _allocate(db: Session, p: Principal, e: Environment) -> None:
             continue
         hn, net = resolve(db, p, e.kvm_host_id, g["network"], "static", g.get("roles", []), g["name"])
         try:
-            allocate(db, e.id, hn, net, [f"{g['name']}{i + 1}" for i in range(g.get("count", 1))])
+            allocate(db, e.id, hn, net, instance_names(g))
         except PolicyError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     e.spec = {**e.spec, "host_groups": groups}
@@ -128,16 +187,24 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
                p: Principal = Depends(require_roles("deployer", "template_editor"))):
     host = db.get(KvmHost, body.kvm_host_id)
     if host is None or not host.enabled:
-        raise HTTPException(status_code=422, detail="Unknown or disabled KVM host")
+        raise FieldError("kvm_host_id", "Choose an enabled KVM host.")
     if db.scalar(select(Environment).where(Environment.name == body.name)):
-        raise HTTPException(status_code=409, detail="An environment with that name exists")
-    names = [g.name for g in body.host_groups]
-    if len(names) != len(set(names)):
-        raise HTTPException(status_code=422, detail="Host group names must be unique")
-    for g in body.host_groups:
+        raise FieldError("name", f"An environment named {body.name} already exists. Choose another name.",
+                         status_code=409)
+    seen: dict[str, int] = {}
+    for i, g in enumerate(body.host_groups):
+        if g.name in seen:
+            raise FieldError(f"host_groups.{i}.name", f"Group name {g.name} is also used by host group "
+                                                      f"{seen[g.name] + 1}. Group names must be unique.")
+        seen[g.name] = i
         if g.image_source == "packer_template" and not g.template:
-            raise HTTPException(status_code=422, detail=f"Host group {g.name}: packer_template needs a template")
-    groups = _check_networks(db, p, host.id, [g.model_dump(exclude_none=True) for g in body.host_groups])
+            raise FieldError(f"host_groups.{i}.template", "Building from a template needs a template; choose one.")
+        if len(g.names) > g.count:
+            raise FieldError(f"host_groups.{i}.names", f"{len(g.names)} names were given for {g.count} hosts.")
+    raw = [g.model_dump(exclude_none=True) for g in body.host_groups]
+    _check_names(db, host.id, raw)
+    _check_templates(db, host.id, raw)
+    groups = _check_networks(db, p, host.id, raw)
     spec = {"host_groups": groups}
     e = Environment(name=body.name, kvm_host_id=host.id, spec=spec, created_by=p.username)
     db.add(e)
@@ -217,4 +284,40 @@ def credentials(env_id: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status_code=403, detail="Credentials are visible to owners and admins only")
     audit(db, p.username, "environment.credentials.view", object_type="environment", object_id=e.id,
           source_ip=client_ip(request))
-    return {"credentials": get_secret(db, f"environment/{e.id}/credentials") or ""}
+    text = get_secret(db, f"environment/{e.id}/credentials") or ""
+    return {"credentials": text, "sections": parse_credentials(text)}
+
+
+def parse_credentials(text: str) -> list[dict]:
+    """credentials.generated (scripts/generate-inventory.py) as sections of
+    label/value items; values whose label mentions a password are secret,
+    so the UI masks them. Other lines are notes."""
+    sections: list[dict] = []
+    current = None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            current = {"title": line[3:].strip(), "items": [], "notes": []}
+            sections.append(current)
+        elif current is None or not line.strip() or line.startswith("#"):
+            continue
+        elif ": " in line and len(line.split(": ", 1)[0]) <= 40:
+            label, value = line.split(": ", 1)
+            current["items"].append({"label": label.strip(), "value": value.strip(),
+                                     "secret": "password" in label.lower()})
+        else:
+            current["notes"].append(line.strip())
+    return sections
+
+
+@router.post("/{env_id}/credentials/reveal")
+def credential_revealed(env_id: int, body: dict, request: Request, db: Session = Depends(get_db),
+                        p: Principal = Depends(current_principal)):
+    """The UI reports each Show / Show large / Copy of a secret, for the audit log."""
+    e = _get(db, env_id, p)
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail="Credentials are visible to owners and admins only")
+    action = body.get("action") if body.get("action") in ("show", "show_large", "copy") else "show"
+    audit(db, p.username, f"environment.credentials.{action}", object_type="environment", object_id=e.id,
+          detail={"section": str(body.get("section", ""))[:80], "label": str(body.get("label", ""))[:80]},
+          source_ip=client_ip(request))
+    return {"ok": True}

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -45,4 +45,12 @@ def init_db() -> None:
     with the first schema change after 10a (design §4)."""
     from . import models  # noqa: F401  (registers tables)
 
-    Base.metadata.create_all(engine())
+    eng = engine()
+    if eng.dialect.name != "postgresql":
+        Base.metadata.create_all(eng)
+        return
+    # The API and the worker start together; without a lock both try to
+    # create a new table at once and one dies on a duplicate-type error.
+    with eng.begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock(4711)"))
+        Base.metadata.create_all(conn)

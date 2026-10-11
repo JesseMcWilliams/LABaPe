@@ -20,57 +20,85 @@ MODES = ("static", "dhcp")
 
 
 class PolicyError(ValueError):
-    pass
+    """A catalog or deploy rule was broken. `field` names the input at fault
+    (e.g. "static_pools", "host_groups.1.addressing") so the UI can mark it."""
+
+    def __init__(self, message: str, field: str | None = None):
+        super().__init__(message)
+        self.field = field
 
 
-def parse_range(text: str) -> tuple[ipaddress.IPv4Address, ipaddress.IPv4Address]:
+def parse_range(text: str, field: str | None = None) -> tuple[ipaddress.IPv4Address, ipaddress.IPv4Address]:
     text = str(text).strip()
     a, _, b = text.partition("-")
-    first = ipaddress.IPv4Address(a.strip())
-    last = ipaddress.IPv4Address(b.strip()) if b else first
+    try:
+        first = ipaddress.IPv4Address(a.strip())
+        last = ipaddress.IPv4Address(b.strip()) if b else first
+    except ValueError:
+        raise PolicyError(f"{text!r} isn't an address or a range like 172.21.50.1-172.21.50.99.", field) from None
     if last < first:
-        raise PolicyError(f"range {text!r} ends before it starts")
+        raise PolicyError(f"{text!r} ends before it starts; put the lower address first.", field)
     return first, last
 
 
-def ranges(texts: Iterable[str]) -> list[tuple[ipaddress.IPv4Address, ipaddress.IPv4Address]]:
-    return [parse_range(t) for t in texts or []]
+def ranges(texts: Iterable[str], field: str | None = None) -> list[tuple[ipaddress.IPv4Address, ipaddress.IPv4Address]]:
+    return [parse_range(t, field) for t in texts or []]
 
 
 def _overlap(a, b) -> bool:
     return a[0] <= b[1] and b[0] <= a[1]
 
 
+def _fmt(r) -> str:
+    return str(r[0]) if r[0] == r[1] else f"{r[0]}-{r[1]}"
+
+
 def validate_network(fields: dict, others: Iterable[Network] = ()) -> None:
-    """Raise PolicyError if a catalog entry is inconsistent."""
+    """Raise PolicyError (with the field at fault) if a catalog entry is inconsistent."""
     try:
-        cidr = ipaddress.IPv4Network(fields["cidr"], strict=False)
+        cidr = ipaddress.IPv4Network(str(fields.get("cidr", "")), strict=False)
+    except ValueError:
+        raise PolicyError(f"{fields.get('cidr')!r} isn't an IPv4 network; use a form like 172.21.48.0/22.",
+                          "cidr") from None
+    try:
         gateway = ipaddress.IPv4Address(fields["gateway"]) if fields.get("gateway") else cidr.network_address + 1
-        for d in fields.get("dns_servers") or []:
-            ipaddress.IPv4Address(d)
-        pools, dhcp, reserved = (ranges(fields.get(k)) for k in ("static_pools", "dhcp_ranges", "reserved"))
-    except (ValueError, KeyError) as exc:
-        raise PolicyError(str(exc)) from exc
+    except ValueError:
+        raise PolicyError(f"{fields.get('gateway')!r} isn't an IPv4 address.", "gateway") from None
     if gateway not in cidr:
-        raise PolicyError(f"gateway {gateway} is outside {cidr}")
-    bad = [m for m in fields.get("addressing") or [] if m not in MODES]
-    if bad or not fields.get("addressing"):
-        raise PolicyError("addressing must list static and/or dhcp")
-    if "static" in fields["addressing"] and not pools:
-        raise PolicyError("a network that allows static addressing needs at least one static pool")
-    for label, rs in (("static pool", pools), ("DHCP range", dhcp), ("reserved range", reserved)):
-        for a, b in rs:
-            if a not in cidr or b not in cidr:
-                raise PolicyError(f"{label} {a}-{b} is not inside {cidr}")
-    for p in pools:
-        for r in dhcp + reserved:
-            if _overlap(p, r):
-                raise PolicyError(f"static pool {p[0]}-{p[1]} overlaps {r[0]}-{r[1]}")
-        if p[0] <= gateway <= p[1]:
-            raise PolicyError(f"static pool {p[0]}-{p[1]} contains the gateway {gateway}")
+        raise PolicyError(f"The gateway {gateway} must be inside {cidr}.", "gateway")
+    for d in fields.get("dns_servers") or []:
+        try:
+            ipaddress.IPv4Address(d)
+        except ValueError:
+            raise PolicyError(f"{d!r} isn't an IPv4 address.", "dns_servers") from None
+    pools = ranges(fields.get("static_pools"), "static_pools")
+    dhcp = ranges(fields.get("dhcp_ranges"), "dhcp_ranges")
+    reserved = ranges(fields.get("reserved"), "reserved")
+    modes = fields.get("addressing") or []
+    if not modes or any(m not in MODES for m in modes):
+        raise PolicyError("Choose static, DHCP or both.", "addressing")
+    if "static" in modes and not pools:
+        raise PolicyError("Static addressing needs at least one static pool: the range LABaPe may hand out, "
+                          "outside the DHCP scope.", "static_pools")
+    for field, rs in (("static_pools", pools), ("dhcp_ranges", dhcp), ("reserved", reserved)):
+        for r in rs:
+            if r[0] not in cidr or r[1] not in cidr:
+                raise PolicyError(f"{_fmt(r)} is outside the network {cidr}.", field)
+    for pool in pools:
+        for r in dhcp:
+            if _overlap(pool, r):
+                raise PolicyError(f"The static pool {_fmt(pool)} overlaps the DHCP scope {_fmt(r)}; static "
+                                  "addresses must be ones the DHCP server never hands out.", "static_pools")
+        for r in reserved:
+            if _overlap(pool, r):
+                raise PolicyError(f"The static pool {_fmt(pool)} overlaps the reserved range {_fmt(r)}.",
+                                  "static_pools")
+        if pool[0] <= gateway <= pool[1]:
+            raise PolicyError(f"The static pool {_fmt(pool)} contains the gateway {gateway}.", "static_pools")
     for o in others:
         if o.name != fields.get("name") and cidr.overlaps(ipaddress.IPv4Network(o.cidr, strict=False)):
-            raise PolicyError(f"{cidr} overlaps network {o.name} ({o.cidr})")
+            raise PolicyError(f"{cidr} overlaps the network {o.name} ({o.cidr}); networks can't share addresses.",
+                              "cidr")
 
 
 def may_use(p: Principal, net: Network) -> bool:
@@ -98,18 +126,20 @@ def resolve(db: Session, p: Principal, kvm_host_id: int, network: str | None, ad
     if network:
         match = [(hn, n) for hn, n in attached if n.name == network]
         if not match:
-            raise PolicyError(f"host group {group}: network {network} isn't attached to this KVM host")
+            raise PolicyError(f"Network {network} isn't attached to this KVM host. Choose one of its networks.", "network")
     else:
         match = [(hn, n) for hn, n in attached if hn.is_default] or attached[:1]
     hn, net = match[0]
     if not net.enabled:
-        raise PolicyError(f"host group {group}: network {net.name} is disabled")
+        raise PolicyError(f"Network {net.name} is disabled; choose another network.", "network")
     if not may_use(p, net):
-        raise PolicyError(f"host group {group}: you aren't allowed to deploy on network {net.name}")
+        raise PolicyError(f"You aren't allowed to deploy on network {net.name}; it's limited to certain roles "
+                          "or groups. Choose another network, or ask an admin.", "network")
     if addressing not in (net.addressing or []):
-        raise PolicyError(f"host group {group}: {net.name} doesn't allow {addressing} addressing")
+        raise PolicyError(f"Network {net.name} doesn't allow {addressing} addressing; it allows "
+                          f"{' and '.join(net.addressing or [])}.", "addressing")
     if addressing != "static" and "domain_controller" in roles:
-        raise PolicyError(f"host group {group}: domain controllers need static addressing")
+        raise PolicyError("Domain controllers need static addressing: domain members use them for DNS.", "addressing")
     return hn, net
 
 

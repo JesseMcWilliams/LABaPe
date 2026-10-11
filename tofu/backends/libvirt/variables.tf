@@ -112,6 +112,9 @@ variable "host_groups" {
     # Explicit static addresses, one per instance in order (the web UI's
     # allocations). Instances without one use the offset scheme.
     addresses = optional(list(string), [])
+    # Optional VM names, one per instance in order; empty or missing
+    # entries get "<name><n>". Must be unique across the libvirt host.
+    names = optional(list(string), [])
   }))
 
   validation {

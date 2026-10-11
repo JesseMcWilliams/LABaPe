@@ -1,19 +1,47 @@
 import { useEffect, useState } from "react";
-import { Alert, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { Alert, Button, Stack, Table, TableBody, TableCell, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
+import DownloadIcon from "@mui/icons-material/Download";
 import { api, AuditEntry, fmtTime } from "../api";
+import { Field } from "../forms";
 
 export default function Audit() {
   const [rows, setRows] = useState<AuditEntry[]>([]);
   const [error, setError] = useState("");
+  const [actor, setActor] = useState("");
+  const [action, setAction] = useState("");
 
+  const query = () => {
+    const q = new URLSearchParams();
+    if (actor.trim()) q.set("actor", actor.trim());
+    if (action.trim()) q.set("action", action.trim());
+    return q;
+  };
+  const load = () => {
+    const q = query();
+    q.set("limit", "500");
+    api.get<AuditEntry[]>(`/api/admin/audit?${q}`).then(setRows, (e) => setError(e.message));
+  };
   useEffect(() => {
-    api.get<AuditEntry[]>("/api/admin/audit?limit=500").then(setRows, (e) => setError(e.message));
-  }, []);
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Stack spacing={2}>
       <Typography variant="h5">Audit log</Typography>
       {error && <Alert severity="error">{error}</Alert>}
+      <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+        <Field label="Actor" value={actor} onChange={(e) => setActor(e.target.value)} help="Exact user name" />
+        <Field label="Action" value={action} onChange={(e) => setAction(e.target.value)}
+          help="Starts with, e.g. environment. or auth." />
+        <Button variant="outlined" onClick={load} sx={{ mt: 0.25 }}>Filter</Button>
+        <Button variant="contained" startIcon={<DownloadIcon />} sx={{ mt: 0.25 }}
+          href={`/api/admin/audit/export?format=json&${query()}`}>
+          Export JSON
+        </Button>
+        <Tooltip title="CSV export is planned">
+          <span><Button disabled sx={{ mt: 0.25 }}>Export CSV</Button></span>
+        </Tooltip>
+      </Stack>
       <Table size="small">
         <TableHead>
           <TableRow>

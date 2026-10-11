@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
-  Alert, Button, Checkbox, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
+  Alert, Button, Checkbox, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, KvmHost } from "../api";
 import HostNetworks from "./HostNetworks";
+import { Field } from "../forms";
 
 type HostForm = Omit<KvmHost, "id">;
 
@@ -39,7 +40,7 @@ export default function Hosts() {
   };
 
   const field = (key: keyof HostForm, label: string, type = "text") => (
-    <TextField label={label} type={type} value={form[key] as string | number} size="small"
+    <Field label={label} type={type} value={form[key] as string | number}
       onChange={(e) => setForm({ ...form, [key]: type === "number" ? Number(e.target.value) : e.target.value })} />
   );
 
@@ -76,7 +77,7 @@ export default function Hosts() {
       <Paper variant="outlined" sx={{ p: 2 }} component="form" onSubmit={submit}>
         <Stack spacing={2}>
           <Typography variant="h6">{editing ? `Edit ${form.name}` : "Register a host"}</Typography>
-          <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
+          <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
             {field("name", "Name")}
             {field("libvirt_uri", "libvirt URI")}
             {field("vm_storage_path", "VM storage path")}

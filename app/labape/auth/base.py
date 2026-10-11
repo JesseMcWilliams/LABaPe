@@ -29,7 +29,7 @@ class AuthProvider:
         return False
 
     # redirect providers
-    async def begin_login(self, request: Request):  # pragma: no cover - interface
+    async def begin_login(self, request: Request, silent: bool = False):  # pragma: no cover - interface
         raise NotImplementedError
 
     async def complete_login(self, request: Request) -> Identity:  # pragma: no cover - interface
