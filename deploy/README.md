@@ -112,10 +112,9 @@ Nothing secret is ever written to the answers file.
 
 ## Status
 
-On the lab host, the full plan was checked with `--dry-run`. The steps that don't need root were run for real in a scratch checkout:
-- `Net.Validate`;
-- `Config.Environment` (it found every ISO by pattern);
-- `Config.Manifests`;
-- `Config.Secrets` (vault encrypted, passwords generated).
+Verified on 2026-10-10 with a full install on a fresh Debian 13 VM (a LABaPe clone with nested KVM and a second NIC):
+- Every step completed, with `ContainerRuntime: podman` and `AuthMode: test-authentik`.
+- The run used `--resume` and `--step` after fixing the failures it found (Claude_Docs/Testing_Troubleshooting-Log.md, "Installer on a fresh VM").
+- It built `br1` on the second NIC, installed the toolchain, wrote the vault and `environment.yml`, built and started the Podman stack, and registered the host and network.
 
-The root steps haven't run for real yet: the automation account's sudo is scoped to a few commands.
+A deploy through that fresh install's web UI then worked end to end: OIDC sign-in, then a static and a DHCP VM nested on the VLAN. The Docker path is the one the lab host's own stack has used throughout.

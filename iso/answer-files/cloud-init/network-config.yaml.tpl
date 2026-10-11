@@ -15,12 +15,16 @@ ethernets:
 %{ endif ~}
 %{ if addressing.mode == "static" ~}
     addresses: ["${addressing.address}/${addressing.prefix_length}"]
+%{ if gateway4 ~}
+    gateway4: ${addressing.gateway}
+%{ else ~}
     routes:
       # 0.0.0.0/0, not "default": netplan accepts "default", but
       # cloud-init's own v2 parser (Rocky 9's 24.4, rendering to
       # NetworkManager) rejects it and skips network config entirely.
       - to: 0.0.0.0/0
         via: ${addressing.gateway}
+%{ endif ~}
     nameservers:
       addresses: ${jsonencode(addressing.dns)}
 %{ else ~}

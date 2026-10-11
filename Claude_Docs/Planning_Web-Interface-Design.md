@@ -606,7 +606,7 @@ runs on `lab-vlan48` and was built through the web UI from templates.
   joined to `labape.test`, each using only the DC for DNS.
 - Refresh addresses was verified on it.
 
-Retiring lab1 itself waits for the owner's go-ahead.
+lab1 was destroyed on 2026-10-10, at the owner's request, after `lab2` was verified.
 
 ### 20.6 Host prerequisites (done on the lab host)
 

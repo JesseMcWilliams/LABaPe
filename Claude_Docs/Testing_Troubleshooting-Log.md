@@ -1319,3 +1319,50 @@ The Dockerfile and the installer now use `--no-cache --timeout 120` and
 three attempts. The Dockerfile also installs Ansible and the collections
 in a layer before the app is copied in, so app changes no longer
 re-download them.
+
+### Debian template clones had no default route and kept the build's DNS
+
+A static clone of `debian13-packer-2026.10` (the installer test VM) came
+up with only its connected route and with `nameserver 10.0.2.3`:
+- **Default route:** cloud-init's ifupdown (eni) renderer turns the v2
+  `routes:` entry into `post-up route add default gw ...`, and Debian 13
+  doesn't ship `route` (net-tools), so it failed silently (`|| true`).
+- **DNS:** the renderer's `dns-nameservers` lines need the `resolvconf`
+  package, which isn't installed either, so the template's
+  `/etc/resolv.conf` (written by dhcpcd during the Packer build) stayed.
+
+Fixed for Debian (preseed-family) clones only:
+- the network config uses `gateway4`, which renders as ifupdown's own
+  `gateway` line;
+- static clones write `/etc/resolv.conf` through cloud-init `write_files`.
+
+Rocky and Ubuntu clone seeds render byte-identically to before, checked
+with `tofu console` for static and DHCP, so existing clones (`lab2`)
+aren't replaced. Earlier Debian clone tests didn't catch this because
+they only checked SSH from the host, which is on the same subnet.
+
+### Installer on a fresh VM (2026-10-10)
+
+`deploy/install-labape.py` was run as root on a fresh Debian 13 clone
+with nested KVM, a second NIC on `br1`, Podman, and the throwaway
+Authentik. Fixes found, all re-run with `--step`/`--resume`:
+- **Package check:** dpkg reports a missing package as
+  `unknown ok not-installed`, which also *ends with* "installed", so
+  `Prereq.Packages` skipped `python3-venv` and `curl`. The check now
+  requires the exact status `install ok installed`. `Tools.Ansible` also
+  recreates a venv that was made without pip.
+- **Compose provider:** `podman-compose` (the Python implementation)
+  passed compose.yaml's `${LABAPE_MAX_KVM_HOSTS:-4}` through literally
+  in the shared `x-labape` block, so the app wouldn't start. Podman now
+  uses the Docker Compose v2 binary as `podman compose`'s provider
+  (package `docker-compose` plus `podman.socket`).
+- **Leftovers:** containers and a network left by the `podman-compose`
+  attempt (`labape_default`, without Compose's labels) blocked the new
+  provider and had to be removed by hand. That only matters when
+  switching providers.
+- **Smoke test temp directory:** `Smoke.Cli`'s temporary directory was
+  root's while the check runs as the service user; it's now chowned to
+  that user.
+- **Authentik with Podman:** `tools/authentik-test/deploy.sh` hard-coded
+  `docker compose`. It now honors `$COMPOSE` and falls back to
+  `podman compose` when Docker isn't installed.

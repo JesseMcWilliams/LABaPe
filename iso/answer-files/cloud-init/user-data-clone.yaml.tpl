@@ -38,3 +38,15 @@ runcmd:
       done
       lvextend -r -l +100%FREE "$root" || true
     fi
+%{ if static_resolv_conf ~}
+# Debian (ifupdown): cloud-init's dns-nameservers lines need the
+# resolvconf package, which Debian doesn't install, so a static clone
+# would keep its template's resolvers. Written directly instead.
+write_files:
+  - path: /etc/resolv.conf
+    permissions: "0644"
+    content: |
+%{ for d in dns ~}
+      nameserver ${d}
+%{ endfor ~}
+%{ endif ~}

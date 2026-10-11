@@ -126,7 +126,9 @@ It prints a URL (`/breakglass`) and a one-time credential:
 
 ## Podman and Quadlets
 
-`podman compose` uses `compose.yaml` unchanged. For systemd-managed containers, use the Quadlet units in `quadlet/`:
+`podman compose` uses `compose.yaml` unchanged, **with the Docker Compose v2 binary as its provider**. Install it (Debian package `docker-compose`, without Docker itself) and enable Podman's API socket (`systemctl enable --now podman.socket`); `podman compose` picks the binary up automatically. Don't use `podman-compose`, the Python implementation: it leaves this file's `${VAR:-default}` values unexpanded in the shared settings block, so the app can't start. `deploy/install-labape.py` sets this up with `ContainerRuntime: podman`; verified rootful on a fresh Debian 13 VM.
+
+For systemd-managed containers, use the Quadlet units in `quadlet/`:
 
 ```bash
 podman build -f container/Dockerfile -t localhost/labape:local .
