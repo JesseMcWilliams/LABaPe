@@ -1,5 +1,13 @@
-"""KVM host registration (admin only), capped at LABAPE_MAX_KVM_HOSTS."""
+"""KVM host registration (admin only), capped at LABAPE_MAX_KVM_HOSTS.
+
+Hosts are local (qemu:///system, the libvirt socket mounted into the
+container) or remote over SSH (qemu+ssh://user@host/system, design §22.4).
+"""
 from __future__ import annotations
+
+import re
+import subprocess
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -8,7 +16,9 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
+from ..engine import hostio
 from ..engine.hoststats import assess
+from ..errors import FieldError
 from ..models import HostStats, KvmHost
 from ..permissions import visible_hosts
 from ..security import Principal, audit, client_ip, current_principal, require_roles
@@ -46,6 +56,26 @@ def list_hosts(db: Session = Depends(get_db), p: Principal = Depends(current_pri
     return [{**_out(h), "resources": _resources(db, h.id)} for h in visible_hosts(db, p)]
 
 
+@router.get("/worker-key")
+def worker_key(_: Principal = Depends(require_roles("admin"))):
+    """The public key to add to a remote KVM host's authorized_keys."""
+    return {"public_key": hostio.ensure_key()}
+
+
+def _check_uri(uri: str) -> None:
+    if uri.startswith("qemu:///"):
+        if uri != "qemu:///system":
+            raise FieldError("libvirt_uri", "Use qemu:///system for this machine.")
+        return
+    if not uri.startswith("qemu+ssh://"):
+        raise FieldError("libvirt_uri", "Use qemu:///system for this machine, or qemu+ssh://user@host/system.")
+    parts = urlsplit(uri)
+    if not parts.hostname or not parts.username:
+        raise FieldError("libvirt_uri", "A remote host needs the service user and host: qemu+ssh://user@host/system.")
+    if parts.path not in ("", "/system") or not re.match(r"^[A-Za-z0-9._-]+$", parts.username):
+        raise FieldError("libvirt_uri", "Use the form qemu+ssh://user@host/system (an optional :port after the host).")
+
+
 @router.get("/{host_id}")
 def get_host(host_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     h = next((h for h in visible_hosts(db, p) if h.id == host_id), None)
@@ -70,11 +100,7 @@ def create_host(body: HostIn, request: Request, db: Session = Depends(get_db),
     limit = get_settings().max_kvm_hosts
     if db.scalar(select(func.count()).select_from(KvmHost)) >= limit:
         raise HTTPException(status_code=409, detail=f"At most {limit} KVM hosts (LABAPE_MAX_KVM_HOSTS)")
-    if not body.libvirt_uri.startswith(("qemu:///", "qemu+ssh://")):
-        raise HTTPException(status_code=422, detail="libvirt_uri must be qemu:///system or qemu+ssh://...")
-    if body.libvirt_uri.startswith("qemu+ssh://"):
-        # Remote libvirt is phase 10e (design §15); the engine still assumes local storage paths.
-        raise HTTPException(status_code=422, detail="Remote (qemu+ssh) hosts arrive in phase 10e")
+    _check_uri(body.libvirt_uri)
     h = KvmHost(**body.model_dump())
     db.add(h)
     db.commit()
@@ -89,9 +115,49 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
     h = db.get(KvmHost, host_id)
     if h is None:
         raise HTTPException(status_code=404, detail="No such host")
+    _check_uri(body.libvirt_uri)
     for k, v in body.model_dump().items():
         setattr(h, k, v)
     db.commit()
     audit(db, p.username, "host.update", object_type="kvm_host", object_id=h.id, detail=body.model_dump(),
           source_ip=client_ip(request))
     return _out(h)
+
+
+@router.post("/{host_id}/check")
+def check_host(host_id: int, request: Request, db: Session = Depends(get_db),
+               p: Principal = Depends(require_roles("admin"))):
+    """Can the worker reach the host, and does it have what jobs need?"""
+    h = db.get(KvmHost, host_id)
+    if h is None:
+        raise HTTPException(status_code=404, detail="No such host")
+    out: dict = {"remote": hostio.is_remote(h.libvirt_uri), "libvirt": "", "problems": []}
+    if out["remote"]:
+        hostio.ensure_key()
+        hostio.Host(h.libvirt_uri).prime()
+    try:
+        r = subprocess.run(["virsh", "--connect", hostio.effective_uri(h.libvirt_uri), "version"], capture_output=True,
+                           text=True, timeout=30, env=hostio.tool_env(), check=False)
+        if r.returncode == 0:
+            out["libvirt"] = " ".join(line.strip() for line in r.stdout.splitlines() if "Running hypervisor" in line)
+        else:
+            out["problems"].append(f"libvirt: {(r.stderr or r.stdout).strip()[:300]}")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        out["problems"].append(f"libvirt: {exc}")
+    if out["remote"]:
+        try:
+            c = hostio.Host(h.libvirt_uri).python(hostio.CHECK, {"paths": [h.vm_storage_path, h.template_storage_path]})
+            out["tools"], out["paths"] = c["tools"], c["paths"]
+            missing = [t for t, ok in c["tools"].items() if not ok]
+            if missing:
+                out["problems"].append(f"missing on the host: {', '.join(missing)} "
+                                       "(install-labape.py --profile kvm installs them)")
+            for path, ok in c["paths"].items():
+                if not ok:
+                    out["problems"].append(f"{path} doesn't exist or isn't writable by the service user")
+        except (RuntimeError, OSError, subprocess.TimeoutExpired, ValueError) as exc:
+            out["problems"].append(f"SSH: {exc}")
+    out["ok"] = not out["problems"]
+    audit(db, p.username, "host.check", object_type="kvm_host", object_id=h.id, outcome="ok" if out["ok"] else "failed",
+          detail={"problems": out["problems"]}, source_ip=client_ip(request))
+    return out

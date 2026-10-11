@@ -14,6 +14,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Remote KVM hosts over SSH (`qemu+ssh://user@host/system`): jobs run
+  on the host with its own toolchain (state through an SSH tunnel), host
+  stats and the template library come over SSH, and the host page shows
+  the worker's key and a connection check. `labape worker-key`.
+- Installer profiles: `install-labape.py --profile full|kvm|web`.
 - Files: download a file from a URL as a worker job (resumable, HTTPS
   only unless allowed, link-local addresses refused), and check
   downloads and uploads against a vendor's SHA-256, SHA-1, SHA-512 or

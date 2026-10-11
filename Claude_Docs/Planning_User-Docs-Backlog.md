@@ -25,3 +25,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Dashboard (landing page): KVM host and environment load with 24-hour trends; admins see sign-in, secrets, SMTP/syslog health and the installed version against the latest release. VMs need qemu-guest-agent (installed automatically on new VMs) for guest free space and the responding state.
 - Lists open each entry's own page (hosts, networks, catalog items, files, templates); Add is at the top right. Non-admins see Hosts and Networks read-only. Settings > Branding renames the app.
 - Files: Download from URL (HTTPS; HTTP and a proxy in Settings > Downloads) and expected-hash checks (SHA-256, SHA-1, SHA-512, MD5) on downloads and uploads.
+- Remote KVM hosts (qemu+ssh) and installer profiles (--profile kvm on the KVM host, --profile web for the web interface); authorize the worker key shown on the host page.

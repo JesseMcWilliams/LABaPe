@@ -30,6 +30,13 @@ APT_PACKAGES = [
     "python3-yaml", "python3-venv", "python3-libvirt", "git", "curl", "unzip", "openssl", "iputils-ping",
     "network-manager", "perl",
 ]
+# A web-only install (--profile web): the container image carries the engine's tools.
+WEB_PACKAGES = ["python3-yaml", "python3-venv", "git", "curl", "unzip", "openssl", "iputils-ping", "perl"]
+
+
+def kvm_side(a) -> bool:
+    """Profiles that make this machine a KVM host (full, kvm)."""
+    return a.need("Profile") in ("full", "kvm")
 VENV = Path("/opt/labape/venv")
 COLLECTIONS = ["ansible.windows:==3.8.0", "microsoft.ad:==1.12.1", "community.general:==13.4.0",
                "chocolatey.chocolatey:==1.6.0"]
@@ -63,7 +70,7 @@ def prereq_os(c: Ctx):
     info = platform.freedesktop_os_release() if hasattr(platform, "freedesktop_os_release") else {}
     if info.get("ID") != "debian" and "debian" not in info.get("ID_LIKE", ""):
         raise StepError(f"Debian (or a derivative) is required; this is {info.get('PRETTY_NAME', 'unknown')}")
-    if not Path("/dev/kvm").exists():
+    if kvm_side(c.a) and not Path("/dev/kvm").exists():
         raise StepError("/dev/kvm is missing: enable virtualization (VT-x/AMD-V) in firmware")
     return DONE, info.get("PRETTY_NAME", "")
 
@@ -81,7 +88,7 @@ def _installed(c: Ctx, pkg: str) -> bool:
 
 
 def prereq_packages(c: Ctx):
-    missing = [p for p in APT_PACKAGES if not _installed(c, p)]
+    missing = [p for p in (APT_PACKAGES if kvm_side(c.a) else WEB_PACKAGES) if not _installed(c, p)]
     if not missing:
         return DONE, "all present"
     c.r.run(["apt-get", "update"], env={"DEBIAN_FRONTEND": "noninteractive"})
@@ -484,6 +491,24 @@ def stack_up(c: Ctx):
     return DONE, f"https://{c.a.need('WebHostname')}/ is up"
 
 
+def remote_authorize_worker(c: Ctx):
+    """kvm profile: let the web interface's worker in over SSH as the service user."""
+    key = (c.a.need("WorkerPublicKey") or "").strip()
+    if not key:
+        return DONE, "no key given (add the worker's key to ~/.ssh/authorized_keys later, or re-run this step)"
+    if not key.startswith(("ssh-ed25519 ", "ssh-rsa ", "ecdsa-sha2-")):
+        raise StepError("WorkerPublicKey doesn't look like an SSH public key")
+    auth = c.r.home() / ".ssh" / "authorized_keys"
+    if auth.is_file() and key in auth.read_text(encoding="utf-8"):
+        return DONE, "already authorized"
+    c.r.run(["mkdir", "-p", str(auth.parent)], as_user=True)
+    c.r.run(["chmod", "700", str(auth.parent)], as_user=True)
+    existing = auth.read_text(encoding="utf-8") if auth.is_file() else ""
+    c.r.write(auth, existing + ("" if not existing or existing.endswith("\n") else "\n") + key + "\n",
+              mode=0o600, owner=c.user)
+    return DONE, f"authorized for {c.user}"
+
+
 def stack_bootstrap(c: Ctx):
     networks, default = _catalog(c)
     by_name = {n["Name"]: n for n in c.a.need("Networks")}
@@ -494,7 +519,8 @@ def stack_bootstrap(c: Ctx):
             "reserved": n["reserved"], "allowed_groups": by_name[name].get("AllowedGroups", []),
         } for name, n in networks.items()],
         "hosts": [{
-            "name": c.a.need("KvmHostName"), "libvirt_uri": "qemu:///system",
+            "name": c.a.need("KvmHostName"),
+            "libvirt_uri": "qemu:///system" if c.a.need("Profile") == "full" else c.a.need("RemoteKvmUri"),
             "vm_storage_path": c.a.need("VmStoragePath"), "template_storage_path": c.a.need("TemplateStoragePath"),
             "networks": [{"network": name, "bridge": n["bridge"], "is_default": name == default}
                          for name, n in networks.items()],

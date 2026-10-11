@@ -130,6 +130,13 @@ def cmd_bootstrap(args) -> int:
     return 0
 
 
+def cmd_worker_key(_args) -> int:
+    """Print the worker's SSH public key for remote KVM hosts (design §22.4)."""
+    from .engine.hostio import ensure_key
+    print(ensure_key())
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ap = argparse.ArgumentParser(prog="labape")
@@ -155,6 +162,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("bootstrap", help="create/update hosts, networks and role bindings from a JSON file")
     p.add_argument("file")
     p.set_defaults(func=cmd_bootstrap)
+
+    sub.add_parser("worker-key", help="print the SSH public key to authorize on remote KVM hosts"
+                   ).set_defaults(func=cmd_worker_key)
 
     p = sub.add_parser("auth", help="sign-in providers")
     p.add_argument("action", choices=["status", "disable-provider", "enable-provider"])

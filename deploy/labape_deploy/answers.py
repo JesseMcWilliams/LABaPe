@@ -26,6 +26,7 @@ class Answer:
     help: str = ""
     validate: Callable[[Any], str | None] | None = None   # returns an error message
     ask: bool = True                      # False: never prompted, the default is used
+    optional: bool = False                # True: an empty value is a valid answer
 
 
 def _primary_ip() -> str:
@@ -49,8 +50,19 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("InstanceName", "Name for this installation (state files are kept per name)", default="labape", ask=False),
     Answer("ServiceUser", "Linux account that owns the repo, vault and SSH keys and runs the CLI",
            default=lambda a: os.environ.get("SUDO_USER") or "labape"),
-    Answer("InstallCli", "Install the CLI toolchain on this host (OpenTofu, Packer)?", kind="bool", default=True),
-    Answer("InstallWebUi", "Install the web interface (container stack)?", kind="bool", default=True),
+    Answer("Profile", "What to install here: full (KVM host + web interface), kvm (KVM host only) or web "
+           "(web interface only, driving a remote KVM host over SSH)", kind="choice", choices=("full", "kvm", "web"),
+           default="full"),
+    Answer("InstallCli", "Install the CLI toolchain on this host (OpenTofu, Packer)?", kind="bool",
+           default=lambda a: a.get("Profile", "full") != "web", ask=False),
+    Answer("InstallWebUi", "Install the web interface (container stack)?", kind="bool",
+           default=lambda a: a.get("Profile", "full") != "kvm", ask=False),
+    Answer("WorkerPublicKey", "SSH public key of the web interface's worker to authorize for the service user "
+           "(from `labape worker-key` or the host's page; empty: skip)", default="", optional=True),
+    Answer("RemoteKvmUri", "libvirt URI of the KVM host this web interface drives",
+           default=lambda a: f"qemu+ssh://{a.get('ServiceUser', 'labape')}@kvm-host/system",
+           validate=lambda v: None if str(v).startswith("qemu+ssh://") and "@" in str(v)
+           else "use qemu+ssh://user@host/system"),
     Answer("KvmHostName", "Name of this KVM host in the web interface", default=lambda a: socket.gethostname().split(".")[0]),
     Answer("VmStoragePath", "Directory for VM disks", default="/data/VMs/LABaPe"),
     Answer("TemplateStoragePath", "Directory for the template library",
@@ -106,7 +118,7 @@ class Resolver:
         a = ANSWERS[name]
         default = a.default(self.answers) if callable(a.default) else a.default
         if not a.ask or not self.interactive:
-            if default in (None, "") and a.ask:
+            if default in (None, "") and a.ask and not a.optional:
                 raise SystemExit(f"error: {name} is required ({a.prompt}); pass it with --set {name}=... "
                                  f"or in --config-file (not prompting: no terminal).")
             value = default

@@ -86,10 +86,12 @@ def test_cross_origin_write_refused(client):
 def test_hosts(client, monkeypatch):
     _admin_session(client)
     _host(client)
-    r = client.post("/api/hosts", json={"name": "kvm2", "libvirt_uri": "qemu+ssh://root@x/system"})
-    assert r.status_code == 422
+    for bad in ("qemu+tcp://x/system", "qemu+ssh://x/system", "qemu+ssh://u@x/session", "qemu:///session"):
+        assert client.post("/api/hosts", json={"name": "kvm2", "libvirt_uri": bad}).status_code == 422, bad
+    r = client.post("/api/hosts", json={"name": "kvm2", "libvirt_uri": "qemu+ssh://labape@kvm2.example:2222/system"})
+    assert r.status_code == 201, r.text                                  # remote hosts (design §22.4)
     from labape.config import get_settings
-    monkeypatch.setattr(get_settings(), "max_kvm_hosts", 1)
+    monkeypatch.setattr(get_settings(), "max_kvm_hosts", 2)
     assert client.post("/api/hosts", json={"name": "kvm3"}).status_code == 409
 
 

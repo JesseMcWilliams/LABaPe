@@ -8,6 +8,8 @@ re-run; prompts only for what the selected steps need; a dry run that
 changes nothing. See deploy/README.md.
 
     sudo deploy/install-labape.py                        # full install, prompting as needed
+    sudo deploy/install-labape.py --profile kvm          # KVM host only (driven by a web interface elsewhere)
+    sudo deploy/install-labape.py --profile web          # web interface only, driving a remote KVM host
     sudo deploy/install-labape.py --config-file deploy/answers.lab.json
     sudo deploy/install-labape.py --list-steps
     sudo deploy/install-labape.py --resume               # carry on after a failure
@@ -36,25 +38,37 @@ from labape_deploy.util import Runner, StepError  # noqa: E402
 
 
 def cli(a: Resolver) -> bool:
-    return bool(a.need("InstallCli"))
+    return S.kvm_side(a) and bool(a.need("InstallCli"))
+
+
+def kvm(a: Resolver) -> bool:
+    return S.kvm_side(a)
+
+
+def kvm_only(a: Resolver) -> bool:
+    return a.need("Profile") == "kvm"
+
+
+def full(a: Resolver) -> bool:
+    return a.need("Profile") == "full" and web(a)
 
 
 def web(a: Resolver) -> bool:
-    return bool(a.need("InstallWebUi"))
+    return a.need("Profile") != "kvm" and bool(a.need("InstallWebUi"))
 
 
 # name, function, answers it needs, condition (or None), description
 STEPS = [
-    ("Prereq.Os", S.prereq_os, [], None, "Root, Debian, /dev/kvm"),
+    ("Prereq.Os", S.prereq_os, ["Profile"], None, "Root, Debian, /dev/kvm (KVM profiles)"),
     ("Prereq.User", S.prereq_user, ["ServiceUser"], None, "Service user that owns the repo, vault and SSH keys"),
     ("Prereq.Packages", S.prereq_packages, [], None, "apt packages: QEMU/KVM, libvirt, virt-install, xorriso, Python"),
-    ("Prereq.Libvirt", S.prereq_libvirt, ["ServiceUser"], None, "libvirtd running; service user in libvirt and kvm"),
+    ("Prereq.Libvirt", S.prereq_libvirt, ["ServiceUser"], kvm, "libvirtd running; service user in libvirt and kvm"),
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
-    ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], None, "Don't filter bridged VM traffic with iptables (Docker)"),
-    ("Net.Bridges", S.net_bridges, ["Networks"], None, "Create missing VM bridges on their NICs (NetworkManager)"),
-    ("Storage.Dirs", S.storage_dirs, ["VmStoragePath", "TemplateStoragePath", "IsoPath"], None,
+    ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], full, "Don't filter bridged VM traffic with iptables (Docker)"),
+    ("Net.Bridges", S.net_bridges, ["Networks"], kvm, "Create missing VM bridges on their NICs (NetworkManager)"),
+    ("Storage.Dirs", S.storage_dirs, ["VmStoragePath", "TemplateStoragePath", "IsoPath"], kvm,
      "VM, template and ISO directories"),
-    ("Storage.TemplatePool", S.storage_template_pool, ["TemplateStoragePath"], None,
+    ("Storage.TemplatePool", S.storage_template_pool, ["TemplateStoragePath"], kvm,
      "libvirt storage pool labape-templates"),
     ("Tools.Ansible", S.tools_ansible, ["AnsibleCoreVersion", "ServiceUser"], None,
      "ansible-core, pywinrm and the collections (needed for the vault in every install)"),
@@ -67,6 +81,8 @@ STEPS = [
      ["DomainName", "NetbiosName", "ManagementSource", "Networks", "DefaultNetwork", "VmStoragePath",
       "TemplateStoragePath", "IsoPath", "ServiceUser"], None, "tofu/environment.yml with the network catalog"),
     ("Config.Manifests", S.config_manifests, ["ServiceUser"], None, "Software and directory manifests from the examples"),
+    ("Remote.AuthorizeWorker", S.remote_authorize_worker, ["WorkerPublicKey", "ServiceUser"], kvm_only,
+     "Authorize the web interface's worker key for SSH (kvm profile)"),
     ("Stack.Runtime", S.stack_runtime, ["InstallWebUi", "ContainerRuntime", "ServiceUser"], web,
      "Docker (or Podman) and compose"),
     ("Stack.Setup", S.stack_setup, ["InstallWebUi", "WebHostname", "Tls", "VmStoragePath", "ServiceUser"], web,
@@ -78,9 +94,9 @@ STEPS = [
     ("Stack.Bootstrap", S.stack_bootstrap,
      ["InstallWebUi", "KvmHostName", "Networks", "DefaultNetwork", "VmStoragePath", "TemplateStoragePath",
       "AdminGroups", "ContainerRuntime", "IsoPath"], web, "Register this KVM host and its networks in the web interface"),
-    ("Templates.Build", S.templates_build, ["TemplatesToBuild", "TemplateStoragePath", "ServiceUser"], None,
+    ("Templates.Build", S.templates_build, ["TemplatesToBuild", "TemplateStoragePath", "ServiceUser"], kvm,
      "Build the requested templates with Packer (long)"),
-    ("Smoke.Cli", S.smoke_cli, ["ServiceUser"], None, "libvirt, tofu, ansible and environment.yml as the service user"),
+    ("Smoke.Cli", S.smoke_cli, ["ServiceUser"], kvm, "libvirt, tofu, ansible and environment.yml as the service user"),
     ("Smoke.Web", S.smoke_web, ["InstallWebUi", "WebHostname", "ContainerRuntime"], web,
      "Web interface health and sign-in providers"),
 ]
@@ -89,6 +105,7 @@ STEP_NAMES = [s[0] for s in STEPS]
 # Extra answers a step needs only when another answer has a given value.
 CONDITIONAL_NEEDS = {
     "Stack.Auth": lambda a: ["OidcIssuer", "OidcClientId"] if a.need("AuthMode") == "existing" else [],
+    "Stack.Bootstrap": lambda a: ["RemoteKvmUri"] if a.need("Profile") == "web" else [],
 }
 
 
@@ -97,6 +114,8 @@ def parse_args(argv):
     ap.add_argument("--config-file", help="answer file (JSON) for unattended runs; see deploy/answers.sample.json")
     ap.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
                     help="set one answer (JSON values allowed, e.g. InstallCli=false); wins over every file")
+    ap.add_argument("--profile", choices=("full", "kvm", "web"),
+                    help="what to install: full (default), kvm (KVM host only) or web (web interface only)")
     ap.add_argument("--instance", help="installation name (state files are per name); default: the only saved one, else labape")
     sel = ap.add_mutually_exclusive_group()
     sel.add_argument("--step", action="append", help="run only these steps (wildcards allowed), whatever their status")
@@ -156,6 +175,8 @@ def main(argv=None) -> int:
 
     # Precedence: --set, then --config-file, then saved answers (partial runs).
     a.add(parse_sets(args.set))
+    if args.profile:
+        a.add({"Profile": args.profile})
     from_config = state.read_answer_file(Path(args.config_file)) if args.config_file else {}
     a.add(from_config)
     instance = pick_instance(args, {**from_config, **a.answers})
@@ -211,6 +232,8 @@ def main(argv=None) -> int:
 
     # Resolve every answer the selected steps need (and only those), then save.
     for name, _, needs, cond, _ in selected:
+        if cond is not None and "Profile" in a.answered and not cond(a):
+            continue  # the step won't run: don't ask for its answers
         for n in needs:
             a.need(n)
         if name in CONDITIONAL_NEEDS and (cond is None or cond(a)):
@@ -248,12 +271,16 @@ def main(argv=None) -> int:
     outstanding = [n for n in STEP_NAMES if progress.get(n, {}).get("status") not in ("Completed", "NotApplicable")]
     if outstanding:
         print(f"\nNot yet completed: {', '.join(outstanding)}. Run with --resume to continue.")
-    elif a.answers.get("InstallWebUi"):
+    elif web(a):
         host = a.answers.get("WebHostname")
         print(f"\nWeb interface: https://{host}/")
         print("First admin sign-in (if no Authentik admin exists yet):")
         print(f"  cd {REPO / 'container'} && {' '.join(ctx.compose)} exec labape-api labape breakglass enable")
         print("Group memberships added this run (libvirt, kvm, docker) apply at the service user's next login.")
+        if a.answers.get("Profile") == "web":
+            print("The KVM host must authorize this web interface's worker key. Print it with:")
+            print(f"  cd {REPO / 'container'} && {' '.join(ctx.compose)} exec labape-worker labape worker-key")
+            print("and install the KVM host with: sudo deploy/install-labape.py --profile kvm --set WorkerPublicKey='<key>'")
     print(f"Full log: {log_path}")
     return 0
 

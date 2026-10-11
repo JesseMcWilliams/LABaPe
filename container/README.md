@@ -93,7 +93,7 @@ docker compose exec labape-api labape breakglass enable     # first admin sign-i
 ```
 
 Then open `https://<LABAPE_HOSTNAME>/` and sign in as an admin:
-1. Register the KVM host under **Hosts**. The defaults match a local host using `/data/VMs/LABaPe`.
+1. Register the KVM host under **Hosts**. The defaults match a local host using `/data/VMs/LABaPe`. A KVM host on another machine uses `qemu+ssh://user@host/system`. Install it with `deploy/install-labape.py --profile kvm`, add the key shown on the host's page (or from `docker compose exec labape-worker labape worker-key`) to that user's `authorized_keys`, then use **Check connection**.
 2. Add the VM networks under **Networks**: CIDR, gateway, DNS, allowed addressing, static pools, DHCP scope, reserved ranges, and optionally which roles or groups may use each one.
 3. Attach networks to the host (**Hosts → Networks**): the bridge for each, an optional slice of static addresses for this host, and the default network.
 

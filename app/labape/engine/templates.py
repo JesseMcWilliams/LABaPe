@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import KvmHost, Template
+from . import hostio
 
 log = logging.getLogger("labape.templates")
 
@@ -82,7 +83,51 @@ def write_meta(path: Path, meta: dict) -> None:
         log.warning("could not write %s: %s", path, exc)
 
 
+def sync_remote(db: Session, host: KvmHost) -> int:
+    """The template library of a qemu+ssh host, read and written over SSH (design §22.4)."""
+    h = hostio.Host(host.libvirt_uri)
+    listing = h.python(hostio.TEMPLATES, {"lib": host.template_storage_path}, timeout=300)
+    if not listing["exists"]:
+        return 0
+    existing = {t.name: t for t in db.scalars(select(Template).where(Template.kvm_host_id == host.id))}
+    seen, writes = set(), {}
+    for item in listing["templates"]:
+        name = item["name"]
+        seen.add(name)
+        meta_path = f"{host.template_storage_path.rstrip('/')}/{name}.json"
+        t = existing.get(name)
+        meta, source = item["meta"], "metadata"
+        if t is not None and t.dirty:
+            meta = {k: getattr(t, k) for k in META_KEYS}
+            writes[meta_path] = json.dumps(meta, indent=2) + "\n"
+            t.dirty = False
+        elif meta is None:
+            meta, source = infer(name), "inferred"
+            writes[meta_path] = json.dumps({k: meta.get(k) for k in META_KEYS}, indent=2) + "\n"
+        if t is None:
+            t = Template(kvm_host_id=host.id, name=name)
+            db.add(t)
+        for k in META_KEYS:
+            if k in meta and meta[k] is not None and getattr(t, k) != meta[k]:
+                setattr(t, k, meta[k])
+        if item["disk_gb"] and t.disk_gb != item["disk_gb"]:
+            t.disk_gb = item["disk_gb"]
+        t.source, t.present = source, True
+    for name, t in existing.items():
+        if name not in seen and t.present:
+            t.present = False
+    if writes:
+        try:
+            h.python(hostio.WRITE_FILES, {"files": writes})
+        except RuntimeError as exc:
+            log.warning("could not write template metadata on %s: %s", host.name, exc)
+    db.commit()
+    return len(seen)
+
+
 def sync_host(db: Session, host: KvmHost) -> int:
+    if host.enabled and hostio.is_remote(host.libvirt_uri):
+        return sync_remote(db, host)
     lib = Path(host.template_storage_path)
     if not host.enabled or not host.libvirt_uri.startswith("qemu:///") or not lib.is_dir():
         return 0
