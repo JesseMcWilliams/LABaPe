@@ -1375,3 +1375,15 @@ died at startup with `duplicate key value violates unique constraint
 `create_all` at the same moment, and both tried to create the same new
 table. Docker restarted the worker, so no harm was done. `init_db` now
 takes a PostgreSQL advisory lock around `create_all`.
+
+### Open: Firefox doesn't install on Debian 13 (found 2026-10-11)
+
+While testing batch G (the guest agent), a Debian 13 template clone failed
+`linux_common`'s apt install with "No package matching 'firefox' is
+available". Debian ships Firefox as `firefox-esr`, while Ubuntu's `firefox`
+is a transitional package. `ansible/package_catalog.yml` names one apt
+package for every apt distribution, so the default software manifest's
+Firefox fails on Debian. Everything else in the run completed. A fix needs
+per-distribution names in the catalog (for example `apt: {debian:
+firefox-esr, default: firefox}`). Not fixed yet; the Rocky and Windows
+hosts in the same run were clean.

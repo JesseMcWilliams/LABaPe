@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from .. import appsettings, notify
 from ..config import get_settings
-from ..models import AuditLog, Job, User, UserError, utcnow
+from ..db import session_factory
+from ..models import AuditLog, Job, Setting, User, UserError, utcnow
 from ..security import get_secret
 
 log = logging.getLogger("labape.maintenance")
@@ -134,4 +135,20 @@ def notify_job(db: Session, job: Job) -> None:
     body = (f"Job {job.id} ({job.type}) {job.state}"
             f"{'' if job.exit_code is None else f' with exit code {job.exit_code}'}.\n\n"
             f"Details and log: {base}/jobs/{job.id}\n")
-    notify.email_in_background(cfg, get_secret(db, appsettings.SMTP_PASSWORD_SECRET) or "", [to], subject, body)
+    notify.email_in_background(cfg, get_secret(db, appsettings.SMTP_PASSWORD_SECRET) or "", [to], subject, body,
+                               on_done=record_email)
+
+
+EMAIL_STATUS_KEY = "status.email"
+
+
+def record_email(ok: bool, error: str) -> None:
+    """The last job email's result, for the admin dashboard."""
+    value = {"at": utcnow().isoformat(), "ok": ok, "error": error}
+    with session_factory()() as db:
+        row = db.get(Setting, EMAIL_STATUS_KEY)
+        if row is None:
+            db.add(Setting(key=EMAIL_STATUS_KEY, value=value))
+        else:
+            row.value = value
+        db.commit()

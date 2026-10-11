@@ -268,6 +268,19 @@ class HostStats(Base):
     error: Mapped[str] = mapped_column(Text, default="")
 
 
+class MetricSample(Base):
+    """One minute's load for a KVM host (vm = "") or one of its VMs, kept
+    24 hours for the dashboard's sparklines (design §22.1)."""
+
+    __tablename__ = "metric_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), index=True)
+    vm: Mapped[str] = mapped_column(String(64), default="", index=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class UserError(Base):
     """A request the API refused (validation, policy, permission), kept so
     admins can see where users struggle (design §21, question 59)."""

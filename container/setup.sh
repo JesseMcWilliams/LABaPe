@@ -61,6 +61,6 @@ Next:
      key pair named by ansible_ssh_private_key_path in the vault.
   3. For Authentik sign-in: LABAPE_OIDC_ISSUER and LABAPE_OIDC_CLIENT_ID in .env,
      and the client secret in secrets/oidc_client_secret.
-  4. docker compose up -d --build
+  4. LABAPE_VERSION=$(git describe --tags --always) docker compose up -d --build
   5. docker compose exec labape-api labape breakglass enable   (first admin sign-in)
 EOF

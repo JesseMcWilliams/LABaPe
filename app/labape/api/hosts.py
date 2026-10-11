@@ -35,7 +35,8 @@ def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
     if row is None or not row.stats:
         return {"collected_at": row.collected_at if row else None, "error": row.error if row else "",
                 "stats": None, "assessment": None}
-    return {"collected_at": row.collected_at, "error": row.error, "stats": row.stats,
+    stats = {k: v for k, v in row.stats.items() if not k.startswith("_")}
+    return {"collected_at": row.collected_at, "error": row.error, "stats": stats,
             "assessment": assess(row.stats, demand)}
 
 

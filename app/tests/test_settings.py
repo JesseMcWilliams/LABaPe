@@ -112,7 +112,7 @@ def test_purge_history(client, tmp_root):
 def test_job_email(client, monkeypatch):
     _admin_session(client)
     sent = []
-    monkeypatch.setattr(notify, "email_in_background", lambda cfg, pw, to, subject, body: sent.append((to, subject)))
+    monkeypatch.setattr(notify, "email_in_background", lambda cfg, pw, to, subject, body, **kw: sent.append((to, subject)))
     s = client.get("/api/admin/settings").json()["smtp"]
     client.put("/api/admin/settings/smtp", json={**s, "enabled": True, "host": "mail.example.test",
                                                  "from_address": "lab@example.test", "notify_jobs": True})

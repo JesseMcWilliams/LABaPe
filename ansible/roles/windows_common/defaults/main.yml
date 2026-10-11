@@ -1,0 +1,5 @@
+---
+# virtio-win guest tools (qemu-guest-agent and the virtio drivers), pinned.
+# Point the URL at the software store for offline labs; keep the SHA-256 in step.
+virtio_win_guest_tools_url: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-guest-tools.exe
+virtio_win_guest_tools_sha256: d8ae9ea1e943384ac195e012cd36f82c3161620e5fc9529be4e42e6f420e222d

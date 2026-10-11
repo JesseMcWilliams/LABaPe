@@ -5,6 +5,26 @@
 # bootstraps Chocolatey itself on first use, so there's no separate
 # "install Chocolatey" step needed here.
 
+# Every KVM guest runs qemu-guest-agent (Claude_Docs/Planning_Web-Interface-Design.md
+# §22.1). On Windows it comes with the virtio-win guest tools, which also
+# install the virtio-serial driver the agent channel needs. Downloaded once,
+# checked against a pinned SHA-256, skipped when the QEMU-GA service exists.
+- name: Download the virtio-win guest tools on KVM guests
+  ansible.windows.win_get_url:
+    url: "{{ virtio_win_guest_tools_url }}"
+    dest: 'C:\Windows\Temp\virtio-win-guest-tools.exe'
+    checksum: "{{ virtio_win_guest_tools_sha256 }}"
+    checksum_algorithm: sha256
+  when: ansible_system_vendor | default('') == 'QEMU'
+
+- name: Install the virtio-win guest tools (qemu-guest-agent)
+  ansible.windows.win_package:
+    path: 'C:\Windows\Temp\virtio-win-guest-tools.exe'
+    arguments: /install /quiet /norestart
+    creates_service: QEMU-GA
+    expected_return_code: [0, 3010]
+  when: ansible_system_vendor | default('') == 'QEMU'
+
 - name: Union this host's role package lists (raw catalog keys / inline overrides)
   ansible.builtin.set_fact:
     windows_common_raw_packages: "{{ (windows_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"

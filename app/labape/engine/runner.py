@@ -40,6 +40,7 @@ from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import maintenance
+from .. import version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
@@ -493,6 +494,7 @@ def serve(slots: int | None = None) -> None:
     active: dict[int, threading.Thread] = {}
     last_recover = 0.0
     last_purge = 0.0
+    last_update_check = 0.0
     while not stop.is_set():
         for jid in [j for j, t in active.items() if not t.is_alive()]:
             del active[jid]
@@ -510,6 +512,10 @@ def serve(slots: int | None = None) -> None:
             with session_factory()() as db:
                 if maintenance.schedule_backup(db):
                     log.info("queued the daily backup")
+            if time.monotonic() - last_update_check > 86400:
+                last_update_check = time.monotonic()
+                with session_factory()() as db:
+                    log.info("release check: %s", version.check(db))
             if time.monotonic() - last_purge > 86400:
                 last_purge = time.monotonic()
                 with session_factory()() as db:

@@ -3,6 +3,24 @@
 # than relying on Ansible's default variable behavior, which does not
 # merge list-type variables across the multiple groups a host belongs
 # to (a real, easy-to-miss gap for a multi-role host, Claude_Docs/Design_System-Overview.md §9).
+# Every KVM guest runs qemu-guest-agent: the web dashboard reads guest free
+# space and checks the agent answers (Claude_Docs/Planning_Web-Interface-Design.md
+# §22.1). The VM's agent channel is added by virt-install.
+- name: Install qemu-guest-agent on KVM guests
+  ansible.builtin.package:
+    name: qemu-guest-agent
+    state: present
+  become: true
+  when: ansible_system_vendor | default('') == 'QEMU'
+
+- name: Start qemu-guest-agent
+  ansible.builtin.systemd_service:
+    name: qemu-guest-agent
+    state: started
+    enabled: true
+  become: true
+  when: ansible_system_vendor | default('') == 'QEMU'
+
 - name: Union this host's role package lists (raw catalog keys / inline overrides)
   ansible.builtin.set_fact:
     linux_common_raw_packages: "{{ (linux_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"

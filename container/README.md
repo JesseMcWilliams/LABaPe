@@ -87,6 +87,7 @@ For a throwaway Authentik already configured this way, see [tools/authentik-test
 
 ```bash
 cd container
+export LABAPE_VERSION=$(git describe --tags --always)   # shown on the admin dashboard
 docker compose up -d --build
 docker compose exec labape-api labape breakglass enable     # first admin sign-in, see below
 ```

@@ -106,6 +106,12 @@ RUN set -eux; \
 
 COPY --from=web /web/dist /opt/labape/web
 
+# The release this image was built from (`git describe --tags`), shown on
+# the admin dashboard and compared with the latest GitHub release. Last, so
+# a new version doesn't invalidate the cached layers above.
+ARG LABAPE_VERSION=dev
+ENV LABAPE_VERSION=${LABAPE_VERSION}
+
 VOLUME ["/var/lib/labape"]
 EXPOSE 8000
 CMD ["labape", "serve"]

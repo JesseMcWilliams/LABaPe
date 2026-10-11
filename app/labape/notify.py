@@ -57,6 +57,8 @@ def send_syslog(cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
 
 _syslog_q: queue.Queue = queue.Queue(maxsize=10000)
 _syslog_thread: threading.Thread | None = None
+# This process's last syslog send, for the admin dashboard.
+last_syslog: dict = {"at": None, "ok": None, "error": ""}
 
 
 def _syslog_worker() -> None:
@@ -64,7 +66,9 @@ def _syslog_worker() -> None:
         cfg, event = _syslog_q.get()
         try:
             send_syslog(cfg, event)
+            last_syslog.update(at=dt.datetime.now(dt.timezone.utc).isoformat(), ok=True, error="")
         except OSError as exc:
+            last_syslog.update(at=dt.datetime.now(dt.timezone.utc).isoformat(), ok=False, error=str(exc))
             log.warning("syslog to %s:%s failed: %s", cfg.host, cfg.port, exc)
 
 
@@ -105,12 +109,21 @@ def send_email(cfg: SmtpSettings, password: str, to: list[str], subject: str, bo
             pass
 
 
-def email_in_background(cfg: SmtpSettings, password: str, to: list[str], subject: str, body: str) -> None:
+def email_in_background(cfg: SmtpSettings, password: str, to: list[str], subject: str, body: str,
+                        on_done=None) -> None:
+    """Send on a thread; on_done(ok, error) records the result if given."""
     def go():
+        ok, error = True, ""
         try:
             send_email(cfg, password, to, subject, body)
         except (OSError, smtplib.SMTPException) as exc:
+            ok, error = False, str(exc)
             log.warning("email to %s failed: %s", to, exc)
+        if on_done:
+            try:
+                on_done(ok, error)
+            except Exception:  # noqa: BLE001
+                log.exception("recording the email result failed")
     threading.Thread(target=go, name="email", daemon=True).start()
 
 
