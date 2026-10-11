@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Alert, Button, Checkbox, Chip, FormControlLabel, Paper, Stack, Typography } from "@mui/material";
+import { Alert, Checkbox, Chip, FormControlLabel, Paper, Stack, Typography } from "@mui/material";
 import { api, FieldProblem, Network } from "../api";
 import { hasRole, useAuth } from "../App";
 import GroupPicker from "../components/GroupPicker";
 import { DetailHeader, Facts } from "../components/PageParts";
+import { ActionButton, useConfirm } from "../components/Confirm";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
 
 // One network in the catalog (design §20.1, §22.2): admins add and edit it
@@ -37,6 +38,7 @@ export default function NetworkDetail() {
   const [lists, setLists] = useState<Record<ListKey, string>>(emptyLists());
   const [summary, setSummary] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (isNew) return;
@@ -72,6 +74,12 @@ export default function NetworkDetail() {
       reportBlocked("/networks", problems);
       return;
     }
+    if (!(await confirm({
+      title: editing ? `Save ${body.name}?` : `Add network ${body.name}?`, confirmLabel: editing ? "Save" : "Add",
+      body: editing
+        ? "The network's settings change for new deployments. Addresses already handed out stay as they are; ranges that no longer cover them are refused."
+        : `${body.name} (${body.cidr}) joins the catalog. Attach it to KVM hosts on each host's page before anyone can use it.`,
+    }))) return;
     try {
       if (editing) await api.put(`/api/networks/${editing}`, body);
       else await api.post("/api/networks", body);
@@ -84,7 +92,6 @@ export default function NetworkDetail() {
   };
 
   const remove = async (n: Network) => {
-    if (!confirm(`Delete network ${n.name}?`)) return;
     try {
       await api.del(`/api/networks/${n.id}`);
       navigate("/networks");
@@ -104,8 +111,12 @@ export default function NetworkDetail() {
     <DetailHeader back="/networks" backLabel="Networks"
       title={isNew ? "Add a network" : net ? `${net.name}${net.vlan ? ` (VLAN ${net.vlan})` : ""}` : "Network"}
       actions={isAdmin && net && (
-        <Button color="error" onClick={() => remove(net)} disabled={net.allocated > 0}
-          title={net.allocated ? "Addresses are still allocated on this network" : undefined}>Delete</Button>
+        <ActionButton color="error" onClick={() => remove(net)} disabled={net.allocated > 0}
+          tip={net.allocated ? "Can't delete: addresses are still allocated on this network" : "Delete this network from the catalog"}
+          confirm={{ title: `Delete network ${net.name}?`, danger: true, confirmLabel: "Delete",
+            body: "The network is removed from the catalog and detached from every KVM host. Host groups can no longer pick it. This can't be undone." }}>
+          Delete
+        </ActionButton>
       )} />
   );
   if (!isAdmin) {
@@ -175,8 +186,11 @@ export default function NetworkDetail() {
               onChange={(v) => setLists({ ...lists, allowed_groups: fromList(v) })} />
           </Stack>
           <Stack direction="row" spacing={2}>
-            <Button type="submit" variant="contained">{editing ? "Save" : "Add"}</Button>
-            <Button onClick={() => navigate("/networks")}>Cancel</Button>
+            <ActionButton type="submit" variant="contained"
+              tip={editing ? "Save the changes (asks to confirm)" : "Add this network to the catalog (asks to confirm)"}>
+              {editing ? "Save" : "Add"}
+            </ActionButton>
+            <ActionButton tip="Leave without saving" onClick={() => navigate("/networks")}>Cancel</ActionButton>
           </Stack>
         </Stack>
       </Paper>

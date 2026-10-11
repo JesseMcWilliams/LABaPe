@@ -9,6 +9,7 @@ import UploadIcon from "@mui/icons-material/Upload";
 import { api, fmtTime } from "../api";
 import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
+import { ActionButton, useConfirm } from "../components/Confirm";
 
 // Services, applications and packages users can add to host groups, on
 // top of the template (design §21.4). Users browse and request; admins
@@ -59,8 +60,8 @@ function RequestDialog({ kind, onClose }: { kind: string; onClose: (sent: boolea
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => onClose(false)}>Cancel</Button>
-        <Button variant="contained" onClick={send}>Send request</Button>
+        <Button onClick={() => onClose(false)} title="Close without sending">Cancel</Button>
+        <Button variant="contained" onClick={send} title="Send the request to the admins">Send request</Button>
       </DialogActions>
     </Dialog>
   );
@@ -80,13 +81,15 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
     <Stack spacing={2}>
       <Stack direction="row" spacing={1}>
         {isAdmin && (
-          <Button startIcon={<DownloadIcon />} href={`/api/catalog/export?ids=${selected.join(",")}`}>
+          <Button startIcon={<DownloadIcon />} href={`/api/catalog/export?ids=${selected.join(",")}`}
+            title="Download the selected items (or all), with what packages need, as labape_catalog YAML">
             Export {selected.length ? `${selected.length} selected` : "all"} as YAML
           </Button>
         )}
         <Box sx={{ flexGrow: 1 }} />
-        <Button variant="outlined" onClick={() => setRequesting(true)}>Request a {kind}</Button>
-        {isAdmin && <Button variant="contained" component={RouterLink} to={`/catalog/new?kind=${kind}`}>New {kind}</Button>}
+        <Button variant="outlined" onClick={() => setRequesting(true)} title={`Ask the admins to add a ${kind} (opens a form)`}>Request a {kind}</Button>
+        {isAdmin && <Button variant="contained" component={RouterLink} to={`/catalog/new?kind=${kind}`}
+          title={`New ${kind}: opens the form; it's saved as a draft`}>New {kind}</Button>}
       </Stack>
       {msg && <Alert severity={msg.ok ? "success" : "error"} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       <Table size="small">
@@ -116,8 +119,20 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
               <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtTime(i.updated_at)}</TableCell>
               {isAdmin && (
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  {i.status !== "published" && <Button size="small" onClick={() => setStatus(i, "published")}>Publish</Button>}
-                  {i.status === "published" && <Button size="small" color="warning" onClick={() => setStatus(i, "retired")}>Retire</Button>}
+                  {i.status !== "published" && (
+                    <ActionButton size="small" onClick={() => setStatus(i, "published")} tip="Make this item available in deploy forms"
+                      confirm={{ title: `Publish ${i.display_name}?`, confirmLabel: "Publish",
+                        body: "Everyone can then choose it for host groups. A package can be published only when everything in it is." }}>
+                      Publish
+                    </ActionButton>
+                  )}
+                  {i.status === "published" && (
+                    <ActionButton size="small" color="warning" onClick={() => setStatus(i, "retired")} tip="Stop offering this item in deploy forms"
+                      confirm={{ title: `Retire ${i.display_name}?`, confirmLabel: "Retire",
+                        body: "It disappears from deploy forms. Environments that already use it keep it on redeploy." }}>
+                      Retire
+                    </ActionButton>
+                  )}
                 </TableCell>
               )}
             </TableRow>
@@ -159,7 +174,7 @@ function Requests({ isAdmin }: { isAdmin: boolean }) {
               <TableCell sx={{ whiteSpace: "nowrap" }}>{r.requested_by}, {fmtTime(r.created_at)}</TableCell>
               <TableCell><Chip size="small" label={r.status} color={r.status === "done" ? "success" : r.status === "declined" ? "default" : "info"} /></TableCell>
               <TableCell>{r.response}{r.handled_by && <Typography variant="caption" component="div" color="text.secondary">{r.handled_by}</Typography>}</TableCell>
-              {isAdmin && <TableCell><Button size="small" onClick={() => { setAnswering(r); setAnswer({ status: r.status === "open" ? "accepted" : r.status, response: r.response }); }}>Respond</Button></TableCell>}
+              {isAdmin && <TableCell><Button size="small" title="Accept, decline or close this request, with a note (opens a form)" onClick={() => { setAnswering(r); setAnswer({ status: r.status === "open" ? "accepted" : r.status, response: r.response }); }}>Respond</Button></TableCell>}
             </TableRow>
           ))}
           {rows.length === 0 && <TableRow><TableCell colSpan={6}>No requests.</TableCell></TableRow>}
@@ -177,8 +192,8 @@ function Requests({ isAdmin }: { isAdmin: boolean }) {
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setAnswering(null)}>Cancel</Button>
-            <Button variant="contained" onClick={save}>Save</Button>
+            <Button onClick={() => setAnswering(null)} title="Close without saving">Cancel</Button>
+            <Button variant="contained" onClick={save} title="Save the response; the requester sees it on the Requests tab">Save</Button>
           </DialogActions>
         </Dialog>
       )}
@@ -188,6 +203,7 @@ function Requests({ isAdmin }: { isAdmin: boolean }) {
 
 function Importer({ onDone }: { onDone: (msg: string, ok: boolean) => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
   const [publish, setPublish] = useState(false);
   const [overwrite, setOverwrite] = useState(false);
   const upload = async (file: File) => {
@@ -200,8 +216,14 @@ function Importer({ onDone }: { onDone: (msg: string, ok: boolean) => void }) {
   };
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-      <input ref={input} type="file" accept=".yaml,.yml" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
-      <Button startIcon={<UploadIcon />} onClick={() => input.current?.click()}>Import YAML</Button>
+      <input ref={input} type="file" accept=".yaml,.yml" hidden onChange={async (e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (f && await confirm({ title: `Import ${f.name}?`, confirmLabel: "Import",
+          body: `Its services, applications and packages are added ${publish ? "and published" : "as drafts"}; items that already exist are ${overwrite ? "overwritten" : "skipped"}.` })) upload(f);
+      }} />
+      <ActionButton startIcon={<UploadIcon />} onClick={() => input.current?.click()}
+        tip="Choose a labape_catalog YAML file to import (asks to confirm after you pick it)">Import YAML</ActionButton>
       <FormControlLabel label="Publish on import" control={<Checkbox checked={publish} onChange={(e) => setPublish(e.target.checked)} />} />
       <FormControlLabel label="Overwrite existing" control={<Checkbox checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />} />
     </Stack>

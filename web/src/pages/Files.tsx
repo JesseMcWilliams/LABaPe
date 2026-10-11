@@ -12,6 +12,7 @@ import * as tus from "tus-js-client";
 import { api, fmtTime, KvmHost, Template } from "../api";
 import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
+import { ActionButton, useConfirm } from "../components/Confirm";
 
 // File manager (design §9, §21.3): ISOs, installers, other files, and the
 // template library. Admins and file managers upload; template editors
@@ -56,9 +57,12 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
   const [upload, setUpload] = useState<tus.Upload | null>(null);
   const [hash, setHash] = useState({ type: "sha256", expected: "" });
   const [showHash, setShowHash] = useState(false);
+  const confirm = useConfirm();
 
   const start = async (file: File) => {
     setError("");
+    if (!(await confirm({ title: `Upload ${file.name}?`, confirmLabel: "Upload",
+      body: `${size(file.size)} goes into this location${hash.expected.trim() ? `, checked against the ${hash.type.toUpperCase()} you gave` : ""}. The upload resumes if the connection drops; a file with the same content as a stored one is refused.` }))) return;
     const up = new tus.Upload(file, {
       endpoint: "/api/files/tus",
       chunkSize: 32 * 2 ** 20,
@@ -88,17 +92,26 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
     <Stack spacing={1}>
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
         <input ref={input} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) start(f); e.target.value = ""; }} />
-        <Button variant="contained" startIcon={<UploadIcon />} disabled={Boolean(progress)} onClick={() => input.current?.click()}>
+        <ActionButton variant="contained" startIcon={<UploadIcon />} disabled={Boolean(progress)} onClick={() => input.current?.click()}
+          tip="Choose a file to upload into this location (asks to confirm after you pick it)">
           Upload
-        </Button>
+        </ActionButton>
         {progress && (
           <Box sx={{ flexGrow: 1 }}>
             <Typography variant="caption">{progress.name}: {progress.pct.toFixed(0)}% (resumes if interrupted)</Typography>
             <LinearProgress variant="determinate" value={progress.pct} />
           </Box>
         )}
-        {upload && <Button color="error" onClick={() => { upload.abort(true); setProgress(null); setUpload(null); }}>Cancel</Button>}
-        {!progress && !showHash && <Button size="small" onClick={() => setShowHash(true)}>Verify against a hash…</Button>}
+        {upload && (
+          <ActionButton color="error" tip="Stop the upload and discard what was sent"
+            confirm={{ title: "Cancel the upload?", danger: true, confirmLabel: "Cancel upload", body: "The part already sent is discarded; uploading the file again starts from the beginning." }}
+            onClick={() => { upload.abort(true); setProgress(null); setUpload(null); }}>Cancel</ActionButton>
+        )}
+        {!progress && !showHash && (
+          <ActionButton size="small" onClick={() => setShowHash(true)} tip="Give the vendor's hash so the upload is checked against it">
+            Verify against a hash…
+          </ActionButton>
+        )}
         <Box sx={{ flexGrow: 1 }} />
         <DownloadButton category={category} />
       </Stack>
@@ -115,7 +128,8 @@ function DownloadButton({ category }: { category: string }) {
   const [form, setForm] = useState({ url: "", filename: "", hash_type: "sha256", expected_hash: "", description: "" });
   return (
     <>
-      <Button variant="outlined" startIcon={<LinkIcon />} onClick={() => setOpen(true)}>Download from URL</Button>
+      <ActionButton variant="outlined" startIcon={<LinkIcon />} onClick={() => setOpen(true)}
+        tip="Have the worker download a file from a URL into this location (opens a form)">Download from URL</ActionButton>
       {open && (
         <JobDialog title="Download a file from a URL" onClose={() => setOpen(false)}
           submit={() => api.post("/api/files/download", { ...form, category })}
@@ -145,7 +159,6 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
   const load = () => api.get<StoredFile[]>(`/api/files?category=${category}`).then(setFiles, (e) => setError(e.message));
   useEffect(() => { load(); }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
   const remove = async (f: StoredFile) => {
-    if (!confirm(`Delete ${f.name}? The file is removed from disk.`)) return;
     try { await api.del(`/api/files/${f.id}`); load(); } catch (e) { setError((e as Error).message); }
   };
   return (
@@ -178,7 +191,13 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
               <TableCell>{f.description}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>{f.uploaded_by ? `${f.uploaded_by}, ${fmtTime(f.uploaded_at)}` : `found ${fmtTime(f.mtime)}`}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
-                {canManage && <Button size="small" color="error" onClick={() => remove(f)}>Delete</Button>}
+                {canManage && (
+                  <ActionButton size="small" color="error" onClick={() => remove(f)} tip="Delete this file from disk"
+                    confirm={{ title: `Delete ${f.name}?`, danger: true, confirmLabel: "Delete",
+                      body: `The file is removed from ${f.path}. Templates already built from it aren't affected. This can't be undone.` }}>
+                    Delete
+                  </ActionButton>
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -208,8 +227,8 @@ function JobDialog({ title, fields, submit, onClose }: {
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={go}>Start job</Button>
+        <Button onClick={onClose} title="Close without starting anything">Cancel</Button>
+        <Button variant="contained" onClick={go} title="Start the job and open its live log">Start job</Button>
       </DialogActions>
     </Dialog>
   );
@@ -233,7 +252,8 @@ function Templates({ canEdit }: { canEdit: boolean }) {
       {canEdit && (
         <Stack direction="row">
           <Box sx={{ flexGrow: 1 }} />
-          <Button variant="contained" onClick={() => setBuilding(true)}>Build a template</Button>
+          <ActionButton variant="contained" onClick={() => setBuilding(true)}
+            tip="Install an OS from its ISO with Packer and save it as a template (opens a form)">Build a template</ActionButton>
         </Stack>
       )}
       <Table size="small">
@@ -257,7 +277,10 @@ function Templates({ canEdit }: { canEdit: boolean }) {
               <TableCell sx={{ whiteSpace: "nowrap" }}>{t.min_cpu} vCPU · {t.min_memory_mb} MB</TableCell>
               <TableCell>{t.description}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
-                {canEdit && <Button size="small" onClick={() => { setRefreshing(t); setNewName(`${t.name}.1`); }}>Refresh</Button>}
+                {canEdit && (
+                  <ActionButton size="small" onClick={() => { setRefreshing(t); setNewName(`${t.name}.1`); }}
+                    tip="Make an updated copy of this template with every OS update applied (opens a form)">Refresh</ActionButton>
+                )}
               </TableCell>
             </TableRow>
           ))}

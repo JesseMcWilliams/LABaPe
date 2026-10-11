@@ -4,6 +4,7 @@ import { Alert, Box, Button, Checkbox, FormControlLabel, MenuItem, Paper, Stack 
 import { api, fmtTime } from "../api";
 import { hasRole, useAuth } from "../App";
 import { DetailHeader, Facts } from "../components/PageParts";
+import { ActionButton } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { OS_KEYS, size, StoredFile } from "./Files";
 
@@ -36,7 +37,7 @@ export default function FileDetail() {
     } catch (e) { setErrs(fromApiError(e)); }
   };
   const remove = async () => {
-    if (!file || !confirm(`Delete ${file.name}? The file is removed from disk.`)) return;
+    if (!file) return;
     try { await api.del(`/api/files/${id}`); navigate(back); } catch (e) { setErrs(fromApiError(e)); }
   };
 
@@ -49,7 +50,13 @@ export default function FileDetail() {
   return (
     <Stack spacing={2}>
       <DetailHeader back={back} backLabel="Files" title={file?.name ?? "File"}
-        actions={canManage && file && <Button color="error" onClick={remove}>Delete</Button>} />
+        actions={canManage && file && (
+          <ActionButton color="error" onClick={remove} tip="Delete this file from disk"
+            confirm={{ title: `Delete ${file.name}?`, danger: true, confirmLabel: "Delete",
+              body: `The file is removed from ${file.path}. Templates already built from it aren't affected. This can't be undone.` }}>
+            Delete
+          </ActionButton>
+        )} />
       {saved && <Alert severity="success" onClose={() => setSaved(false)}>Saved.</Alert>}
       {!canManage && errs.summary && <Alert severity="error">{errs.summary}</Alert>}
       {file && <Facts rows={canManage ? facts : [
@@ -75,8 +82,12 @@ export default function FileDetail() {
             <Field label="Notes" value={form.notes} fullWidth multiline minRows={3} help="Quirks, after-tasks, licensing"
               onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             <Stack direction="row" spacing={2}>
-              <Button variant="contained" onClick={save}>Save</Button>
-              <Button component={RouterLink} to={back}>Back</Button>
+              <ActionButton variant="contained" onClick={save} tip="Save the file's details"
+                confirm={{ title: `Save ${file.name}?`, confirmLabel: "Save",
+                  body: file.category === "isos" ? "The OS it installs and whether it's the default for that OS change for new builds and ISO installs." : "The description and notes are updated." }}>
+                Save
+              </ActionButton>
+              <Button component={RouterLink} to={back} title="Back to the file list without saving">Back</Button>
             </Stack>
           </Stack>
         </Paper>

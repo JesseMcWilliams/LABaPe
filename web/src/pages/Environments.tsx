@@ -22,7 +22,8 @@ export default function Environments() {
       <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h5">Environments</Typography>
         {hasRole(me, "deployer", "template_editor") && (
-          <Button variant="contained" component={RouterLink} to="/environments/new">
+          <Button variant="contained" component={RouterLink} to="/environments/new"
+            title="New environment: opens the form; nothing is created until you confirm there">
             New environment
           </Button>
         )}

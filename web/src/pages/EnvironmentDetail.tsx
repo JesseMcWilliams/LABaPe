@@ -8,6 +8,7 @@ import { api, CredentialSection, Environment, fmtTime, Job } from "../api";
 import Credentials from "../components/Credentials";
 import { hasRole, useAuth } from "../App";
 import { StateChip } from "../components";
+import { ActionButton } from "../components/Confirm";
 
 export default function EnvironmentDetail() {
   const { id } = useParams();
@@ -15,7 +16,6 @@ export default function EnvironmentDetail() {
   const [env, setEnv] = useState<Environment | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [creds, setCreds] = useState<CredentialSection[] | null>(null);
-  const [confirm, setConfirm] = useState(false);
   const [promote, setPromote] = useState<{ vm: string; name: string } | null>(null);
   const { me } = useAuth();
   const canPromote = hasRole(me, "template_editor");
@@ -48,7 +48,6 @@ export default function EnvironmentDetail() {
   }, [load]);
 
   const act = async (action: "deploy" | "destroy" | "refresh-addresses") => {
-    setConfirm(false);
     setError("");
     try {
       const r = await api.post<{ job_id: number }>(`/api/environments/${id}/${action}`);
@@ -81,21 +80,35 @@ export default function EnvironmentDetail() {
       {error && <Alert severity="error">{error}</Alert>}
       {env.is_owner && (
         <Stack direction="row" spacing={2}>
-          <Button variant="contained" disabled={busy} onClick={() => act("deploy")}>
+          <ActionButton variant="contained" disabled={busy} onClick={() => act("deploy")}
+            tip={env.status === "destroyed" || env.status === "new" ? "Create the VMs and configure them" : "Apply the environment again (creates missing VMs, reconfigures existing ones)"}
+            confirm={{
+              title: `${env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"} ${env.name}?`,
+              body: env.status === "destroyed" || env.status === "new"
+                ? `A job creates the ${env.spec.host_groups.reduce((n, g) => n + (g.count ?? 1), 0)} VM(s) on ${env.kvm_host}, then runs Ansible on them. It can take from minutes (templates) to an hour or more (Windows ISO installs).`
+                : "A job runs OpenTofu and Ansible again: missing VMs are created and every VM is reconfigured. Existing VMs aren't reinstalled.",
+              confirmLabel: env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy",
+            }}>
             {env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"}
-          </Button>
-          <Button variant="outlined" color="error" disabled={busy || env.status === "destroyed"}
-            onClick={() => setConfirm(true)}>
+          </ActionButton>
+          <ActionButton variant="outlined" color="error" disabled={busy || env.status === "destroyed"}
+            tip="Delete every VM in this environment"
+            confirm={{ title: `Destroy ${env.name}?`, danger: true, confirmLabel: "Destroy",
+              body: "Every VM in this environment, its disks and its OpenTofu workspace are deleted, and its addresses are released. This can't be undone." }}
+            onClick={() => act("destroy")}>
             Destroy
-          </Button>
-          <Button onClick={showCreds} disabled={env.status !== "deployed"}>
+          </ActionButton>
+          <ActionButton onClick={showCreds} disabled={env.status !== "deployed"}
+            tip="Show the tester accounts and passwords (each view is audited)">
             Show credentials
-          </Button>
+          </ActionButton>
           {env.spec.host_groups.some((g) => g.addressing === "dhcp") && (
-            <Button onClick={() => act("refresh-addresses")} disabled={busy || env.status !== "deployed"}
-              title="Find DHCP VMs' current addresses and regenerate the inventory; no VM is changed">
+            <ActionButton onClick={() => act("refresh-addresses")} disabled={busy || env.status !== "deployed"}
+              tip="Find DHCP VMs' current addresses and regenerate the inventory"
+              confirm={{ title: "Refresh addresses?", confirmLabel: "Refresh",
+                body: "A job looks up each DHCP VM's current address and regenerates the inventory and hosts entries. No VM is changed." }}>
               Refresh addresses
-            </Button>
+            </ActionButton>
           )}
         </Stack>
       )}
@@ -136,7 +149,8 @@ export default function EnvironmentDetail() {
                   <Box key={vm}>
                     {vm} {env.addresses?.[vm] ?? (g.addressing === "dhcp" ? "(DHCP)" : "")}
                     {env.is_owner && env.status === "deployed" && canPromote && !g.roles.includes("domain_controller") && (
-                      <Button size="small" onClick={() => setPromote({ vm, name: `${vm}-template` })}>Promote to template</Button>
+                      <ActionButton size="small" tip="Turn this VM into a reusable template (opens a dialog to confirm)"
+                        onClick={() => setPromote({ vm, name: `${vm}-template` })}>Promote to template</ActionButton>
                     )}
                   </Box>
                 ))}
@@ -178,20 +192,8 @@ export default function EnvironmentDetail() {
             onChange={(e) => setPromote(promote ? { ...promote, name: e.target.value } : null)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPromote(null)}>Cancel</Button>
-          <Button variant="contained" onClick={doPromote}>Promote</Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={confirm} onClose={() => setConfirm(false)}>
-        <DialogTitle>Destroy {env.name}?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Every VM in this environment and its OpenTofu workspace will be deleted. This can't be undone.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirm(false)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => act("destroy")}>Destroy</Button>
+          <Button onClick={() => setPromote(null)} title="Close without promoting">Cancel</Button>
+          <Button variant="contained" onClick={doPromote} title="Start the promote job: generalize, shut down and copy the VM">Promote</Button>
         </DialogActions>
       </Dialog>
     </Stack>

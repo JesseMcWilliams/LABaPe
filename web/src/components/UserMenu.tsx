@@ -5,6 +5,7 @@ import {
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { fmtTime, Me } from "../api";
+import { ActionButton } from "./Confirm";
 
 // The signed-in user's details, with Reload rights: a silent re-sign-in
 // (prompt=none) that re-reads the user's groups, and so roles, from the
@@ -23,7 +24,7 @@ export default function UserMenu({ me, onLogout }: { me: Me; onLogout: () => voi
   return (
     <>
       <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={(e) => setAnchor(e.currentTarget)}
-        aria-haspopup="dialog">
+        aria-haspopup="dialog" title="Your account, roles and sign-in details">
         {me.display_name}
       </Button>
       <Popover open={Boolean(anchor)} anchorEl={anchor} onClose={() => setAnchor(null)}
@@ -47,12 +48,15 @@ export default function UserMenu({ me, onLogout }: { me: Me; onLogout: () => voi
           </Stack>
           <Divider sx={{ my: 1.5 }} />
           <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
-            <Button variant="outlined" startIcon={<RefreshIcon />} disabled={!canReload}
-              href="/api/auth/oidc/login?silent=true"
-              title="Re-read your groups from Authentik, so new or removed permissions apply now">
+            <ActionButton variant="outlined" startIcon={<RefreshIcon />} disabled={!canReload}
+              tip="Re-read your groups from Authentik so permission changes apply now"
+              confirm={{ title: "Reload your rights?", body: "LABaPe asks Authentik for your current groups without signing you out, then recalculates your roles. You'll come back to the dashboard; anything unsaved on this page is lost.", confirmLabel: "Reload rights" }}
+              onClick={() => { window.location.href = "/api/auth/oidc/login?silent=true"; }}>
               Reload rights
-            </Button>
-            <Button color="error" onClick={onLogout}>Sign out</Button>
+            </ActionButton>
+            <ActionButton color="error" tip="End this session"
+              confirm={{ title: "Sign out?", body: "Your session ends here. Jobs you started keep running.", confirmLabel: "Sign out" }}
+              onClick={onLogout}>Sign out</ActionButton>
           </Stack>
           {!canReload && (
             <Typography variant="caption" color="text.secondary">

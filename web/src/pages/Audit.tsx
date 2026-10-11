@@ -33,8 +33,9 @@ export default function Audit() {
         <Field label="Actor" value={actor} onChange={(e) => setActor(e.target.value)} help="Exact user name" />
         <Field label="Action" value={action} onChange={(e) => setAction(e.target.value)}
           help="Starts with, e.g. environment. or auth." />
-        <Button variant="outlined" onClick={load} sx={{ mt: 0.25 }}>Filter</Button>
+        <Button variant="outlined" onClick={load} sx={{ mt: 0.25 }} title="Show only entries matching the actor and action">Filter</Button>
         <Button variant="contained" startIcon={<DownloadIcon />} sx={{ mt: 0.25 }}
+          title="Download the matching entries as a JSON file (the export is itself audited)"
           href={`/api/admin/audit/export?format=json&${query()}`}>
           Export JSON
         </Button>

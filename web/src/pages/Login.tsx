@@ -26,7 +26,8 @@ export default function Login() {
         {providers
           ?.filter((p) => p.kind === "redirect")
           .map((p) => (
-            <Button key={p.name} variant="contained" size="large" href={`/api/auth/${p.name}/login`}>
+            <Button key={p.name} variant="contained" size="large" href={`/api/auth/${p.name}/login`}
+              title={`Sign in through ${p.display_name}`}>
               Sign in with {p.display_name}
             </Button>
           ))}

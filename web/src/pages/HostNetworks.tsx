@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  Alert, Button, IconButton, MenuItem, Paper, Radio, Stack, Table, TableBody, TableCell, TableHead, TableRow,
-  TextField, Typography,
+  Alert, MenuItem, Paper, Radio, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { api, HostNetwork, KvmHost, Network } from "../api";
+import { ActionButton, ActionIconButton } from "../components/Confirm";
 
 // Which catalog networks a KVM host carries, on which bridge (design §20.2).
 export default function HostNetworks({ host, onClose }: { host: KvmHost; onClose?: () => void }) {
@@ -64,9 +64,10 @@ export default function HostNetworks({ host, onClose }: { host: KvmHost; onClose
                     onChange={(e) => set(i, { static_pool: e.target.value.split(/[\s,]+/).filter(Boolean) })} />
                 </TableCell>
                 <TableCell>
-                  <IconButton aria-label="Detach" onClick={() => { setSaved(false); setRows(rows.filter((_, j) => j !== i)); }}>
+                  <ActionIconButton tip="Detach this network (takes effect when you save)"
+                    onClick={() => { setSaved(false); setRows(rows.filter((_, j) => j !== i)); }}>
                     <DeleteIcon />
-                  </IconButton>
+                  </ActionIconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -81,8 +82,12 @@ export default function HostNetworks({ host, onClose }: { host: KvmHost; onClose
             }}>
             {unused.map((n) => <MenuItem key={n.id} value={n.name}>{n.name} ({n.cidr})</MenuItem>)}
           </TextField>
-          <Button variant="contained" onClick={save}>Save</Button>
-          {onClose && <Button onClick={onClose}>Close</Button>}
+          <ActionButton variant="contained" onClick={save} tip="Save this host's network attachments"
+            confirm={{ title: `Save the networks on ${host.name}?`, confirmLabel: "Save",
+              body: "New deployments on this host use these networks, bridges and static slices. A network still used by an environment on this host can't be detached." }}>
+            Save
+          </ActionButton>
+          {onClose && <ActionButton tip="Close without saving" onClick={onClose}>Close</ActionButton>}
         </Stack>
       </Stack>
     </Paper>

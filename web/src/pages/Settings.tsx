@@ -6,6 +6,7 @@ import {
 import { api, fmtTime } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { useAuth } from "../App";
+import { ActionButton } from "../components/Confirm";
 
 interface Backup { enabled: boolean; time_of_day: string; retention_days: number; directory: string }
 interface Retention { job_logs_days: number; audit_days: number; errors_days: number }
@@ -58,7 +59,10 @@ function Section({ title, intro, onSave, children, extra }: {
         {ok && <Alert severity="success" onClose={() => setOk("")}>{ok}</Alert>}
         {children}
         <Stack direction="row" spacing={1}>
-          <Button variant="contained" onClick={save}>Save</Button>
+          <ActionButton variant="contained" onClick={save} tip={`Save the ${title} settings`}
+            confirm={{ title: `Save ${title}?`, confirmLabel: "Save", body: `${intro} The new settings apply at once.` }}>
+            Save
+          </ActionButton>
           {extra}
         </Stack>
       </Stack>
@@ -67,12 +71,16 @@ function Section({ title, intro, onSave, children, extra }: {
 }
 
 /** A button that runs a test action and shows its result beside the section. */
-function TestButton({ label, run }: { label: string; run: () => Promise<string> }) {
+function TestButton({ label, run, tip, confirmBody }: {
+  label: string; run: () => Promise<string>; tip: string; confirmBody?: string;
+}) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   return (
     <>
-      <Button variant="outlined" onClick={() => run().then((t) => setMsg({ ok: true, text: t }),
-        (e) => setMsg({ ok: false, text: fromApiError(e).summary }))}>{label}</Button>
+      <ActionButton variant="outlined" tip={tip}
+        confirm={confirmBody ? { title: `${label}?`, confirmLabel: label, body: confirmBody } : undefined}
+        onClick={() => run().then((t) => setMsg({ ok: true, text: t }),
+          (e) => setMsg({ ok: false, text: fromApiError(e).summary }))}>{label}</ActionButton>
       {msg && <Alert severity={msg.ok ? "success" : "error"} sx={{ py: 0 }} onClose={() => setMsg(null)}>{msg.text}</Alert>}
     </>
   );
@@ -141,8 +149,10 @@ export default function Settings() {
 
       <Section title="Backups" intro="A daily pg_dump of the LABaPe database (custom format; restore with pg_restore). Times are UTC."
         onSave={async () => { await put("backup", s.backup); return "Backup settings saved."; }}
-        extra={<Button variant="outlined" onClick={() => api.post("/api/admin/backups").then(loadBackups,
-          (e) => setError(fromApiError(e).summary))}>Back up now</Button>}>
+        extra={<ActionButton variant="outlined" tip="Dump the database now, as a job"
+          confirm={{ title: "Back up now?", confirmLabel: "Back up",
+            body: `A job dumps the LABaPe database to ${s.backup.directory}. Dumps older than ${s.backup.retention_days} days are removed afterwards.` }}
+          onClick={() => api.post("/api/admin/backups").then(loadBackups, (e) => setError(fromApiError(e).summary))}>Back up now</ActionButton>}>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Daily backup" control={<Checkbox checked={s.backup.enabled}
             onChange={(e) => set("backup", { enabled: e.target.checked })} />} />
@@ -174,7 +184,7 @@ export default function Settings() {
           <Typography variant="caption" color="text.secondary">
             Last backup job: <a href={`/jobs/${backups.last_job.id}`}>#{backups.last_job.id}</a> {backups.last_job.state}
             {backups.last_job.finished_at ? ` at ${fmtTime(backups.last_job.finished_at)}` : ""}.{" "}
-            <Button size="small" onClick={loadBackups}>Refresh</Button>
+            <Button size="small" onClick={loadBackups} title="Reload the backup list">Refresh</Button>
           </Typography>
         )}
       </Section>
@@ -193,7 +203,8 @@ export default function Settings() {
 
       <Section title="Syslog" intro="Send every audit event to a syslog server (RFC 5424, JSON message body)."
         onSave={async () => { await put("syslog", s.syslog); return "Syslog settings saved."; }}
-        extra={<TestButton label="Send test message" run={() =>
+        extra={<TestButton label="Send test message" tip="Send one test event to the syslog server"
+          confirmBody={`One test event goes to ${s.syslog.host || "the saved server"}:${s.syslog.port} over ${s.syslog.protocol.toUpperCase()}, using the saved settings (save first if you changed them).`} run={() =>
           api.post<{ message: string }>("/api/admin/settings/syslog/test").then((r) => r.message)} />}>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Enabled" control={<Checkbox checked={s.syslog.enabled}
@@ -227,7 +238,8 @@ export default function Settings() {
         }}
         extra={<>
           <Field label="Test recipient" value={testTo} sx={{ minWidth: 220 }} onChange={(e) => setTestTo(e.target.value)} />
-          <TestButton label="Send test email" run={() =>
+          <TestButton label="Send test email" tip="Send a test email to the recipient beside it"
+            confirmBody={`A test email goes to ${testTo || "(no recipient yet)"} through ${s.smtp.host || "the saved server"}, using the saved settings (save first if you changed them).`} run={() =>
             api.post<{ message: string }>("/api/admin/settings/smtp/test", { to: testTo }).then((r) => r.message)} />
         </>}>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
@@ -263,7 +275,7 @@ export default function Settings() {
           setDirToken("");
           return "Directory settings saved.";
         }}
-        extra={<TestButton label="Test search" run={() =>
+        extra={<TestButton label="Test search" tip="Ask Authentik for its groups with the saved token (changes nothing)" run={() =>
           api.post<{ message: string }>("/api/admin/settings/directory/test").then((r) => r.message)} />}>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Search Authentik" control={<Checkbox checked={s.directory.enabled}

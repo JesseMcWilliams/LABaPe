@@ -4,6 +4,7 @@ import { Alert, Box, Button, Chip, MenuItem, Paper, Stack } from "@mui/material"
 import { api, fmtTime, KvmHost, Template } from "../api";
 import { hasRole, useAuth } from "../App";
 import { DetailHeader, Facts } from "../components/PageParts";
+import { ActionButton } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { OS_KEYS } from "./Files";
 
@@ -77,8 +78,12 @@ export default function TemplateDetail() {
             <Field label="Notes" value={form.notes} fullWidth multiline minRows={4} help="Quirks and after-tasks for anyone using this template"
               onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             <Stack direction="row" spacing={2}>
-              <Button variant="contained" onClick={save}>Save</Button>
-              <Button component={RouterLink} to="/files?tab=templates">Back</Button>
+              <ActionButton variant="contained" onClick={save} tip="Save the template's details"
+                confirm={{ title: `Save ${t.name}?`, confirmLabel: "Save",
+                  body: "The OS, edition and minimums change what the deploy form offers and warns about; they're also written to the template's metadata file on its KVM host." }}>
+                Save
+              </ActionButton>
+              <Button component={RouterLink} to="/files?tab=templates" title="Back to the template library without saving">Back</Button>
             </Stack>
           </Stack>
         </Paper>

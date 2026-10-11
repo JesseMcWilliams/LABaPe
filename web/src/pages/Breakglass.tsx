@@ -34,7 +34,7 @@ export default function Breakglass() {
         {error && <Alert severity="error">{error}</Alert>}
         <TextField label="Credential" value={token} onChange={(e) => setToken(e.target.value)} autoFocus
           autoComplete="off" />
-        <Button type="submit" variant="contained" disabled={!token.trim()}>
+        <Button type="submit" variant="contained" disabled={!token.trim()} title="Sign in with the one-time break-glass token (audited)">
           Sign in
         </Button>
       </Stack>

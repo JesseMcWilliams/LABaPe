@@ -147,3 +147,12 @@ Design: `Claude_Docs/Planning_Web-Interface-Design.md` §22.
 71. ~~Downloads from a URL: allow any http(s) address, with a proxy setting in Settings and link-local and metadata addresses (169.254.0.0/16) refused? May admins and file managers both start downloads?~~ **Answered (2026-10-11):** HTTPS only, with a global setting to allow HTTP. Admins and file managers can both start downloads.
 72. ~~Hash verification: SHA-256 (default), SHA-1, SHA-512 and MD5. The hash is typed or pasted as a `SHA256SUMS` line, for both uploads and URL downloads, and a mismatch deletes the file. Is a checksum-file URL (fetch `SHA256SUMS` from the vendor) also wanted now?~~ **Answered (2026-10-11):** LABaPe's own hashes are always SHA-256. Some vendors don't publish a SHA-256, so verification of downloads (and uploads) also accepts SHA-1, SHA-512 and MD5.
 73. ~~Order: G dashboard (with per-VM stats and the version check), H list pages and branding, I URL downloads and hashes, J installer profiles and remote KVM hosts, K platform CA?~~ **Answered (2026-10-11):** Yes, the suggested order.
+
+## Update flow (added 2026-10-11)
+
+Design: `Claude_Docs/Planning_Web-Interface-Design.md` §23.2.
+
+76. "Branch" in the update box: GitHub **pre-releases** (a preview channel; tags such as `v0.4.0-rc.1`, each with release notes), or **git branches** (such as `main`), which have no release notes, only a commit list? *Recommended: pre-releases.*
+77. What **Continue** does: really update the running stack, through a host-side update agent the installer sets up (database backup, check out the tag, rebuild, restart, health check, automatic return to the previous version on failure), or only show the commands to run? *Recommended: the agent, with the commands shown when no agent is installed.*
+78. Downgrade: list the earlier releases as well, behind a warning, and always take a database backup first. The way back is restoring that backup with the newer version. Allow it whenever, or only to releases with the same database layout? *Recommended: allow it, with the warning and the backup; LABaPe has no schema migrations yet, so layouts only ever add tables.*
+79. Releases: cut **v0.3.0** now (round 3 plus the tooltips and confirmations), so the update flow has a real release to update to and downgrade from? *Recommended: yes.*

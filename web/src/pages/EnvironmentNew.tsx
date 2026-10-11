@@ -1,14 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Alert, Autocomplete, Box, Button, Checkbox, Chip, FormControlLabel, IconButton, ListItemText, MenuItem, Paper, Stack,
-  TextField, Tooltip, Typography,
+  Alert, Autocomplete, Box, Checkbox, Chip, FormControlLabel, ListItemText, MenuItem, Paper, Stack, TextField, Tooltip, Typography,
 } from "@mui/material";
 import type { CatalogItem } from "./Catalog";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { api, FieldProblem, HostGroup, HostResources, KvmHost, Network, Template } from "../api";
 import HostLoad from "../components/HostLoad";
+import { ActionButton, ActionIconButton, useConfirm } from "../components/Confirm";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
 
 // Phase 10a's tfvars-level form; environment templates replace it in 10c.
@@ -135,6 +135,7 @@ export default function EnvironmentNew() {
     return check(entries);
   };
 
+  const confirm = useConfirm();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSummary("");
@@ -144,6 +145,11 @@ export default function EnvironmentNew() {
       reportBlocked("/environments/new", problems);
       return;
     }
+    const vms = groups.reduce((n, g) => n + (g.count ?? 1), 0);
+    if (!(await confirm({
+      title: `Create and deploy ${name}?`, confirmLabel: "Create and deploy",
+      body: `The environment is saved and a deploy job starts at once on ${hostName}: ${vms} VM(s) in ${groups.length} host group(s), using ${groups.reduce((n, g) => n + (g.count ?? 1) * g.memory_mb, 0) / 1024} GB of RAM. You can follow it live, and cancel it from the job's page.`,
+    }))) return;
     setBusy(true);
     try {
       const host_groups = groups.map((g) => ({
@@ -209,10 +215,12 @@ export default function EnvironmentNew() {
                   onChange={(e) => setGroup(i, { roles: e.target.value as unknown as string[] })}>
                   {ROLES.map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
                 </Field>
-                <IconButton aria-label="Remove group" disabled={groups.length === 1} sx={{ mt: 0.5 }}
+                <ActionIconButton tip="Remove this host group from the form" disabled={groups.length === 1} sx={{ mt: 0.5 }}
+                  confirm={{ title: `Remove host group ${g.name || i + 1}?`, confirmLabel: "Remove",
+                    body: "Its settings in this form are discarded. Nothing has been created yet." }}
                   onClick={() => setGroups(groups.filter((_, j) => j !== i))}>
                   <DeleteIcon />
-                </IconButton>
+                </ActionIconButton>
               </Stack>
               <Stack direction="row" spacing={2} useFlexGap sx={row}>
                 <Field select label="Image source" value={g.image_source} sx={{ minWidth: 200 }}
@@ -303,10 +311,13 @@ export default function EnvironmentNew() {
         );
       })}
       <Stack direction="row" spacing={2}>
-        <Button onClick={() => setGroups([...groups, blankGroup()])}>Add host group</Button>
-        <Button type="submit" variant="contained" disabled={busy || !hostId || networks.length === 0 || blocked}>
+        <ActionButton tip="Add another group of identical VMs to this form" onClick={() => setGroups([...groups, blankGroup()])}>
+          Add host group
+        </ActionButton>
+        <ActionButton type="submit" variant="contained" disabled={busy || !hostId || networks.length === 0 || blocked}
+          tip="Save the environment and start deploying it (asks to confirm)">
           Create and deploy
-        </Button>
+        </ActionButton>
       </Stack>
     </Stack>
   );
