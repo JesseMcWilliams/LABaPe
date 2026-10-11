@@ -117,6 +117,10 @@ Nothing secret is ever written to the answers file.
 
 Remote hosts work the way design §22.4 describes: jobs for a `qemu+ssh` host run on that host over SSH.
 
+## Updates
+
+`Stack.UpdateAgent` sets up the host-side update agent for the service user (lingering, a user systemd path unit). The web interface's Check now then offers signed releases and a one-step rollback (design §23.2). Release signers are listed in `deploy/allowed_signers`, copied to `~/.config/labape/allowed_signers`. Until a key is listed there, every update is refused. To go back more than one version: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
+
 ## Not done by the installer
 
 - **No NIC carrying the default route is bridged.** Moving management onto a bridge is done by hand, because a mistake there cuts off the host.

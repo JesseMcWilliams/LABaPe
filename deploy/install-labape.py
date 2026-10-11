@@ -91,6 +91,8 @@ STEPS = [
      "Sign-in: existing OIDC provider, throwaway Authentik, or none"),
     ("Stack.Build", S.stack_build, ["InstallWebUi", "ContainerRuntime"], web, "Build the LABaPe image"),
     ("Stack.Up", S.stack_up, ["InstallWebUi", "ContainerRuntime", "WebHostname"], web, "Start the stack"),
+    ("Stack.UpdateAgent", S.update_agent, ["InstallWebUi", "ServiceUser"], web,
+     "Host-side update agent (user systemd unit, lingering) for updates from the web interface"),
     ("Stack.Bootstrap", S.stack_bootstrap,
      ["InstallWebUi", "KvmHostName", "Networks", "DefaultNetwork", "VmStoragePath", "TemplateStoragePath",
       "AdminGroups", "ContainerRuntime", "IsoPath"], web, "Register this KVM host and its networks in the web interface"),

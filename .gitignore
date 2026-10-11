@@ -68,3 +68,6 @@ deploy/state/
 deploy/logs/
 deploy/answers.*.json
 !deploy/answers.sample.json
+
+# The update agent's shared folder (requests, status, log; design §23.2)
+container/update/

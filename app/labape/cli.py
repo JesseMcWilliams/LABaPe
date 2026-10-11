@@ -130,6 +130,79 @@ def cmd_bootstrap(args) -> int:
     return 0
 
 
+def cmd_maintenance(args) -> int:
+    """Maintenance mode for the update agent: on, off, status (JSON)."""
+    import json as _json
+    from . import maintenance_mode
+    from .api.maintenance import status
+    from .db import init_db, session_factory
+    from .security import audit
+    init_db()
+    with session_factory()() as db:
+        if args.action == "on":
+            maintenance_mode.turn_on(db, args.actor, args.reason or "maintenance", args.source)
+            audit(db, args.actor, "maintenance.on", detail={"reason": args.reason, "source": args.source})
+        elif args.action == "off":
+            maintenance_mode.turn_off(db)
+            audit(db, args.actor, "maintenance.off", detail={"source": args.source})
+        print(_json.dumps(status(db), default=str))
+    return 0
+
+
+def cmd_backup(args) -> int:
+    """A database dump now (the update agent's pre-update backup); prints its path."""
+    import sys
+    from .db import session_factory
+    from .engine.maintenance import dump_database
+    with session_factory()() as db:
+        rc, path = dump_database(db, sys.stderr, args.label)
+    if rc == 0:
+        print(path)
+    return rc
+
+
+def cmd_restore(args) -> int:
+    """Restore a dump over the database (the API and worker must be stopped)."""
+    import sys
+    from pathlib import Path as _P
+    from .engine.maintenance import restore_database
+    if not args.yes:
+        print("labape: restore replaces the whole database; pass --yes", file=sys.stderr)
+        return 2
+    return restore_database(_P(args.file), sys.stderr)
+
+
+def cmd_health(args) -> int:
+    """Exit 0 when the stack is healthy: database and layout, worker heartbeat, CA (design §23.2)."""
+    import datetime as _dt
+    import json as _json
+    from . import ca
+    from .db import engine, session_factory
+    from .migrate import current, head
+    from .models import Setting
+    checks: dict = {}
+    try:
+        with engine().connect() as conn:
+            rev = current(conn)
+        checks["database"] = {"ok": rev == head(), "revision": rev, "expected": head()}
+    except Exception as exc:  # noqa: BLE001
+        checks["database"] = {"ok": False, "error": str(exc)[:300]}
+    if args.deep:
+        try:
+            with session_factory()() as db:
+                row = db.get(Setting, "status.worker")
+            at = _dt.datetime.fromisoformat(row.value["at"]) if row else None
+            age = (_dt.datetime.now(_dt.timezone.utc) - at).total_seconds() if at else None
+            checks["worker"] = {"ok": age is not None and age < 180, "seconds_since_heartbeat": age}
+        except Exception as exc:  # noqa: BLE001
+            checks["worker"] = {"ok": False, "error": str(exc)[:300]}
+        ok, msg = ca.health()
+        checks["ca"] = {"ok": ok is not False, "message": msg}
+    healthy = all(c["ok"] for c in checks.values())
+    print(_json.dumps({"healthy": healthy, "checks": checks}, default=str))
+    return 0 if healthy else 1
+
+
 def cmd_db_status(_args) -> int:
     """The database's migration revision and this code's newest one."""
     from .db import engine
@@ -173,6 +246,26 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("bootstrap", help="create/update hosts, networks and role bindings from a JSON file")
     p.add_argument("file")
     p.set_defaults(func=cmd_bootstrap)
+
+    p = sub.add_parser("maintenance", help="maintenance mode: on, off, status (used by the update agent)")
+    p.add_argument("action", choices=["on", "off", "status"])
+    p.add_argument("--reason", default="")
+    p.add_argument("--source", default="admin")
+    p.add_argument("--actor", default="update-agent")
+    p.set_defaults(func=cmd_maintenance)
+
+    p = sub.add_parser("backup", help="dump the database now and print the file's path")
+    p.add_argument("--label", default="")
+    p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("restore", help="restore a dump over the database (stop the API and worker first)")
+    p.add_argument("file")
+    p.add_argument("--yes", action="store_true")
+    p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("health", help="exit 0 when healthy (--deep: worker heartbeat and CA too)")
+    p.add_argument("--deep", action="store_true")
+    p.set_defaults(func=cmd_health)
 
     sub.add_parser("worker-key", help="print the SSH public key to authorize on remote KVM hosts"
                    ).set_defaults(func=cmd_worker_key)

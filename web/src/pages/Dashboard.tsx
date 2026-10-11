@@ -11,6 +11,7 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { api, fmtTime } from "../api";
 import Sparkline from "../components/Sparkline";
+import UpdateDialog from "../components/UpdateDialog";
 import { hasRole, useAuth } from "../App";
 
 type Series = Record<string, (number | null)[]> & { t: string[] };
@@ -227,6 +228,7 @@ export default function Dashboard() {
   const [health, setHealth] = useState<AdminHealth | null>(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   const load = () => {
     api.get<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean }>("/api/dashboard").then((d) => {
@@ -247,6 +249,7 @@ export default function Dashboard() {
       setHealth((h) => (h ? { ...h, version: v } : h));
     } finally {
       setChecking(false);
+      setUpdateOpen(true);       // the choices: release, pre-release, roll back (design §23.2)
     }
   };
 
@@ -261,9 +264,10 @@ export default function Dashboard() {
         <Typography variant="caption" color="text.secondary">Refreshes every minute</Typography>
       </Stack>
 
+      <UpdateDialog open={updateOpen} onClose={() => setUpdateOpen(false)} />
       {v && (
         <Alert severity={v.update_available ? "info" : "success"} icon={false}
-          action={<Button size="small" disabled={checking} onClick={checkNow} title="Ask GitHub for the latest LABaPe release now">Check now</Button>}>
+          action={<Button size="small" disabled={checking} onClick={checkNow} title="Check GitHub for newer releases and pre-releases, and see the update and rollback choices">Check now</Button>}>
           LABaPe <b>{v.current}</b>
           {v.update_available ? (
             <> · <Link href={v.url} target="_blank" rel="noreferrer">{v.latest}</Link> is available</>
