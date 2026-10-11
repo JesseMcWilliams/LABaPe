@@ -1,0 +1,20 @@
+# LABaPe: PostgreSQL (app data and OpenTofu state). See container/README.md "Podman and Quadlets".
+[Unit]
+Description=LABaPe PostgreSQL
+
+[Container]
+ContainerName=postgres
+Image=docker.io/library/postgres:17-alpine
+Network=labape.network
+Volume=labape-postgres-data.volume:/var/lib/postgresql/data
+Environment=POSTGRES_USER=labape POSTGRES_DB=labape POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+Secret=labape-postgres-password,target=/run/secrets/postgres_password
+HealthCmd=pg_isready -U labape -d labape
+HealthInterval=5s
+Notify=healthy
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

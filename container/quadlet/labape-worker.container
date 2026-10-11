@@ -1,0 +1,35 @@
+# LABaPe: job worker. See container/README.md "Podman and Quadlets".
+[Unit]
+Description=LABaPe worker
+Requires=labape-postgres.service
+After=labape-postgres.service
+
+[Container]
+ContainerName=labape-worker
+Image=localhost/labape:local
+Network=labape.network
+RunInit=true
+Exec=labape worker
+EnvironmentFile=/etc/labape/container.env
+Environment=LABAPE_DATABASE_URL_FILE=/run/secrets/database_url LABAPE_TOFU_PG_CONN_FILE=/run/secrets/tofu_pg_conn
+Environment=LABAPE_SECRET_KEY_FILE=/run/secrets/secret_key LABAPE_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret
+Secret=labape-database-url,target=/run/secrets/database_url
+Secret=labape-tofu-pg-conn,target=/run/secrets/tofu_pg_conn
+Secret=labape-secret-key,target=/run/secrets/secret_key
+Secret=labape-oidc-client-secret,target=/run/secrets/oidc_client_secret
+Volume=labape-data.volume:/var/lib/labape
+Volume=/etc/labape/config:/etc/labape:ro,z
+Volume=/etc/labape/engine-secrets:/run/labape-secrets:ro,z
+# The local KVM host: libvirt socket, storage at the same path, /dev/kvm.
+# Rootless: the user must be in the libvirt and kvm groups (GroupAdd keeps them).
+Volume=/var/run/libvirt:/var/run/libvirt
+Volume=/data:/data
+AddDevice=/dev/kvm
+AddCapability=NET_RAW
+GroupAdd=keep-groups
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

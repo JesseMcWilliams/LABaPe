@@ -12,6 +12,8 @@ directory-manifest.yml
 *.tfvars
 !*.tfvars.example
 *.auto.tfvars.json
+# Written by the web UI job runner into its engine copies
+*_override.tf
 
 # Generated at deploy time (ansible/inventory/*, but written with a
 # leading **/ since a plain "inventory/generated" pattern would only
@@ -50,3 +52,13 @@ TestResults.xml
 .vscode/
 Thumbs.db
 desktop.ini
+
+# Container stack: generated settings and secrets (container/setup.sh)
+container/.env
+container/secrets/
+container/config/
+container/engine-secrets/
+web/node_modules/
+web/dist/
+tools/**/.env
+*.egg-info/

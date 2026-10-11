@@ -10,10 +10,13 @@
 #                      rendered answer files, and skips the confirmation.
 #   --env-file <path>  The environment.yml it was deployed with, if not
 #                      tofu/environment.yml.
+#   --yes              Don't ask for confirmation (unattended runs, e.g.
+#                      the web UI's job runner).
+#   --delete-workspace After destroying, delete the tofu workspace too.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: destroy.sh <backend> <environment-instance-name> <profile> [--test] [--env-file <path>]"
+USAGE="usage: destroy.sh <backend> <environment-instance-name> <profile> [--test] [--env-file <path>] [--yes] [--delete-workspace]"
 
 BACKEND="${1:?$USAGE}"
 ENV_INSTANCE="${2:?$USAGE}"
@@ -21,10 +24,14 @@ PROFILE="${3:?$USAGE}"
 shift 3
 
 TEST_MODE=false
+AUTO_APPROVE=false
+DELETE_WORKSPACE=false
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 while [ $# -gt 0 ]; do
   case "$1" in
     --test) TEST_MODE=true ;;
+    --yes) AUTO_APPROVE=true ;;
+    --delete-workspace) DELETE_WORKSPACE=true ;;
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
   esac
@@ -51,7 +58,9 @@ PROFILE_FILE="$ROOT_DIR/tofu/environments/${PROFILE}.tfvars"
 export TF_VAR_libvirt_uri
 TF_VAR_libvirt_uri="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" libvirt_uri)"
 
-SSH_PRIVATE_KEY_PATH="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" ansible_ssh_private_key_path)"
+# LABAPE_SSH_PRIVATE_KEY_PATH overrides the vault's path (the web UI's job runner
+# keeps its own copy of the key; the vault's path belongs to the CLI host).
+SSH_PRIVATE_KEY_PATH="${LABAPE_SSH_PRIVATE_KEY_PATH:-$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" ansible_ssh_private_key_path)}"
 SSH_PRIVATE_KEY_PATH="${SSH_PRIVATE_KEY_PATH/#\~/$HOME}"
 export TF_VAR_ssh_public_key
 TF_VAR_ssh_public_key="$(cat "${SSH_PRIVATE_KEY_PATH}.pub")"
@@ -63,6 +72,15 @@ TF_VAR_windows_admin_password="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$
 python3 "$ROOT_DIR/scripts/lib/render_environment_tfvars.py" "$ENV_FILE" "$BACKEND_DIR"
 
 cd "$BACKEND_DIR"
+# A fresh checkout (or the web UI's engine directory with its state in
+# PostgreSQL) hasn't been initialized yet; same retry as deploy.sh.
+if [ ! -d .terraform ]; then
+  for attempt in 1 2 3; do
+    tofu init -input=false && break
+    [ "$attempt" -eq 3 ] && { echo "labape: tofu init failed 3 times; giving up." >&2; exit 1; }
+    sleep $((attempt * 20))
+  done
+fi
 tofu workspace select "$ENV_INSTANCE"
 
 if $TEST_MODE; then
@@ -74,7 +92,18 @@ if $TEST_MODE; then
   exit 0
 fi
 
-tofu destroy -input=false -var-file="$PROFILE_FILE"
+if $AUTO_APPROVE; then
+  tofu destroy -input=false -auto-approve -var-file="$PROFILE_FILE"
+else
+  tofu destroy -input=false -var-file="$PROFILE_FILE"
+fi
+
+if $DELETE_WORKSPACE; then
+  tofu workspace select default
+  tofu workspace delete "$ENV_INSTANCE"
+  echo "labape: '$ENV_INSTANCE' destroyed and its workspace deleted." >&2
+  exit 0
+fi
 
 echo "labape: '$ENV_INSTANCE' destroyed. Its workspace/state is still around — remove with" >&2
 echo "  tofu workspace select default && tofu workspace delete $ENV_INSTANCE" >&2

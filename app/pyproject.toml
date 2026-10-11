@@ -1,0 +1,33 @@
+[project]
+name = "labape"
+version = "0.1.0"
+description = "LABaPe web application: UI, REST API and job runner for lab environments"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.2",
+  "authlib>=1.3",
+  "httpx>=0.27",
+  "itsdangerous>=2.2",
+  "pydantic-settings>=2.4",
+  "cryptography>=43",
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+labape = "labape.cli:main"
+
+# Authentication providers are plugins (Claude_Docs/Planning_Web-Interface-Design.md
+# §12): a provider is a class registered under this entry-point group.
+[project.entry-points."labape.auth_providers"]
+oidc = "labape.auth.oidc:OidcProvider"
+breakglass = "labape.auth.breakglass:BreakglassProvider"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["labape*"]

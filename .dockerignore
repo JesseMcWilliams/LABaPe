@@ -1,0 +1,37 @@
+# Build context is the repo root (container/Dockerfile). Keep secrets,
+# state and generated files out of the image.
+.git
+**/.terraform
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+!**/*.tfvars.example
+**/*.auto.tfvars.json
+**/*_override.tf
+**/.rendered
+**/inventory/generated
+**/inventory/hosts.generated
+**/inventory/credentials.generated
+**/inventory/*/
+**/tfplan.*
+**/hosts.json
+secrets.vault.yml
+**/environment.yml
+**/software-manifest.yml
+**/directory-manifest.yml
+*.vault-pass
+.vault-pass
+*.local.md
+*.log
+Temp
+software-store
+packer/**/output*
+**/__pycache__
+**/*.pyc
+web/node_modules
+web/dist
+app/tests
+container/secrets
+container/.env
+tools/**/.env

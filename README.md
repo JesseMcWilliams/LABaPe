@@ -22,6 +22,13 @@ for the detailed, blow-by-blow history behind every bug found along the way.
 - **M5 (directory objects half)** — done, end-to-end: OUs, domain/local groups and users, both membership directions.
 - **M5 (workstation host types half)** — Windows 11/10, Ubuntu 24.04/26.04 and Debian 13 workstations install fully unattended and domain-join (`windows_workstation` and `linux_workstation`).
 - **M6 (base images)** — done: templates on libvirt, built with Packer (`scripts/build-template.sh`) or promoted from an ISO-built VM (`scripts/promote-to-template.sh`), cloned with `image_source = "packer_template"`, refreshed with `scripts/refresh-template.sh`. Verified for Rocky 9, Ubuntu 24.04/26.04, Debian 13, Windows Server 2019/2022/2025, Windows 10 and 11. ISO installs stay fully supported.
+- **M10 (web interface), phase 10a**: a container stack ([`container/`](container/README.md)) with:
+  - Authentik (OIDC) sign-in, roles from Authentik groups, and break-glass emergency access;
+  - KVM host registration;
+  - environment deploy and destroy from the browser, with live job logs, cancel and retry;
+  - an audit log, and OpenTofu state in PostgreSQL.
+
+  Verified under Docker on a local KVM host. Later phases are in `Claude_Docs/Planning_Web-Interface-Design.md` §17.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
 

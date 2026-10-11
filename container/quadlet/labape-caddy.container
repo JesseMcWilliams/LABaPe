@@ -1,0 +1,25 @@
+# LABaPe: Caddy TLS front end. See container/README.md "Podman and Quadlets".
+# Rootless Podman can't bind ports below 1024 unless
+# net.ipv4.ip_unprivileged_port_start allows it; use 8443/8080 otherwise.
+[Unit]
+Description=LABaPe Caddy
+Requires=labape-api.service
+After=labape-api.service
+
+[Container]
+ContainerName=caddy
+Image=docker.io/library/caddy:2
+Network=labape.network
+EnvironmentFile=/etc/labape/container.env
+PublishPort=443:443
+PublishPort=80:80
+PublishPort=127.0.0.1:8443:8443
+Volume=/etc/labape/Caddyfile:/etc/caddy/Caddyfile:ro,z
+Volume=labape-caddy-data.volume:/data
+Volume=labape-caddy-config.volume:/config
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,36 @@
+# TLS in front of the LABaPe API (Claude_Docs/Planning_Web-Interface-Design.md §14).
+#
+# LABAPE_TLS=internal (default): Caddy's own CA issues the certificate
+#   (self-signed; trust /data/caddy/pki/authorities/local/root.crt from
+#   the caddy-data volume on the browsers that use LABaPe).
+# LABAPE_TLS=<email>: ACME, against Let's Encrypt or, with the acme_ca
+#   global option, an internal ACME server.
+
+{
+	# Clients connecting by IP address send no SNI; without this Caddy
+	# can't pick a certificate and fails the handshake.
+	default_sni {$LABAPE_HOSTNAME}
+}
+
+{$LABAPE_HOSTNAME} {
+	tls {$LABAPE_TLS:internal}
+	encode gzip
+	reverse_proxy labape-api:8000 {
+		# The break-glass "host-only" marker is set only by the loopback
+		# listener below; never accept it from a client.
+		header_up -X-LABaPe-Local
+		# Live job logs are Server-Sent Events: don't buffer.
+		flush_interval -1
+	}
+}
+
+# Host-only listener for `labape breakglass enable --local-only`. Compose
+# publishes it on 127.0.0.1:8443 only, so it's reachable from the host
+# itself or through an SSH tunnel to it.
+https://localhost:8443 {
+	tls internal
+	reverse_proxy labape-api:8000 {
+		header_up X-LABaPe-Local 1
+		flush_interval -1
+	}
+}
