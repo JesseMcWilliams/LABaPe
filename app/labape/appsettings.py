@@ -1,6 +1,7 @@
-"""Application settings an admin manages in the UI (design §21.5): backups,
-history retention, syslog output and SMTP. Each section is one row in
-`settings`; the SMTP password lives in the encrypted secrets store.
+"""Application settings an admin manages in the UI (design §21.5, §21.6):
+backups, history retention, syslog output, SMTP and the directory (group
+search). Each section is one row in `settings`; the SMTP password and the
+directory API token live in the encrypted secrets store.
 """
 from __future__ import annotations
 
@@ -55,13 +56,27 @@ class SmtpSettings(BaseModel):
     notify_jobs: bool = False          # email the requester when their job finishes
 
 
+class DirectorySettings(BaseModel):
+    """Authentik API for the group search; blank URL = the OIDC issuer's origin."""
+    enabled: bool = False
+    api_url: str = Field(default="", pattern=r"^(https?://[^\s/]+/?)?$")
+    verify_tls: bool = True
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "retention": RetentionSettings,
     "syslog": SyslogSettings,
     "smtp": SmtpSettings,
+    "directory": DirectorySettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
+DIRECTORY_TOKEN_SECRET = "settings/directory_token"
+# Section -> (write-only request field, secrets-store name, flag reported back).
+SECRET_FIELDS = {
+    "smtp": ("password", SMTP_PASSWORD_SECRET, "has_password"),
+    "directory": ("token", DIRECTORY_TOKEN_SECRET, "has_token"),
+}
 
 _cache: dict[str, tuple[float, BaseModel]] = {}
 CACHE_SECONDS = 15

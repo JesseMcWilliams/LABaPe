@@ -16,8 +16,10 @@ interface Smtp {
   enabled: boolean; host: string; port: number; security: "none" | "starttls" | "ssl"; username: string;
   from_address: string; notify_jobs: boolean; has_password: boolean;
 }
+interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; file_roots: Record<string, string>;
+  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory;
+  file_roots: Record<string, string>;
 }
 interface BackupList {
   directory: string;
@@ -80,6 +82,7 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [testTo, setTestTo] = useState("");
+  const [dirToken, setDirToken] = useState("");
   const [backups, setBackups] = useState<BackupList | null>(null);
 
   const loadBackups = () => api.get<BackupList>("/api/admin/backups").then(setBackups, () => setBackups(null));
@@ -91,7 +94,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -230,6 +233,29 @@ export default function Settings() {
             onChange={(e) => setSmtpPassword(e.target.value)} />
           <FormControlLabel label="Email people when their jobs finish" control={<Checkbox checked={s.smtp.notify_jobs}
             onChange={(e) => set("smtp", { notify_jobs: e.target.checked })} />} />
+        </Stack>
+      </Section>
+
+      <Section title="Directory (group search)"
+        intro="Lets group fields search Authentik as you type. Use a token that can only view groups. Without one, suggestions come from the groups LABaPe has seen at sign-in."
+        onSave={async () => {
+          await put("directory", { ...s.directory, ...(dirToken ? { token: dirToken } : {}) });
+          setDirToken("");
+          return "Directory settings saved.";
+        }}
+        extra={<TestButton label="Test search" run={() =>
+          api.post<{ message: string }>("/api/admin/settings/directory/test").then((r) => r.message)} />}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Search Authentik" control={<Checkbox checked={s.directory.enabled}
+            onChange={(e) => set("directory", { enabled: e.target.checked })} />} />
+          <Field label="Authentik URL" value={s.directory.api_url} sx={{ minWidth: 300 }}
+            help="e.g. https://auth.example.com. Blank: the OIDC issuer's address"
+            onChange={(e) => set("directory", { api_url: e.target.value })} />
+          <Field label="API token" type="password" value={dirToken} sx={{ minWidth: 260 }} autoComplete="new-password"
+            help={s.directory.has_token ? "Saved. Type a new one to replace it." : "Not set"}
+            onChange={(e) => setDirToken(e.target.value)} />
+          <FormControlLabel label="Verify certificate" control={<Checkbox checked={s.directory.verify_tls}
+            onChange={(e) => set("directory", { verify_tls: e.target.checked })} />} />
         </Stack>
       </Section>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}

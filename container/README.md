@@ -79,6 +79,8 @@ Roles come from Authentik groups. The defaults are:
 
 Override them with `LABAPE_ROLE_MAP` (JSON), or add bindings under the API's `/api/admin/role-bindings`.
 
+Group fields (such as a network's "Or limit to groups") search Authentik as you type once an admin sets **Settings → Directory**. That section takes an Authentik API token for a service account that can only view groups (the `authentik_core.view_group` permission). The token is kept in the encrypted secrets store. Without a token, suggestions come from the groups LABaPe has seen at sign-in. A name can always be typed in.
+
 For a throwaway Authentik already configured this way, see [tools/authentik-test/](../tools/authentik-test/README.md).
 
 ## Run

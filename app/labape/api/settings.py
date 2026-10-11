@@ -27,7 +27,8 @@ BACKUP_NAME = re.compile(r"^labape-\d{8}-\d{6}\.dump$")
 @router.get("/settings")
 def get_settings_all(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
     out = {name: appsettings.get(db, name).model_dump() for name in appsettings.SECTIONS}
-    out["smtp"]["has_password"] = bool(get_secret(db, appsettings.SMTP_PASSWORD_SECRET))
+    for section, (_, secret, flag) in appsettings.SECRET_FIELDS.items():
+        out[section][flag] = bool(get_secret(db, secret))
     out["file_roots"] = roots(db)
     return out
 
@@ -37,9 +38,10 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
                  p: Principal = Depends(require_roles("admin"))):
     if section not in appsettings.SECTIONS:
         raise FieldError("section", f"Unknown settings section {section!r}.", status_code=404)
-    password = body.pop("password", None)
-    clear = bool(body.pop("clear_password", False))
-    body.pop("has_password", None)
+    field, secret, flag = appsettings.SECRET_FIELDS.get(section, (None, None, None))
+    value = body.pop(field, None) if field else None
+    clear = bool(body.pop(f"clear_{field}", False)) if field else False
+    body.pop(flag, None)
     try:
         model = appsettings.SECTIONS[section](**body)
     except ValidationError as exc:
@@ -52,10 +54,12 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
         raise FieldError("from_address" if model.host else "host",
                          "Give the SMTP server and a From address (name@domain), or turn email off.")
     appsettings.put(db, section, model)
-    if section == "smtp" and (password or clear):
-        put_secret(db, appsettings.SMTP_PASSWORD_SECRET, "" if clear else password)
-    audit(db, p.username, f"settings.{section}", detail={**model.model_dump(), "password_changed": bool(password or clear)},
-          source_ip=client_ip(request))
+    if secret and (value or clear):
+        put_secret(db, secret, "" if clear else value)
+    detail = model.model_dump()
+    if field:
+        detail[f"{field}_changed"] = bool(value or clear)
+    audit(db, p.username, f"settings.{section}", detail=detail, source_ip=client_ip(request))
     return get_settings_all(db, p)[section]
 
 
