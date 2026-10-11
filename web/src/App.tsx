@@ -23,6 +23,7 @@ import NetworkDetail from "./pages/NetworkDetail";
 import FileDetail from "./pages/FileDetail";
 import TemplateDetail from "./pages/TemplateDetail";
 import UserMenu from "./components/UserMenu";
+import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
 interface AuthState {
   me: Me | null;
@@ -84,6 +85,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ me, refresh, appName, setAppName }}>
+      <MaintenanceProvider signedIn={Boolean(me)}>
       {me && (
         <AppBar position="static">
           <Toolbar sx={{ gap: 1 }}>
@@ -133,6 +135,7 @@ export default function App() {
           out as soon as you can.
         </Alert>
       )}
+      {me && <MaintenanceBanner />}
       {me && reloadNotice && (
         <Alert square severity={reloadNotice === "done" ? "success" : "info"} onClose={() => setReloadNotice(null)}>
           {reloadNotice === "done"
@@ -165,6 +168,7 @@ export default function App() {
           <Route path="*" element={<Typography>Not found.</Typography>} />
         </Routes>
       </Container>
+      </MaintenanceProvider>
     </AuthContext.Provider>
   );
 }

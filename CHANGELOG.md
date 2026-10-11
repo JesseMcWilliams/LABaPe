@@ -17,6 +17,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Maintenance mode: changes pause (503 with the reason) while reads,
+  status and live logs keep working; the worker starts no new jobs and
+  pauses scheduled work; banner on every page; turn on now or schedule
+  it; a weekly maintenance window with advance notice.
 - Database migrations (Alembic): existing databases are stamped at the
   baseline on first start; `labape db-status`; the dashboard shows the
   database revision. A database newer than the code stops startup with

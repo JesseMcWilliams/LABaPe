@@ -104,7 +104,7 @@ export default function JobDetail() {
       {error && <Alert severity="error">{error}</Alert>}
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
         {!done && (
-          <ActionButton color="error" variant="outlined" onClick={cancel} disabled={job.cancel_requested}
+          <ActionButton color="error" variant="outlined" onClick={cancel} disabled={job.cancel_requested} allowInMaintenance
             tip="Stop this job"
             confirm={{ title: `Cancel job ${job.id}?`, danger: true, confirmLabel: "Cancel the job",
               body: "The job's tools are stopped (SIGTERM, then SIGKILL after a grace period). Work already done stays: VMs created so far are kept, and a deploy can be retried or the environment destroyed afterwards." }}>

@@ -48,13 +48,13 @@ export default function UserMenu({ me, onLogout }: { me: Me; onLogout: () => voi
           </Stack>
           <Divider sx={{ my: 1.5 }} />
           <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
-            <ActionButton variant="outlined" startIcon={<RefreshIcon />} disabled={!canReload}
+            <ActionButton variant="outlined" startIcon={<RefreshIcon />} disabled={!canReload} allowInMaintenance
               tip="Re-read your groups from Authentik so permission changes apply now"
               confirm={{ title: "Reload your rights?", body: "LABaPe asks Authentik for your current groups without signing you out, then recalculates your roles. You'll come back to the dashboard; anything unsaved on this page is lost.", confirmLabel: "Reload rights" }}
               onClick={() => { window.location.href = "/api/auth/oidc/login?silent=true"; }}>
               Reload rights
             </ActionButton>
-            <ActionButton color="error" tip="End this session"
+            <ActionButton color="error" tip="End this session" allowInMaintenance
               confirm={{ title: "Sign out?", body: "Your session ends here. Jobs you started keep running.", confirmLabel: "Sign out" }}
               onClick={onLogout}>Sign out</ActionButton>
           </Stack>

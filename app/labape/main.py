@@ -8,9 +8,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api import (admin, auth, ca, catalog, dashboard, directory, environments, files, hosts, jobs, networks,
-                  reports, settings, templates)
+from .api import (admin, auth, ca, catalog, dashboard, directory, environments, files, hosts, jobs, maintenance,
+                  networks, reports, settings, templates)
+from . import maintenance_mode
 from .config import get_settings
+from .db import session_factory
 from .errors import on_http_error, on_validation_error
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -37,6 +39,14 @@ def create_app() -> FastAPI:
             local = request.headers.get("x-labape-local") == "1"
             if req_origin and req_origin != origin and not local:
                 return JSONResponse({"detail": "Cross-origin request refused"}, status_code=403)
+            # Maintenance mode (design §23.3): no writes except the allowed few.
+            if request.url.path.startswith("/api/") and not maintenance_mode.allowed(request.url.path):
+                with session_factory()() as db:
+                    state = maintenance_mode.get(db, cached=True)
+                if state["active"]:
+                    return JSONResponse({"detail": f"LABaPe is in maintenance: {state['reason']}. Changes are paused; "
+                                                   "everything can still be viewed.", "maintenance": state},
+                                        status_code=503)
         return await call_next(request)
 
     app.add_middleware(SessionMiddleware, secret_key=s.secret_key, session_cookie="labape_session",
@@ -44,12 +54,13 @@ def create_app() -> FastAPI:
 
     for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, jobs.router,
               admin.router, reports.router, files.router, catalog.router, settings.router, directory.router,
-              dashboard.router, settings.public_router, ca.router):
+              dashboard.router, settings.public_router, ca.router, maintenance.router):
         app.include_router(r)
 
     @app.get("/api/health")
     def health():
-        return {"ok": True}
+        with session_factory()() as db:
+            return {"ok": True, "maintenance": maintenance_mode.get(db, cached=True)["active"]}
 
     web = s.web_dir
     index = web / "index.html"

@@ -931,7 +931,7 @@ Decisions: questions 76-80, 82.
 
   `labape db-status` and the dashboard's version banner show the database's revision next to the code's. Later schema changes are new files in `labape/migrations/versions/`. Verified on the lab host: the existing database was stamped at the baseline.
 
-### 23.3 Maintenance mode (decided, not built)
+### 23.3 Maintenance mode (built)
 
 - **One flag**, set three ways:
   - by an admin (Settings > Maintenance, with a reason and an expected end);
@@ -943,6 +943,17 @@ Decisions: questions 76-80, 82.
 - **The worker drains.** It claims no new jobs and lets running ones finish. Scheduled work (backups, purges, release checks, rotations) pauses, except the work the maintenance itself needs.
 - **Visible everywhere.** A banner on every page shows the reason, who started it and the expected end. Change buttons are disabled with "Unavailable during maintenance". `/api/health` reports the mode.
 - **Scheduled windows.** A window can be set ahead, with a heads-up banner before it starts. Rotations that need a restart use the same window (§24).
+
+As built:
+
+| Area | As built |
+|---|---|
+| State | `maintenance_mode.py`: the `maintenance.state` setting holds on/off, the reason, the source (admin, update, rotation, restore), who and when, the expected end and an optional scheduled start. The API's middleware reads it through a 5-second cache. The worker reads it fresh before every claim; a cached "off" once let a job start during maintenance. |
+| API | `GET /api/maintenance` (signed in): the state plus running and queued job counts and the next window. `PUT /api/admin/maintenance` turns it on (a reason is required; optional expected end), schedules it, or turns it off, all audited. While it's on, every non-GET `/api/` request answers 503 with the reason, except sign-in and sign-out, `/api/admin/maintenance`, `/api/admin/update*`, job cancel, job certificate signing and blocked-form reports. `/api/health` reports `maintenance`. |
+| Worker | Claims no new jobs (running ones finish). Pauses the daily backup, purges and the release check (host stats, template and file sync go on, since they're status). Starts a scheduled maintenance at its time. Turning it off stays explicit. |
+| Window | Settings section `maintenance_window`: on or off, weekday, start (UTC), length and notice hours. A heads-up banner appears before it starts. Restart-needing rotations will use it (§24). |
+| UI | The banner on every page shows the reason, who started it, the expected end (or "overdue") and the jobs still running, plus a scheduled-maintenance notice and the window heads-up. Every action that confirms is disabled, with the tooltip "Unavailable during maintenance", except sign-out, Reload rights, job cancel and turning maintenance off. Settings → Maintenance mode: turn on now or schedule, and turn off. |
+| Verified | Live on the lab host. With maintenance on, a developer's create was refused (503) while reads worked, health said `maintenance: true`, and an admin's Back up now was refused. A job queued directly in the database stayed queued for the whole maintenance, then ran and succeeded once it was turned off. pytest: 70. |
 
 ## 24. Secret rotation (decided, not built)
 

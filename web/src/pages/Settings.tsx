@@ -7,6 +7,7 @@ import { api, fmtTime } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { useAuth } from "../App";
 import { ActionButton } from "../components/Confirm";
+import { useMaintenance } from "../components/Maintenance";
 
 interface Backup { enabled: boolean; time_of_day: string; retention_days: number; directory: string }
 interface Retention { job_logs_days: number; audit_days: number; errors_days: number }
@@ -20,9 +21,10 @@ interface Smtp {
 }
 interface Branding { app_name: string }
 interface Downloads { allow_http: boolean; proxy: string }
+interface MaintenanceWindow { enabled: boolean; weekday: number; time_of_day: string; duration_minutes: number; heads_up_hours: number }
 interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads;
+  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow;
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -88,6 +90,68 @@ function TestButton({ label, run, tip, confirmBody }: {
 
 // Admin settings (design §21.5): file locations, backups, history retention,
 // syslog output for the audit trail, and SMTP for job emails. Admin only.
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** Maintenance mode now (or at a set time), outside the section/Save pattern. */
+function MaintenanceNow() {
+  const m = useMaintenance();
+  const [reason, setReason] = useState("");
+  const [end, setEnd] = useState("");
+  const [start, setStart] = useState("");
+  const [err, setErr] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
+  const [msg, setMsg] = useState("");
+  const iso = (v: string) => (v ? new Date(v).toISOString() : null);
+  const send = async (active: boolean) => {
+    setErr({ summary: "", fields: {} });
+    try {
+      await api.put("/api/admin/maintenance", { active, reason, expected_end: iso(end), scheduled_start: iso(start) });
+      setMsg(active ? (start ? "Maintenance scheduled." : "Maintenance mode is on.") : "Maintenance mode is off.");
+    } catch (e) { setErr(fromApiError(e)); }
+  };
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack spacing={1.5}>
+        <Typography variant="h6">Maintenance mode</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Pauses every change (reads, status and live logs keep working) and lets running jobs finish without starting new ones.
+          {m?.active && ` On now: ${m.reason} (${m.running_jobs} job(s) still running).`}
+        </Typography>
+        {err.summary && <ErrorSummary summary={err.summary} fields={err.fields} />}
+        {msg && <Alert severity="success" onClose={() => setMsg("")}>{msg}</Alert>}
+        {!m?.active && (
+          <Stack direction="row" spacing={2} useFlexGap sx={row}>
+            <Field label="Reason" value={reason} sx={{ minWidth: 320 }} error={err.fields.reason} help="Shown in the banner"
+              onChange={(e) => setReason(e.target.value)} />
+            <Field label="Start" type="datetime-local" value={start} slotProps={{ inputLabel: { shrink: true } }}
+              help="Empty: now" onChange={(e) => setStart(e.target.value)} />
+            <Field label="Expected end" type="datetime-local" value={end} slotProps={{ inputLabel: { shrink: true } }}
+              help="Shown in the banner" onChange={(e) => setEnd(e.target.value)} />
+          </Stack>
+        )}
+        <Stack direction="row" spacing={1}>
+          {m?.active ? (
+            <ActionButton variant="contained" color="success" allowInMaintenance tip="End maintenance; changes and new jobs resume"
+              confirm={{ title: "Turn maintenance mode off?", confirmLabel: "Turn off",
+                body: "Changes are accepted again and queued jobs start. Make sure the maintenance work is finished." }}
+              onClick={() => send(false)}>
+              Turn off
+            </ActionButton>
+          ) : (
+            <ActionButton variant="contained" color="warning" tip={start ? "Schedule maintenance mode" : "Turn maintenance mode on now"}
+              confirm={{ title: start ? "Schedule maintenance?" : "Turn maintenance mode on?", danger: !start,
+                confirmLabel: start ? "Schedule" : "Turn on",
+                body: start ? "At the start time every change pauses and no new jobs start; a banner announces it until then."
+                  : "Every change pauses at once for everyone (reads keep working). Running jobs finish; no new ones start until you turn it off." }}
+              onClick={() => send(true)}>
+              {start ? "Schedule" : "Turn on"}
+            </ActionButton>
+          )}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
 export default function Settings() {
   const { setAppName } = useAuth();
   const [s, setS] = useState<AllSettings | null>(null);
@@ -106,7 +170,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -115,6 +179,26 @@ export default function Settings() {
   return (
     <Stack spacing={2}>
       <Typography variant="h5">Settings</Typography>
+
+      <MaintenanceNow />
+
+      <Section title="Maintenance window" intro="A weekly window (UTC) for work that restarts services, such as some secret rotations. A banner gives notice before it starts."
+        onSave={async () => { await put("maintenance_window", s.maintenance_window); return "Maintenance window saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Use a window" control={<Checkbox checked={s.maintenance_window.enabled}
+            onChange={(e) => set("maintenance_window", { enabled: e.target.checked })} />} />
+          <Field select label="Day" value={s.maintenance_window.weekday} sx={{ width: 150 }}
+            onChange={(e) => set("maintenance_window", { weekday: Number(e.target.value) })}>
+            {DAYS.map((d, i) => <MenuItem key={d} value={i}>{d}</MenuItem>)}
+          </Field>
+          <Field label="Start (UTC)" value={s.maintenance_window.time_of_day} sx={{ width: 120 }} help="HH:MM"
+            onChange={(e) => set("maintenance_window", { time_of_day: e.target.value })} />
+          <Field label="Length (minutes)" type="number" value={s.maintenance_window.duration_minutes} sx={{ width: 150 }}
+            onChange={(e) => set("maintenance_window", { duration_minutes: Number(e.target.value) })} />
+          <Field label="Notice (hours)" type="number" value={s.maintenance_window.heads_up_hours} sx={{ width: 140 }}
+            help="Banner before it starts" onChange={(e) => set("maintenance_window", { heads_up_hours: Number(e.target.value) })} />
+        </Stack>
+      </Section>
 
       <Section title="Branding" intro="The name in the top bar, the browser tab, the sign-in page and emails. A logo comes later."
         onSave={async () => { await put("branding", s.branding); setAppName(s.branding.app_name); return "Name saved."; }}>
