@@ -86,3 +86,58 @@ works.
   cert as part of its own Ansible tasks). Leaning toward the latter
   (keeps the CA role itself simple — just "stand up a CA" — and pushes
   "get me a cert" to whatever role actually needs one), but not decided.
+
+## 5. Platform CA for the LABaPe deployment (decided 2026-10-11: option A)
+
+The request: a step-ca for the LABaPe deployment itself. Every host
+gets a certificate from it, unless the host's environment includes a
+CA. In that case the environment's CA gets a certificate from the
+platform CA, and the environment's hosts use their own CA.
+
+### 5.1 Options
+
+| | A: platform root, environment CAs subordinate (recommended) | B: platform CA for infrastructure only | C: no platform CA |
+|---|---|---|---|
+| Web UI and KVM hosts | Certificates from the platform CA (ACME for Caddy) | Same as A | Caddy's internal CA or a supplied certificate, as today |
+| VMs in an environment without a CA | A leaf certificate from the platform CA at deploy, the platform root in the trust store, and automatic renewal | Platform root trusted only; no certificate | Nothing |
+| Environment with a CA (M9) | Its CA is an **intermediate under the platform root**: step-ca in intermediate mode, or AD CS as an Enterprise Subordinate CA whose CSR the runner has signed. Its hosts get certificates from it. | Its own independent root, as in §2 | As in §2 |
+| Cross-environment trust | Everything chains to one root, so one trust anchor covers every environment and the web UI | One root per environment | One root per environment |
+| Cost | Most work: a step-ca service, the token flow, renewal on Windows and Linux, signing subordinate CAs | Medium | None |
+
+### 5.2 How option A would work
+
+- **Where it runs:** a `step-ca` container in the web stack. The root
+  key is created at install and stored encrypted in the secrets store.
+  Online issuing is done by an intermediate. For a `kvm`-only install
+  (§22.4 of the design doc), it runs on the KVM host instead.
+- **Provisioners:**
+  - ACME for Caddy (the web UI);
+  - a JWK provisioner the runner uses to mint one-time tokens, one per VM per deploy, passed to Ansible;
+  - a CA-signing template, used only by the runner, for environment CAs (`CA:true`, `pathlen:0`, name constraints set to the environment's domain).
+- **Linux VMs:** the `step` CLI requests the certificate with the token,
+  installs the root (`update-ca-trust` / `update-ca-certificates`), and
+  a systemd timer runs `step ca renew`.
+- **Windows VMs:** Ansible imports the root into `LocalMachine\Root` and
+  installs the leaf certificate. Renewal is a scheduled task (the `step`
+  CLI for Windows), or AD CS autoenrollment once the environment has
+  its own CA.
+- **Environment CAs:**
+  - step-ca's role runs in intermediate mode, signed by the platform CA.
+  - AD CS is installed with `-CAType EnterpriseSubordinateCa`. Its CSR is signed through the runner and installed with `certutil -installcert`, and the platform root is published to AD (`certutil -dspublish`), so Group Policy distributes it.
+  - If an environment has both AD CS and step-ca, both become **siblings** directly under the platform root. This replaces §2's Linux-under-Windows chain, because a shared root already gives cross-trust.
+- **Lifetimes (proposed):**
+  - root: 10 years;
+  - platform intermediate: 5 years;
+  - environment intermediates: 1 year (an environment is short-lived);
+  - leaf certificates: 30 days with automatic renewal.
+- **Revocation:** none beyond short lifetimes (step-ca's passive
+  revocation). Destroying an environment discards its CA key.
+
+### 5.3 What it changes in this proposal
+
+- §2's trust rule becomes "every environment CA is subordinate to the
+  platform root".
+- §4's "client trust distribution" question is answered: the platform
+  root goes into every VM's trust store at deploy.
+- §4's "where CA config lives" question stays as leaned: roles request
+  their own certificates.

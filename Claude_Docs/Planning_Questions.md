@@ -127,3 +127,23 @@ Background: Claude_Docs/Planning_Web-Interface-Design.md §20. A new VLAN, 172.2
 59. ~~Error log: an admin-only Errors page, kept 90 days?~~ **Answered (2026-10-11):** Yes, with the retention configurable.
 60. ~~Host names given per host: unique across the KVM host, or within a pattern?~~ **Answered (2026-10-11):** Unique across the KVM host.
 61. ~~Template metadata (OS, edition, minimums): infer the existing templates' OS from their names, or confirm each one?~~ **Answered (2026-10-11):** Infer from the names, and add a description and a notes field. Notes record quirks and after-tasks.
+
+## Dashboard, list pages, installer, CA and downloads (added and answered 2026-10-11)
+
+Design: `Claude_Docs/Planning_Web-Interface-Design.md` §22.
+
+62. ~~Per-VM free disk space is only visible from inside the guest. May every image (templates and ISO installs) get **qemu-guest-agent**, so the dashboard shows real free space and a "responding" state? Without it, the dashboard can show only the disk file's allocated size against its virtual size.~~ **Answered (2026-10-11):** Yes, on every host.
+63. ~~Online/Offline per VM: use the libvirt state (running is online; shut off, paused or crashed is offline), plus "not responding" when running but the guest agent doesn't answer?~~ **Answered (2026-10-11):** Yes.
+64. ~~Version and updates: bake a release tag (`vX.Y.Z`) into the image at build, and have the worker check GitHub releases for `JesseMcWilliams/LABaPe` once a day. The repo is public, so no token is needed. A setting turns the check off for air-gapped sites. There are no tags yet, so this round would start them (proposed `v0.2.0`) with a root `CHANGELOG.md`.~~ **Answered (2026-10-11):** Yes.
+65. ~~Secrets back ends on the dashboard: show what exists today (the built-in store and the engine's Ansible vault), with OpenBao/Vault and Conjur appearing when phase 10d builds them. Or should 10d join this round?~~ **Answered (2026-10-11):** Yes: show what exists; 10d later.
+66. ~~Dashboard history: current values plus a 24-hour sparkline from one-minute samples, kept 24 hours?~~ **Answered (2026-10-11):** Yes.
+67. ~~List pages: non-admins see **Hosts** (those they can deploy to) and **Networks** (those they may use) read-only, with no Add button or edit page? The same list-and-detail pattern also goes to catalog items and templates.~~ **Answered (2026-10-11):** Yes.
+68. ~~Branding: only the app name for now (top bar, browser title, emails, syslog default app name), or also an uploaded logo or icon?~~ **Answered (2026-10-11):** Name only now; a logo later.
+69. ~~Installer profiles: `--profile web` (web stack only) needs the web stack to drive a **remote KVM host over SSH**, which is phase 10e and not built yet. Build 10e in this round, starting with one or more remote hosts reached by `qemu+ssh` with an installer-generated SSH key? `--profile kvm` works without it.~~ **Answered (2026-10-11):** Yes.
+70. ~~Platform CA (`Claude_Docs/Planning_Certificate-Authority.md` §5):~~ **Answered (2026-10-11):** Option A. Parts (b) and (c) take the recommendations: sibling environment CAs under the platform root, and the proposed lifetimes.
+    - (a) option **A** (platform root, environment CAs subordinate), **B** (platform CA for the web UI and KVM hosts only), or **C** (none)?
+    - (b) under A, may an environment with both AD CS and step-ca have both as siblings under the platform root, replacing §2's Linux-under-Windows chain?
+    - (c) lifetimes: 10-year root, 5-year platform intermediate, 1-year environment intermediates, 30-day leaf certificates with renewal?
+71. ~~Downloads from a URL: allow any http(s) address, with a proxy setting in Settings and link-local and metadata addresses (169.254.0.0/16) refused? May admins and file managers both start downloads?~~ **Answered (2026-10-11):** HTTPS only, with a global setting to allow HTTP. Admins and file managers can both start downloads.
+72. ~~Hash verification: SHA-256 (default), SHA-1, SHA-512 and MD5. The hash is typed or pasted as a `SHA256SUMS` line, for both uploads and URL downloads, and a mismatch deletes the file. Is a checksum-file URL (fetch `SHA256SUMS` from the vendor) also wanted now?~~ **Answered (2026-10-11):** LABaPe's own hashes are always SHA-256. Some vendors don't publish a SHA-256, so verification of downloads (and uploads) also accepts SHA-1, SHA-512 and MD5.
+73. ~~Order: G dashboard (with per-VM stats and the version check), H list pages and branding, I URL downloads and hashes, J installer profiles and remote KVM hosts, K platform CA?~~ **Answered (2026-10-11):** Yes, the suggested order.

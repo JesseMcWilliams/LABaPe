@@ -393,7 +393,7 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | Phase | Delivers |
 |---|---|
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
-| 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs |
+| 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
 | 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/` |
 | 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15) |
@@ -633,8 +633,8 @@ lab1 was destroyed on 2026-10-10, at the owner's request, after `lab2` was verif
 
 ## 21. Web UI usability and admin features (2026-10-11)
 
-These come from a round of UI feedback (questions 51-61). The work is in
-batches, in this order:
+These come from a round of UI feedback (questions 51-61). All six batches
+are built and merged (PRs #16-#21). They were built in this order:
 - **A:** UI fixes;
 - **B:** KVM host resources and load;
 - **C:** Files tab (phase 10b);
@@ -758,3 +758,69 @@ batches, in this order:
 | UI | `GroupPicker`, a type-ahead multi-select with chips that also accepts free text (Enter adds a typed name). Its helper line says where suggestions come from. Used for the network's "Or limit to groups"; other group fields can reuse it. |
 | Test Authentik | The blueprint adds the `labape-directory-reader` role (only `authentik_core.view_group`), the `labape-directory` service account and its non-expiring API token. The token's key is `LABAPE_TEST_DIRECTORY_TOKEN`, which `deploy.sh` generates into `.env`, including for an existing `.env`. |
 | Verified | Live: the token listed the 8 groups and was refused a write (403). After saving it in Settings, the search for "deploy" returned `labape-deployers` from Authentik. Test search reported the groups. A wrong token gave a clear field error. A deployer is denied the search. pytest covers the fallback, secret handling, the Authentik call and the failure path. |
+
+## 22. Dashboard, list pages, installer profiles, platform CA, downloads (planned 2026-10-11)
+
+These come from the next round of feedback. The decisions are questions
+62-73 in `Claude_Docs/Planning_Questions.md`, all answered 2026-10-11.
+The batches are built in the order below.
+
+### 22.1 Batch G: dashboard
+
+- A **Dashboard** page becomes the landing page (`/`). Clicking the app
+  name in the top left always opens it.
+- **Everyone** sees only what they may access:
+  - the KVM hosts they can deploy to: CPU, RAM, free disk and disk activity;
+  - their environments: host count, online/offline per VM, and per-VM CPU, RAM, free disk and disk activity.
+- **Admins** also see:
+  - every KVM host and every environment;
+  - the sign-in methods and their state: OIDC discovery and JWKS reachable, last successful sign-in, break-glass on or off with its expiry, the directory token;
+  - the secrets back ends and their health: today the built-in store (an encrypt/decrypt self-test) and the engine's Ansible vault;
+  - the SMTP and syslog configuration and their last result;
+  - the installed version, and whether a newer release exists.
+- The engine needs:
+  - per-VM samples each minute from `virsh domstats` (state, CPU time, memory, block I/O, allocation);
+  - host disk I/O from `/proc/diskstats` deltas;
+  - guest free space and a "responding" check through qemu-guest-agent, which every image gets (question 62);
+  - samples kept 24 hours, enough for a sparkline;
+  - a daily release check (question 64).
+
+### 22.2 Batch H: list pages and branding
+
+- Hosts, Networks, and the other admin lists (catalog items, templates)
+  follow the Environments pattern:
+  - a list of only the entries the user may see;
+  - an **Add** button at the top right;
+  - the name links to the entry's own page (`/hosts/:id`, `/networks/:id`, ...), where editing happens.
+  - Non-admins see Hosts and Networks read-only, limited to what they may use (question 67).
+- The app name ("LABaPe") becomes a setting (Settings → Branding). It is
+  used in the top bar, the browser title and emails. A logo comes later (question 68).
+
+### 22.3 Batch I: downloads from a URL, hash verification
+
+- On the Files page, a file can come from a URL instead of an upload. The
+  worker downloads it as a job (progress in the job log, resumed with
+  HTTP Range) into the chosen category.
+- HTTPS only, unless a global setting allows HTTP. Admins and file
+  managers can start downloads (question 71).
+- LABaPe's own file hashes are always SHA-256. To verify against a
+  vendor's published value, uploads and downloads can carry an expected
+  hash in SHA-256, SHA-1, SHA-512 or MD5. A mismatch rejects and deletes
+  the file (question 72).
+
+### 22.4 Batch J: installer profiles, remote KVM hosts
+
+- `install-labape.py --profile full|kvm|web`:
+  - `kvm` installs the KVM-host side only (packages, libvirt, networks, storage, the engine tools, secrets);
+  - `web` installs the container stack only and registers a remote KVM host.
+- The `web` profile depends on remote libvirt over SSH (phase 10e,
+  §15), which is built in this batch (question 69).
+
+### 22.5 Batch K: platform certificate authority
+
+- A step-ca for the LABaPe deployment that issues certificates to the
+  web UI, the KVM hosts and every VM. An environment with its own CA
+  gets that CA certified by the platform CA instead.
+- Option A was chosen (question 70): environment CAs are subordinate
+  to the platform root. Details are in
+  `Claude_Docs/Planning_Certificate-Authority.md` §5.
