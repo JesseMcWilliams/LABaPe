@@ -955,7 +955,7 @@ As built:
 | UI | The banner on every page shows the reason, who started it, the expected end (or "overdue") and the jobs still running, plus a scheduled-maintenance notice and the window heads-up. Every action that confirms is disabled, with the tooltip "Unavailable during maintenance", except sign-out, Reload rights, job cancel and turning maintenance off. Settings → Maintenance mode: turn on now or schedule, and turn off. |
 | Verified | Live on the lab host. With maintenance on, a developer's create was refused (503) while reads worked, health said `maintenance: true`, and an admin's Back up now was refused. A job queued directly in the database stayed queued for the whole maintenance, then ran and succeeded once it was turned off. pytest: 70. |
 
-## 24. Secret rotation (decided, not built)
+## 24. Secret rotation (phase R1 built)
 
 Decisions: questions 81, 83, 84.
 
@@ -983,3 +983,16 @@ Decisions: questions 81, 83, 84.
 | Job certificate tokens, break-glass tokens | one-time | n/a | They already expire after one use |
 
 - **Lab environments (question 83).** The domain admin and local admin passwords rotate every **7 days** by default; each environment sets its own interval or turns rotation off. The **DSRM password never rotates**. A VM that's off when its password rotates is brought up to date at its next deploy or rotation.
+
+### 24.1 Phase R1 as built
+
+| Area | As built |
+|---|---|
+| Envelope encryption | The built-in store writes `v2:<data key id>:<token>`. Data keys live in `secret_data_keys`, wrapped by the master key (LABAPE_SECRET_KEY). The active key is read from the database on every write, so a rotation in another process is picked up at once. Values from before data keys are still read and are rewritten by the first rotation. Retired keys are deleted two days later, once no value uses them. |
+| Policies | The `secret_policies` table (migration `0002`, the first real one) has one row per platform secret, seeded with the rotator's defaults: store, class, interval, restart, enabled, external flag, elevated account, parameters, status, last and next rotation, last error and notes. A restart-needing policy can't go below 168 hours. |
+| Engine | `engine/rotation.py` holds the registry of rotators. Every minute the worker queues a `secret.rotate` job for each due policy (unless maintenance is on or a job is already queued). Restart-needing ones wait for the maintenance window and switch maintenance on while they run. A failure rolls back, keeps the old secret, records the error, retries an hour later and is audited (so it reaches syslog). Rotate now queues the same job. |
+| Elevated accounts | Credentials stored as `elevated/<name>` in the built-in store, added on the Secrets page (write-only) and chosen per policy. |
+| Rotators | `builtin_data_key` (24 h): re-encrypts every secret with a new data key and verifies before committing. `worker_ssh_key` (24 h): adds the new key on each enabled remote host with the old one, checks it logs in, then removes the old key there and swaps it here (undone on failure). `directory_token` (read-only, 7 days): sets a new key on the Authentik token with the elevated token, checks group search with it, and puts the old key back if that fails. The other seven secrets are listed as manual or reminder, with notes naming the phase that brings their rotator. |
+| UI | Top bar → Secrets: every secret with its class, store, interval, last and next rotation and status (a "restart" chip, and the reason on hover when failed), plus Add elevated account. Each secret's page shows how it rotates, the restart note, the last job, its settings and Rotate now (confirmed). |
+| Test Authentik | A `labape-rotator` service account and token. Authentik checks `POST /tokens/<id>/set_key/` as `add_token` on that token object; the `set_token_key` its docs name isn't checked in this version. The blueprint importer can't assign object permissions to a role, so `deploy.sh` grants them with `ak shell`, on the directory token only. Both tokens use `state: created`, so the blueprint never resets a rotated key. |
+| Verified | Live on the lab host. Migration `0002` upgraded the database. The directory token rotated through the elevated account: search worked with the new key, the old one got 403, the next rotation is in 7 days. The data key rotated: all 19 secrets read back and the store self-test passed. The worker key rotated. The first attempt failed with Authentik's 403, and the old token stayed in use, as designed. pytest: 75. |

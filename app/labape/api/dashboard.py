@@ -22,7 +22,7 @@ from ..engine.maintenance import EMAIL_STATUS_KEY
 from ..models import BreakglassGrant, Environment, HostStats, KvmHost, MetricSample, Secret, Setting, User, utcnow
 from ..naming import instance_names
 from ..permissions import visible_hosts, visible_ids
-from ..security import Principal, _fernet, current_principal, get_secret, require_roles
+from ..security import Principal, _fernet, current_principal, decrypt_value, get_secret, require_roles
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 BUCKET_MINUTES = 10
@@ -224,8 +224,8 @@ def _secrets(db: Session) -> list[dict]:
         f = _fernet()
         ok = f.decrypt(f.encrypt(b"labape-self-test")) == b"labape-self-test"
         sample = db.scalar(select(Secret).limit(1))
-        if sample is not None:
-            f.decrypt(sample.value.encode())
+        if sample is not None and decrypt_value(db, sample.value) is None:
+            raise ValueError("a stored secret doesn't decrypt")
         builtin = _check(ok, f"Encrypt/decrypt self-test passed; {count} secret(s) stored")
     except Exception as exc:  # noqa: BLE001 — any failure here is the finding
         builtin = _check(False, f"Self-test failed ({type(exc).__name__}); the secret key may have changed")

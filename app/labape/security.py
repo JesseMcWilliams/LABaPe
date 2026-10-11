@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import ROLES, get_settings
 from .db import get_db
-from .models import AuditLog, RoleBinding, Secret, User, utcnow
+from .models import SecretDataKey, AuditLog, RoleBinding, Secret, User, utcnow
 
 
 @dataclass
@@ -119,8 +119,52 @@ def _fernet() -> Fernet:
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(key.encode()).digest()))
 
 
+# Envelope encryption (design §24): values are "v2:<data key id>:<token>",
+# encrypted with a data key that is stored wrapped by the master key, so the
+# data key can rotate (re-encrypting the store) without a restart. Values
+# from before data keys (plain master-key tokens) are still read, and are
+# rewritten as v2 by the first rotation.
+_data_keys: dict[int, Fernet] = {}
+
+
+def _data_key(db: Session, key_id: int) -> Fernet | None:
+    if key_id not in _data_keys:
+        row = db.get(SecretDataKey, key_id)
+        if row is None:
+            return None
+        _data_keys[key_id] = Fernet(_fernet().decrypt(row.wrapped.encode()))
+    return _data_keys[key_id]
+
+
+def active_data_key(db: Session) -> tuple[int, Fernet]:
+    """The active data key, made on first use. Read each time (not cached), so
+    a rotation in another process is picked up by the next write."""
+    row = db.scalar(select(SecretDataKey).where(SecretDataKey.active.is_(True)).order_by(SecretDataKey.id.desc()))
+    if row is None:
+        row = SecretDataKey(wrapped=_fernet().encrypt(Fernet.generate_key()).decode(), active=True)
+        db.add(row)
+        db.flush()
+    return row.id, _data_key(db, row.id)
+
+
+def encrypt_value(db: Session, value: str) -> str:
+    key_id, f = active_data_key(db)
+    return f"v2:{key_id}:{f.encrypt(value.encode()).decode()}"
+
+
+def decrypt_value(db: Session, token: str) -> str | None:
+    try:
+        if token.startswith("v2:"):
+            _, key_id, rest = token.split(":", 2)
+            f = _data_key(db, int(key_id))
+            return f.decrypt(rest.encode()).decode() if f else None
+        return _fernet().decrypt(token.encode()).decode()
+    except (InvalidToken, ValueError):
+        return None
+
+
 def put_secret(db: Session, name: str, value: str) -> None:
-    token = _fernet().encrypt(value.encode()).decode()
+    token = encrypt_value(db, value)
     row = db.get(Secret, name)
     if row:
         row.value = token
@@ -133,7 +177,4 @@ def get_secret(db: Session, name: str) -> str | None:
     row = db.get(Secret, name)
     if not row:
         return None
-    try:
-        return _fernet().decrypt(row.value.encode()).decode()
-    except InvalidToken:
-        return None
+    return decrypt_value(db, row.value)

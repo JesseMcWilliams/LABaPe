@@ -332,6 +332,45 @@ class Setting(Base):
     value: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class SecretDataKey(Base):
+    """A data key of the built-in store (design §24): secrets are encrypted
+    with the active data key, which is stored wrapped by the master key
+    (LABAPE_SECRET_KEY). Rotating a data key re-encrypts the store with no
+    restart; retired keys stay a while for writes already in flight."""
+
+    __tablename__ = "secret_data_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    wrapped: Mapped[str] = mapped_column(Text)                 # Fernet(master).encrypt(data key)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    retired_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SecretPolicy(Base):
+    """How one internal secret is rotated (design §24)."""
+
+    __tablename__ = "secret_policies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True)      # e.g. platform.data_key
+    kind: Mapped[str] = mapped_column(String(64))                    # rotator key (engine/rotation.py)
+    label: Mapped[str] = mapped_column(String(255), default="")
+    store: Mapped[str] = mapped_column(String(64), default="builtin")
+    secret_class: Mapped[str] = mapped_column(String(16), default="privileged")  # privileged | read_only | external
+    interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+    needs_restart: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    managed_externally: Mapped[bool] = mapped_column(Boolean, default=False)   # the store rotates it
+    elevated_ref: Mapped[str] = mapped_column(String(128), default="")         # elevated account doing it
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="pending")         # ok | failed | pending | manual
+    last_rotated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
 class Secret(Base):
     """Built-in secrets store (encrypted at rest); design §11."""
 
