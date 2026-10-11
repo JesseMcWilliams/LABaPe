@@ -4,6 +4,7 @@ import { Alert, Box, Button, Chip, Paper, Stack } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { hasRole, useAuth } from "../App";
 import { DetailHeader, Facts } from "../components/PageParts";
+import { ActionButton } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { CatalogItem, EXAMPLES } from "./Catalog";
 
@@ -62,8 +63,20 @@ export default function CatalogItemPage() {
       title={<>{title} {item && <Chip size="small" label={item.status} color={item.status === "published" ? "success" : "default"} sx={{ ml: 1 }} />}</>}
       actions={isAdmin && item && (
         <>
-          {item.status !== "published" && <Button onClick={() => setStatus("published")}>Publish</Button>}
-          {item.status === "published" && <Button color="warning" onClick={() => setStatus("retired")}>Retire</Button>}
+          {item.status !== "published" && (
+            <ActionButton onClick={() => setStatus("published")} tip="Make this item available in deploy forms"
+              confirm={{ title: `Publish ${item.display_name}?`, confirmLabel: "Publish",
+                body: "Everyone can then choose it for host groups. A package can be published only when everything in it is." }}>
+              Publish
+            </ActionButton>
+          )}
+          {item.status === "published" && (
+            <ActionButton color="warning" onClick={() => setStatus("retired")} tip="Stop offering this item in deploy forms"
+              confirm={{ title: `Retire ${item.display_name}?`, confirmLabel: "Retire",
+                body: "It disappears from deploy forms. Environments that already use it keep it on redeploy." }}>
+              Retire
+            </ActionButton>
+          )}
         </>
       )} />
   );
@@ -107,8 +120,14 @@ export default function CatalogItemPage() {
               : kind === "service" ? "windows: {features, services}; linux: {packages: {dnf, apt}, units}" : "items: [{kind, name}]"}
             onChange={(e) => setForm({ ...form, definition: e.target.value })} />
           <Stack direction="row" spacing={2}>
-            <Button variant="contained" onClick={save}>Save as {item?.status ?? "draft"}</Button>
-            <Button component={RouterLink} to={`/catalog?tab=${kind}`}>Back</Button>
+            <ActionButton variant="contained" onClick={save} tip="Save the item; its status doesn't change"
+              confirm={{ title: isNew ? `Create ${form.name || "this item"}?` : `Save ${item?.display_name ?? form.name}?`,
+                confirmLabel: "Save", body: isNew ? "It's saved as a draft; publish it to offer it in deploy forms."
+                  : item?.status === "published" ? "The change applies to new deployments and redeploys of environments that use it."
+                  : "The draft is updated." }}>
+              Save as {item?.status ?? "draft"}
+            </ActionButton>
+            <Button component={RouterLink} to={`/catalog?tab=${kind}`} title="Back to the catalog without saving">Back</Button>
           </Stack>
         </Stack>
       </Paper>

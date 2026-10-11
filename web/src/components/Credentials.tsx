@@ -52,7 +52,7 @@ export default function Credentials({ envId, sections }: { envId: number | strin
                   {visible ? it.value : "••••••••••••"}
                 </Typography>
                 {it.secret && (
-                  <Tooltip title={shown[key] ? "Hide" : "Show"}>
+                  <Tooltip title={shown[key] ? "Hide the value again" : "Show the value here (each view is audited)"}>
                     <IconButton size="small" aria-label={shown[key] ? "Hide" : "Show"} onClick={() => {
                       setShown({ ...shown, [key]: !shown[key] });
                       if (!shown[key]) report("show", s.title, it.label);
@@ -62,7 +62,7 @@ export default function Credentials({ envId, sections }: { envId: number | strin
                   </Tooltip>
                 )}
                 {it.secret && (
-                  <Tooltip title="Show large">
+                  <Tooltip title="Show the value in large type, for reading across the room (audited)">
                     <IconButton size="small" aria-label="Show large" onClick={() => {
                       setLarge({ label: `${s.title}: ${it.label}`, value: it.value });
                       report("show_large", s.title, it.label);
@@ -71,7 +71,7 @@ export default function Credentials({ envId, sections }: { envId: number | strin
                     </IconButton>
                   </Tooltip>
                 )}
-                <Tooltip title={copied === key ? "Copied" : "Copy"}>
+                <Tooltip title={copied === key ? "Copied" : "Copy the value to the clipboard (audited)"}>
                   <IconButton size="small" aria-label="Copy" onClick={() => copy(key, s.title, it.label, it.value)}>
                     <ContentCopyIcon fontSize="small" color={copied === key ? "success" : undefined} />
                   </IconButton>
@@ -96,7 +96,7 @@ export default function Credentials({ envId, sections }: { envId: number | strin
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLarge(null)}>Close</Button>
+          <Button onClick={() => setLarge(null)} title="Close the large view">Close</Button>
         </DialogActions>
       </Dialog>
     </Stack>

@@ -8,6 +8,7 @@ import { api, KvmHost, Network } from "../api";
 import { hasRole, useAuth } from "../App";
 import HostLoad from "../components/HostLoad";
 import { DetailHeader, Facts } from "../components/PageParts";
+import { ActionButton, useConfirm } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import HostNetworks from "./HostNetworks";
 
@@ -39,11 +40,15 @@ function RemoteAccess({ hostId }: { hostId: number | null }) {
           <Box component="code" sx={{ flex: 1, p: 1, bgcolor: "action.hover", borderRadius: 1, fontSize: 12, wordBreak: "break-all" }}>
             {key || "…"}
           </Box>
-          <Button size="small" disabled={!key} onClick={() => navigator.clipboard.writeText(key)}>Copy</Button>
+          <ActionButton size="small" disabled={!key} tip="Copy the public key to the clipboard"
+            onClick={() => navigator.clipboard.writeText(key)}>Copy</ActionButton>
         </Stack>
         {hostId !== null && (
           <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-            <Button variant="outlined" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check connection"}</Button>
+            <ActionButton variant="outlined" disabled={busy} onClick={run}
+              tip="Connect over SSH and libvirt and check the tools and paths jobs need (changes nothing)">
+              {busy ? "Checking…" : "Check connection"}
+            </ActionButton>
             {check?.libvirt && <Typography variant="body2">{check.libvirt}</Typography>}
           </Stack>
         )}
@@ -83,9 +88,16 @@ export default function HostDetail() {
     api.get<Network[]>(`/api/networks?kvm_host_id=${id}`).then(setNets, () => setNets([]));
   }, [id, isNew]);
 
+  const confirm = useConfirm();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErrs({ summary: "", fields: {} });
+    if (!(await confirm({
+      title: isNew ? `Register ${form.name || "this host"}?` : `Save ${form.name}?`, confirmLabel: isNew ? "Register" : "Save",
+      body: isNew
+        ? `LABaPe starts using ${form.libvirt_uri}: the worker collects its load every minute and lists its templates. Attach networks on the host's page next.`
+        : "New jobs on this host use the changed settings. Running jobs and existing VMs aren't affected.",
+    }))) return;
     try {
       if (isNew) {
         const created = await api.post<KvmHost>("/api/hosts", form);
@@ -126,8 +138,11 @@ export default function HostDetail() {
                 control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} />
             </Stack>
             <Stack direction="row" spacing={2}>
-              <Button type="submit" variant="contained">{isNew ? "Register" : "Save"}</Button>
-              <Button component={RouterLink} to="/hosts">Cancel</Button>
+              <ActionButton type="submit" variant="contained"
+                tip={isNew ? "Register this KVM host (asks to confirm)" : "Save the changes (asks to confirm)"}>
+                {isNew ? "Register" : "Save"}
+              </ActionButton>
+              <Button component={RouterLink} to="/hosts" title="Leave without saving">Cancel</Button>
             </Stack>
           </Stack>
         </Paper>

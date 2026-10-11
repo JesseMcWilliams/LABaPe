@@ -87,37 +87,37 @@ export default function App() {
       {me && (
         <AppBar position="static">
           <Toolbar sx={{ gap: 1 }}>
-            <Typography variant="h6" component={RouterLink} to="/" title="Dashboard"
+            <Typography variant="h6" component={RouterLink} to="/" title="Dashboard: load, environments and platform health"
               sx={{ mr: 2, color: "inherit", textDecoration: "none" }}>
               {appName}
             </Typography>
-            <Button color="inherit" component={RouterLink} to="/environments">
+            <Button color="inherit" component={RouterLink} to="/environments" title="Your lab environments: create, deploy, destroy">
               Environments
             </Button>
-            <Button color="inherit" component={RouterLink} to="/jobs">
+            <Button color="inherit" component={RouterLink} to="/jobs" title="Deploy, destroy, build and download jobs, with live logs">
               Jobs
             </Button>
-            <Button color="inherit" component={RouterLink} to="/files">
+            <Button color="inherit" component={RouterLink} to="/files" title="ISOs, installers, other files and the template library">
               Files
             </Button>
-            <Button color="inherit" component={RouterLink} to="/catalog">
+            <Button color="inherit" component={RouterLink} to="/catalog" title="Services, applications and packages to add to host groups">
               Catalog
             </Button>
-            <Button color="inherit" component={RouterLink} to="/hosts">
+            <Button color="inherit" component={RouterLink} to="/hosts" title="KVM hosts and their load">
               Hosts
             </Button>
-            <Button color="inherit" component={RouterLink} to="/networks">
+            <Button color="inherit" component={RouterLink} to="/networks" title="The networks VMs may use">
               Networks
             </Button>
             {hasRole(me, "admin") && (
               <>
-                <Button color="inherit" component={RouterLink} to="/audit">
+                <Button color="inherit" component={RouterLink} to="/audit" title="Who did what, when (admins)">
                   Audit
                 </Button>
-                <Button color="inherit" component={RouterLink} to="/errors">
+                <Button color="inherit" component={RouterLink} to="/errors" title="Requests the app refused and forms the browser blocked (admins)">
                   Errors
                 </Button>
-                <Button color="inherit" component={RouterLink} to="/settings">
+                <Button color="inherit" component={RouterLink} to="/settings" title="Branding, files, backups, history, syslog, email, directory (admins)">
                   Settings
                 </Button>
               </>

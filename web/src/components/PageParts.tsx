@@ -17,7 +17,8 @@ export function ListHeader({ title, intro, addTo, addLabel, canAdd, children }: 
         <Box sx={{ flexGrow: 1 }} />
         {children}
         {canAdd && addTo && (
-          <Button variant="contained" component={RouterLink} to={addTo}>{addLabel ?? "Add"}</Button>
+          <Button variant="contained" component={RouterLink} to={addTo}
+            title={`${addLabel ?? "Add"}: opens the form; nothing is saved until you confirm there`}>{addLabel ?? "Add"}</Button>
         )}
       </Stack>
       {intro && <Typography variant="body2" color="text.secondary">{intro}</Typography>}
@@ -30,7 +31,7 @@ export function DetailHeader({ title, back, backLabel, actions }: {
 }) {
   return (
     <Stack spacing={0.5}>
-      <Link component={RouterLink} to={back} underline="hover" variant="body2"
+      <Link component={RouterLink} to={back} underline="hover" variant="body2" title={`Back to ${backLabel}`}
         sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
         <ArrowBackIcon sx={{ fontSize: 16 }} /> {backLabel}
       </Link>

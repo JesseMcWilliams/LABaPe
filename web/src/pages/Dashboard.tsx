@@ -127,7 +127,7 @@ function EnvRows({ e }: { e: DashEnv }) {
     <Fragment>
       <TableRow hover>
         <TableCell padding="checkbox">
-          <IconButton size="small" aria-label={open ? "Hide hosts" : "Show hosts"} onClick={() => setOpen(!open)}>
+          <IconButton size="small" aria-label={open ? "Hide hosts" : "Show hosts"} title={open ? "Hide this environment's VMs" : "Show this environment's VMs"} onClick={() => setOpen(!open)}>
             {open ? <KeyboardArrowDownIcon /> : <KeyboardArrowRightIcon />}
           </IconButton>
         </TableCell>
@@ -260,7 +260,7 @@ export default function Dashboard() {
 
       {v && (
         <Alert severity={v.update_available ? "info" : "success"} icon={false}
-          action={<Button size="small" disabled={checking} onClick={checkNow}>Check now</Button>}>
+          action={<Button size="small" disabled={checking} onClick={checkNow} title="Ask GitHub for the latest LABaPe release now">Check now</Button>}>
           LABaPe <b>{v.current}</b>
           {v.update_available ? (
             <> · <Link href={v.url} target="_blank" rel="noreferrer">{v.latest}</Link> is available</>
@@ -283,7 +283,8 @@ export default function Dashboard() {
           <Typography variant="h6">{data.is_admin ? "All environments" : "Your environments"}</Typography>
           <Box sx={{ flexGrow: 1 }} />
           {hasRole(me, "deployer", "template_editor") && (
-            <Button component={RouterLink} to="/environments/new" variant="outlined" size="small">New environment</Button>
+            <Button component={RouterLink} to="/environments/new" variant="outlined" size="small"
+              title="New environment: opens the form; nothing is created until you confirm there">New environment</Button>
           )}
         </Stack>
         <Table size="small">

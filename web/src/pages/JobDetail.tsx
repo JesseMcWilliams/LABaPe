@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
-import { Alert, Box, Button, FormControlLabel, Link, Paper, Stack, Switch, Typography } from "@mui/material";
+import { Alert, Box, FormControlLabel, Link, Paper, Stack, Switch, Typography } from "@mui/material";
 import { api, fmtTime, Job } from "../api";
 import { StateChip } from "../components";
+import { ActionButton } from "../components/Confirm";
 
 const FINISHED = ["succeeded", "failed", "cancelled"];
 
@@ -103,12 +104,19 @@ export default function JobDetail() {
       {error && <Alert severity="error">{error}</Alert>}
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
         {!done && (
-          <Button color="error" variant="outlined" onClick={cancel} disabled={job.cancel_requested}>
+          <ActionButton color="error" variant="outlined" onClick={cancel} disabled={job.cancel_requested}
+            tip="Stop this job"
+            confirm={{ title: `Cancel job ${job.id}?`, danger: true, confirmLabel: "Cancel the job",
+              body: "The job's tools are stopped (SIGTERM, then SIGKILL after a grace period). Work already done stays: VMs created so far are kept, and a deploy can be retried or the environment destroyed afterwards." }}>
             {job.cancel_requested ? "Cancelling…" : "Cancel"}
-          </Button>
+          </ActionButton>
         )}
         {(job.state === "failed" || job.state === "cancelled") && (
-          <Button variant="outlined" onClick={retry}>Retry</Button>
+          <ActionButton variant="outlined" onClick={retry} tip="Run this job again with the same settings"
+            confirm={{ title: `Retry job ${job.id}?`, confirmLabel: "Retry",
+              body: `A new ${job.type} job starts with the same settings. OpenTofu picks up from the saved state, so finished steps aren't repeated needlessly.` }}>
+            Retry
+          </ActionButton>
         )}
         <Box sx={{ flexGrow: 1 }} />
         <FormControlLabel control={<Switch checked={follow} onChange={(e) => setFollow(e.target.checked)} />}

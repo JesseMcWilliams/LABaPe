@@ -5,6 +5,7 @@ import {
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import { api, FieldProblem, fmtTime } from "../api";
 import { Field } from "../forms";
+import { ActionButton } from "../components/Confirm";
 
 interface UserError {
   id: number;
@@ -59,11 +60,15 @@ export default function Errors() {
       {saved && <Alert severity="success" onClose={() => setSaved("")}>{saved}</Alert>}
       <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
         <Field label="User" value={username} onChange={(e) => setUsername(e.target.value)} help="Exact user name" />
-        <Button variant="outlined" onClick={load} sx={{ mt: 0.25 }}>Filter</Button>
+        <Button variant="outlined" onClick={load} sx={{ mt: 0.25 }} title="Show only this user's errors">Filter</Button>
         <Box sx={{ flexGrow: 1 }} />
         <Field label="Keep (days)" type="number" value={retention} sx={{ width: 140 }}
           onChange={(e) => setRetention(Number(e.target.value))} help="1-3650" />
-        <Button onClick={saveRetention} sx={{ mt: 0.25 }}>Save</Button>
+        <ActionButton onClick={saveRetention} sx={{ mt: 0.25 }} tip="Keep user errors this many days"
+          confirm={{ title: "Change how long errors are kept?", confirmLabel: "Save",
+            body: `User errors older than ${retention} days are deleted at the next daily purge. The same value is under Settings > History.` }}>
+          Save
+        </ActionButton>
       </Stack>
       <Table size="small">
         <TableHead>

@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Changed
+- Every action shows a short tooltip, and every action that changes
+  something asks first in a dialog with a fuller note (Continue or
+  Cancel); the browser's confirm boxes are gone.
 - Hosts, Networks, catalog items, files and templates follow the
   Environments pattern: a list with Add at the top right, and each name
   opening the entry's own page, where editing happens. Non-admins see

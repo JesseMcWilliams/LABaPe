@@ -884,3 +884,36 @@ As built:
 | Dashboard | "Secrets and certificates" lists the platform CA (`step ca health` and the root fingerprint), with the root download link. |
 | Verified | Live on the lab host. The CA initialized with no password in its log. The API signed a probe CSR (30-day leaf, chain of 2). Caddy switched to `Caddyfile.labape-ca` and got its certificate over ACME for the IP address; `curl` trusts it with only the LABaPe root. Test environment `certs1` (a Rocky 9 and a Windows Server 2022 clone, DHCP): `labape_cert` ran on both. On Rocky: SANs `ctrky1`, `ctrky1.labape.test` and the DHCP address; `curl https://172.21.20.11/` succeeded through the system trust store; `labape-cert-renew --force` renewed over mTLS on port 9444; the timer was enabled. On Windows: the certificate is in LocalMachine\My with its key; `Invoke-WebRequest` to the web interface succeeded through Windows trust; `renew.ps1 -Force` renewed and kept the key linked; the task was Ready. The environment was then destroyed. pytest: 62. |
 | Not yet | Environment CAs subordinate to the platform root (Claude_Docs/Planning_Certificate-Authority.md §5.2) wait for M9's `certificate_authority` role. KVM hosts don't get certificates yet. |
+
+## 23. Action tooltips, confirmations and the update flow (2026-10-11)
+
+From the feedback after round 3:
+- every action shows a short tooltip, saying when a confirmation follows;
+- every action that changes something asks first, with a fuller note and Continue or Cancel;
+- Check now offers a newer release (and a newer branch) with links to their notes;
+- a downgrade is possible.
+
+### 23.1 Tooltips and confirmations (built)
+
+| Area | As built |
+|---|---|
+| Components | `components/Confirm.tsx`. `ConfirmProvider` (wrapping the app) and `useConfirm()`: a promise-based dialog with a title, a fuller note, Continue (red with a warning icon for destructive actions) and Cancel. `ActionButton` / `ActionIconButton`: a button with an MUI tooltip of its summary. With `confirm`, the tooltip ends with "(asks to confirm)" and the click runs only after Continue. A span keeps the tooltip on disabled buttons. |
+| Confirmed | Deploy and redeploy, destroy, refresh addresses, cancel and retry a job, create and deploy an environment, remove a host group, register or save a host, save a host's networks, add, save or delete a network, publish or retire catalog items, save a catalog item, import catalog YAML (after the file is picked), upload (after the file is picked), cancel an upload, delete a file, save file and template details, save each Settings section, back up now, send a test syslog message or email, save error retention, reload rights, sign out. The browser's `window.confirm` is gone. |
+| Tooltip only | Navigation (top bar, Add or New links that open a form, Back, Cancel), read-only actions (filter, export, show, copy, check connection, test search) and buttons inside dialogs that are themselves the confirmation (promote, start job, send request, respond). Plain links and buttons use `title`. |
+| Verified | Type-checked in the image build and deployed on the lab host; the browser tool wasn't available in this session to click through every dialog. |
+
+### 23.2 Update flow (planned)
+
+Decisions: questions 76-79 in `Claude_Docs/Planning_Questions.md`. The proposal:
+- **Check now** opens a dialog listing what's available. Each choice links to its release notes:
+  - the newest release;
+  - a newer preview, if there is one (question 76);
+  - older releases, for a downgrade (question 78).
+- **Continue** asks a host-side update agent to do it (question 77). The agent is a systemd path unit installed by the installer, so the containers never get the Docker socket. It:
+  1. takes a database backup;
+  2. checks out the chosen tag;
+  3. rebuilds with `LABAPE_VERSION`;
+  4. restarts the stack and checks its health;
+  5. returns to the previous tag if the new one doesn't come up.
+
+  Its progress shows on the dashboard.
