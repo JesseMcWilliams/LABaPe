@@ -90,6 +90,7 @@ export interface KvmHost {
   bridge: string;
   concurrency_limit: number;
   enabled: boolean;
+  resources?: HostResources;
 }
 
 export interface Network {
@@ -110,6 +111,34 @@ export interface Network {
   allocated: number;
   bridge?: string; // with ?kvm_host_id=
   is_default?: boolean;
+}
+
+export interface HostStatsData {
+  cpus: number;
+  cores: number;
+  memory_total_mb: number;
+  memory_available_mb: number;
+  load: number[];
+  vms_defined: number;
+  vms_running: number;
+  vcpus_allocated: number;
+  vcpus_running: number;
+  memory_committed_mb: number;
+  memory_running_mb: number;
+  storage: Record<"vm" | "templates", { path: string; total_gb: number; free_gb: number }>;
+}
+
+export interface HostResources {
+  collected_at: string | null;
+  error: string;
+  stats: HostStatsData | null;
+  assessment: {
+    vcpu_ratio: number;
+    memory_committed_ratio: number;
+    disk_free_ratio: number;
+    findings: { level: "warning" | "block"; resource: string; message: string }[];
+    thresholds: Record<string, number>;
+  } | null;
 }
 
 export interface HostNetwork {

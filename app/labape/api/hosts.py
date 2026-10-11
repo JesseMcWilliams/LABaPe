@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..models import KvmHost
+from ..engine.hoststats import assess
+from ..models import HostStats, KvmHost
 from ..security import Principal, audit, client_ip, current_principal, require_roles
 
 router = APIRouter(prefix="/api/hosts", tags=["hosts"])
@@ -29,9 +30,28 @@ def _out(h: KvmHost) -> dict:
                                        "bridge", "concurrency_limit", "enabled")}
 
 
+def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
+    row = db.get(HostStats, host_id)
+    if row is None or not row.stats:
+        return {"collected_at": row.collected_at if row else None, "error": row.error if row else "",
+                "stats": None, "assessment": None}
+    return {"collected_at": row.collected_at, "error": row.error, "stats": row.stats,
+            "assessment": assess(row.stats, demand)}
+
+
 @router.get("")
 def list_hosts(db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
-    return [_out(h) for h in db.scalars(select(KvmHost).order_by(KvmHost.name))]
+    return [{**_out(h), "resources": _resources(db, h.id)} for h in db.scalars(select(KvmHost).order_by(KvmHost.name))]
+
+
+@router.get("/{host_id}/resources")
+def host_resources(host_id: int, vcpus: int = 0, memory_mb: int = 0, disk_gb: int = 0,
+                   db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
+    """The host's resources and load; with vcpus/memory_mb/disk_gb, as if
+    that much more were deployed (the deploy form's projection)."""
+    if db.get(KvmHost, host_id) is None:
+        raise HTTPException(status_code=404, detail="No such host")
+    return _resources(db, host_id, {"vcpus": vcpus, "memory_mb": memory_mb, "disk_gb": disk_gb})
 
 
 @router.post("", status_code=201)

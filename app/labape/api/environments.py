@@ -5,6 +5,7 @@ environment-template editor replaces this in phase 10c.
 """
 from __future__ import annotations
 
+import datetime as dt
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -14,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..errors import FieldError
-from ..models import Environment, Grant, IpAllocation, Job, KvmHost, Template
+from ..engine.hoststats import assess, demand_of
+from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, Template, utcnow
 from ..naming import HOSTNAME_RE, instance_names
 from ..netpolicy import PolicyError, allocate, resolve
 from ..permissions import add_owner, can_see, is_owner, visible_ids
@@ -121,6 +123,21 @@ def _check_names(db: Session, kvm_host_id: int, groups: list[dict], env_id: int 
             seen[n.lower()] = i
 
 
+def _check_capacity(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
+    """Refuse an environment that would commit more than the host's RAM
+    (question 57); the softer limits are warnings in the form. Skipped when
+    the worker hasn't reported the host recently."""
+    row = db.get(HostStats, kvm_host_id)
+    if row is None or not row.stats or row.collected_at is None:
+        return
+    at = row.collected_at if row.collected_at.tzinfo else row.collected_at.replace(tzinfo=dt.timezone.utc)
+    if utcnow() - at > dt.timedelta(minutes=10):
+        return
+    for f in assess(row.stats, demand_of(groups))["findings"]:
+        if f["level"] == "block":
+            raise FieldError("kvm_host_id", f["message"])
+
+
 def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
     """A template must exist on the host and match the group's OS (when the
     host's template library has been synced)."""
@@ -202,6 +219,7 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
         if len(g.names) > g.count:
             raise FieldError(f"host_groups.{i}.names", f"{len(g.names)} names were given for {g.count} hosts.")
     raw = [g.model_dump(exclude_none=True) for g in body.host_groups]
+    _check_capacity(db, host.id, raw)
     _check_names(db, host.id, raw)
     _check_templates(db, host.id, raw)
     groups = _check_networks(db, p, host.id, raw)
