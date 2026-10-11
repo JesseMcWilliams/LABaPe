@@ -16,6 +16,8 @@ Run as root from a checkout of this repository. The checkout is what gets config
 
 ```bash
 sudo deploy/install-labape.py                                   # prompts for what it needs
+sudo deploy/install-labape.py --profile kvm --set WorkerPublicKey='ssh-ed25519 ...'   # KVM host only
+sudo deploy/install-labape.py --profile web --set RemoteKvmUri=qemu+ssh://labape@kvm1/system  # web only
 sudo deploy/install-labape.py --config-file deploy/answers.lab.json   # unattended
 sudo deploy/install-labape.py --dry-run --config-file deploy/answers.lab.json
 sudo deploy/install-labape.py --list-steps                      # where did it get to?
@@ -27,6 +29,7 @@ sudo deploy/install-labape.py --set InstallCli=false            # override one a
 
 | Option | Meaning |
 |---|---|
+| `--profile` | `full` (default: KVM host and web interface on this machine), `kvm` (KVM host only, driven by a web interface elsewhere) or `web` (web interface only, driving a remote KVM host over SSH). Same as `--set Profile=...`. |
 | `--config-file` | Answer file (JSON). Start from `answers.sample.json`, and copy it to `answers.<name>.json` (git-ignored). |
 | `--set NAME=VALUE` | One answer, overriding every file. JSON values are allowed (`true`, `[...]`). |
 | `--instance` | Installation name; state is kept per name. Defaults to the only saved one, otherwise `labape`. |
@@ -88,7 +91,10 @@ Nothing secret is ever written to the answers file.
 |---|---|---|
 | `InstanceName` | Name for this installation's state files | `labape` |
 | `ServiceUser` | Owns the checkout, vault and SSH key; runs the CLI | the `sudo` user |
-| `InstallCli` / `InstallWebUi` | Which halves to install | both |
+| `Profile` | `full`, `kvm` or `web` (see `--profile`) | `full` |
+| `InstallCli` / `InstallWebUi` | Which halves to install; follow the profile unless set | per profile |
+| `WorkerPublicKey` | `kvm` profile: the web interface's worker key (`labape worker-key`, or the host's page) to add to the service user's `authorized_keys` | empty (skip) |
+| `RemoteKvmUri` | `web` profile: the KVM host to register, `qemu+ssh://user@host/system` | prompted |
 | `KvmHostName` | This host's name in the web interface | short hostname |
 | `VmStoragePath`, `TemplateStoragePath`, `IsoPath` | Storage | `/data/VMs/LABaPe`, `<that>/templates`, `/data/OS_Images` |
 | `DomainName`, `NetbiosName` | AD domain for lab environments | `labape.test`, `LABAPE` |
@@ -102,6 +108,14 @@ Nothing secret is ever written to the answers file.
 | `AdminGroups` | Extra groups mapped to admin | none |
 | `TemplatesToBuild` | e.g. `["rocky9:rocky9-base-2026.10", "windows_server_2022:win2022-core-2026.10:core"]` | none |
 | `TofuVersion`, `PackerVersion`, `AnsibleCoreVersion` | Toolchain versions (match `container/Dockerfile`) | pinned |
+
+## Profiles
+
+- **full**: every step, as before.
+- **kvm**: the KVM host side: packages, libvirt, bridges, storage, the template pool, Ansible, OpenTofu and Packer, the vault, `environment.yml`, and `Remote.AuthorizeWorker`, which adds `WorkerPublicKey` to the service user's `authorized_keys`. The `Stack.*` steps don't run.
+- **web**: the web stack only. No `/dev/kvm` is needed, and only the base packages are installed. `Stack.Bootstrap` registers `RemoteKvmUri` as the host. The summary says how to print the worker's key (`labape worker-key`) for the KVM host's install.
+
+Remote hosts work the way design §22.4 describes: jobs for a `qemu+ssh` host run on that host over SSH.
 
 ## Not done by the installer
 

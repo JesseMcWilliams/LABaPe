@@ -30,14 +30,17 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import HostStats, KvmHost, MetricSample, utcnow
+from . import hostio
 
 THRESHOLDS = {"vcpu_per_cpu_warn": 4.0, "ram_committed_warn": 0.90, "ram_committed_block": 1.00,
               "disk_free_warn": 0.15}
 
 
 def _virsh(uri: str, *args: str) -> str:
-    return subprocess.run(["virsh", "--connect", uri, *args], capture_output=True, text=True, timeout=30,
-                          check=True).stdout
+    if hostio.is_remote(uri):
+        hostio.Host(uri).prime()
+    return subprocess.run(["virsh", "--connect", hostio.effective_uri(uri), *args], capture_output=True, text=True,
+                          timeout=30, check=True, env=hostio.tool_env()).stdout
 
 
 def _kib(text: str, key: str) -> int:
@@ -91,8 +94,8 @@ def _guest(uri: str, name: str) -> tuple[bool | None, dict]:
     """(responding, filesystem). responding is None when the VM has no
     guest-agent channel, False when the agent doesn't answer."""
     try:
-        r = subprocess.run(["virsh", "--connect", uri, "guestinfo", name, "--filesystem"], capture_output=True,
-                           text=True, timeout=6, check=False)
+        r = subprocess.run(["virsh", "--connect", hostio.effective_uri(uri), "guestinfo", name, "--filesystem"],
+                           capture_output=True, text=True, timeout=8, check=False, env=hostio.tool_env())
     except subprocess.TimeoutExpired:
         return False, {}
     if r.returncode == 0:
@@ -179,7 +182,19 @@ def collect(host: KvmHost, prev: dict | None = None) -> dict:
             "guest_disk": fs,           # {total_gb, free_gb} from the guest agent, or {}
         })
 
-    cpu_now, disk_now = _proc_cpu(), _proc_disk(host.vm_storage_path)
+    if hostio.is_remote(uri):
+        # /proc and the storage paths are on the host: one probe over SSH.
+        probe = hostio.Host(uri).python(hostio.PROBE, {"paths": {"vm": host.vm_storage_path,
+                                                                  "templates": host.template_storage_path}})
+        cpu_now, disk_now, load = probe["cpu"], probe["disk"], probe["load"]
+        storage = probe["storage"]
+    else:
+        cpu_now, disk_now = _proc_cpu(), _proc_disk(host.vm_storage_path)
+        try:
+            load = [float(x) for x in open("/proc/loadavg", encoding="ascii").read().split()[:3]]
+        except OSError:
+            load = []
+        storage = {"vm": _disk(host.vm_storage_path), "templates": _disk(host.template_storage_path)}
     cpu_pct = None
     if cpu_now and prev_c.get("cpu"):
         idle, total = cpu_now[0] - prev_c["cpu"][0], cpu_now[1] - prev_c["cpu"][1]
@@ -188,10 +203,6 @@ def collect(host: KvmHost, prev: dict | None = None) -> dict:
     if disk_now and prev_c.get("disk"):
         disk_io = {"read_bps": _rate(disk_now[0] * 512, prev_c["disk"][0] * 512, elapsed),
                    "write_bps": _rate(disk_now[1] * 512, prev_c["disk"][1] * 512, elapsed)}
-    try:
-        load = [float(x) for x in open("/proc/loadavg", encoding="ascii").read().split()[:3]]
-    except OSError:
-        load = []
     return {
         "cpus": cpus, "cores": min(cores, cpus),
         "memory_total_mb": total_kib // 1024, "memory_available_mb": avail_kib // 1024,
@@ -201,7 +212,7 @@ def collect(host: KvmHost, prev: dict | None = None) -> dict:
         "vcpus_running": sum(v["vcpus"] for v in vms if v["online"]),
         "memory_committed_mb": sum(v["memory_mb"] for v in vms),
         "memory_running_mb": sum(v["memory_mb"] for v in vms if v["online"]),
-        "storage": {"vm": _disk(host.vm_storage_path), "templates": _disk(host.template_storage_path)},
+        "storage": storage,
         "vms": vms,
         "_counters": {"t": t, "cpu": cpu_now, "disk": disk_now, "vms": vm_counters},
     }
@@ -230,7 +241,7 @@ def collect_all(db: Session) -> None:
             db.add(MetricSample(at=now, kvm_host_id=host.id, vm="", data=host_sample(row.stats)))
             db.add_all(MetricSample(at=now, kvm_host_id=host.id, vm=v["name"], data=vm_sample(v))
                        for v in row.stats["vms"])
-        except (subprocess.SubprocessError, OSError, AttributeError, ValueError) as exc:
+        except (subprocess.SubprocessError, OSError, AttributeError, ValueError, RuntimeError) as exc:
             row.error = str(exc)[:2000]
         row.collected_at = now
         db.merge(row)

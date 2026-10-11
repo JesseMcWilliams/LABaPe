@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, maintenance
+from . import downloads, hostio, maintenance
 from .. import version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -248,7 +248,7 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     profile = work / "tofu" / "environments" / f"{PROFILE}.tfvars"
     lines = [
         "# Written by the LABaPe job runner from the environment's spec.",
-        f"libvirt_uri = {_hcl(host.libvirt_uri)}",
+        f"libvirt_uri = {_hcl('qemu:///system' if hostio.is_remote(host.libvirt_uri) else host.libvirt_uri)}",
         f"bridge_device = {_hcl(host.bridge)}",
     ]
     if spec.get("static_ip_offset_start") is not None:  # environments created before allocations
@@ -286,6 +286,8 @@ def ssh_key_path() -> str:
     """
     ssh = get_settings().data_dir / "home" / ".ssh"
     for f in sorted(ssh.glob("*")) if ssh.is_dir() else []:
+        if f.name == hostio.KEY_NAME:      # the worker's key for remote KVM hosts, not for VMs
+            continue
         if f.suffix != ".pub" and f.with_name(f.name + ".pub").is_file():
             return str(f)
     return ""
@@ -378,16 +380,38 @@ def run(job_id: int, worker: str) -> None:
             else:
                 work = prepare(db, env, host)
             cmd = command_for(job, env, work)
+            remote = hostio.RemoteJob(hostio.Host(host.libvirt_uri), work, job.id) \
+                if hostio.is_remote(host.libvirt_uri) else None
         except Exception as exc:  # noqa: BLE001 — any setup failure fails the job, visibly
             _append(job, f"labape: could not start: {exc}\n")
             _finish(db, job, env, None)
             return
+        iso_keys = _iso_keys(job, env)
 
     with open(log_path, "ab", buffering=0) as logf:
         what = env.name if env is not None and not job.type.startswith("template.") else \
             (job.params or {}).get("name") or (job.params or {}).get("new_name", "")
         logf.write(f"labape: job {job_id} ({job.type}) for {what} on {host.name}, worker {worker}\n".encode())
-        proc = subprocess.Popen(cmd, cwd=work, env=job_env(host), stdin=subprocess.DEVNULL, stdout=logf,
+        run_env = job_env(host)
+        if remote is not None:
+            try:
+                logf.write(f"labape: running on {remote.host.target} over SSH in {remote.root}\n".encode())
+                _sync_isos(work, remote.host, host, iso_keys, _TextLog(logf))
+                secrets_dir = get_settings().secrets_dir
+                files = {"vault-pass": secrets_dir / "vault-pass"}
+                if ssh_key_path():   # the scripts check the key has its .pub beside it
+                    files["ssh-key"] = Path(ssh_key_path())
+                    files["ssh-key.pub"] = Path(ssh_key_path() + ".pub")
+                remote.push(run_env, {k: v for k, v in files.items() if v.is_file()})
+                cmd, run_env = remote.command(cmd), hostio.tool_env()
+            except Exception as exc:  # noqa: BLE001
+                logf.write(f"labape: could not start on {host.name}: {exc}\n".encode())
+                remote.cleanup()
+                with Session_() as db:
+                    job = db.get(Job, job_id)
+                    _finish(db, job, db.get(Environment, job.environment_id) if job.environment_id else None, None)
+                return
+        proc = subprocess.Popen(cmd, cwd=work, env=run_env, stdin=subprocess.DEVNULL, stdout=logf,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         cancelled_at = None
         last_beat = 0.0
@@ -414,10 +438,57 @@ def run(job_id: int, worker: str) -> None:
                 _signal(proc, signal.SIGKILL)
                 cancelled_at = float("inf")  # don't repeat
 
+    if remote is not None:
+        try:
+            remote.pull("ansible/inventory")      # hosts.generated, credentials, inventory
+        except Exception as exc:  # noqa: BLE001
+            _append_path(log_path, f"labape: copying the results back failed: {exc}\n")
+            rc = rc or 1
+        finally:
+            remote.cleanup()
     with Session_() as db:
         job = db.get(Job, job_id)
         env = db.get(Environment, job.environment_id) if job.environment_id else None
         _finish(db, job, env, rc, work=work)
+
+
+class _TextLog:
+    def __init__(self, fh):
+        self.fh = fh
+
+    def write(self, text: str) -> None:
+        self.fh.write(text.encode())
+
+
+def _append_path(path: Path, msg: str) -> None:
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(msg)
+
+
+def _iso_keys(job: Job, env: Environment | None) -> set[str]:
+    """OS keys whose ISO a job installs from (template builds, ISO host groups)."""
+    if job.type == "template.build":
+        return {(job.params or {}).get("os_key", "")}
+    if job.type != "environment.deploy" or env is None:
+        return set()
+    return {g.get("os", "") for g in (env.spec or {}).get("host_groups", [])
+            if (g.get("image_source") or "iso_direct") == "iso_direct"}
+
+
+def _sync_isos(work: Path, rhost: hostio.Host, host: KvmHost, keys: set[str], log) -> None:
+    """Point environment.yml's ISOs at the remote host's copies, copying the
+    ones this job needs there first (<vm_storage_path>/.labape-isos)."""
+    path = work / "environment.yml"
+    env_yml = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    remote_dir = f"{host.vm_storage_path.rstrip('/')}/.labape-isos"
+    isos = env_yml.get("os_iso_paths") or {}
+    for key, local in list(isos.items()):
+        if key in keys and Path(local).is_file():
+            isos[key] = hostio.sync_iso(rhost, Path(local), remote_dir, log)
+        else:
+            isos[key] = f"{remote_dir}/{Path(local).name}"
+    env_yml["os_iso_paths"] = isos
+    path.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
 
 
 def _signal(proc: subprocess.Popen, sig: int) -> None:

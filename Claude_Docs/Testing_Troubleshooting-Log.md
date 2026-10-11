@@ -1387,3 +1387,19 @@ Firefox fails on Debian. Everything else in the run completed. A fix needs
 per-distribution names in the catalog (for example `apt: {debian:
 firefox-esr, default: firefox}`). Not fixed yet; the Rocky and Windows
 hosts in the same run were clean.
+
+### Remote KVM hosts: libvirt refused the host key; the scripts wanted the .pub (2026-10-11)
+
+Two problems came up while bringing up batch J against the lab host
+registered as `qemu+ssh`:
+
+- **Host key.** `virsh --connect qemu+ssh://...` failed with "Host key
+  verification failed". libvirt's ssh transport doesn't take the
+  worker's `StrictHostKeyChecking=accept-new`; it only reads
+  `known_hosts`. On a first contact, virsh ran before any of the worker's
+  own ssh calls had recorded the key. `hostio.Host.prime()` now runs
+  `ssh ... true` (accept-new) once per host before libvirt calls, with
+  HOME set to the job HOME so both use the same `known_hosts`.
+- **Key pair.** The first remote deploy stopped at "ssh-key.pub not
+  found": `deploy.sh` checks that the VM SSH key has its `.pub` beside
+  it. The runner now ships both into `.labape-remote/`.

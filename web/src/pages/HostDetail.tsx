@@ -12,6 +12,48 @@ import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import HostNetworks from "./HostNetworks";
 
 type HostForm = Omit<KvmHost, "id" | "resources">;
+interface CheckResult { ok: boolean; remote: boolean; libvirt: string; problems: string[] }
+
+// A qemu+ssh host (design §22.4): the worker's key to authorize there, and a connection check.
+function RemoteAccess({ hostId }: { hostId: number | null }) {
+  const [key, setKey] = useState("");
+  const [check, setCheck] = useState<CheckResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.get<{ public_key: string }>("/api/hosts/worker-key").then((k) => setKey(k.public_key), () => setKey(""));
+  }, []);
+  const run = async () => {
+    setBusy(true);
+    try { setCheck(await api.post<CheckResult>(`/api/hosts/${hostId}/check`)); } finally { setBusy(false); }
+  };
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack spacing={1}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Remote access over SSH</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Jobs for this host run there over SSH, as the user in the URI. Install the host with
+          {" "}<code>sudo deploy/install-labape.py --profile kvm</code> (libvirt, OpenTofu, Ansible, Packer), then add
+          this key to that user&apos;s <code>~/.ssh/authorized_keys</code>:
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <Box component="code" sx={{ flex: 1, p: 1, bgcolor: "action.hover", borderRadius: 1, fontSize: 12, wordBreak: "break-all" }}>
+            {key || "…"}
+          </Box>
+          <Button size="small" disabled={!key} onClick={() => navigator.clipboard.writeText(key)}>Copy</Button>
+        </Stack>
+        {hostId !== null && (
+          <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+            <Button variant="outlined" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check connection"}</Button>
+            {check?.libvirt && <Typography variant="body2">{check.libvirt}</Typography>}
+          </Stack>
+        )}
+        {check && (check.ok
+          ? <Alert severity="success">The worker reaches the host and everything jobs need is there.</Alert>
+          : <Alert severity="error"><Box component="ul" sx={{ m: 0, pl: 2 }}>{check.problems.map((p) => <li key={p}>{p}</li>)}</Box></Alert>)}
+      </Stack>
+    </Paper>
+  );
+}
 
 const blank: HostForm = {
   name: "", libvirt_uri: "qemu:///system", vm_storage_path: "/data/VMs/LABaPe",
@@ -75,7 +117,7 @@ export default function HostDetail() {
             <ErrorSummary summary={errs.summary} fields={errs.fields} />
             <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
               {field("name", "Name")}
-              {field("libvirt_uri", "libvirt URI", "qemu:///system for this machine")}
+              {field("libvirt_uri", "libvirt URI", "qemu:///system here, or qemu+ssh://user@host/system")}
               {field("vm_storage_path", "VM storage path")}
               {field("template_storage_path", "Template storage path")}
               {field("bridge", "Fallback bridge", "Used when a network has no bridge here")}
@@ -83,10 +125,6 @@ export default function HostDetail() {
               <FormControlLabel label="Enabled" sx={{ mt: 0.5 }}
                 control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} />
             </Stack>
-            <Typography variant="body2" color="text.secondary">
-              Only the local host (qemu:///system, the libvirt socket mounted into the container) is supported for now.
-              Remote hosts over qemu+ssh come with the installer profiles (design §22.4).
-            </Typography>
             <Stack direction="row" spacing={2}>
               <Button type="submit" variant="contained">{isNew ? "Register" : "Save"}</Button>
               <Button component={RouterLink} to="/hosts">Cancel</Button>
@@ -106,6 +144,8 @@ export default function HostDetail() {
           )}
         </>
       )}
+
+      {isAdmin && form.libvirt_uri.startsWith("qemu+ssh://") && <RemoteAccess hostId={isNew ? null : Number(id)} />}
 
       {host && (
         <Box>

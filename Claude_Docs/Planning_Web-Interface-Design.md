@@ -841,13 +841,27 @@ As built:
 | UI | Files tabs: "Download from URL" (URL, name, hash type, expected hash, description; opens the job), and "Verify against a hash…" before an upload. Settings → Downloads. |
 | Verified | Live: plain HTTP and the metadata address refused. virtio-win guest tools 0.1.302 (31.6 MB) downloaded over HTTPS, checked against its SHA-256 (pasted as a checksum-file line), stored with the requester as uploader, then deleted. pytest: 53 (parsing, URL rules, a local HTTP server with a redirect, SHA-1 mismatch, duplicate content, uploads with an MD5). |
 
-### 22.4 Batch J: installer profiles, remote KVM hosts
+### 22.4 Batch J: installer profiles, remote KVM hosts (built)
 
 - `install-labape.py --profile full|kvm|web`:
   - `kvm` installs the KVM-host side only (packages, libvirt, networks, storage, the engine tools, secrets);
   - `web` installs the container stack only and registers a remote KVM host.
 - The `web` profile depends on remote libvirt over SSH (phase 10e,
   §15), which is built in this batch (question 69).
+
+As built:
+
+| Area | As built |
+|---|---|
+| Approach | Jobs for a `qemu+ssh://user@host/system` host run **on that host** over SSH, with the same engine scripts the CLI uses there. This replaced §15's plan of rewriting every script for libvirt storage-pool APIs. The worker builds the workspace as usual, with `libvirt_uri = qemu:///system`, because libvirt is local to the scripts. It ships the workspace with `tar` over SSH to `~/.labape/jobs/<job>`. The vault password, the VM SSH key pair and an `env` file (state connection, key paths, `LIBVIRT_URI`, `TF_PLUGIN_CACHE_DIR`) go into `.labape-remote/`, mode 0700. The command runs with `ssh -tt` (a TTY, so cancelling the local ssh hangs up the remote job) and `-R 127.0.0.1:<port>:postgres:5432`, so OpenTofu's pg backend reaches the state database through the tunnel. Afterwards `ansible/inventory` is copied back for the usual output handling, and the remote copy is removed. Cleanup also runs after failures. |
+| ISOs | For ISO host groups and template builds, the needed ISO is copied to `<vm_storage_path>/.labape-isos/` on the host when its name and size differ, and `environment.yml` points there. |
+| Packer (question 34) | Template builds for a remote host run on that host, with its Packer (the `kvm` profile installs it). |
+| Worker-side reads | Host stats keep using libvirt directly (`virsh --connect qemu+ssh://...?keyfile=...&no_tty=1`). `/proc` and disk usage come from one Python probe over SSH. The template library is listed, and its metadata written, by Python snippets over SSH (`hostio.TEMPLATES`, `WRITE_FILES`). The host key is accepted on first contact and recorded in the job HOME's `known_hosts` before any libvirt call, because libvirt's ssh transport refuses an unknown host. |
+| Key | The worker's key `~/.ssh/labape_kvm` (job HOME, on the data volume) is generated on first use. It's shown on the host's page with Copy, and printed by `labape worker-key`. It is never used for VMs. |
+| API and UI | Hosts accept `qemu:///system` or `qemu+ssh://user@host[:port]/system`. `GET /api/hosts/worker-key`. `POST /api/hosts/{id}/check` reports the libvirt version, the tools on the host (virsh, virt-install, qemu-img, xorrisofs, tofu, ansible-playbook, packer, tar) and whether the storage paths are writable. The host page shows a "Remote access over SSH" panel. |
+| Installer | `--profile full|kvm|web` (answer `Profile`). `kvm` skips the `Stack.*` steps and adds `Remote.AuthorizeWorker` (`WorkerPublicKey`). `web` skips the KVM side (no `/dev/kvm`, base packages only) and registers `RemoteKvmUri`. Steps that won't run no longer ask for their answers, and answers can be `optional`. |
+| Verified | Live: the lab host registered a second time as `kvm1-ssh` (`qemu+ssh://AutomationUser@172.21.20.11/system`), with the worker's key authorized for AutomationUser. **Check connection** passed (QEMU 10.0.13, all tools, writable paths). Stats (CPU, storage) and all 20 templates came over SSH. Environment `remote1` (a Rocky 9 clone, DHCP) deployed on the host over SSH: OpenTofu state went through the tunnel, the VM was created, its DHCP address found, and Ansible ran with 0 failed. The inventory was copied back and `~/.labape/jobs/<job>` removed. The destroy ran the same way. Afterwards the test host was disabled and the key removed. Installer: dry runs of all three profiles ran exactly the expected steps. pytest: 58. |
+| Not yet | One host per environment, as before; spanning hosts with best-fit placement (§15) is still to come. ISO and template copies between hosts aren't automatic beyond the ISO a job needs. |
 
 ### 22.5 Batch K: platform certificate authority
 
