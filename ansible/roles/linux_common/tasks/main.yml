@@ -10,6 +10,13 @@
   loop_control:
     label: "{{ item }}"
 
+# Applications chosen for this host's group in the web UI (design §21.4),
+# written by the job runner to inventory host_vars; the CLI never sets it.
+- name: Add the applications chosen in the web UI
+  ansible.builtin.set_fact:
+    linux_common_raw_packages: "{{ (linux_common_raw_packages | default([])) + (labape_extra_packages | default([])) }}"
+  when: labape_extra_packages | default([]) | length > 0
+
 # A host with no packages assigned at all (raw_packages ends up [])
 # means the loop below has zero iterations — set_fact never runs, so
 # without this the variable it would have created is simply undefined

@@ -162,6 +162,9 @@ export interface HostGroup {
   network?: string;
   addressing: "static" | "dhcp";
   names?: string[];
+  services?: string[];
+  applications?: string[];
+  packages?: string[];
 }
 
 export interface Environment {

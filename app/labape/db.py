@@ -48,9 +48,24 @@ def init_db() -> None:
     eng = engine()
     if eng.dialect.name != "postgresql":
         Base.metadata.create_all(eng)
+        _seed()
         return
     # The API and the worker start together; without a lock both try to
     # create a new table at once and one dies on a duplicate-type error.
     with eng.begin() as conn:
         conn.execute(text("SELECT pg_advisory_xact_lock(4711)"))
         Base.metadata.create_all(conn)
+    _seed()
+
+
+def _seed() -> None:
+    """First-start content (the starter catalog). Idempotent: only an empty
+    catalog is seeded, under the same lock as table creation."""
+    from .catalog import seed
+    from .config import get_settings
+
+    eng = engine()
+    with session_factory()() as db:
+        if eng.dialect.name == "postgresql":
+            db.execute(text("SELECT pg_advisory_xact_lock(4711)"))
+        seed(db, str(get_settings().engine_dir / "ansible" / "package_catalog.yml"))

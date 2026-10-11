@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..catalog import CatalogError, expand, platforms
 from ..errors import FieldError
 from ..engine.hoststats import assess, demand_of
 from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, Template, utcnow
@@ -44,6 +45,10 @@ class HostGroup(BaseModel):
     # Optional VM names, one per host in order; blanks are generated
     # (<group><n>). Unique across the KVM host (question 60).
     names: list[str] = Field(default=[], max_length=20)
+    # Catalog choices added on top of the template (design §21.4).
+    services: list[str] = Field(default=[], max_length=50)
+    applications: list[str] = Field(default=[], max_length=100)
+    packages: list[str] = Field(default=[], max_length=50)
 
     @field_validator("names")
     @classmethod
@@ -138,6 +143,22 @@ def _check_capacity(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
             raise FieldError("kvm_host_id", f["message"])
 
 
+def _check_catalog(db: Session, groups: list[dict]) -> None:
+    """Chosen services, applications and packages must be published and
+    support the group's OS family."""
+    for i, g in enumerate(groups):
+        family = "windows" if g.get("os", "").startswith("windows") else "linux"
+        try:
+            chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
+        except CatalogError as exc:
+            raise FieldError(f"host_groups.{i}.{exc.field}", str(exc)) from exc
+        for kind in ("services", "applications"):
+            for name, definition in chosen[kind].items():
+                if family not in platforms(kind[:-1], definition):
+                    raise FieldError(f"host_groups.{i}.{kind}", f"{kind[:-1].capitalize()} {name} has nothing to "
+                                     f"install on {family}; remove it from this {g.get('os')} group.")
+
+
 def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
     """A template must exist on the host and match the group's OS (when the
     host's template library has been synced)."""
@@ -222,6 +243,7 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
     _check_capacity(db, host.id, raw)
     _check_names(db, host.id, raw)
     _check_templates(db, host.id, raw)
+    _check_catalog(db, raw)
     groups = _check_networks(db, p, host.id, raw)
     spec = {"host_groups": groups}
     e = Environment(name=body.name, kvm_host_id=host.id, spec=spec, created_by=p.username)

@@ -218,6 +218,44 @@ class Upload(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class CatalogItem(Base):
+    """A service, application or package users can add to host groups
+    (design §21.4). Only published items can be chosen."""
+
+    __tablename__ = "catalog_items"
+    __table_args__ = (UniqueConstraint("kind", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), index=True)        # service | application | package
+    name: Mapped[str] = mapped_column(String(63))
+    display_name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft | published | retired
+    definition: Mapped[dict] = mapped_column(JSON, default=dict)
+    platforms: Mapped[list] = mapped_column(JSON, default=list)      # windows / linux
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    updated_by: Mapped[str] = mapped_column(String(255), default="")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class CatalogRequest(Base):
+    """A user's request for a new catalog item (questions 51, 52)."""
+
+    __tablename__ = "catalog_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    title: Mapped[str] = mapped_column(String(200))
+    details: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="open")   # open | accepted | done | declined
+    response: Mapped[str] = mapped_column(Text, default="")
+    requested_by: Mapped[str] = mapped_column(String(255))
+    handled_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class HostStats(Base):
     """A KVM host's latest resources and load, collected by the worker
     every minute (design §21.2). One row per host, overwritten."""

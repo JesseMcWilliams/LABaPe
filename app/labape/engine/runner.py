@@ -33,8 +33,9 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import session_factory
-from ..models import Environment, HostNetwork, IpAllocation, Job, KvmHost, Network, utcnow
-from ..files import iso_paths
+from ..models import CatalogItem, Environment, HostNetwork, IpAllocation, Job, KvmHost, Network, utcnow
+from ..catalog import expand
+from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
@@ -144,13 +145,50 @@ def network_catalog(db: Session, host: KvmHost) -> tuple[dict, str] | None:
     return nets, default
 
 
+CATALOG_KEYS = ("services", "applications", "packages")
+
+
+def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
+    """Catalog choices for Ansible (design §21.4): every published
+    application merged into package_catalog.yml, each VM's services and
+    extra applications as inventory host_vars, and software_store_path
+    pointed at the installers location (local installer paths are file
+    names there)."""
+    inv = work / "ansible" / "inventory"
+    hv = inv / "host_vars"
+    shutil.rmtree(hv, ignore_errors=True)
+    hv.mkdir(parents=True, exist_ok=True)
+    for g in (env.spec or {}).get("host_groups", []):
+        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
+        if not chosen["services"] and not chosen["applications"]:
+            continue
+        for vm in instance_names(g):
+            (hv / f"{vm}.yml").write_text(yaml.safe_dump({
+                "labape_services": chosen["services"],
+                "labape_extra_packages": sorted(chosen["applications"]),
+            }, sort_keys=False), encoding="utf-8")
+    catalog_file = work / "ansible" / "package_catalog.yml"
+    base = yaml.safe_load(catalog_file.read_text(encoding="utf-8")) if catalog_file.is_file() else {}
+    packages = dict((base or {}).get("packages") or {})
+    for item in db.scalars(select(CatalogItem).where(CatalogItem.kind == "application",
+                                                     CatalogItem.status == "published")):
+        packages[item.name] = item.definition
+    catalog_file.write_text("# Written by the LABaPe job runner: the repository catalog plus the web UI's\n"
+                            "# published applications (design §21.4).\n"
+                            + yaml.safe_dump({"packages": packages}, sort_keys=False), encoding="utf-8")
+    gv = inv / "group_vars" / "all"
+    gv.mkdir(parents=True, exist_ok=True)
+    (gv / "labape.yml").write_text(yaml.safe_dump({"software_store_path": roots(db)["installers"]}),
+                                   encoding="utf-8")
+
+
 def profile_host_groups(db: Session, env: Environment) -> list[dict]:
     """The spec's host groups, with each static group's allocated addresses."""
     allocs = {a.vm_name: a.address for a in db.scalars(select(IpAllocation)
                                                        .where(IpAllocation.environment_id == env.id))}
     groups = []
     for g in (env.spec or {}).get("host_groups", []):
-        g = dict(g)
+        g = {k: v for k, v in g.items() if k not in CATALOG_KEYS}  # Ansible's business, not OpenTofu's
         if g.get("addressing", "static") == "static":
             names = instance_names(g)
             if all(n in allocs for n in names):
@@ -215,6 +253,7 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
         lines.append(f"static_ip_offset_start = {_hcl(spec['static_ip_offset_start'])}")
     lines.append(f"host_groups = {_hcl(profile_host_groups(db, env))}")
     profile.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_catalog_inputs(db, env, work)
 
     return work
 

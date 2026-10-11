@@ -105,6 +105,8 @@
       }}
   roles:
     - linux_common
+    # Services chosen in the web UI (no-op when none were chosen).
+    - labape_services
   tags: [software, directory_objects]
 
 - name: Configure Windows hosts (software manifest, local accounts)
@@ -121,4 +123,6 @@
       }}
   roles:
     - windows_common
+    # Services chosen in the web UI (no-op when none were chosen).
+    - labape_services
   tags: [software, directory_objects]
