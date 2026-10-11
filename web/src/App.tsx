@@ -13,6 +13,7 @@ import Hosts from "./pages/Hosts";
 import Networks from "./pages/Networks";
 import Audit from "./pages/Audit";
 import Errors from "./pages/Errors";
+import Settings from "./pages/Settings";
 import Files from "./pages/Files";
 import Catalog from "./pages/Catalog";
 import UserMenu from "./components/UserMenu";
@@ -102,6 +103,9 @@ export default function App() {
                 <Button color="inherit" component={RouterLink} to="/errors">
                   Errors
                 </Button>
+                <Button color="inherit" component={RouterLink} to="/settings">
+                  Settings
+                </Button>
               </>
             )}
             <Box sx={{ flexGrow: 1 }} />
@@ -136,6 +140,7 @@ export default function App() {
           <Route path="/networks" element={<Networks />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/errors" element={<Errors />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/files" element={<Files />} />
           <Route path="/catalog" element={<Catalog />} />
           <Route path="*" element={<Typography>Not found.</Typography>} />
