@@ -81,7 +81,8 @@ packer_vars=(
 [ -n "$DISK_GB" ] && packer_vars+=(-var "disk_gb=$DISK_GB")
 case "$PACKER_DIR" in
   */linux/*)
-    key="$(vault ansible_ssh_private_key_path)"; key="${key/#\~/$HOME}"
+    # LABAPE_SSH_PRIVATE_KEY_PATH: the web UI's job runner keeps its own copy (deploy.sh does the same).
+    key="${LABAPE_SSH_PRIVATE_KEY_PATH:-$(vault ansible_ssh_private_key_path)}"; key="${key/#\~/$HOME}"
     packer_vars+=(-var "ssh_private_key_file=$key" -var "ssh_public_key=$(cat "$key.pub")")
     ;;
   */windows)
@@ -120,4 +121,9 @@ chmod 0444 "$target"
 virsh_ pool-refresh "$POOL" >/dev/null
 rm -rf "$OUTPUT_DIR"
 virsh_ vol-info --pool "$POOL" "$TEMPLATE_NAME.qcow2"
+edition=""
+case "$OS_KEY" in windows_server_*) if $CORE; then edition=core; else edition=desktop; fi ;; esac
+python3 "$ROOT_DIR/scripts/lib/write_template_meta.py" "$TEMPLATE_DIR" "$TEMPLATE_NAME" --os "$OS_KEY" \
+  ${edition:+--edition "$edition"} --note "Built with Packer from $(basename "$ISO_PATH")." \
+  || echo "labape: couldn't write the template's metadata file (permissions?); the web UI will infer it." >&2
 echo "labape: template ready: $target" >&2

@@ -57,6 +57,12 @@ services:
   labape-api:
     <<: *labape
     command: ["labape", "serve", "--port", "8000"]
+    # The file manager writes uploads into the data root (design §9).
+    volumes:
+      - labape-data:/var/lib/labape
+      - ${LABAPE_CONFIG_PATH:-./config}:/etc/labape:ro
+      - ${LABAPE_ENGINE_SECRETS_PATH:-./engine-secrets}:/run/labape-secrets:ro
+      - ${LABAPE_DATA_ROOT:-/data}:${LABAPE_DATA_ROOT:-/data}
 
   labape-worker:
     <<: *labape

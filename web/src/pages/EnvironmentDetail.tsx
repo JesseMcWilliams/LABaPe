@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Link, Paper, Stack, Table,
-  TableBody, TableCell, TableHead, TableRow, Typography,
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Link, Paper, Stack, Table,
+  TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
 import { api, CredentialSection, Environment, fmtTime, Job } from "../api";
 import Credentials from "../components/Credentials";
+import { hasRole, useAuth } from "../App";
 import { StateChip } from "../components";
 
 export default function EnvironmentDetail() {
@@ -15,6 +16,19 @@ export default function EnvironmentDetail() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [creds, setCreds] = useState<CredentialSection[] | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [promote, setPromote] = useState<{ vm: string; name: string } | null>(null);
+  const { me } = useAuth();
+  const canPromote = hasRole(me, "template_editor");
+  const doPromote = async () => {
+    if (!promote) return;
+    try {
+      const r = await api.post<{ job_id: number }>("/api/templates/promote", { environment_id: Number(id), vm: promote.vm, name: promote.name });
+      navigate(`/jobs/${r.job_id}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setPromote(null);
+    }
+  };
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -111,9 +125,14 @@ export default function EnvironmentDetail() {
               <TableCell>{g.cpu_count} vCPU · {g.memory_mb} MB · {g.disk_gb} GB</TableCell>
               <TableCell>{g.network ?? "host default"} · {g.addressing ?? "static"}</TableCell>
               <TableCell>
-                {Array.from({ length: g.count ?? 1 }, (_, k) => g.names?.[k] || `${g.name}${k + 1}`)
-                  .map((vm) => `${vm} ${env.addresses?.[vm] ?? (g.addressing === "dhcp" ? "(DHCP)" : "")}`)
-                  .join(", ")}
+                {Array.from({ length: g.count ?? 1 }, (_, k) => g.names?.[k] || `${g.name}${k + 1}`).map((vm) => (
+                  <Box key={vm}>
+                    {vm} {env.addresses?.[vm] ?? (g.addressing === "dhcp" ? "(DHCP)" : "")}
+                    {env.is_owner && env.status === "deployed" && canPromote && !g.roles.includes("domain_controller") && (
+                      <Button size="small" onClick={() => setPromote({ vm, name: `${vm}-template` })}>Promote to template</Button>
+                    )}
+                  </Box>
+                ))}
               </TableCell>
             </TableRow>
           ))}
@@ -141,6 +160,21 @@ export default function EnvironmentDetail() {
           ))}
         </TableBody>
       </Table>
+      <Dialog open={Boolean(promote)} onClose={() => setPromote(null)}>
+        <DialogTitle>Promote {promote?.vm} to a template</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            The VM is generalized (Windows sysprep, or cloud-init clean on Linux), shut down and copied into the
+            template library. It's left shut down; destroy the environment when you're done with it.
+          </DialogContentText>
+          <TextField label="Template name" fullWidth value={promote?.name ?? ""}
+            onChange={(e) => setPromote(promote ? { ...promote, name: e.target.value } : null)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPromote(null)}>Cancel</Button>
+          <Button variant="contained" onClick={doPromote}>Promote</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={confirm} onClose={() => setConfirm(false)}>
         <DialogTitle>Destroy {env.name}?</DialogTitle>
         <DialogContent>
