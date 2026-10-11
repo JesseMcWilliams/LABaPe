@@ -902,18 +902,66 @@ From the feedback after round 3:
 | Tooltip only | Navigation (top bar, Add or New links that open a form, Back, Cancel), read-only actions (filter, export, show, copy, check connection, test search) and buttons inside dialogs that are themselves the confirmation (promote, start job, send request, respond). Plain links and buttons use `title`. |
 | Verified | Type-checked in the image build and deployed on the lab host; the browser tool wasn't available in this session to click through every dialog. |
 
-### 23.2 Update flow (planned)
+### 23.2 Update flow (decided, not built)
 
-Decisions: questions 76-79 in `Claude_Docs/Planning_Questions.md`. The proposal:
-- **Check now** opens a dialog listing what's available. Each choice links to its release notes:
-  - the newest release;
-  - a newer preview, if there is one (question 76);
-  - older releases, for a downgrade (question 78).
-- **Continue** asks a host-side update agent to do it (question 77). The agent is a systemd path unit installed by the installer, so the containers never get the Docker socket. It:
-  1. takes a database backup;
-  2. checks out the chosen tag;
-  3. rebuilds with `LABAPE_VERSION`;
-  4. restarts the stack and checks its health;
-  5. returns to the previous tag if the new one doesn't come up.
+Decisions: questions 76-80, 82.
 
-  Its progress shows on the dashboard.
+- **Check now** opens a dialog with each choice and a link to its notes:
+  - the newest **release**;
+  - a newer **pre-release** (the preview channel), if there is one;
+  - **Roll back to <previous>**, while a previous version is on standby.
+- **Signed releases only.** The agent checks the tag's signature against a pinned allowed-signers file, which the installer puts in place. An unsigned tag, or one signed by an unknown key, is refused.
+- **Host-side update agent.** A systemd path unit installed by the installer runs as the service user, so the containers never get the Docker socket. The app writes a request file into a folder shared with the host, and the agent:
+  1. turns on **maintenance mode** (§23.3) and waits for running jobs to finish, up to a limit;
+  2. takes a database backup, labelled with the version it came from;
+  3. tags the running image `labape:previous` and records the current tag;
+  4. checks out the new tag, rebuilds with `LABAPE_VERSION`, and starts the stack, which runs database migrations;
+  5. runs health checks for about 5 minutes (the API, the worker heartbeat, the database, the CA, and one harmless job);
+  6. if they pass, turns maintenance off; if they fail, rolls back.
+
+  It writes its progress where the dashboard shows it.
+- **Rollback.** Only to the previous version, from the app. It restarts the `labape:previous` image (no rebuild), plus the pre-update backup if the database layout changed. It happens automatically when the health checks fail, or on demand with **Roll back** until the next update. A breakage the checks miss is why the previous image stays.
+- **Further back.** A manual, documented script on the host: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
+- **Persistent data.** Everything that must survive is already in named volumes (database, job data, the CA, Caddy), which updates never touch. Database migrations (Alembic) come first, so a version change knows the layout it's moving between.
+
+### 23.3 Maintenance mode (decided, not built)
+
+- **One flag**, set three ways:
+  - by an admin (Settings > Maintenance, with a reason and an expected end);
+  - by the update agent, a rollback or a restore;
+  - by a secret rotation that needs a restart.
+
+  Each change is audited and sent to syslog.
+- **Writes stop.** The API refuses every change with 503 and the reason. These stay open: sign-in and sign-out (break-glass included), turning maintenance off, the update and rollback controls, and cancelling a job. Reads, status, the dashboard and live job logs keep working.
+- **The worker drains.** It claims no new jobs and lets running ones finish. Scheduled work (backups, purges, release checks, rotations) pauses, except the work the maintenance itself needs.
+- **Visible everywhere.** A banner on every page shows the reason, who started it and the expected end. Change buttons are disabled with "Unavailable during maintenance". `/api/health` reports the mode.
+- **Scheduled windows.** A window can be set ahead, with a heads-up banner before it starts. Rotations that need a restart use the same window (§24).
+
+## 24. Secret rotation (decided, not built)
+
+Decisions: questions 81, 83, 84.
+
+- **Framework.** Each kind of secret has a rotator with five steps: make the new value, apply it where it's used, verify, commit, undo. Where the system allows it, old and new stay valid together until the new one is verified. Each rotation is audited. A failure keeps the old secret, alerts (dashboard, email, syslog) and retries hourly.
+- **Settings > Secrets** lists each secret with its store, class, interval, window, last and next rotation, status, notes, and a Rotate now button.
+- **Stores.** Several can be in use; each secret names its store (built-in first, and OpenBao/Vault or Conjur in phase 10d). When an external provider rotates a secret itself, LABaPe only reads it.
+- **Elevated accounts.** A secret whose account can't change its own credential names an elevated account that can. Examples: the PostgreSQL superuser for the app's role, or an Authentik token allowed to replace the directory token.
+- **Intervals.**
+  - Privileged secrets: 24 hours.
+  - Read-only secrets: 7 days.
+  - Rotations that need a **service restart**: 7 days, inside the **maintenance window** (day and time set in Settings), with a note on the secret saying why.
+  - Every interval can be changed per secret.
+
+| Secret | Class | Default | Rotation |
+|---|---|---|---|
+| PostgreSQL app password | privileged, restart | 7 days in the window | `ALTER ROLE` with the elevated account, rewrite the connection secrets, restart the API and worker |
+| `secret_key` (sessions, built-in store) | privileged | 24 h | Two keys at once (MultiFernet), re-encrypt the store, drop the old key later |
+| CA key password and signing provisioner | privileged, restart | 7 days in the window | `step crypto change-pass`, provisioner update, restart the CA |
+| Worker SSH key for remote KVM hosts | privileged | 24 h | Add the new key with the old one, verify, remove the old one |
+| VM bootstrap SSH key | privileged | 24 h | Push to running VMs, keeping the previous key until the next rotation |
+| Ansible vault password | privileged | 24 h | `ansible-vault rekey` |
+| Authentik directory token | read-only | 7 days | Through the Authentik API with an elevated token, otherwise a reminder |
+| OIDC client secret | privileged | 24 h with an elevated Authentik token, otherwise a reminder | |
+| SMTP password, other external credentials | external | reminder only | |
+| Job certificate tokens, break-glass tokens | one-time | n/a | They already expire after one use |
+
+- **Lab environments (question 83).** The domain admin and local admin passwords rotate every **7 days** by default; each environment sets its own interval or turns rotation off. The **DSRM password never rotates**. A VM that's off when its password rotates is brought up to date at its next deploy or rotation.
