@@ -800,12 +800,13 @@ None blocking further scaffolding right now.
   assemblies/sub-assemblies), OS/software/feature repository browsing,
   async deploy job runner with live progress.
 
-Both M9 and M10 are recorded now (design discussion, not yet
-implementation) because a design exists — see §19/§20 — not because
-they're scheduled next. M1-M5 are all confirmed working end-to-end
-(see above); the immediate next step is M6 (Packer base images), with
-ISO-direct installs kept as a fully supported image source alongside the
-Packer templates rather than replaced by them.
+**M10 status (2026-10-11):**
+- Phase 10a (container stack, sign-in, deploy and destroy) is built.
+- 10b (Files) is built.
+- The usability and admin round is built (`Claude_Docs/Planning_Web-Interface-Design.md` §21).
+- The next round is planned there in §22.
+- M9 is still design only (§19, `Claude_Docs/Planning_Certificate-Authority.md`). §22 adds a platform-CA proposal that changes how it fits together.
+- M1-M6 are complete on libvirt.
 
 ## 19. Certificate Authorities (Future)
 
