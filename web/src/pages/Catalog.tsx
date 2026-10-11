@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import {
-  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem,
-  Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Tooltip, Typography,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Link,
+  MenuItem, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Typography,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadIcon from "@mui/icons-material/Upload";
@@ -29,60 +30,12 @@ const KINDS = [
 ] as const;
 
 // Starting points for the definition editor, one per kind.
-const EXAMPLES: Record<string, string> = {
+export const EXAMPLES: Record<string, string> = {
   service: JSON.stringify({ windows: { features: ["Web-Server"], services: ["W3SVC"] },
     linux: { packages: { dnf: ["nginx"], apt: ["nginx"] }, units: ["nginx"] } }, null, 2),
   application: JSON.stringify({ chocolatey: "7zip", apt: "p7zip-full", dnf: { package: "p7zip", repo: "epel" } }, null, 2),
   package: JSON.stringify({ items: [{ kind: "application", name: "sevenzip" }, { kind: "service", name: "iis" }] }, null, 2),
 };
-
-function ItemEditor({ item, kind, onClose }: { item: CatalogItem | null; kind: string; onClose: (changed: boolean) => void }) {
-  const [form, setForm] = useState({
-    name: item?.name ?? "", display_name: item?.display_name ?? "", description: item?.description ?? "",
-    notes: item?.notes ?? "", definition: item ? JSON.stringify(item.definition, null, 2) : EXAMPLES[kind],
-  });
-  const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
-  const save = async () => {
-    let definition: unknown;
-    try { definition = JSON.parse(form.definition); } catch (e) {
-      setErrs({ summary: "", fields: { definition: { field: "definition", label: "Definition", message: `Not valid JSON: ${(e as Error).message}` } } });
-      return;
-    }
-    const body = { ...form, kind, definition };
-    try {
-      if (item) await api.put(`/api/catalog/${item.id}`, body); else await api.post("/api/catalog", body);
-      onClose(true);
-    } catch (e) { setErrs(fromApiError(e)); }
-  };
-  return (
-    <Dialog open onClose={() => onClose(false)} maxWidth="md" fullWidth>
-      <DialogTitle>{item ? `Edit ${item.display_name}` : `New ${kind}`}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          <ErrorSummary summary={errs.summary} fields={errs.fields} />
-          <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-            <Field label="Name" value={form.name} disabled={Boolean(item)} error={errs.fields.name}
-              help="ID: lower-case letters, digits, _ and -" onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <Field label="Display name" value={form.display_name} sx={{ minWidth: 280 }} error={errs.fields.display_name}
-              onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
-          </Stack>
-          <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <Field label="Notes" value={form.notes} fullWidth multiline minRows={2} help="Quirks, licensing, after-tasks"
-            onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <Field label="Definition (JSON)" value={form.definition} fullWidth multiline minRows={10} error={errs.fields.definition ?? errs.fields.items}
-            slotProps={{ input: { sx: { fontFamily: "monospace", fontSize: 13 } } }}
-            help={kind === "application" ? "chocolatey/apt/dnf/zypper names, or windows/linux installers {type, source: url|local, url|path, arguments, product_id}"
-              : kind === "service" ? "windows: {features, services}; linux: {packages: {dnf, apt}, units}" : "items: [{kind, name}]"}
-            onChange={(e) => setForm({ ...form, definition: e.target.value })} />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => onClose(false)}>Cancel</Button>
-        <Button variant="contained" onClick={save}>Save as {item?.status ?? "draft"}</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
 
 function RequestDialog({ kind, onClose }: { kind: string; onClose: (sent: boolean) => void }) {
   const [form, setForm] = useState({ kind, title: "", details: "" });
@@ -115,7 +68,6 @@ function RequestDialog({ kind, onClose }: { kind: string; onClose: (sent: boolea
 
 function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
   const [items, setItems] = useState<CatalogItem[]>([]);
-  const [editing, setEditing] = useState<CatalogItem | null | "new">(null);
   const [requesting, setRequesting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -127,13 +79,14 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1}>
-        {isAdmin && <Button variant="contained" onClick={() => setEditing("new")}>New {kind}</Button>}
-        <Button variant="outlined" onClick={() => setRequesting(true)}>Request a {kind}</Button>
         {isAdmin && (
           <Button startIcon={<DownloadIcon />} href={`/api/catalog/export?ids=${selected.join(",")}`}>
             Export {selected.length ? `${selected.length} selected` : "all"} as YAML
           </Button>
         )}
+        <Box sx={{ flexGrow: 1 }} />
+        <Button variant="outlined" onClick={() => setRequesting(true)}>Request a {kind}</Button>
+        {isAdmin && <Button variant="contained" component={RouterLink} to={`/catalog/new?kind=${kind}`}>New {kind}</Button>}
       </Stack>
       {msg && <Alert severity={msg.ok ? "success" : "error"} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       <Table size="small">
@@ -154,9 +107,8 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
                 </TableCell>
               )}
               <TableCell>
-                <Tooltip title={<Box component="pre" sx={{ m: 0, fontSize: 11 }}>{JSON.stringify(i.definition, null, 2)}</Box>}>
-                  <span><b>{i.display_name}</b> <Typography component="span" variant="caption" color="text.secondary">{i.name}</Typography></span>
-                </Tooltip>
+                <Link component={RouterLink} to={`/catalog/${i.id}`}><b>{i.display_name}</b></Link>{" "}
+                <Typography component="span" variant="caption" color="text.secondary">{i.name}</Typography>
               </TableCell>
               <TableCell>{i.platforms.map((p) => <Chip key={p} size="small" label={p} sx={{ mr: 0.5 }} />)}</TableCell>
               <TableCell>{i.description}{i.notes && <Typography variant="caption" component="div" color="text.secondary">{i.notes}</Typography>}</TableCell>
@@ -164,7 +116,6 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
               <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtTime(i.updated_at)}</TableCell>
               {isAdmin && (
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  <Button size="small" onClick={() => setEditing(i)}>Edit</Button>
                   {i.status !== "published" && <Button size="small" onClick={() => setStatus(i, "published")}>Publish</Button>}
                   {i.status === "published" && <Button size="small" color="warning" onClick={() => setStatus(i, "retired")}>Retire</Button>}
                 </TableCell>
@@ -174,7 +125,6 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
           {items.length === 0 && <TableRow><TableCell colSpan={7}>Nothing here yet.</TableCell></TableRow>}
         </TableBody>
       </Table>
-      {editing && <ItemEditor item={editing === "new" ? null : editing} kind={kind} onClose={(c) => { setEditing(null); if (c) load(); }} />}
       {requesting && <RequestDialog kind={kind} onClose={(sent) => { setRequesting(false); if (sent) setMsg({ ok: true, text: "Request sent; an admin will follow up." }); }} />}
     </Stack>
   );
@@ -261,7 +211,9 @@ function Importer({ onDone }: { onDone: (msg: string, ok: boolean) => void }) {
 export default function Catalog() {
   const { me } = useAuth();
   const isAdmin = hasRole(me, "admin");
-  const [tab, setTab] = useState<string>("service");
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") ?? "service";
+  const setTab = (t: string) => setParams({ tab: t }, { replace: true });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [reload, setReload] = useState(0);
   const kind = KINDS.find((k) => k.key === tab);

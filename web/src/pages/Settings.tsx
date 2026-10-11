@@ -5,6 +5,7 @@ import {
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
+import { useAuth } from "../App";
 
 interface Backup { enabled: boolean; time_of_day: string; retention_days: number; directory: string }
 interface Retention { job_logs_days: number; audit_days: number; errors_days: number }
@@ -16,9 +17,10 @@ interface Smtp {
   enabled: boolean; host: string; port: number; security: "none" | "starttls" | "ssl"; username: string;
   from_address: string; notify_jobs: boolean; has_password: boolean;
 }
+interface Branding { app_name: string }
 interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory;
+  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding;
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -78,6 +80,7 @@ function TestButton({ label, run }: { label: string; run: () => Promise<string> 
 // Admin settings (design §21.5): file locations, backups, history retention,
 // syslog output for the audit trail, and SMTP for job emails. Admin only.
 export default function Settings() {
+  const { setAppName } = useAuth();
   const [s, setS] = useState<AllSettings | null>(null);
   const [error, setError] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
@@ -94,7 +97,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -103,6 +106,12 @@ export default function Settings() {
   return (
     <Stack spacing={2}>
       <Typography variant="h5">Settings</Typography>
+
+      <Section title="Branding" intro="The name in the top bar, the browser tab, the sign-in page and emails. A logo comes later."
+        onSave={async () => { await put("branding", s.branding); setAppName(s.branding.app_name); return "Name saved."; }}>
+        <Field label="App name" value={s.branding.app_name} sx={{ maxWidth: 320 }} help="Up to 40 characters"
+          onChange={(e) => set("branding", { app_name: e.target.value })} />
+      </Section>
 
       <Section title="File locations" intro="Where the Files page keeps ISOs, application installers and other files (paths inside the containers)."
         onSave={async () => {

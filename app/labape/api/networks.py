@@ -67,6 +67,14 @@ def list_networks(kvm_host_id: int | None = None, db: Session = Depends(get_db),
     return [_out(db, n) for n in nets if p.is_admin or (n.enabled and may_use(p, n))]
 
 
+@router.get("/api/networks/{network_id}")
+def get_network(network_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    n = db.get(Network, network_id)
+    if n is None or not (p.is_admin or (n.enabled and may_use(p, n))):
+        raise HTTPException(status_code=404, detail="No such network")
+    return _out(db, n)
+
+
 @router.post("/api/networks", status_code=201)
 def create_network(body: NetworkIn, request: Request, db: Session = Depends(get_db),
                    p: Principal = Depends(require_roles("admin"))):

@@ -227,3 +227,12 @@ def delete_file(file_id: int, request: Request, db: Session = Depends(get_db),
     audit(db, p.username, "file.delete", object_type="file", object_id=f.id, detail={"path": f.path},
           source_ip=client_ip(request))
     return {"ok": True}
+
+
+# Last, so /roots and /tus match first.
+@router.get("/{file_id}")
+def get_file(file_id: int, db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
+    f = db.get(StoredFile, file_id)
+    if f is None or not f.present:
+        raise FieldError("file", "No such file.", status_code=404)
+    return _out(f)

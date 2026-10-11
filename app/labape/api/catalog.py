@@ -242,3 +242,12 @@ def handle_request(request_id: int, body: RequestUpdate, request: Request, db: S
     audit(db, p.username, "catalog.request.update", object_type="catalog_request", object_id=r.id,
           detail=body.model_dump(), source_ip=client_ip(request))
     return {f: getattr(r, f) for f in REQ_FIELDS}
+
+
+# Last, so /export and /requests match first.
+@router.get("/{item_id}")
+def get_item(item_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    i = db.get(CatalogItem, item_id)
+    if i is None or not (p.is_admin or i.status == "published"):
+        raise FieldError("item", "No such catalog item.", status_code=404)
+    return _out(i)

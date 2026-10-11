@@ -10,6 +10,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..engine.hoststats import assess
 from ..models import HostStats, KvmHost
+from ..permissions import visible_hosts
 from ..security import Principal, audit, client_ip, current_principal, require_roles
 
 router = APIRouter(prefix="/api/hosts", tags=["hosts"])
@@ -41,8 +42,16 @@ def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
 
 
 @router.get("")
-def list_hosts(db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
-    return [{**_out(h), "resources": _resources(db, h.id)} for h in db.scalars(select(KvmHost).order_by(KvmHost.name))]
+def list_hosts(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    return [{**_out(h), "resources": _resources(db, h.id)} for h in visible_hosts(db, p)]
+
+
+@router.get("/{host_id}")
+def get_host(host_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    h = next((h for h in visible_hosts(db, p) if h.id == host_id), None)
+    if h is None:
+        raise HTTPException(status_code=404, detail="No such host")
+    return {**_out(h), "resources": _resources(db, h.id)}
 
 
 @router.get("/{host_id}/resources")

@@ -151,3 +151,11 @@ def update_template(template_id: int, body: TemplateIn, request: Request, db: Se
     audit(db, p.username, "template.update", object_type="template", object_id=t.id, detail=body.model_dump(),
           source_ip=client_ip(request))
     return _out(t)
+
+
+@router.get("/{template_id}")
+def get_template(template_id: int, db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
+    t = db.get(Template, template_id)
+    if t is None or not t.present:
+        raise FieldError("template", "No such template.", status_code=404)
+    return _out(t)

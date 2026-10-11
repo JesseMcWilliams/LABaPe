@@ -23,3 +23,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Admin Settings page: file locations, daily database backups (Back up now, download, restore with pg_restore), history retention, syslog forwarding of the audit trail, SMTP and job-finished emails.
 - Group search: Settings > Directory with a read-only Authentik token (view groups only); group fields suggest as you type and still accept typed names.
 - Dashboard (landing page): KVM host and environment load with 24-hour trends; admins see sign-in, secrets, SMTP/syslog health and the installed version against the latest release. VMs need qemu-guest-agent (installed automatically on new VMs) for guest free space and the responding state.
+- Lists open each entry's own page (hosts, networks, catalog items, files, templates); Add is at the top right. Non-admins see Hosts and Networks read-only. Settings > Branding renames the app.

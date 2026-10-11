@@ -21,7 +21,7 @@ from ..db import get_db
 from ..engine.maintenance import EMAIL_STATUS_KEY
 from ..models import BreakglassGrant, Environment, HostStats, KvmHost, MetricSample, Secret, Setting, User, utcnow
 from ..naming import instance_names
-from ..permissions import visible_ids
+from ..permissions import visible_hosts, visible_ids
 from ..security import Principal, _fernet, current_principal, get_secret, require_roles
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -129,13 +129,7 @@ def dashboard(db: Session = Depends(get_db), p: Principal = Depends(current_prin
     if env_ids is not None:
         q = q.where(Environment.id.in_(env_ids or {-1}))
     envs = list(db.scalars(q))
-    if p.is_admin or p.has_role("deployer"):
-        hosts = list(db.scalars(select(KvmHost).order_by(KvmHost.name)))
-        if not p.is_admin:
-            hosts = [h for h in hosts if h.enabled]
-    else:
-        ids = {e.kvm_host_id for e in envs}
-        hosts = list(db.scalars(select(KvmHost).where(KvmHost.id.in_(ids or {-1})).order_by(KvmHost.name)))
+    hosts = visible_hosts(db, p)
     host_ids = {h.id for h in hosts} | {e.kvm_host_id for e in envs}
     stats = {r.kvm_host_id: r for r in db.scalars(select(HostStats).where(HostStats.kvm_host_id.in_(host_ids or {-1})))}
     since = utcnow() - dt.timedelta(hours=24)

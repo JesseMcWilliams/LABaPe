@@ -21,6 +21,13 @@ from ..models import Job
 from ..security import Principal, audit, client_ip, get_secret, put_secret, require_roles
 
 router = APIRouter(prefix="/api/admin", tags=["settings"])
+public_router = APIRouter(tags=["settings"])
+
+
+@public_router.get("/api/branding")
+def branding(db: Session = Depends(get_db)):
+    """Public: the login page shows the app name before anyone signs in."""
+    return appsettings.get(db, "branding", cached=True).model_dump()
 BACKUP_NAME = re.compile(r"^labape-\d{8}-\d{6}\.dump$")
 
 
@@ -70,11 +77,15 @@ def test_syslog(request: Request, db: Session = Depends(get_db), p: Principal = 
         raise FieldError("host", "Save a syslog server first.")
     try:
         notify.send_syslog(cfg, {"action": "settings.syslog.test", "actor": p.username, "outcome": "ok",
-                                 "detail": {"message": "LABaPe syslog test"}})
+                                 "detail": {"message": f"{_name(db)} syslog test"}})
     except OSError as exc:
         raise FieldError("host", f"Couldn't send to {cfg.host}:{cfg.port} over {cfg.protocol}: {exc}") from exc
     audit(db, p.username, "settings.syslog.test", source_ip=client_ip(request))
     return {"ok": True, "message": f"Test message sent to {cfg.host}:{cfg.port} ({cfg.protocol})."}
+
+
+def _name(db: Session) -> str:
+    return appsettings.get(db, "branding", cached=True).app_name
 
 
 class TestEmailIn(BaseModel):
@@ -89,7 +100,7 @@ def test_smtp(body: TestEmailIn, request: Request, db: Session = Depends(get_db)
         raise FieldError("host", "Save the SMTP server and From address first.")
     try:
         notify.send_email(cfg, get_secret(db, appsettings.SMTP_PASSWORD_SECRET) or "", [body.to],
-                          "LABaPe test email", f"This is a test email from LABaPe, sent by {p.username}.")
+                          f"{_name(db)} test email", f"This is a test email from {_name(db)}, sent by {p.username}.")
     except (OSError, smtplib.SMTPException) as exc:
         raise FieldError("host", f"Sending through {cfg.host}:{cfg.port} failed: {exc}") from exc
     audit(db, p.username, "settings.smtp.test", detail={"to": body.to}, source_ip=client_ip(request))

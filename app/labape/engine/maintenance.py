@@ -131,7 +131,7 @@ def notify_job(db: Session, job: Job) -> None:
     if "@" not in to:
         return
     base = get_settings().public_url.rstrip("/")
-    subject = f"LABaPe job {job.id} {job.state}: {job.type}"
+    subject = f"{appsettings.get(db, 'branding', cached=True).app_name} job {job.id} {job.state}: {job.type}"
     body = (f"Job {job.id} ({job.type}) {job.state}"
             f"{'' if job.exit_code is None else f' with exit code {job.exit_code}'}.\n\n"
             f"Details and log: {base}/jobs/{job.id}\n")
