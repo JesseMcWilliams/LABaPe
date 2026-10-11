@@ -34,11 +34,13 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import session_factory
 from ..models import Environment, HostNetwork, IpAllocation, Job, KvmHost, Network, utcnow
+from ..files import iso_paths
 from ..naming import instance_names
+from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
-from ..security import audit, put_secret
+from ..security import audit, get_secret, put_secret
 
 log = logging.getLogger("labape.worker")
 
@@ -157,9 +159,11 @@ def profile_host_groups(db: Session, env: Environment) -> list[dict]:
     return groups
 
 
-def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
+def _prepare_base(db: Session, host: KvmHost, work: Path) -> None:
+    """The engine snapshot plus this instance's inputs: environment.yml
+    (host paths, network catalog, file-manager ISOs), manifests, vault and
+    the PostgreSQL state backend."""
     s = get_settings()
-    work = s.data_dir / "environments" / env.name / "engine"
     work.mkdir(parents=True, exist_ok=True)
     shutil.copytree(s.engine_dir, work, dirs_exist_ok=True, symlinks=True)
 
@@ -174,7 +178,27 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     if catalog is not None:
         env_yml.pop("network", None)
         env_yml["networks"], env_yml["default_network"] = catalog
+    # ISOs from the file manager win over the base file's paths (design §9).
+    env_yml["os_iso_paths"] = {**(env_yml.get("os_iso_paths") or {}), **iso_paths(db)}
     (work / "environment.yml").write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
+
+    for name, dest in (("software-manifest.yml", work / "ansible" / "software-manifest.yml"),
+                       ("directory-manifest.yml", work / "ansible" / "directory-manifest.yml")):
+        src = s.config_dir / name
+        if src.is_file():
+            shutil.copy2(src, dest)
+    vault = s.secrets_dir / "secrets.vault.yml"
+    if vault.is_file():
+        shutil.copy2(vault, work / "secrets.vault.yml")
+
+    (work / "tofu" / "backends" / "libvirt" / "labape_backend_override.tf").write_text(BACKEND_OVERRIDE,
+                                                                                       encoding="utf-8")
+
+
+def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
+    s = get_settings()
+    work = s.data_dir / "environments" / env.name / "engine"
+    _prepare_base(db, host, work)
 
     # Profile: the environment's host groups plus per-host settings. A
     # -var-file beats TF_VAR_*, so libvirt_uri here overrides the vault's.
@@ -192,17 +216,6 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     lines.append(f"host_groups = {_hcl(profile_host_groups(db, env))}")
     profile.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    for name, dest in (("software-manifest.yml", work / "ansible" / "software-manifest.yml"),
-                       ("directory-manifest.yml", work / "ansible" / "directory-manifest.yml")):
-        src = s.config_dir / name
-        if src.is_file():
-            shutil.copy2(src, dest)
-    vault = s.secrets_dir / "secrets.vault.yml"
-    if vault.is_file():
-        shutil.copy2(vault, work / "secrets.vault.yml")
-
-    (work / "tofu" / "backends" / "libvirt" / "labape_backend_override.tf").write_text(BACKEND_OVERRIDE,
-                                                                                       encoding="utf-8")
     return work
 
 
@@ -254,7 +267,37 @@ def sync_home() -> None:
 
 # --- running ---------------------------------------------------------------
 
-def command_for(job: Job, env: Environment, work: Path) -> list[str]:
+def prepare_template_job(db: Session, job: Job, host: KvmHost) -> Path:
+    """Template jobs run in their own engine copy (removed afterwards).
+    Promote also needs the environment's inventory, which lives only in the
+    secrets store once a deploy finishes."""
+    work = get_settings().jobs_dir / str(job.id) / "engine"
+    _prepare_base(db, host, work)
+    if job.type == "template.promote":
+        inv = get_secret(db, f"environment/{job.environment_id}/inventory") or ""
+        if not inv:
+            raise RuntimeError("the environment has no stored inventory; redeploy it first")
+        target = work / "ansible" / "inventory" / "generated"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(inv, encoding="utf-8")
+        target.chmod(0o600)
+    return work
+
+
+def command_for(job: Job, env: Environment | None, work: Path) -> list[str]:
+    envfile = ["--env-file", str(work / "environment.yml")]
+    p = job.params or {}
+    if job.type == "template.build":
+        return ["bash", str(work / "scripts" / "build-template.sh"), p["os_key"], p["name"], *envfile,
+                *(["--core"] if p.get("core") else []), *(["--disk-gb", str(p["disk_gb"])] if p.get("disk_gb") else [])]
+    if job.type == "template.refresh":
+        return ["bash", str(work / "scripts" / "refresh-template.sh"), "libvirt", p["template"], p["new_name"],
+                "--os", p["os_key"], *envfile, "--addressing", p.get("addressing", "dhcp"),
+                *(["--network", p["network"]] if p.get("network") else [])]
+    if job.type == "template.promote":
+        return ["bash", str(work / "scripts" / "promote-to-template.sh"), "libvirt", p["environment"], p["vm"],
+                p["name"], *envfile, *(["--os", p["os_key"]] if p.get("os_key") else [])]
+    assert env is not None
     common = ["libvirt", env.name, PROFILE, "--env-file", str(work / "environment.yml")]
     if job.type == "environment.deploy":
         return ["bash", str(work / "scripts" / "deploy.sh"), *common]
@@ -275,9 +318,14 @@ def run(job_id: int, worker: str) -> None:
         log_path = Path(job.log_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            if env is None or host is None:
-                raise RuntimeError("job has no environment or KVM host")
-            work = prepare(db, env, host)
+            if host is None:
+                raise RuntimeError("job has no KVM host")
+            if job.type.startswith("template."):
+                work = prepare_template_job(db, job, host)
+            elif env is None:
+                raise RuntimeError("job has no environment")
+            else:
+                work = prepare(db, env, host)
             cmd = command_for(job, env, work)
         except Exception as exc:  # noqa: BLE001 — any setup failure fails the job, visibly
             _append(job, f"labape: could not start: {exc}\n")
@@ -285,7 +333,9 @@ def run(job_id: int, worker: str) -> None:
             return
 
     with open(log_path, "ab", buffering=0) as logf:
-        logf.write(f"labape: job {job_id} ({job.type}) for {env.name} on {host.name}, worker {worker}\n".encode())
+        what = env.name if env is not None and not job.type.startswith("template.") else \
+            (job.params or {}).get("name") or (job.params or {}).get("new_name", "")
+        logf.write(f"labape: job {job_id} ({job.type}) for {what} on {host.name}, worker {worker}\n".encode())
         proc = subprocess.Popen(cmd, cwd=work, env=job_env(host), stdin=subprocess.DEVNULL, stdout=logf,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         cancelled_at = None
@@ -315,7 +365,7 @@ def run(job_id: int, worker: str) -> None:
 
     with Session_() as db:
         job = db.get(Job, job_id)
-        env = db.get(Environment, job.environment_id)
+        env = db.get(Environment, job.environment_id) if job.environment_id else None
         _finish(db, job, env, rc, work=work)
 
 
@@ -333,6 +383,10 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
         job.state = "cancelled"
     else:
         job.state = "succeeded" if rc == 0 else "failed"
+    if job.type.startswith("template."):
+        env = None  # a template job never changes an environment's status
+        if work is not None:
+            shutil.rmtree(work.parent, ignore_errors=True)
     if env is not None:
         if job.type == "environment.refresh_addresses":
             # Read-only for the VMs: the environment's status stays as it was.
@@ -398,6 +452,9 @@ def serve(slots: int | None = None) -> None:
                 sync_templates(db)
             with session_factory()() as db:
                 collect_host_stats(db)
+            with session_factory()() as db:
+                scan_files(db)
+            hash_in_background()
             if time.monotonic() - last_purge > 86400:
                 last_purge = time.monotonic()
                 with session_factory()() as db:

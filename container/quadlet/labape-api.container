@@ -20,6 +20,8 @@ Secret=labape-oidc-client-secret,target=/run/secrets/oidc_client_secret
 Volume=labape-data.volume:/var/lib/labape
 Volume=/etc/labape/config:/etc/labape:ro,z
 Volume=/etc/labape/engine-secrets:/run/labape-secrets:ro,z
+# The file manager writes uploads into the data root.
+Volume=/data:/data
 
 [Service]
 Restart=always

@@ -101,7 +101,8 @@ echo "labape: applying $(basename "$PLAYBOOK") to $VM..." >&2
 (cd "$ROOT_DIR/ansible" && ansible-playbook -i "inventory/$ENV_NAME/generated" "$PLAYBOOK" \
   -e @../secrets.vault.yml --vault-password-file "${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}")
 
-"$ROOT_DIR/scripts/promote-to-template.sh" libvirt "$ENV_NAME" "$VM" "$NEW_TEMPLATE" "${ENV_ARGS[@]}"
+"$ROOT_DIR/scripts/promote-to-template.sh" libvirt "$ENV_NAME" "$VM" "$NEW_TEMPLATE" "${ENV_ARGS[@]}" \
+  --os "$OS_KEY" --from-template "$TEMPLATE"
 
 trap - ERR
 "$ROOT_DIR/scripts/destroy.sh" libvirt "$ENV_NAME" "$ENV_NAME" --test "${ENV_ARGS[@]}"

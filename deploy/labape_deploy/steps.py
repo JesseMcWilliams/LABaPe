@@ -489,6 +489,8 @@ def stack_bootstrap(c: Ctx):
         }],
         "role_bindings": [{"principal_type": "group", "principal": g, "role": "admin"}
                           for g in c.a.need("AdminGroups")],
+        # The file manager's ISO location is where this install keeps them.
+        "settings": {"files.roots": {"isos": c.a.need("IsoPath")}},
     }
     c.r.run(c.compose + ["exec", "-T", "labape-api", "labape", "bootstrap", "/dev/stdin"],
             cwd=c.repo / "container", input=json.dumps(data))

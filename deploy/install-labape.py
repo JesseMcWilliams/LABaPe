@@ -77,7 +77,7 @@ STEPS = [
     ("Stack.Up", S.stack_up, ["InstallWebUi", "ContainerRuntime", "WebHostname"], web, "Start the stack"),
     ("Stack.Bootstrap", S.stack_bootstrap,
      ["InstallWebUi", "KvmHostName", "Networks", "DefaultNetwork", "VmStoragePath", "TemplateStoragePath",
-      "AdminGroups", "ContainerRuntime"], web, "Register this KVM host and its networks in the web interface"),
+      "AdminGroups", "ContainerRuntime", "IsoPath"], web, "Register this KVM host and its networks in the web interface"),
     ("Templates.Build", S.templates_build, ["TemplatesToBuild", "TemplateStoragePath", "ServiceUser"], None,
      "Build the requested templates with Packer (long)"),
     ("Smoke.Cli", S.smoke_cli, ["ServiceUser"], None, "libvirt, tofu, ansible and environment.yml as the service user"),

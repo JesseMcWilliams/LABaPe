@@ -13,6 +13,7 @@ import Hosts from "./pages/Hosts";
 import Networks from "./pages/Networks";
 import Audit from "./pages/Audit";
 import Errors from "./pages/Errors";
+import Files from "./pages/Files";
 import UserMenu from "./components/UserMenu";
 
 interface AuthState {
@@ -80,6 +81,9 @@ export default function App() {
             <Button color="inherit" component={RouterLink} to="/jobs">
               Jobs
             </Button>
+            <Button color="inherit" component={RouterLink} to="/files">
+              Files
+            </Button>
             {hasRole(me, "admin") && (
               <>
                 <Button color="inherit" component={RouterLink} to="/hosts">
@@ -128,6 +132,7 @@ export default function App() {
           <Route path="/networks" element={<Networks />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/errors" element={<Errors />} />
+          <Route path="/files" element={<Files />} />
           <Route path="*" element={<Typography>Not found.</Typography>} />
         </Routes>
       </Container>

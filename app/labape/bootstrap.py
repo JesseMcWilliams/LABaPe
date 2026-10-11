@@ -13,7 +13,8 @@ in. Validation is the same as the API's (netpolicy.validate_network).
       "hosts": [{"name": "kvm1", "libvirt_uri": "qemu:///system", "vm_storage_path": "...",
                  "template_storage_path": "...", "concurrency_limit": 2,
                  "networks": [{"network": "lab-vlan48", "bridge": "br1", "is_default": true}]}],
-      "role_bindings": [{"principal_type": "group", "principal": "lab-admins", "role": "admin"}]
+      "role_bindings": [{"principal_type": "group", "principal": "lab-admins", "role": "admin"}],
+      "settings": {"files.roots": {"isos": "/data/OS_Images"}}
     }
 """
 from __future__ import annotations
@@ -25,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import ROLES
+from .files import roots, set_roots
 from .models import HostNetwork, KvmHost, Network, RoleBinding
 from .netpolicy import validate_network
 
@@ -92,6 +94,13 @@ def apply(db: Session, data: dict) -> list[str]:
                 if net_id not in wanted:
                     db.delete(hn)
                     changes.append(f"host {host.name}: network id {net_id} detached")
+
+    file_roots = (data.get("settings") or {}).get("files.roots")
+    if file_roots:
+        before = roots(db)
+        after = set_roots(db, file_roots)
+        if after != before:
+            changes.append(f"file locations set: {after}")
 
     current = {(b.principal_type, b.principal, b.role) for b in db.scalars(select(RoleBinding))}
     for b in data.get("role_bindings", []):

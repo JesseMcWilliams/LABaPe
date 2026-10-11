@@ -29,6 +29,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
 
 # libvirt-clients/virtinst/qemu-utils/xorriso: the VM module's scripts.
+# qemu-system-x86 + ovmf: Packer runs the template build VM inside the
+# worker (on /dev/kvm), for the web UI's Build template jobs.
 # perl: create-from-template.sh. iputils-ping: check-network.sh (arping
 # is left out on purpose: inside a container network it can't see the
 # LAN, so it would report every address free).
@@ -36,7 +38,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash ca-certificates curl unzip git openssh-client perl iputils-ping \
       python3 python3-venv \
-      libvirt-clients virtinst qemu-utils xorriso \
+      libvirt-clients virtinst qemu-utils xorriso qemu-system-x86 ovmf \
  && rm -rf /var/lib/apt/lists/*
 
 # OpenTofu and Packer, checksum-verified.

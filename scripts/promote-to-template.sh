@@ -16,7 +16,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: promote-to-template.sh <backend> <environment-instance> <vm-name> <template-name> [--env-file <path>]"
+USAGE="usage: promote-to-template.sh <backend> <environment-instance> <vm-name> <template-name> [--env-file <path>] [--os <os-key>]"
 
 BACKEND="${1:?$USAGE}"
 ENV_INSTANCE="${2:?$USAGE}"
@@ -24,9 +24,13 @@ VM_NAME="${3:?$USAGE}"
 TEMPLATE_NAME="${4:?$USAGE}"
 shift 4
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
+OS_KEY=""
+FROM_TEMPLATE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
+    --os) OS_KEY="${2:?--os needs an os key}"; shift ;;   # recorded in <template>.json
+    --from-template) FROM_TEMPLATE="${2:?--from-template needs a name}"; shift ;;  # refresh: keep its metadata
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
   esac
   shift
@@ -116,6 +120,15 @@ cat > "$vol_xml" <<EOF
 EOF
 virsh_ vol-create-from "$POOL" "$vol_xml" "$src_vol" --inputpool "$src_pool" >/dev/null
 virsh_ vol-info --pool "$POOL" "$TEMPLATE_NAME.qcow2"
+if [ -n "$FROM_TEMPLATE" ]; then
+  python3 "$ROOT_DIR/scripts/lib/write_template_meta.py" "$TEMPLATE_DIR" "$TEMPLATE_NAME" ${OS_KEY:+--os "$OS_KEY"} \
+    --from "$FROM_TEMPLATE" --note "Refreshed from $FROM_TEMPLATE (all updates applied)." \
+    || echo "labape: couldn't write the template's metadata file (permissions?); the web UI will infer it." >&2
+else
+  python3 "$ROOT_DIR/scripts/lib/write_template_meta.py" "$TEMPLATE_DIR" "$TEMPLATE_NAME" ${OS_KEY:+--os "$OS_KEY"} \
+    --note "Promoted from VM $VM_NAME of environment $ENV_INSTANCE." \
+    || echo "labape: couldn't write the template's metadata file (permissions?); the web UI will infer it." >&2
+fi
 
 echo "labape: template ready: $target" >&2
 echo "labape: use it with image_source = \"packer_template\", template = \"$TEMPLATE_NAME\" on a host group; tear down the source environment when done." >&2

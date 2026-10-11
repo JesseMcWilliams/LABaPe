@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -177,6 +177,45 @@ class Template(Base):
     present: Mapped[bool] = mapped_column(Boolean, default=True)
     dirty: Mapped[bool] = mapped_column(Boolean, default=False)        # edited here; worker rewrites the file
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class StoredFile(Base):
+    """A file in one of the file manager's locations (design §9, §21.3):
+    ISOs, installers or other files. Uploaded through the UI, or found
+    there by the worker's scan."""
+
+    __tablename__ = "files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category: Mapped[str] = mapped_column(String(32), index=True)     # isos | installers | files
+    name: Mapped[str] = mapped_column(String(255))
+    path: Mapped[str] = mapped_column(String(1024), unique=True)
+    size: Mapped[int] = mapped_column(BigInteger, default=0)
+    mtime: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sha256: Mapped[str] = mapped_column(String(64), default="", index=True)
+    os_key: Mapped[str] = mapped_column(String(64), default="")       # ISOs: which OS installs from it
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)  # ISOs: the one used for its os_key
+    description: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    uploaded_by: Mapped[str] = mapped_column(String(255), default="")  # empty: found by the scan
+    uploaded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    present: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Upload(Base):
+    """An in-progress resumable (tus) upload."""
+
+    __tablename__ = "uploads"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    category: Mapped[str] = mapped_column(String(32))
+    filename: Mapped[str] = mapped_column(String(255))
+    length: Mapped[int] = mapped_column(BigInteger)
+    offset: Mapped[int] = mapped_column(BigInteger, default=0)
+    partial_path: Mapped[str] = mapped_column(String(1024))
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class HostStats(Base):

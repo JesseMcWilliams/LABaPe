@@ -705,3 +705,22 @@ batches, in this order:
   - The Hosts page shows every host's load.
 - **Verified:** live on the lab host. A 10 × 32 GB environment was refused
   at 269% committed.
+
+### 21.3 Batch C, built: Files tab (phase 10b brought forward)
+
+**Files**
+
+| Area | As built |
+|---|---|
+| Locations | `isos`, `installers` and `files`, each under its configured root (`files.roots` setting, default `/data/<category>`; admin `PUT /api/files/roots`, or `labape bootstrap`). The installer sets the ISO root to its `IsoPath`. The API container now mounts the data root so it can write uploads. |
+| Uploads | tus 1.0, creation and termination (`/api/files/tus`); the browser uses `tus-js-client` with 32 MB chunks, retries, and resume after a dropped connection. When the last chunk arrives, the SHA-256 is computed and the file moves from `<root>/.uploads/` into place. A file with the same content as an existing one is refused as a duplicate, and a taken name is refused before the upload starts. Admins and file managers upload, edit and delete; everyone signed in can list. |
+| Scan | The worker registers files found in the locations every minute (copied in by hand, or there before the app) and marks vanished ones. A background thread checksums unhashed files, so job claiming never waits on a multi-GB ISO. |
+| ISOs | The OS key is inferred from the name (the installer's patterns) and editable; one ISO per OS can be the **default**. `environment.yml`'s `os_iso_paths` is written from these for every job (the default ISO, else the newest), replacing hand-edited ISO paths. |
+
+**Templates**
+
+| Area | As built |
+|---|---|
+| Templates tab | Lists every host's library with OS, edition, disk and minimums. **Edit** changes metadata (written back to `<name>.json`). **Refresh** clones the template, applies every update and saves it under a new name. **Build a template** runs Packer from the OS's ISO. Environment pages get **Promote to template** per VM (not for domain controllers). |
+| Template jobs | `template.build`, `template.refresh` and `template.promote` run `build-template.sh`, `refresh-template.sh` and `promote-to-template.sh` in a per-job engine copy (`/var/lib/labape/jobs/<id>`, removed afterwards). Promote writes the environment's stored inventory into it first. Names are checked against existing templates and running jobs. Packer runs the build VM inside the worker (image now has `qemu-system-x86` and `ovmf`, on `/dev/kvm`). |
+| Script changes | The build, promote and refresh scripts write the template's metadata file (`scripts/lib/write_template_meta.py`). A refresh keeps the source's description and notes and appends a dated note. A failed metadata write only warns. `build-template.sh` honors `LABAPE_SSH_PRIVATE_KEY_PATH`. `promote-to-template.sh` gained `--os` and `--from-template`. |
