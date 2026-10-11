@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from ..auth import load_providers, provider_enabled
 from ..config import ROLES
 from ..db import get_db
+from .. import appsettings
 from ..errors import FieldError
-from ..models import AuditLog, RoleBinding, Setting, UserError
+from ..models import AuditLog, RoleBinding, UserError
 from ..security import Principal, audit, client_ip, require_roles
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -62,13 +63,8 @@ def audit_export(request: Request, format: str = "json", actor: str | None = Non
 
 # --- user errors (question 59) ---------------------------------------------
 
-ERROR_RETENTION_KEY = "errors.retention_days"
-DEFAULT_ERROR_RETENTION = 90
-
-
 def error_retention_days(db: Session) -> int:
-    row = db.get(Setting, ERROR_RETENTION_KEY)
-    return int(row.value.get("days", DEFAULT_ERROR_RETENTION)) if row else DEFAULT_ERROR_RETENTION
+    return appsettings.get(db, "retention").errors_days  # Settings page, History retention
 
 
 @router.get("/errors")
@@ -89,12 +85,8 @@ class RetentionIn(BaseModel):
 @router.put("/errors/retention")
 def set_error_retention(body: RetentionIn, request: Request, db: Session = Depends(get_db),
                         p: Principal = Depends(require_roles("admin"))):
-    row = db.get(Setting, ERROR_RETENTION_KEY)
-    if row is None:
-        db.add(Setting(key=ERROR_RETENTION_KEY, value={"days": body.days}))
-    else:
-        row.value = {"days": body.days}
-    db.commit()
+    r = appsettings.get(db, "retention")
+    appsettings.put(db, "retention", r.model_copy(update={"errors_days": body.days}))
     audit(db, p.username, "errors.retention", detail={"days": body.days}, source_ip=client_ip(request))
     return {"retention_days": body.days}
 

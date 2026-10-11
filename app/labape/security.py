@@ -94,9 +94,20 @@ def client_ip(request: Request) -> str:
 
 def audit(db: Session, actor: str, action: str, *, object_type: str = "", object_id: str | int = "",
           outcome: str = "ok", detail: dict | None = None, source_ip: str = "") -> None:
-    db.add(AuditLog(actor=actor, action=action, object_type=object_type, object_id=str(object_id),
-                    outcome=outcome, detail=detail or {}, source_ip=source_ip))
+    row = AuditLog(actor=actor, action=action, object_type=object_type, object_id=str(object_id),
+                   outcome=outcome, detail=detail or {}, source_ip=source_ip)
+    db.add(row)
     db.commit()
+    # Also to syslog, when configured (design §21.5); queued, never blocking.
+    try:
+        from . import appsettings, notify
+        cfg = appsettings.get(db, "syslog", cached=True)
+        if cfg.enabled:
+            notify.audit_to_syslog(cfg, {"id": row.id, "at": row.at, "actor": actor, "action": action,
+                                         "object_type": object_type, "object_id": str(object_id),
+                                         "outcome": outcome, "detail": detail or {}, "source_ip": source_ip})
+    except Exception:  # noqa: BLE001 - auditing itself must never fail on the syslog side
+        pass
 
 
 # --- built-in secrets store -------------------------------------------------

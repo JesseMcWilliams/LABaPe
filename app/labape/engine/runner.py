@@ -39,6 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
+from . import maintenance
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
@@ -356,6 +357,14 @@ def run(job_id: int, worker: str) -> None:
         host = db.get(KvmHost, job.kvm_host_id) if job.kvm_host_id else None
         log_path = Path(job.log_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        if job.type == "system.backup":
+            try:
+                rc = maintenance.run_backup(db, job)
+            except Exception as exc:  # noqa: BLE001
+                _append(job, f"labape: backup failed: {exc}\n")
+                rc = None
+            _finish(db, job, None, rc)
+            return
         try:
             if host is None:
                 raise RuntimeError("job has no KVM host")
@@ -447,6 +456,10 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
     db.commit()
     audit(db, job.requested_by, f"job.{job.state}", object_type="job", object_id=job.id,
           detail={"type": job.type, "exit_code": rc, "environment_id": job.environment_id})
+    try:
+        maintenance.notify_job(db, job)
+    except Exception:  # noqa: BLE001 — email is best effort
+        log.exception("job %s: notification failed", job.id)
 
 
 def _collect_outputs(db: Session, job: Job, env: Environment, work: Path | None) -> None:
@@ -494,11 +507,13 @@ def serve(slots: int | None = None) -> None:
             with session_factory()() as db:
                 scan_files(db)
             hash_in_background()
+            with session_factory()() as db:
+                if maintenance.schedule_backup(db):
+                    log.info("queued the daily backup")
             if time.monotonic() - last_purge > 86400:
                 last_purge = time.monotonic()
                 with session_factory()() as db:
-                    from ..api.admin import purge_user_errors
-                    purge_user_errors(db)
+                    log.info("retention purge: %s", maintenance.purge_history(db))
         if len(active) < slots:
             with session_factory()() as db:
                 job = claim(db, worker)
