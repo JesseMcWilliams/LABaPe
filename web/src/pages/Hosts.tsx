@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
-  Alert, Button, Checkbox, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography,
+  Alert, Box, Button, Checkbox, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, KvmHost } from "../api";
 import HostNetworks from "./HostNetworks";
+import HostLoad from "../components/HostLoad";
 import { Field } from "../forms";
 
 type HostForm = Omit<KvmHost, "id">;
@@ -73,6 +74,12 @@ export default function Hosts() {
           ))}
         </TableBody>
       </Table>
+      {hosts.filter((h) => h.enabled).map((h) => (
+        <Box key={h.id}>
+          <Typography variant="subtitle2" gutterBottom>{h.name}: resources and load</Typography>
+          <HostLoad resources={h.resources} />
+        </Box>
+      ))}
       {netsFor && <HostNetworks host={netsFor} onClose={() => setNetsFor(null)} />}
       <Paper variant="outlined" sx={{ p: 2 }} component="form" onSubmit={submit}>
         <Stack spacing={2}>

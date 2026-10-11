@@ -672,3 +672,36 @@ batches, in this order:
 | Area | As built |
 |---|---|
 | Fields | "VLAN ID (reference only)" (question 56: a label; LABaPe doesn't tag traffic) and "Or limit to groups". List fields parse on save, so typing a comma works. |
+
+### 21.2 Batch B, built: KVM host resources and load
+
+- **Collection:** the worker collects each enabled host's numbers every
+  minute through libvirt into `host_stats`:
+  - `nodeinfo`, `nodememstats`, and `dominfo` for every defined VM;
+  - free space on the VM and template storage paths;
+  - `/proc/loadavg`.
+
+  The API reads that table; it has no libvirt access of its own.
+- **API:**
+  - `GET /api/hosts` includes each host's resources.
+  - `GET /api/hosts/{id}/resources?vcpus=&memory_mb=&disk_gb=` adds a
+    proposed demand, which is how the deploy form projects a new
+    environment onto the host.
+- **Thresholds** (question 57, `engine/hoststats.py`):
+  - warn above 4 vCPUs per *logical* CPU allocated;
+  - warn above 90% of RAM committed;
+  - warn below 15% free on the VM storage;
+  - **refuse** a new environment that would commit more than 100% of
+    RAM, a field error on the KVM host.
+
+  Committed RAM is every defined VM's maximum memory, running or not,
+  since a stopped VM can be started. The new environment's disk is
+  counted at its full size, though clones start small. The block is
+  skipped when the worker hasn't reported for 10 minutes.
+- **UI:**
+  - The deploy form shows the selected host's bars (vCPUs, committed
+    RAM, RAM in use, VM storage) with this environment added, plus any
+    warnings, and disables **Create** when the RAM block applies.
+  - The Hosts page shows every host's load.
+- **Verified:** live on the lab host. A 10 × 32 GB environment was refused
+  at 269% committed.

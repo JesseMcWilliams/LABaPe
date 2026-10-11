@@ -179,6 +179,18 @@ class Template(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class HostStats(Base):
+    """A KVM host's latest resources and load, collected by the worker
+    every minute (design §21.2). One row per host, overwritten."""
+
+    __tablename__ = "host_stats"
+
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), primary_key=True)
+    collected_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+
 class UserError(Base):
     """A request the API refused (validation, policy, permission), kept so
     admins can see where users struggle (design §21, question 59)."""

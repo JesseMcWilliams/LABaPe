@@ -101,3 +101,28 @@ def test_template_inference():
     assert infer("win11-packer-2026.10")["min_memory_mb"] == 4096
     assert infer("rocky9-packer-2026.10.1")["os_key"] == "rocky9"
     assert infer("ubuntu2604-packer-2026.10")["os_key"] == "ubuntu_26"
+
+
+def test_host_capacity_assessment_and_block(client):
+    from labape.engine.hoststats import assess, demand_of
+    from labape.models import HostStats, utcnow
+    stats = {"cpus": 8, "cores": 4, "memory_total_mb": 16384, "memory_available_mb": 8000,
+             "vcpus_allocated": 30, "memory_committed_mb": 14000, "vms_defined": 5, "vms_running": 4,
+             "storage": {"vm": {"path": "/data", "total_gb": 100, "free_gb": 20}, "templates": {}}}
+    a = assess(stats, {"vcpus": 4, "memory_mb": 1024, "disk_gb": 10})
+    levels = {f["resource"]: f["level"] for f in a["findings"]}
+    assert levels == {"cpu": "warning", "memory": "warning", "disk": "warning"}
+    mem = [f for f in assess(stats, {"vcpus": 0, "memory_mb": 4096, "disk_gb": 0})["findings"] if f["resource"] == "memory"]
+    assert mem[0]["level"] == "block"
+    assert demand_of([{"count": 2, "cpu_count": 2, "memory_mb": 2048, "disk_gb": 40}])["memory_mb"] == 4096
+    _admin_session(client)
+    _host(client)
+    with session_factory()() as db:
+        db.add(HostStats(kvm_host_id=1, collected_at=utcnow(), stats=stats))
+        db.commit()
+    r = client.get("/api/hosts/1/resources?vcpus=2&memory_mb=1024&disk_gb=40").json()
+    assert r["assessment"]["memory_committed_ratio"] > 0.9
+    r = client.post("/api/environments", json=_env("toobig", [_group("big", memory_mb=8192)]))
+    assert r.status_code == 422 and r.json()["errors"][0]["field"] == "kvm_host_id"
+    assert "100%" in r.json()["errors"][0]["message"]
+    assert client.post("/api/environments", json=_env("fits", [_group("ok", memory_mb=1024)])).status_code == 201

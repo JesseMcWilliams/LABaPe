@@ -35,6 +35,7 @@ from ..config import get_settings
 from ..db import session_factory
 from ..models import Environment, HostNetwork, IpAllocation, Job, KvmHost, Network, utcnow
 from ..naming import instance_names
+from .hoststats import collect_all as collect_host_stats
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, put_secret
@@ -395,6 +396,8 @@ def serve(slots: int | None = None) -> None:
                 recover_stale(db)
             with session_factory()() as db:
                 sync_templates(db)
+            with session_factory()() as db:
+                collect_host_stats(db)
             if time.monotonic() - last_purge > 86400:
                 last_purge = time.monotonic()
                 with session_factory()() as db:

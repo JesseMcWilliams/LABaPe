@@ -5,7 +5,8 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { api, FieldProblem, HostGroup, KvmHost, Network, Template } from "../api";
+import { api, FieldProblem, HostGroup, HostResources, KvmHost, Network, Template } from "../api";
+import HostLoad from "../components/HostLoad";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
 
 // Phase 10a's tfvars-level form; environment templates replace it in 10c.
@@ -29,6 +30,7 @@ export default function EnvironmentNew() {
   const [hostId, setHostId] = useState<number | "">("");
   const [networks, setNetworks] = useState<Network[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [resources, setResources] = useState<HostResources | undefined>();
   const [groups, setGroups] = useState<HostGroup[]>([blankGroup()]);
   const [summary, setSummary] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -48,6 +50,22 @@ export default function EnvironmentNew() {
     api.get<Network[]>(`/api/networks?kvm_host_id=${hostId}`).then(setNetworks, (e) => setSummary(e.message));
     api.get<Template[]>(`/api/templates?kvm_host_id=${hostId}`).then(setTemplates, () => setTemplates([]));
   }, [hostId]);
+
+  // This environment's demand, projected onto the host's load.
+  const demand = useMemo(() => ({
+    vcpus: groups.reduce((n, g) => n + (g.count || 0) * (g.cpu_count || 0), 0),
+    memory_mb: groups.reduce((n, g) => n + (g.count || 0) * (g.memory_mb || 0), 0),
+    disk_gb: groups.reduce((n, g) => n + (g.count || 0) * (g.disk_gb || 0), 0),
+  }), [groups]);
+  useEffect(() => {
+    if (hostId === "") return;
+    const timer = setTimeout(() => {
+      api.get<HostResources>(`/api/hosts/${hostId}/resources?vcpus=${demand.vcpus}&memory_mb=${demand.memory_mb}&disk_gb=${demand.disk_gb}`)
+        .then(setResources, () => setResources(undefined));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [hostId, demand]);
+  const blocked = Boolean(resources?.assessment?.findings.some((f) => f.level === "block"));
 
   const netOf = (g: HostGroup) =>
     networks.find((n) => n.name === g.network) ?? networks.find((n) => n.is_default) ?? networks[0];
@@ -156,6 +174,7 @@ export default function EnvironmentNew() {
           {hosts.map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
         </Field>
       </Stack>
+      {hostId !== "" && <HostLoad resources={resources} demand={demand} />}
       <Typography variant="h6">Host groups</Typography>
       {groups.map((g, i) => {
         const w = sizeWarnings(g);
@@ -251,7 +270,7 @@ export default function EnvironmentNew() {
       })}
       <Stack direction="row" spacing={2}>
         <Button onClick={() => setGroups([...groups, blankGroup()])}>Add host group</Button>
-        <Button type="submit" variant="contained" disabled={busy || !hostId || networks.length === 0}>
+        <Button type="submit" variant="contained" disabled={busy || !hostId || networks.length === 0 || blocked}>
           Create and deploy
         </Button>
       </Stack>
