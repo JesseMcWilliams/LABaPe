@@ -49,6 +49,7 @@ class Rotator:
     notes: str = ""
     run: object = None                    # fn(db, policy, log) -> summary
     defaults: dict = field(default_factory=dict)
+    via_agent: bool = False               # the host's update agent rotates it (it restarts services)
 
 
 REGISTRY: dict[str, Rotator] = {}
@@ -182,13 +183,23 @@ def rotate_directory_token(db: Session, policy: SecretPolicy, log) -> str:
 
 # Inventory of the rest (design §24): listed so every internal secret has a
 # policy, rotated in later phases or reminded about when LABaPe can't change it.
+# Restart-needing secrets live in host files the containers only read; the
+# host's update agent rotates them (phase R3), inside the maintenance window.
+for kind, label, notes in (
+    ("master_key", "Master key (LABAPE_SECRET_KEY: sessions, wraps the data keys)",
+     "The update agent makes a new key, re-wraps the store's data keys to it, swaps the file and restarts the API "
+     "and worker (everyone signs in again). Rolled back if the health checks fail."),
+    ("postgres_password", "PostgreSQL password",
+     "The update agent sets a new password (ALTER ROLE), rewrites the connection secrets and restarts the API and "
+     "worker. Rolled back if the health checks fail."),
+    ("ca_password", "Platform CA key password and signing provisioner",
+     "The update agent re-encrypts the CA's keys and the signing provisioner's key with a new password, swaps the "
+     "file and restarts the CA, API and worker. The health check signs a test request; rolled back on failure."),
+):
+    REGISTRY[kind] = Rotator(kind=kind, label=label, needs_restart=True, via_agent=True,
+                             interval_hours=RESTART_INTERVAL_HOURS, notes=notes)
+
 for kind, label, cls, restart, notes in (
-    ("master_key", "Master key (LABAPE_SECRET_KEY: sessions, wraps the data key)", "privileged", True,
-     "Needs a restart of the API and worker: weekly, in the maintenance window (rotator coming, phase R3)."),
-    ("postgres_password", "PostgreSQL password", "privileged", True,
-     "Needs a restart of the API and worker: weekly, in the maintenance window (rotator coming, phase R3)."),
-    ("ca_password", "Platform CA key password and signing provisioner", "privileged", True,
-     "Needs a restart of the CA: weekly, in the maintenance window (rotator coming, phase R3)."),
     ("vault_password", "Engine Ansible vault password", "privileged", False, "Rotator coming (phase R2)."),
     ("bootstrap_ssh_key", "VM bootstrap SSH key (Ansible to VMs)", "privileged", False, "Rotator coming (phase R2)."),
     ("oidc_client_secret", "OIDC client secret (Authentik)", "privileged", False,
@@ -208,10 +219,14 @@ PLATFORM = ("builtin_data_key", "worker_ssh_key", "directory_token", "master_key
 
 def ensure_policies(db: Session) -> None:
     """One policy per platform secret, with the rotator's defaults (kept once edited)."""
-    have = {p.name for p in db.scalars(select(SecretPolicy))}
+    have = {p.name: p for p in db.scalars(select(SecretPolicy))}
     for kind in PLATFORM:
         name = f"platform.{kind}"
         if name in have:
+            p, r = have[name], REGISTRY[kind]
+            if p.status == "manual" and r.automatic:       # its rotator arrived in a later phase
+                p.status, p.notes = "pending", r.notes
+                p.next_due_at = p.next_due_at or utcnow() + dt.timedelta(hours=p.interval_hours)
             continue
         r = REGISTRY[kind]
         db.add(SecretPolicy(name=name, kind=kind, label=r.label, secret_class=r.secret_class,
@@ -252,13 +267,60 @@ def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
     return out
 
 
+def request_agent(db: Session, policy: SecretPolicy, actor: str) -> str:
+    """Hand a restart-needing rotation to the host's update agent."""
+    from .. import update
+    if not update.agent_installed():
+        raise RotationError("the update agent isn't installed on this host (it rotates restart-needing secrets)")
+    if update.busy():
+        raise RotationError("the update agent is busy; try again when it's done")
+    req = update.write_request("rotate", policy.kind, actor, policy_id=policy.id)
+    policy.status, policy.last_error = "running", ""
+    policy.params = {**(policy.params or {}), "request_id": req["id"]}
+    db.commit()
+    audit(db, actor, "secret.rotate.start", object_type="secret_policy", object_id=policy.id,
+          detail={"name": policy.name, "agent_request": req["id"]})
+    return req["id"]
+
+
+def reconcile_agent(db: Session) -> None:
+    """Record the outcome of rotations the agent finished."""
+    from .. import update
+    st = update.status()
+    if st.get("action") != "rotate" or st.get("state") == "running" or not st.get("id"):
+        return
+    for p in db.scalars(select(SecretPolicy).where(SecretPolicy.status == "running")):
+        if (p.params or {}).get("request_id") != st["id"]:
+            continue
+        if st.get("state") == "succeeded":
+            p.status, p.last_error = "ok", ""
+            p.last_rotated_at = utcnow()
+            p.next_due_at = utcnow() + dt.timedelta(hours=p.interval_hours)
+        else:
+            p.status, p.last_error = "failed", (st.get("message") or "the agent reported a failure")[:2000]
+            p.next_due_at = utcnow() + dt.timedelta(hours=RETRY_HOURS)
+        db.commit()
+        audit(db, "update-agent", "secret.rotate", object_type="secret_policy", object_id=p.id,
+              outcome="ok" if p.status == "ok" else "failed", detail={"name": p.name, "message": st.get("message")})
+
+
 def schedule(db: Session, now: dt.datetime | None = None) -> list[int]:
-    """Queue a rotation job for each due policy that hasn't one queued or running."""
+    """Queue a rotation job for each due policy that hasn't one queued or running;
+    restart-needing ones go to the host agent instead (it restarts the worker)."""
+    reconcile_agent(db)
     busy = {(j.params or {}).get("policy_id") for j in db.scalars(
         select(Job).where(Job.type == "secret.rotate", Job.state.in_(("queued", "running"))))}
     queued = []
     for p in due(db, now):
-        if p.id in busy:
+        if p.id in busy or p.status == "running":
+            continue
+        if REGISTRY[p.kind].via_agent:
+            try:
+                request_agent(db, p, "system")
+            except RotationError as exc:
+                p.status, p.last_error = "failed", str(exc)
+                p.next_due_at = utcnow() + dt.timedelta(hours=RETRY_HOURS)
+                db.commit()
             continue
         job = Job(type="secret.rotate", params={"policy_id": p.id}, requested_by="system")
         db.add(job)

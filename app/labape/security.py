@@ -112,6 +112,37 @@ def audit(db: Session, actor: str, action: str, *, object_type: str = "", object
 
 # --- built-in secrets store -------------------------------------------------
 
+def master_fernet(key: str) -> Fernet:
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(key.encode()).digest()))
+
+
+def rewrap_master(db: Session, old_key: str, new_key: str) -> int:
+    """Re-wrap every data key from one master key to another, and move any
+    value still encrypted with the master key itself onto a data key. Used by
+    the master key rotation (design §24, phase R3); runs in one transaction."""
+    old, new = master_fernet(old_key), master_fernet(new_key)
+    deks = {}
+    for k in db.scalars(select(SecretDataKey)):
+        dek = old.decrypt(k.wrapped.encode())
+        deks[k.id] = Fernet(dek)
+        k.wrapped = new.encrypt(dek).decode()
+    active = db.scalar(select(SecretDataKey).where(SecretDataKey.active.is_(True)).order_by(SecretDataKey.id.desc()))
+    if active is None:
+        dek = Fernet.generate_key()
+        active = SecretDataKey(wrapped=new.encrypt(dek).decode(), active=True)
+        db.add(active)
+        db.flush()
+        deks[active.id] = Fernet(dek)
+    moved = 0
+    for row in db.scalars(select(Secret)):
+        if not row.value.startswith("v2:"):
+            row.value = f"v2:{active.id}:{deks[active.id].encrypt(old.decrypt(row.value.encode())).decode()}"
+            moved += 1
+    db.commit()
+    _data_keys.clear()
+    return len(deks)
+
+
 def _fernet() -> Fernet:
     key = get_settings().secret_key
     if not key:
@@ -124,16 +155,20 @@ def _fernet() -> Fernet:
 # data key can rotate (re-encrypting the store) without a restart. Values
 # from before data keys (plain master-key tokens) are still read, and are
 # rewritten as v2 by the first rotation.
-_data_keys: dict[int, Fernet] = {}
+# Unwrapped data keys, cached by id *and* wrapped value: an id can come back
+# (SQLite reuses the highest rowid after a delete; tests recreate tables),
+# and a re-wrap changes the wrapped value, so a stale entry never matches.
+_data_keys: dict[tuple[int, str], Fernet] = {}
 
 
 def _data_key(db: Session, key_id: int) -> Fernet | None:
-    if key_id not in _data_keys:
-        row = db.get(SecretDataKey, key_id)
-        if row is None:
-            return None
-        _data_keys[key_id] = Fernet(_fernet().decrypt(row.wrapped.encode()))
-    return _data_keys[key_id]
+    row = db.get(SecretDataKey, key_id)
+    if row is None:
+        return None
+    cache_key = (key_id, row.wrapped)
+    if cache_key not in _data_keys:
+        _data_keys[cache_key] = Fernet(_fernet().decrypt(row.wrapped.encode()))
+    return _data_keys[cache_key]
 
 
 def active_data_key(db: Session) -> tuple[int, Fernet]:

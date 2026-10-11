@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..engine.rotation import ELEVATED_PREFIX, REGISTRY, RESTART_INTERVAL_HOURS, ensure_policies
+from ..engine.rotation import (ELEVATED_PREFIX, REGISTRY, RESTART_INTERVAL_HOURS, RotationError, ensure_policies,
+                               request_agent)
 from ..errors import FieldError
 from ..models import Job, Secret, SecretPolicy
 from ..security import Principal, audit, client_ip, put_secret, require_roles
@@ -97,6 +98,11 @@ def rotate_now(policy_id: int, request: Request, db: Session = Depends(get_db),
         raise FieldError("policy", f"LABaPe doesn't rotate {pol.label} yet: {r.notes if r else ''}")
     if pol.managed_externally:
         raise FieldError("policy", "Its secret store rotates it; LABaPe only reads it.")
+    if r.via_agent:
+        try:
+            return {"agent_request": request_agent(db, pol, p.username)}
+        except RotationError as exc:
+            raise FieldError("policy", str(exc), status_code=409) from exc
     busy = db.scalar(select(Job).where(Job.type == "secret.rotate", Job.state.in_(("queued", "running"))))
     if busy and (busy.params or {}).get("policy_id") == pol.id:
         raise FieldError("policy", f"Job {busy.id} is already rotating it.", status_code=409)

@@ -198,9 +198,44 @@ def cmd_health(args) -> int:
             checks["worker"] = {"ok": False, "error": str(exc)[:300]}
         ok, msg = ca.health()
         checks["ca"] = {"ok": ok is not False, "message": msg}
+        if ok and ca.configured():          # the password works: the CA really signs
+            try:
+                from cryptography import x509 as _x509
+                from cryptography.hazmat.primitives import hashes as _h, serialization as _s
+                from cryptography.hazmat.primitives.asymmetric import ec as _ec
+                from cryptography.x509.oid import NameOID as _N
+                csr = _x509.CertificateSigningRequestBuilder().subject_name(_x509.Name(
+                    [_x509.NameAttribute(_N.COMMON_NAME, "labape-health-probe")])).sign(
+                    _ec.generate_private_key(_ec.SECP256R1()), _h.SHA256()).public_bytes(_s.Encoding.PEM).decode()
+                ca.sign(csr, hours=1)
+                checks["ca"]["signs"] = True
+            except Exception as exc:  # noqa: BLE001
+                checks["ca"] = {"ok": False, "message": f"signing failed: {exc}"[:300]}
     healthy = all(c["ok"] for c in checks.values())
     print(_json.dumps({"healthy": healthy, "checks": checks}, default=str))
     return 0 if healthy else 1
+
+
+def cmd_rewrap_master(args) -> int:
+    """Re-wrap the store's data keys from one master key file to another (the agent's rotation)."""
+    from pathlib import Path as _P
+    from .db import session_factory
+    from .security import rewrap_master
+    old = _P(args.from_file).read_text(encoding="utf-8").strip()
+    new = _P(args.to_file).read_text(encoding="utf-8").strip()
+    with session_factory()() as db:
+        n = rewrap_master(db, old, new)
+    print(f"labape: re-wrapped {n} data key(s)")
+    return 0
+
+
+def cmd_ca_repass(args) -> int:
+    """Re-encrypt the CA's signing provisioner key with a new password (the agent's rotation)."""
+    from pathlib import Path as _P
+    from .ca import repass_provisioner
+    repass_provisioner(args.config, _P(args.old).read_bytes().strip(), _P(args.new).read_bytes().strip())
+    print("labape: provisioner key re-encrypted")
+    return 0
 
 
 def cmd_db_status(_args) -> int:
@@ -262,6 +297,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file")
     p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("rewrap-master", help="re-wrap the secret store's data keys to a new master key")
+    p.add_argument("--from", dest="from_file", required=True)
+    p.add_argument("--to", dest="to_file", required=True)
+    p.set_defaults(func=cmd_rewrap_master)
+
+    p = sub.add_parser("ca-repass", help="re-encrypt the CA's signing provisioner key with a new password")
+    p.add_argument("--config", required=True)
+    p.add_argument("--old", required=True)
+    p.add_argument("--new", required=True)
+    p.set_defaults(func=cmd_ca_repass)
 
     p = sub.add_parser("health", help="exit 0 when healthy (--deep: worker heartbeat and CA too)")
     p.add_argument("--deep", action="store_true")
