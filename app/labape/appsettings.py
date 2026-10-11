@@ -63,6 +63,12 @@ class DirectorySettings(BaseModel):
     verify_tls: bool = True
 
 
+class DownloadSettings(BaseModel):
+    """Files from a URL (question 71): HTTPS only unless HTTP is allowed here."""
+    allow_http: bool = False
+    proxy: str = Field(default="", pattern=r"^(https?://\S+)?$")    # e.g. http://proxy.example:3128
+
+
 class BrandingSettings(BaseModel):
     """The app's name in the top bar, browser title and emails (question 68)."""
     app_name: str = Field(default="LABaPe", min_length=1, max_length=40, pattern=r"^[^<>]+$")
@@ -82,6 +88,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "directory": DirectorySettings,
     "updates": UpdateSettings,
     "branding": BrandingSettings,
+    "downloads": DownloadSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

@@ -18,9 +18,10 @@ interface Smtp {
   from_address: string; notify_jobs: boolean; has_password: boolean;
 }
 interface Branding { app_name: string }
+interface Downloads { allow_http: boolean; proxy: string }
 interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding;
+  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads;
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -97,7 +98,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -125,6 +126,16 @@ export default function Settings() {
               value={s.file_roots[k] ?? ""} sx={{ minWidth: 260 }} help="Absolute path"
               onChange={(e) => setS({ ...s, file_roots: { ...s.file_roots, [k]: e.target.value } })} />
           ))}
+        </Stack>
+      </Section>
+
+      <Section title="Downloads" intro="Files downloaded from a URL on the Files page. HTTPS only unless HTTP is allowed; link-local addresses are always refused."
+        onSave={async () => { await put("downloads", s.downloads); return "Download settings saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Allow plain HTTP" control={<Checkbox checked={s.downloads.allow_http}
+            onChange={(e) => set("downloads", { allow_http: e.target.checked })} />} />
+          <Field label="Proxy" value={s.downloads.proxy} sx={{ minWidth: 320 }} help="e.g. http://proxy.example:3128; empty: direct"
+            onChange={(e) => set("downloads", { proxy: e.target.value })} />
         </Stack>
       </Section>
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import datetime as dt
+import hashlib
 import re
 import secrets
 from pathlib import Path
@@ -20,10 +21,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import appsettings
 from ..db import get_db
+from ..engine.downloads import HASH_LENGTHS, DownloadError, check_url, filename_from, parse_expected
 from ..errors import FieldError
 from ..files import CATEGORIES, infer_os, roots, set_roots, sha256_of
-from ..models import StoredFile, Upload, utcnow
+from ..models import Job, StoredFile, Upload, utcnow
 from ..security import Principal, audit, client_ip, current_principal, require_roles
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -72,10 +75,18 @@ def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = D
     if (root / name).exists():
         raise FieldError("file", f"{name} already exists in {root}. Delete it first, or rename the file.",
                          status_code=409)
+    hash_type = meta.get("hash_type") or "sha256"
+    expected = ""
+    if meta.get("expected_hash"):
+        try:
+            expected = parse_expected(meta["expected_hash"], hash_type)
+        except DownloadError as exc:
+            raise FieldError("expected_hash", str(exc)) from None
     (root / ".uploads").mkdir(parents=True, exist_ok=True)
     up = Upload(id=secrets.token_hex(16), category=category, filename=name, length=length,
                 partial_path=str(root / ".uploads" / f"{secrets.token_hex(8)}.part"),
-                meta={"description": meta.get("description", "")}, created_by=p.username)
+                meta={"description": meta.get("description", ""), "hash_type": hash_type, "expected_hash": expected},
+                created_by=p.username)
     Path(up.partial_path).touch()
     db.add(up)
     db.commit()
@@ -122,6 +133,15 @@ async def tus_patch(upload_id: str, request: Request, db: Session = Depends(get_
 def _finish(db: Session, up: Upload, request: Request, p: Principal) -> None:
     partial = Path(up.partial_path)
     digest = sha256_of(partial)
+    expected, hash_type = up.meta.get("expected_hash"), up.meta.get("hash_type") or "sha256"
+    if expected:
+        got = digest if hash_type == "sha256" else _hash(partial, hash_type)
+        if got != expected:
+            partial.unlink(missing_ok=True)
+            db.delete(up)
+            db.commit()
+            raise FieldError("expected_hash", f"The file's {hash_type.upper()} is {got}, not the expected {expected}. "
+                                              "It wasn't kept; check the value or upload the file again.")
     dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == digest, StoredFile.present.is_(True)))
     if dup is not None:
         partial.unlink(missing_ok=True)
@@ -145,6 +165,14 @@ def _finish(db: Session, up: Upload, request: Request, p: Principal) -> None:
           source_ip=client_ip(request))
 
 
+def _hash(path: Path, algo: str) -> str:
+    h = hashlib.new(algo)
+    with open(path, "rb") as fh:
+        while block := fh.read(8 * 2**20):
+            h.update(block)
+    return h.hexdigest()
+
+
 @router.delete("/tus/{upload_id}")
 def tus_delete(upload_id: str, db: Session = Depends(get_db), p: Principal = Depends(require_roles("file_manager"))):
     up = _upload(db, upload_id, p)
@@ -152,6 +180,57 @@ def tus_delete(upload_id: str, db: Session = Depends(get_db), p: Principal = Dep
     db.delete(up)
     db.commit()
     return Response(status_code=204, headers=TUS)
+
+
+# --- downloads from a URL (design §22.3) ---------------------------------------
+
+class DownloadIn(BaseModel):
+    category: str
+    url: str = Field(min_length=8, max_length=2000)
+    filename: str = ""
+    hash_type: str = "sha256"
+    expected_hash: str = ""
+    description: str = Field(default="", max_length=2000)
+
+
+@router.post("/download")
+def start_download(body: DownloadIn, request: Request, db: Session = Depends(get_db),
+                   p: Principal = Depends(require_roles("file_manager"))):
+    if body.category not in CATEGORIES:
+        raise FieldError("category", f"Choose a category: {', '.join(CATEGORIES)}.")
+    cfg = appsettings.get(db, "downloads")
+    try:
+        check_url(body.url.strip(), cfg.allow_http)
+    except DownloadError as exc:
+        raise FieldError("url", str(exc)) from None
+    name = (body.filename.strip() or filename_from(body.url.strip()))
+    if not NAME_RE.match(name):
+        raise FieldError("filename", "Give a file name (letters, digits, spaces and . _ ( ) + -, starting with a "
+                                     "letter or digit); the address doesn't end in a usable one.")
+    if body.hash_type not in HASH_LENGTHS:
+        raise FieldError("hash_type", f"Hash type must be one of {', '.join(HASH_LENGTHS)}.")
+    expected = ""
+    if body.expected_hash.strip():
+        try:
+            expected = parse_expected(body.expected_hash, body.hash_type)
+        except DownloadError as exc:
+            raise FieldError("expected_hash", str(exc)) from None
+    target = Path(roots(db)[body.category]) / name
+    if target.exists():
+        raise FieldError("filename", f"{name} already exists in {target.parent}. Delete it first, or choose another "
+                                     "name.", status_code=409)
+    for j in db.scalars(select(Job).where(Job.type == "files.download", Job.state.in_(("queued", "running")))):
+        if (j.params or {}).get("category") == body.category and (j.params or {}).get("filename") == name:
+            raise FieldError("filename", f"Job {j.id} is already downloading {name}.", status_code=409)
+    job = Job(type="files.download", requested_by=p.username,
+              params={"category": body.category, "url": body.url.strip(), "filename": name,
+                      "hash_type": body.hash_type, "expected_hash": expected, "description": body.description})
+    db.add(job)
+    db.commit()
+    audit(db, p.username, "file.download.start", object_type="job", object_id=job.id,
+          detail={"url": body.url.strip(), "category": body.category, "name": name,
+                  "verify": body.hash_type if expected else ""}, source_ip=client_ip(request))
+    return {"job_id": job.id, "filename": name}
 
 
 # --- locations ----------------------------------------------------------------

@@ -6,6 +6,7 @@ import {
   Typography,
 } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
+import LinkIcon from "@mui/icons-material/Link";
 import NotesIcon from "@mui/icons-material/StickyNote2Outlined";
 import * as tus from "tus-js-client";
 import { api, fmtTime, KvmHost, Template } from "../api";
@@ -28,11 +29,33 @@ const CATS = [{ key: "isos", label: "ISOs" }, { key: "installers", label: "Insta
 export const size = (n: number) => n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${(n / 2 ** 20).toFixed(1)} MB`
   : `${Math.ceil(n / 1024)} KB`;
 
+// LABaPe always stores a SHA-256; a vendor's published value may use another type (question 72).
+const HASH_TYPES = [{ key: "sha256", label: "SHA-256" }, { key: "sha1", label: "SHA-1" },
+  { key: "sha512", label: "SHA-512" }, { key: "md5", label: "MD5" }];
+
+function HashFields({ hashType, expected, onChange, errs }: {
+  hashType: string; expected: string; onChange: (hashType: string, expected: string) => void; errs?: FieldErrors;
+}) {
+  return (
+    <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+      <Field select label="Hash type" value={hashType} sx={{ width: 130 }} error={errs?.hash_type}
+        onChange={(e) => onChange(e.target.value, expected)}>
+        {HASH_TYPES.map((h) => <MenuItem key={h.key} value={h.key}>{h.label}</MenuItem>)}
+      </Field>
+      <Field label="Expected hash (optional)" value={expected} sx={{ flex: 1, minWidth: 320 }} error={errs?.expected_hash}
+        help="Paste the vendor's value or a checksum-file line; a mismatch deletes the file"
+        onChange={(e) => onChange(hashType, e.target.value)} />
+    </Stack>
+  );
+}
+
 function Uploader({ category, onDone }: { category: string; onDone: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
   const [error, setError] = useState("");
   const [upload, setUpload] = useState<tus.Upload | null>(null);
+  const [hash, setHash] = useState({ type: "sha256", expected: "" });
+  const [showHash, setShowHash] = useState(false);
 
   const start = async (file: File) => {
     setError("");
@@ -41,9 +64,9 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
       chunkSize: 32 * 2 ** 20,
       retryDelays: [0, 3000, 10000, 30000],
       removeFingerprintOnSuccess: true,
-      metadata: { filename: file.name, category },
+      metadata: { filename: file.name, category, ...(hash.expected.trim() ? { hash_type: hash.type, expected_hash: hash.expected.trim() } : {}) },
       onProgress: (sent, total) => setProgress({ name: file.name, pct: total ? (sent / total) * 100 : 0 }),
-      onSuccess: () => { setProgress(null); setUpload(null); onDone(); },
+      onSuccess: () => { setProgress(null); setUpload(null); setHash({ type: "sha256", expected: "" }); onDone(); },
       onError: (err) => {
         setProgress(null);
         setUpload(null);
@@ -75,9 +98,44 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
           </Box>
         )}
         {upload && <Button color="error" onClick={() => { upload.abort(true); setProgress(null); setUpload(null); }}>Cancel</Button>}
+        {!progress && !showHash && <Button size="small" onClick={() => setShowHash(true)}>Verify against a hash…</Button>}
+        <Box sx={{ flexGrow: 1 }} />
+        <DownloadButton category={category} />
       </Stack>
+      {showHash && !progress && (
+        <HashFields hashType={hash.type} expected={hash.expected} onChange={(type, expected) => setHash({ type, expected })} />
+      )}
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
     </Stack>
+  );
+}
+
+function DownloadButton({ category }: { category: string }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ url: "", filename: "", hash_type: "sha256", expected_hash: "", description: "" });
+  return (
+    <>
+      <Button variant="outlined" startIcon={<LinkIcon />} onClick={() => setOpen(true)}>Download from URL</Button>
+      {open && (
+        <JobDialog title="Download a file from a URL" onClose={() => setOpen(false)}
+          submit={() => api.post("/api/files/download", { ...form, category })}
+          fields={(errs) => (
+            <>
+              <Typography variant="body2">
+                The worker downloads the file into this location as a job (progress in the job log; a retry resumes).
+                HTTPS only unless Settings &gt; Downloads allows HTTP.
+              </Typography>
+              <Field label="URL" value={form.url} fullWidth error={errs.url} placeholder="https://vendor.example/tool.msi"
+                onChange={(e) => setForm({ ...form, url: e.target.value })} />
+              <Field label="File name" value={form.filename} fullWidth error={errs.filename}
+                help="Empty: the last part of the URL" onChange={(e) => setForm({ ...form, filename: e.target.value })} />
+              <HashFields hashType={form.hash_type} expected={form.expected_hash} errs={errs}
+                onChange={(hash_type, expected_hash) => setForm({ ...form, hash_type, expected_hash })} />
+              <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </>
+          )} />
+      )}
+    </>
   );
 }
 
