@@ -1403,3 +1403,26 @@ registered as `qemu+ssh`:
 - **Key pair.** The first remote deploy stopped at "ssh-key.pub not
   found": `deploy.sh` checks that the VM SSH key has its `.pub` beside
   it. The runner now ships both into `.labape-remote/`.
+
+### Platform CA bring-up (2026-10-11)
+
+- **step-ca image init leaks the password.** The image's
+  `DOCKER_STEPCA_INIT_*` first-start init echoes the provisioner password
+  into the container log. LABaPe needs that password to sign, so
+  `container/ca/init.sh` runs `step ca init` itself, with the Docker
+  secret, and logs only the root fingerprint.
+- **Port 9443 taken.** The test Authentik publishes HTTPS on 9443, so
+  the CA's renewal port defaults to 9444.
+- **Caddy kept its own certificate for an IP address.** The global
+  `acme_ca` option is ignored for IP identifiers, which Caddy never sends
+  to an ACME CA by default. An explicit `tls { issuer acme { dir ...;
+  trusted_roots ... } }` in the site block makes it use step-ca (which
+  supports IP identifiers).
+- **`include_tasks` with `==` in a free-form template.** `include_tasks:
+  "{{ 'a.yml' if x == 'y' else 'b.yml' }}"` failed with "Invalid options
+  for include_tasks", because the `=` made Ansible parse the string as
+  `key=value` options. Use `include_tasks: {file: "{{ ... }}"}`.
+- **Redeploying during a job kills it.** `deploy_web.sh` recreates the
+  worker, so a deploy job running at the time died and stale-job recovery
+  marked it failed. Retrying it was safe (OpenTofu state was intact), but
+  don't redeploy the stack while a job is running.

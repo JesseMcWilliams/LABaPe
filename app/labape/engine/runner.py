@@ -393,6 +393,8 @@ def run(job_id: int, worker: str) -> None:
             (job.params or {}).get("name") or (job.params or {}).get("new_name", "")
         logf.write(f"labape: job {job_id} ({job.type}) for {what} on {host.name}, worker {worker}\n".encode())
         run_env = job_env(host)
+        run_env.update(_cert_env(job_id, job.type, remote is not None))
+        cert_token = run_env.get("LABAPE_CERT_TOKEN", "")
         if remote is not None:
             try:
                 logf.write(f"labape: running on {remote.host.target} over SSH in {remote.root}\n".encode())
@@ -449,7 +451,27 @@ def run(job_id: int, worker: str) -> None:
     with Session_() as db:
         job = db.get(Job, job_id)
         env = db.get(Environment, job.environment_id) if job.environment_id else None
+        if cert_token:
+            from ..api.ca import token_name
+            put_secret(db, token_name(job_id), "")      # the token dies with the job
         _finish(db, job, env, rc, work=work)
+
+
+def _cert_env(job_id: int, job_type: str, remote: bool) -> dict[str, str]:
+    """A deploy's one-time token for having VMs' certificates signed (design §22.5).
+    Without the platform CA the variables stay empty and labape_cert does nothing."""
+    from .. import ca
+    if job_type != "environment.deploy" or not ca.configured():
+        return {}
+    import secrets as _secrets
+    from ..api.ca import token_name
+    token = _secrets.token_urlsafe(32)
+    with session_factory()() as db:
+        put_secret(db, token_name(job_id), token)
+    s = get_settings()
+    return {"LABAPE_CERT_TOKEN": token, "LABAPE_JOB_ID": str(job_id), "LABAPE_CA_RENEW_URL": s.ca_renew_url,
+            # A remote host's Ansible reaches the API through the public URL; local jobs use the internal one.
+            "LABAPE_CERT_API": s.public_url.rstrip("/") if remote else s.internal_api_url}
 
 
 class _TextLog:

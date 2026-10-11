@@ -1,0 +1,19 @@
+#!/bin/bash
+# Renew the LABaPe platform certificate (design §22.5): when it has fewer
+# than {{ labape_cert_renew_days }} days left (or with --force), ask step-ca for a new one
+# over mTLS with the current certificate and key. Written by Ansible.
+set -euo pipefail
+D=/etc/labape/tls
+if [ "${1:-}" != "--force" ] && openssl x509 -checkend {{ labape_cert_renew_days * 86400 }} -noout -in "$D/host.crt" >/dev/null; then
+  exit 0
+fi
+out="$(curl -fsS --cacert "$D/root.crt" --cert "$D/host.crt" --key "$D/host.key" -X POST "{{ labape_ca_renew_url }}/1.0/renew")"
+python3 - "$out" "$D/host.crt.new" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+chain = d.get("certChain") or [d["crt"], d.get("ca", "")]
+open(sys.argv[2], "w").write("".join(c if c.endswith("\n") else c + "\n" for c in chain if c))
+PY
+chmod 0644 "$D/host.crt.new"
+mv "$D/host.crt.new" "$D/host.crt"
+echo "labape-cert-renew: renewed, now valid until $(openssl x509 -enddate -noout -in "$D/host.crt" | cut -d= -f2)"

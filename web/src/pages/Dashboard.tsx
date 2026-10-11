@@ -310,7 +310,9 @@ export default function Dashboard() {
             <CheckList title="Sign-in" items={health.auth} extra={(c) => c.last_sign_in
               ? <Typography variant="caption" color="text.secondary" component="div">Last sign-in {fmtTime(c.last_sign_in as string)}</Typography>
               : null} />
-            <CheckList title="Secrets" items={health.secrets} />
+            <CheckList title="Secrets and certificates" items={health.secrets} extra={(c) => c.name === "platform_ca" && c.status === "ok"
+              ? <Link href="/api/ca/root.crt" variant="caption">Download the root certificate (trust it in browsers)</Link>
+              : null} />
             <CheckList title="Notifications" items={health.notifications} extra={(c) => {
               const last = c.last as { at: string; ok: boolean; error: string } | null;
               return <>

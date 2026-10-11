@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, notify, version
+from .. import appsettings, ca, notify, version
 from ..auth import load_providers, provider_enabled
 from ..config import get_settings
 from ..db import get_db
@@ -229,7 +229,9 @@ def _secrets(db: Session) -> list[dict]:
         builtin = _check(ok, f"Encrypt/decrypt self-test passed; {count} secret(s) stored")
     except Exception as exc:  # noqa: BLE001 — any failure here is the finding
         builtin = _check(False, f"Self-test failed ({type(exc).__name__}); the secret key may have changed")
+    ok, msg = _cached("ca", 60, ca.health)
     return [{"name": "builtin", "display_name": "Built-in store (database, encrypted)", **builtin},
+            {"name": "platform_ca", "display_name": "Platform CA (step-ca)", **_check(ok, msg)},
             {"name": "ansible_vault", "display_name": "Engine Ansible vault",
              **_cached("vault", 600, _vault_check)}]
 

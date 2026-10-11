@@ -1,0 +1,13 @@
+---
+# Platform certificates (Claude_Docs/Planning_Web-Interface-Design.md §22.5).
+# The web interface's deploy jobs set these; the CLI doesn't, and the role
+# does nothing then.
+labape_cert_api: "{{ lookup('env', 'LABAPE_CERT_API') }}"
+labape_cert_token: "{{ lookup('env', 'LABAPE_CERT_TOKEN') }}"
+labape_cert_job: "{{ lookup('env', 'LABAPE_JOB_ID') }}"
+labape_ca_renew_url: "{{ lookup('env', 'LABAPE_CA_RENEW_URL') }}"
+# The API behind Caddy may still use Caddy's own CA; the job token is what authorizes.
+labape_cert_validate: false
+labape_cert_fqdn: "{{ inventory_hostname }}{{ ('.' + domain_name) if (domain_name | default('')) else '' }}"
+labape_cert_ip: "{{ ansible_host | default('') }}"
+labape_cert_renew_days: 10

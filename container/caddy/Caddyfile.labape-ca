@@ -1,0 +1,32 @@
+# TLS in front of the LABaPe API, with the certificate from the platform CA
+# (design §22.5): Caddy uses ACME against the labape-ca container. Select it
+# with LABAPE_CADDYFILE=Caddyfile.labape-ca in container/.env. Browsers
+# trust the LABaPe root (download it from the dashboard, /api/ca/root.crt).
+
+{
+	default_sni {$LABAPE_HOSTNAME}
+}
+
+{$LABAPE_HOSTNAME} {
+	# An explicit issuer: Caddy otherwise never asks an ACME CA for an IP
+	# address (step-ca issues for IP identifiers, RFC 8738).
+	tls {
+		issuer acme {
+			dir https://labape-ca:9000/acme/acme/directory
+			trusted_roots /labape-ca/certs/root_ca.crt
+		}
+	}
+	encode gzip
+	reverse_proxy labape-api:8000 {
+		header_up -X-LABaPe-Local
+		flush_interval -1
+	}
+}
+
+https://localhost:8443 {
+	tls internal
+	reverse_proxy labape-api:8000 {
+		header_up X-LABaPe-Local 1
+		flush_interval -1
+	}
+}

@@ -229,7 +229,8 @@ class RemoteJob:
                 remote_env[k] = f"{self.root}/.labape-remote/ssh-key" if v else ""
             elif k == "PG_CONN_STR":
                 remote_env[k] = tunnel_conn(v, self.port)
-            elif k in ("ANSIBLE_FORCE_COLOR", "TF_IN_AUTOMATION", "PYTHONUNBUFFERED"):
+            elif k in ("ANSIBLE_FORCE_COLOR", "TF_IN_AUTOMATION", "PYTHONUNBUFFERED", "LABAPE_CERT_TOKEN",
+                       "LABAPE_JOB_ID", "LABAPE_CA_RENEW_URL", "LABAPE_CERT_API"):
                 remote_env[k] = v
         remote_env["LIBVIRT_URI"] = "qemu:///system"
         remote_env["TF_PLUGIN_CACHE_DIR"] = "$HOME/.labape/tofu-plugins"

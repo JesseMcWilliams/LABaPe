@@ -8,8 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api import (admin, auth, catalog, dashboard, directory, environments, files, hosts, jobs, networks, reports,
-                  settings, templates)
+from .api import (admin, auth, ca, catalog, dashboard, directory, environments, files, hosts, jobs, networks,
+                  reports, settings, templates)
 from .config import get_settings
 from .errors import on_http_error, on_validation_error
 
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, jobs.router,
               admin.router, reports.router, files.router, catalog.router, settings.router, directory.router,
-              dashboard.router, settings.public_router):
+              dashboard.router, settings.public_router, ca.router):
         app.include_router(r)
 
     @app.get("/api/health")

@@ -126,3 +126,23 @@
     # Services chosen in the web UI (no-op when none were chosen).
     - labape_services
   tags: [software, directory_objects]
+
+# --- Platform certificates (Claude_Docs/Planning_Web-Interface-Design.md §22.5) ---
+# Web-interface deploys only: every host trusts the platform root and gets
+# a certificate signed by the platform CA, renewed on the host. No-op from
+# the CLI (no LABAPE_CERT_TOKEN in the environment).
+
+- name: Platform certificates (Linux)
+  hosts: linux_server:linux_workstation
+  become: true
+  gather_facts: true
+  roles:
+    - labape_cert
+  tags: [certificates]
+
+- name: Platform certificates (Windows)
+  hosts: windows_server:windows_workstation:domain_controller
+  gather_facts: true
+  roles:
+    - labape_cert
+  tags: [certificates]

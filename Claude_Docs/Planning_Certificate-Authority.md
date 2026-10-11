@@ -133,7 +133,11 @@ platform CA, and the environment's hosts use their own CA.
 - **Revocation:** none beyond short lifetimes (step-ca's passive
   revocation). Destroying an environment discards its CA key.
 
-### 5.3 What it changes in this proposal
+### 5.3 Status (2026-10-11)
+
+The platform part is built (design §22.5): the step-ca service, signing through the web interface, VM certificates with renewal, root trust on every VM, and the web interface's certificate over ACME. Environment CAs as intermediates wait for the `certificate_authority` role (M9). The intermediate lasts 10 years (`step ca init`'s default), not the proposed 5.
+
+### 5.4 What it changes in this proposal
 
 - §2's trust rule becomes "every environment CA is subordinate to the
   platform root".

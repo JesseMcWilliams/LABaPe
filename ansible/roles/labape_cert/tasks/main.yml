@@ -1,0 +1,10 @@
+---
+# Every VM trusts the platform root and gets its own certificate, signed
+# by the platform CA through the web interface (design §22.5). The key is
+# made on the VM and never leaves it; the CSR goes to the API with the
+# deploy job's one-time token. Renewal runs on the VM against step-ca.
+- name: Platform certificate
+  # file: explicitly; the free-form string's "==" would be parsed as key=value options.
+  ansible.builtin.include_tasks:
+    file: "{{ 'windows.yml' if ansible_os_family == 'Windows' else 'linux.yml' }}"
+  when: labape_cert_token | length > 0
