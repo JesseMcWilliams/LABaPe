@@ -630,3 +630,45 @@ lab1 was destroyed on 2026-10-10, at the owner's request, after `lab2` was verif
    nmcli con mod "Wired connection 4" connection.autoconnect no
    nmcli con down "Wired connection 4"; nmcli con up br1
    ```
+
+## 21. Web UI usability and admin features (2026-10-11)
+
+These come from a round of UI feedback (questions 51-61). The work is in
+batches, in this order:
+- **A:** UI fixes;
+- **B:** KVM host resources and load;
+- **C:** Files tab (phase 10b);
+- **D:** services, applications and packages;
+- **E:** admin settings;
+- **F:** Authentik group lookup.
+
+### 21.1 Batch A, built
+
+**Environment form and engine**
+
+| Area | As built |
+|---|---|
+| VM names | Optional names per host (`host_groups[].names`); blanks become `<group><n>` (`app/labape/naming.py`, mirrored in `tofu/backends/libvirt`). Names are checked unique **across the KVM host**, against every other environment's VMs there, when the environment is created. Windows' 15-character limit applies. |
+| Template metadata | `<name>.json` beside each `<name>.qcow2` holds `os_key`, `edition`, `min_cpu`, `min_memory_mb`, `description` and `notes` (quirks and after-tasks). The worker syncs the library into the `templates` table every minute. For a template without metadata, it infers the OS and edition from the name and writes the file. The disk floor comes from the image's virtual size. Edits made in the UI are written back to the file. |
+| Deploy form | Templates appear in a dropdown filtered by KVM host and OS, showing description and notes. Amber warnings appear when vCPUs or memory are below the template's minimums, or the disk is smaller than the template, which raises it. The image source reads "Build from template" / "Build from ISO". Each host gets a name box. |
+
+**Errors and admin views**
+
+| Area | As built |
+|---|---|
+| Errors | Refusals come back as `{"detail", "errors": [{field, label, message}]}`, where each message states the rule (`app/labape/errors.py`). Network policy errors name their field. The UI checks the same rules before sending, and every field reserves its helper line so rows stay aligned. Errors show in red with an icon; size warnings show in amber. |
+| Error log | Every refused request (400, 403, 409, 422), and every submit the browser blocked (`POST /api/errors/report`), goes to `user_errors`. The admin **Errors** page lists them. Retention is configurable (default 90 days) and purged daily by the worker. |
+| Audit | Filters by actor and action prefix. **Export JSON** downloads the filtered log, and the export itself is audited. CSV export is planned. |
+
+**User menu and credentials**
+
+| Area | As built |
+|---|---|
+| User menu | Clicking your name shows roles, groups, sign-in provider, this and the previous sign-in (from the audit log), session end and account age. **Reload rights** does a silent OIDC re-sign-in (`prompt=none`) that re-reads the user's groups. If Authentik needs the user, the app says so instead of failing. |
+| Credentials | Returned as sections of label/value items; values whose label mentions a password are secret. Each secret is masked, with **Show**, **Show large** and **Copy**, and every reveal and copy is audited. |
+
+**Networks page**
+
+| Area | As built |
+|---|---|
+| Fields | "VLAN ID (reference only)" (question 56: a label; LABaPe doesn't tag traffic) and "Or limit to groups". List fields parse on save, so typing a comma works. |

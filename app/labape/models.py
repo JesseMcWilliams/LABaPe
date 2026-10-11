@@ -153,6 +153,49 @@ class Job(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Template(Base):
+    """A template in a KVM host's library, with its metadata (design §21).
+
+    The worker syncs these from <template_storage_path>/<name>.qcow2 and
+    the <name>.json metadata file beside it (written by the build/promote
+    scripts, or inferred from the name the first time)."""
+
+    __tablename__ = "templates"
+    __table_args__ = (UniqueConstraint("kvm_host_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"))
+    name: Mapped[str] = mapped_column(String(128))
+    os_key: Mapped[str] = mapped_column(String(64), default="")       # e.g. rocky9, windows_server_2022
+    edition: Mapped[str] = mapped_column(String(32), default="")      # windows: core | desktop
+    disk_gb: Mapped[int] = mapped_column(Integer, default=0)          # virtual size: the clone's disk floor
+    min_cpu: Mapped[int] = mapped_column(Integer, default=1)
+    min_memory_mb: Mapped[int] = mapped_column(Integer, default=1024)
+    description: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")              # quirks, after-tasks
+    source: Mapped[str] = mapped_column(String(16), default="inferred")  # metadata | inferred
+    present: Mapped[bool] = mapped_column(Boolean, default=True)
+    dirty: Mapped[bool] = mapped_column(Boolean, default=False)        # edited here; worker rewrites the file
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class UserError(Base):
+    """A request the API refused (validation, policy, permission), kept so
+    admins can see where users struggle (design §21, question 59)."""
+
+    __tablename__ = "user_errors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    username: Mapped[str] = mapped_column(String(255), default="")
+    method: Mapped[str] = mapped_column(String(8), default="")
+    path: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str] = mapped_column(Text, default="")
+    fields: Mapped[list] = mapped_column(JSON, default=list)          # [{"field", "message"}]
+    origin: Mapped[str] = mapped_column(String(16), default="server")  # server | browser
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

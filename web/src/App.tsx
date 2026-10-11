@@ -12,6 +12,8 @@ import JobDetail from "./pages/JobDetail";
 import Hosts from "./pages/Hosts";
 import Networks from "./pages/Networks";
 import Audit from "./pages/Audit";
+import Errors from "./pages/Errors";
+import UserMenu from "./components/UserMenu";
 
 interface AuthState {
   me: Me | null;
@@ -28,6 +30,8 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
+  // After Reload rights the callback lands on /?reload=done (or signin-needed).
+  const [reloadNotice, setReloadNotice] = useState(() => new URLSearchParams(window.location.search).get("reload"));
 
   const refresh = useCallback(async () => {
     try {
@@ -87,15 +91,13 @@ export default function App() {
                 <Button color="inherit" component={RouterLink} to="/audit">
                   Audit
                 </Button>
+                <Button color="inherit" component={RouterLink} to="/errors">
+                  Errors
+                </Button>
               </>
             )}
             <Box sx={{ flexGrow: 1 }} />
-            <Typography variant="body2" sx={{ mr: 1 }}>
-              {me.display_name} ({me.roles.join(", ") || "no roles"})
-            </Typography>
-            <Button color="inherit" onClick={logout}>
-              Sign out
-            </Button>
+            <UserMenu me={me} onLogout={logout} />
           </Toolbar>
         </AppBar>
       )}
@@ -103,6 +105,13 @@ export default function App() {
         <Alert severity="warning" square>
           Break-glass session: full admin rights, time-limited, and every action is audited. Fix sign-in and sign
           out as soon as you can.
+        </Alert>
+      )}
+      {me && reloadNotice && (
+        <Alert square severity={reloadNotice === "done" ? "success" : "info"} onClose={() => setReloadNotice(null)}>
+          {reloadNotice === "done"
+            ? `Rights reloaded: your roles are now ${me.roles.join(", ") || "none"}.`
+            : "Authentik needs you to sign in again before your rights can be reloaded. Sign out and sign back in."}
         </Alert>
       )}
       <Container maxWidth="lg" sx={{ py: 3 }}>
@@ -118,6 +127,7 @@ export default function App() {
           <Route path="/hosts" element={<Hosts />} />
           <Route path="/networks" element={<Networks />} />
           <Route path="/audit" element={<Audit />} />
+          <Route path="/errors" element={<Errors />} />
           <Route path="*" element={<Typography>Not found.</Typography>} />
         </Routes>
       </Container>

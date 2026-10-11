@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import ROLES
 from ..db import get_db
+from ..errors import FieldError
 from ..models import HostNetwork, IpAllocation, KvmHost, Network
 from ..netpolicy import PolicyError, may_use, ranges, usable_networks, validate_network
 from ..security import Principal, audit, client_ip, current_principal, require_roles
@@ -49,6 +50,8 @@ def _check(db: Session, body: NetworkIn) -> None:
     try:
         validate_network(body.model_dump(), db.scalars(select(Network)))
     except PolicyError as exc:
+        if exc.field:
+            raise FieldError(exc.field, str(exc)) from exc
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

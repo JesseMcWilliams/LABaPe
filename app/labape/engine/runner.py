@@ -34,6 +34,8 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import session_factory
 from ..models import Environment, HostNetwork, IpAllocation, Job, KvmHost, Network, utcnow
+from ..naming import instance_names
+from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, put_secret
 
@@ -147,7 +149,7 @@ def profile_host_groups(db: Session, env: Environment) -> list[dict]:
     for g in (env.spec or {}).get("host_groups", []):
         g = dict(g)
         if g.get("addressing", "static") == "static":
-            names = [f"{g['name']}{i + 1}" for i in range(g.get("count", 1))]
+            names = instance_names(g)
             if all(n in allocs for n in names):
                 g["addresses"] = [allocs[n] for n in names]
         groups.append(g)
@@ -383,6 +385,7 @@ def serve(slots: int | None = None) -> None:
 
     active: dict[int, threading.Thread] = {}
     last_recover = 0.0
+    last_purge = 0.0
     while not stop.is_set():
         for jid in [j for j, t in active.items() if not t.is_alive()]:
             del active[jid]
@@ -390,6 +393,13 @@ def serve(slots: int | None = None) -> None:
             last_recover = time.monotonic()
             with session_factory()() as db:
                 recover_stale(db)
+            with session_factory()() as db:
+                sync_templates(db)
+            if time.monotonic() - last_purge > 86400:
+                last_purge = time.monotonic()
+                with session_factory()() as db:
+                    from ..api.admin import purge_user_errors
+                    purge_user_errors(db)
         if len(active) < slots:
             with session_factory()() as db:
                 job = claim(db, worker)

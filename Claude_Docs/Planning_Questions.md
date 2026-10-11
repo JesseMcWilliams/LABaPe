@@ -113,3 +113,17 @@ Background: Claude_Docs/Planning_Web-Interface-Design.md §20. A new VLAN, 172.2
 48. ~~Who may use which network: can anyone allowed to deploy use any enabled network attached to the host, or should each network be limited to chosen roles or groups?~~ **Answered (2026-10-10):** Yes: networks can be limited to chosen roles and/or groups.
 49. ~~Should 172.21.20.0/22, where lab1 lives, stay a LABaPe network? If so, which range is LABaPe's static pool (e.g. .100-.199)?~~ **Answered (2026-10-10):** No: VMs migrate off 172.21.20.0/22; the web interface keeps listening on it.
 50. ~~CLI parity: should `environment.yml` (the CLI) get the same network catalog and per-host-group network choice, or does the CLI keep its single network while the catalog lives in the web UI?~~ **Answered (2026-10-10):** Yes: `environment.yml` gets the same network catalog and per-host-group network choice.
+
+## Web UI feedback round (added and answered 2026-10-11)
+
+51. ~~Services added on top of a template: a curated service catalog (each service maps to Windows features or Linux packages/units plus an Ansible role), or raw Ansible role names?~~ **Answered (2026-10-11):** The curated catalog, with a separate page for creating services. Users request a service; admins create and publish it.
+52. ~~Applications: managed in the database with YAML import/export for the CLI, or a git-backed YAML file?~~ **Answered (2026-10-11):** Like 51: users choose from a curated list and can request additions. Admins can import a pre-packaged YAML or create an entry from scratch. Services and applications can both be exported as packages.
+53. ~~Application packages: may they include services as well as applications, with one level of nesting?~~ **Answered (2026-10-11):** Yes; packages can group packages, one level deep.
+54. ~~Reload rights: a silent re-sign-in with Authentik (prompt=none), or a group lookup through the Authentik API?~~ **Answered (2026-10-11):** The silent re-sign-in.
+55. ~~May LABaPe use a read-only Authentik API token (in the secrets store) for a group search?~~ **Answered (2026-10-11):** Yes.
+56. ~~Network VLAN field: a label only, or tagged trunk support?~~ **Answered (2026-10-11):** A label only.
+57. ~~KVM host load thresholds: warn above 4 vCPUs per core, above 90% RAM committed and below 15% free disk; block only above 100% RAM committed?~~ **Answered (2026-10-11):** Agreed.
+58. ~~Order: A UI fixes, B host resources, C Files tab (phase 10b), D services/applications/packages, E admin settings, F Authentik group lookup?~~ **Answered (2026-10-11):** Agreed.
+59. ~~Error log: an admin-only Errors page, kept 90 days?~~ **Answered (2026-10-11):** Yes, with the retention configurable.
+60. ~~Host names given per host: unique across the KVM host, or within a pattern?~~ **Answered (2026-10-11):** Unique across the KVM host.
+61. ~~Template metadata (OS, edition, minimums): infer the existing templates' OS from their names, or confirm each one?~~ **Answered (2026-10-11):** Infer from the names, and add a description and a notes field. Notes record quirks and after-tasks.

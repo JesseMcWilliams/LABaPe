@@ -1366,3 +1366,12 @@ Authentik. Fixes found, all re-run with `--step`/`--resume`:
 - **Authentik with Podman:** `tools/authentik-test/deploy.sh` hard-coded
   `docker compose`. It now honors `$COMPOSE` and falls back to
   `podman compose` when Docker isn't installed.
+
+### Operational: the API and worker raced to create new tables
+
+After an upgrade added tables (`templates`, `user_errors`), the worker
+died at startup with `duplicate key value violates unique constraint
+"pg_type_typname_nsp_index"`. The API and the worker had both run
+`create_all` at the same moment, and both tried to create the same new
+table. Docker restarted the worker, so no harm was done. `init_db` now
+takes a PostgreSQL advisory lock around `create_all`.

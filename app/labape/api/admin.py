@@ -1,25 +1,109 @@
-"""Admin: audit log, role bindings, auth provider status."""
+"""Admin: audit log (and export), user errors, role bindings, auth provider status."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
-from sqlalchemy import select
+import datetime as dt
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..auth import load_providers, provider_enabled
 from ..config import ROLES
 from ..db import get_db
-from ..models import AuditLog, RoleBinding
+from ..errors import FieldError
+from ..models import AuditLog, RoleBinding, Setting, UserError
 from ..security import Principal, audit, client_ip, require_roles
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+AUDIT_FIELDS = ("id", "at", "actor", "action", "object_type", "object_id", "outcome", "detail", "source_ip")
+
+
+def _audit_query(actor: str | None, action: str | None, since: dt.datetime | None, until: dt.datetime | None):
+    q = select(AuditLog).order_by(AuditLog.id.desc())
+    if actor:
+        q = q.where(AuditLog.actor == actor)
+    if action:
+        q = q.where(AuditLog.action.startswith(action))
+    if since:
+        q = q.where(AuditLog.at >= since)
+    if until:
+        q = q.where(AuditLog.at <= until)
+    return q
+
+
 @router.get("/audit")
-def audit_log(limit: int = 200, db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
-    rows = db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(min(limit, 1000)))
-    return [{c: getattr(r, c) for c in ("id", "at", "actor", "action", "object_type", "object_id", "outcome",
-                                        "detail", "source_ip")} for r in rows]
+def audit_log(limit: int = 200, actor: str | None = None, action: str | None = None,
+              since: dt.datetime | None = None, until: dt.datetime | None = None,
+              db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
+    rows = db.scalars(_audit_query(actor, action, since, until).limit(min(limit, 1000)))
+    return [{c: getattr(r, c) for c in AUDIT_FIELDS} for r in rows]
+
+
+@router.get("/audit/export")
+def audit_export(request: Request, format: str = "json", actor: str | None = None, action: str | None = None,
+                 since: dt.datetime | None = None, until: dt.datetime | None = None,
+                 db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """Download the (filtered) audit log. JSON now; CSV is planned."""
+    if format != "json":
+        raise FieldError("format", "Only JSON export is available so far; CSV is planned.")
+    rows = [{c: getattr(r, c) for c in AUDIT_FIELDS}
+            for r in db.scalars(_audit_query(actor, action, since, until).limit(100000))]
+    audit(db, p.username, "audit.export", detail={"format": format, "rows": len(rows), "actor": actor,
+                                                  "action": action}, source_ip=client_ip(request))
+    body = json.dumps(rows, default=str, indent=2)
+    name = f"labape-audit-{dt.datetime.now(dt.timezone.utc):%Y%m%d-%H%M%S}.json"
+    return Response(body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+# --- user errors (question 59) ---------------------------------------------
+
+ERROR_RETENTION_KEY = "errors.retention_days"
+DEFAULT_ERROR_RETENTION = 90
+
+
+def error_retention_days(db: Session) -> int:
+    row = db.get(Setting, ERROR_RETENTION_KEY)
+    return int(row.value.get("days", DEFAULT_ERROR_RETENTION)) if row else DEFAULT_ERROR_RETENTION
+
+
+@router.get("/errors")
+def user_errors(limit: int = 200, username: str | None = None, db: Session = Depends(get_db),
+                _: Principal = Depends(require_roles("admin"))):
+    q = select(UserError).order_by(UserError.id.desc()).limit(min(limit, 2000))
+    if username:
+        q = q.where(UserError.username == username)
+    rows = [{c: getattr(r, c) for c in ("id", "at", "username", "method", "path", "status", "message", "fields",
+                                        "origin")} for r in db.scalars(q)]
+    return {"retention_days": error_retention_days(db), "errors": rows}
+
+
+class RetentionIn(BaseModel):
+    days: int = Field(ge=1, le=3650)
+
+
+@router.put("/errors/retention")
+def set_error_retention(body: RetentionIn, request: Request, db: Session = Depends(get_db),
+                        p: Principal = Depends(require_roles("admin"))):
+    row = db.get(Setting, ERROR_RETENTION_KEY)
+    if row is None:
+        db.add(Setting(key=ERROR_RETENTION_KEY, value={"days": body.days}))
+    else:
+        row.value = {"days": body.days}
+    db.commit()
+    audit(db, p.username, "errors.retention", detail={"days": body.days}, source_ip=client_ip(request))
+    return {"retention_days": body.days}
+
+
+def purge_user_errors(db: Session) -> int:
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=error_retention_days(db))
+    n = db.execute(delete(UserError).where(UserError.at < cutoff)).rowcount or 0
+    db.commit()
+    return n
 
 
 class BindingIn(BaseModel):

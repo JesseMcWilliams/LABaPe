@@ -1,7 +1,13 @@
 // Thin fetch wrapper over the LABaPe API (same origin, session cookie).
 
+export interface FieldProblem {
+  field: string;
+  label: string;
+  message: string;
+}
+
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public errors: FieldProblem[] = []) {
     super(message);
   }
 }
@@ -15,13 +21,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let errors: FieldProblem[] = [];
     try {
       const data = await res.json();
-      detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      detail = typeof data.detail === "string" ? data.detail : "The request was refused.";
+      errors = Array.isArray(data.errors) ? data.errors : [];
     } catch {
       /* not JSON */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, errors);
   }
   return res.json() as Promise<T>;
 }
@@ -36,9 +44,35 @@ export const api = {
 export interface Me {
   username: string;
   display_name: string;
+  email: string;
+  provider: string;
   groups: string[];
   roles: string[];
   breakglass: boolean;
+  last_login: string | null;
+  previous_login: string | null;
+  member_since: string | null;
+  session_expires: string | null;
+}
+
+export interface Template {
+  id: number;
+  kvm_host_id: number;
+  name: string;
+  os_key: string;
+  edition: string;
+  disk_gb: number;
+  min_cpu: number;
+  min_memory_mb: number;
+  description: string;
+  notes: string;
+  source: string;
+}
+
+export interface CredentialSection {
+  title: string;
+  items: { label: string; value: string; secret: boolean }[];
+  notes: string[];
 }
 
 export interface Provider {
@@ -98,6 +132,7 @@ export interface HostGroup {
   windows_core: boolean;
   network?: string;
   addressing: "static" | "dhcp";
+  names?: string[];
 }
 
 export interface Environment {

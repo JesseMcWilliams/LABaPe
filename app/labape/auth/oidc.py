@@ -38,9 +38,11 @@ class OidcProvider(AuthProvider):
         s = get_settings()
         return bool(s.oidc_issuer and s.oidc_client_id)
 
-    async def begin_login(self, request: Request):
+    async def begin_login(self, request: Request, silent: bool = False):
+        """silent: prompt=none, for Reload rights (re-reads groups without a login page)."""
         redirect_uri = get_settings().public_url.rstrip("/") + "/api/auth/oidc/callback"
-        return await _client().authorize_redirect(request, redirect_uri)
+        extra = {"prompt": "none"} if silent else {}
+        return await _client().authorize_redirect(request, redirect_uri, **extra)
 
     async def complete_login(self, request: Request) -> Identity:
         try:
