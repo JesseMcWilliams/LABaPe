@@ -4,7 +4,8 @@ LABaPe signs users in through an existing Authentik by default. If you need one 
 
 - the `labape` OIDC application;
 - the role groups (`labape-admins`, `labape-template-editors`, `labape-deployers`, `labape-file-managers`, `labape-viewers`);
-- three local users: `labape-admin`, `labape-dev` (deployer) and `labape-viewer`.
+- three local users: `labape-admin`, `labape-dev` (deployer) and `labape-viewer`;
+- a read-only directory account, `labape-directory` (a service account whose only permission is viewing groups), with a non-expiring API token for LABaPe's group search. To use it, enable **Settings → Directory** in LABaPe and paste `LABAPE_TEST_DIRECTORY_TOKEN` from `.env`.
 
 It isn't meant for production. The bundled-Authentik profile in phase 10g covers that.
 

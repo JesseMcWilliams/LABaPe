@@ -48,6 +48,8 @@ LABAPE_TEST_USER_PASSWORD=$(gen)
 LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG
 EOF
 fi
+# Added later: keep an older .env working.
+grep -q '^LABAPE_TEST_DIRECTORY_TOKEN=' .env || echo "LABAPE_TEST_DIRECTORY_TOKEN=$(gen)" >> .env
 
 $COMPOSE up -d
 echo "authentik-test: waiting for Authentik to apply the blueprint..."
@@ -77,4 +79,5 @@ authentik-test: ready.
   Issuer:      $issuer
   Admin UI:    http://${PUBLIC_HOST}:9000/  (user akadmin; password: AUTHENTIK_BOOTSTRAP_PASSWORD in tools/authentik-test/.env)
   Test users:  labape-admin, labape-dev, labape-viewer (password: LABAPE_TEST_USER_PASSWORD in .env)
+  Group search: LABaPe Settings > Directory; API token LABAPE_TEST_DIRECTORY_TOKEN in .env (view groups only)
 EOF

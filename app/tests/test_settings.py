@@ -124,3 +124,38 @@ def test_job_email(client, monkeypatch):
         maintenance.appsettings._cache.clear()
         maintenance.notify_job(db, job)
     assert sent == [(["alice@example.test"], f"LABaPe job {job.id} failed: environment.deploy")]
+
+
+def test_directory_group_search(client, monkeypatch):
+    import httpx
+    from labape.api import directory
+    _admin_session(client)
+    with session_factory()() as db:
+        db.add(User(provider="oidc", subject="s2", username="bob", groups=["lab-ops", "lab-dev"]))
+        db.commit()
+    r = client.get("/api/directory/groups?q=ops").json()
+    assert r == {"source": "known", "groups": ["lab-ops"], "warning": ""}
+    s = client.get("/api/admin/settings").json()["directory"]
+    assert s["has_token"] is False
+    r = client.put("/api/admin/settings/directory", json={**s, "api_url": "not a url"})
+    assert r.status_code == 422 and r.json()["errors"][0]["field"] == "api_url"
+    r = client.put("/api/admin/settings/directory", json={**s, "enabled": True, "api_url": "https://ak.example.test",
+                                                         "token": "ThisIsMy_FAKE_Password6!"})
+    assert r.status_code == 200 and r.json()["has_token"] is True and "token" not in r.json()
+    calls = []
+
+    def fake_get(url, params, headers, timeout, verify):
+        calls.append((url, params["search"], headers["Authorization"]))
+        return httpx.Response(200, json={"results": [{"name": "lab-ops"}, {"name": "lab-ops-admins"}]},
+                              request=httpx.Request("GET", url))
+    monkeypatch.setattr(directory.httpx, "get", fake_get)
+    directory.appsettings._cache.clear()
+    r = client.get("/api/directory/groups?q=ops").json()
+    assert r["source"] == "authentik" and r["groups"] == ["lab-ops", "lab-ops-admins"]
+    assert calls[0] == ("https://ak.example.test/api/v3/core/groups/", "ops", "Bearer ThisIsMy_FAKE_Password6!")
+    monkeypatch.setattr(directory.httpx, "get", lambda url, **kw: httpx.Response(
+        403, request=httpx.Request("GET", url)))
+    r = client.get("/api/directory/groups?q=dev").json()
+    assert r["source"] == "known" and r["groups"] == ["lab-dev"] and "can't view groups" in r["warning"]
+    r = client.post("/api/admin/settings/directory/test")
+    assert r.status_code == 422 and "HTTP 403" in r.json()["errors"][0]["message"]

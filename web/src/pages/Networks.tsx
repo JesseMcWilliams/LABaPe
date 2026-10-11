@@ -4,6 +4,7 @@ import {
   Typography,
 } from "@mui/material";
 import { api, FieldProblem, Network } from "../api";
+import GroupPicker from "../components/GroupPicker";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
 
 // The central network catalog: what VMs may use (design §20.1). Admin only.
@@ -183,8 +184,9 @@ export default function Networks() {
             ))}
           </Stack>
           <Stack direction="row" spacing={2} useFlexGap sx={row}>
-            {listField("allowed_groups", "Or limit to groups",
-              "Authentik groups, comma-separated. No roles and no groups: anyone who deploys")}
+            <GroupPicker label="Or limit to groups" value={toList(lists.allowed_groups)} error={errors.allowed_groups}
+              help="No roles and no groups: anyone who deploys"
+              onChange={(v) => setLists({ ...lists, allowed_groups: fromList(v) })} />
           </Stack>
           <Stack direction="row" spacing={2}>
             <Button type="submit" variant="contained">{editing ? "Save" : "Add"}</Button>

@@ -21,3 +21,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Files tab: upload ISOs, installers and other files (resumable, checksummed, duplicates refused); set each ISO's OS and the default per OS (used for builds and ISO installs); template library with edit, refresh and build; Promote to template from an environment.
 - Catalog: browse services, applications and packages, request new ones; admins create, publish, retire, import and export YAML; host groups add services/applications/packages on top of the template.
 - Admin Settings page: file locations, daily database backups (Back up now, download, restore with pg_restore), history retention, syslog forwarding of the audit trail, SMTP and job-finished emails.
+- Group search: Settings > Directory with a read-only Authentik token (view groups only); group fields suggest as you type and still accept typed names.
