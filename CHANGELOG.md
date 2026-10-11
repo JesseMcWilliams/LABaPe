@@ -14,6 +14,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Files: download a file from a URL as a worker job (resumable, HTTPS
+  only unless allowed, link-local addresses refused), and check
+  downloads and uploads against a vendor's SHA-256, SHA-1, SHA-512 or
+  MD5. Settings > Downloads (allow HTTP, proxy).
 - Settings > Branding: rename the app (top bar, browser title, sign-in
   page, emails). The app name links to the dashboard.
 

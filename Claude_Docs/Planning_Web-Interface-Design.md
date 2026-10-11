@@ -819,7 +819,7 @@ As built:
 | Branding | Settings section `branding` (`app_name`, 1-40 characters, no `<` or `>`). Public `GET /api/branding` so the sign-in page can show it. Used in the top bar (which links to the dashboard), the browser title, the sign-in heading, and the job and test email subjects. Help text that means the software itself still says LABaPe. |
 | Verified | Live on the lab host: the detail endpoints, admin, developer and viewer visibility (the viewer sees no hosts and gets 404 on host 1), a developer refused an edit, the branding round trip read publicly, and every new SPA route served. pytest: 50. |
 
-### 22.3 Batch I: downloads from a URL, hash verification
+### 22.3 Batch I: downloads from a URL, hash verification (built)
 
 - On the Files page, a file can come from a URL instead of an upload. The
   worker downloads it as a job (progress in the job log, resumed with
@@ -830,6 +830,16 @@ As built:
   vendor's published value, uploads and downloads can carry an expected
   hash in SHA-256, SHA-1, SHA-512 or MD5. A mismatch rejects and deletes
   the file (question 72).
+
+As built:
+
+| Area | As built |
+|---|---|
+| Downloads | `POST /api/files/download` (admins and file managers) checks the scheme, the name (from the URL when left empty), the expected hash, and that the target and any queued download of it are free. It then queues a `files.download` job, which the worker runs itself (`engine/downloads.py`), like backups. The worker follows redirects itself, checking each hop: the scheme, link-local literals, and (without a proxy) DNS answers in 169.254.0.0/16 or fe80::/10. It streams to `<location>/.downloads/<sha1(url)>-<name>.part` with HTTP Range resume, so a retried job continues the same file. Progress goes to the job log every 10 s, together with the heartbeat and a cancel check (cancel keeps the partial file). |
+| Hashes | The expected value may be bare hex, a `SHA256SUMS` line or a BSD `SHA1 (name) = ...` line, in SHA-256, SHA-1, SHA-512 or MD5. LABaPe always computes and stores SHA-256 (the duplicate check uses it); the vendor's type is computed as well when it differs. On a mismatch, or when the content duplicates a stored file, the download is deleted and the job fails, saying why. Uploads take the same fields in tus metadata and are checked when the last chunk arrives (422 on a mismatch). |
+| Settings | Section `downloads`: `allow_http` (off) and `proxy` (HTTP(S) proxy URL; with a proxy, DNS is the proxy's). |
+| UI | Files tabs: "Download from URL" (URL, name, hash type, expected hash, description; opens the job), and "Verify against a hash…" before an upload. Settings → Downloads. |
+| Verified | Live: plain HTTP and the metadata address refused. virtio-win guest tools 0.1.302 (31.6 MB) downloaded over HTTPS, checked against its SHA-256 (pasted as a checksum-file line), stored with the requester as uploader, then deleted. pytest: 53 (parsing, URL rules, a local HTTP server with a redirect, SHA-1 mismatch, duplicate content, uploads with an MD5). |
 
 ### 22.4 Batch J: installer profiles, remote KVM hosts
 

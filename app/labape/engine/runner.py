@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import maintenance
+from . import downloads, maintenance
 from .. import version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -358,11 +358,13 @@ def run(job_id: int, worker: str) -> None:
         host = db.get(KvmHost, job.kvm_host_id) if job.kvm_host_id else None
         log_path = Path(job.log_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        if job.type == "system.backup":
+        # Jobs the worker runs itself, with no KVM host or engine scripts.
+        system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download}
+        if job.type in system:
             try:
-                rc = maintenance.run_backup(db, job)
+                rc = system[job.type](db, job)
             except Exception as exc:  # noqa: BLE001
-                _append(job, f"labape: backup failed: {exc}\n")
+                _append(job, f"labape: {job.type} failed: {exc}\n")
                 rc = None
             _finish(db, job, None, rc)
             return
