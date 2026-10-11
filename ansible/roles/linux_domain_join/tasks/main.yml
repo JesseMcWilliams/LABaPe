@@ -8,9 +8,13 @@
     name: "{{ linux_domain_join_packages[ansible_facts['pkg_mgr']] | default([]) }}"
     state: present
 
-- name: Look up the domain controller's IP
+# Domain members use the domain controllers, and only them, as DNS
+# (whatever DHCP hands out is ignored): AD needs its SRV records, and the
+# DCs forward everything else.
+- name: Look up the domain controllers' IPs
   ansible.builtin.set_fact:
     domain_controller_ip: "{{ hostvars[groups['domain_controller'][0]].ansible_host }}"
+    domain_controller_ips: "{{ groups['domain_controller'] | map('extract', hostvars, 'ansible_host') | list }}"
 
 # realm join depends on real DNS SRV record discovery against the
 # domain's own DNS server (which the DC becomes as part of promotion) —

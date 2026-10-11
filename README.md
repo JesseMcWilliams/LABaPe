@@ -29,6 +29,7 @@ for the detailed, blow-by-blow history behind every bug found along the way.
   - an audit log, and OpenTofu state in PostgreSQL.
 
   Verified under Docker on a local KVM host. Later phases are in `Claude_Docs/Planning_Web-Interface-Design.md` §17.
+- **Networks and IP addresses**: a network catalog in `environment.yml` and the web UI controls which networks and address ranges may be used, with optional limits by role or group. Each KVM host lists the networks it carries and on which bridge. Each host group picks a network and static or DHCP addressing. Static addresses are allocated automatically in the web UI, and DHCP addresses are found by MAC after boot. Verified on libvirt with both the CLI and the web UI; Hyper-V still uses one static network. Design: `Claude_Docs/Planning_Web-Interface-Design.md` §20.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
 

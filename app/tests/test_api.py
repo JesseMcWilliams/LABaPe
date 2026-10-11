@@ -17,14 +17,26 @@ def _admin_session(client):
     assert r.status_code == 200, r.text
 
 
-def _host(client, **kw):
+VLAN48 = {"name": "vlan48", "cidr": "172.21.48.0/22", "gateway": "172.21.48.1", "dns_servers": ["172.21.48.1"],
+          "addressing": ["static", "dhcp"], "static_pools": ["172.21.50.1-172.21.51.254"],
+          "dhcp_ranges": ["172.21.48.16-172.21.49.254"], "reserved": ["172.21.48.2-172.21.48.15"]}
+
+
+def _host(client, attach=True, **kw):
     body = {"name": "kvm1", **kw}
     r = client.post("/api/hosts", json=body)
     assert r.status_code == 201, r.text
-    return r.json()["id"]
+    host_id = r.json()["id"]
+    if attach:
+        if client.get("/api/networks").json() == []:
+            assert client.post("/api/networks", json=VLAN48).status_code == 201
+        r = client.put(f"/api/hosts/{host_id}/networks",
+                       json=[{"network": "vlan48", "bridge": "br1", "is_default": True}])
+        assert r.status_code == 200, r.text
+    return host_id
 
 
-ENV = {"name": "lab2", "static_ip_offset_start": 120,
+ENV = {"name": "lab2",
        "host_groups": [{"name": "app", "os": "rocky9", "roles": ["linux_server"],
                         "image_source": "packer_template", "template": "rocky9-base"}]}
 

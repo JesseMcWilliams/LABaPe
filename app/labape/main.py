@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api import admin, auth, environments, hosts, jobs
+from .api import admin, auth, environments, hosts, jobs, networks
 from .config import get_settings
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -37,7 +37,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=s.secret_key, session_cookie="labape_session",
                        max_age=s.session_hours * 3600, same_site="lax", https_only=public.scheme == "https")
 
-    for r in (auth.router, hosts.router, environments.router, jobs.router, admin.router):
+    for r in (auth.router, hosts.router, networks.router, environments.router, jobs.router, admin.router):
         app.include_router(r)
 
     @app.get("/api/health")

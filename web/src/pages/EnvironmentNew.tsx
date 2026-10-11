@@ -4,7 +4,7 @@ import {
   Alert, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Paper, Stack, TextField, Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { api, HostGroup, KvmHost } from "../api";
+import { api, HostGroup, KvmHost, Network } from "../api";
 
 // Phase 10a's tfvars-level form; environment templates replace it in 10c.
 const OS_KEYS = [
@@ -15,7 +15,7 @@ const ROLES = ["domain_controller", "windows_server", "windows_workstation", "li
 
 const blankGroup = (): HostGroup => ({
   name: "", count: 1, os: "rocky9", roles: ["linux_server"], image_source: "packer_template", template: "",
-  cpu_count: 2, memory_mb: 4096, disk_gb: 40, windows_core: false,
+  cpu_count: 2, memory_mb: 4096, disk_gb: 40, windows_core: false, addressing: "static",
 });
 
 export default function EnvironmentNew() {
@@ -23,7 +23,7 @@ export default function EnvironmentNew() {
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [name, setName] = useState("");
   const [hostId, setHostId] = useState<number | "">("");
-  const [offset, setOffset] = useState(150);
+  const [networks, setNetworks] = useState<Network[]>([]);
   const [groups, setGroups] = useState<HostGroup[]>([blankGroup()]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,6 +36,16 @@ export default function EnvironmentNew() {
     });
   }, []);
 
+  // The networks this host carries that the user may deploy on.
+  useEffect(() => {
+    if (hostId === "") return;
+    api.get<Network[]>(`/api/networks?kvm_host_id=${hostId}`).then(setNetworks, (e) => setError(e.message));
+  }, [hostId]);
+
+  const netOf = (g: HostGroup) => networks.find((n) => n.name === g.network) ?? networks.find((n) => n.is_default) ?? networks[0];
+  const modesFor = (g: HostGroup) =>
+    (netOf(g)?.addressing ?? ["static"]).filter((m) => m === "static" || !g.roles.includes("domain_controller"));
+
   const setGroup = (i: number, patch: Partial<HostGroup>) =>
     setGroups(groups.map((g, j) => (j === i ? { ...g, ...patch } : g)));
 
@@ -46,11 +56,12 @@ export default function EnvironmentNew() {
     try {
       const host_groups = groups.map((g) => ({
         ...g,
+        network: netOf(g)?.name,
         template: g.image_source === "packer_template" ? g.template : undefined,
         windows_core: g.os.startsWith("windows_server") ? g.windows_core : false,
       }));
       const r = await api.post<{ environment: { id: number } }>("/api/environments", {
-        name, kvm_host_id: hostId, static_ip_offset_start: offset, host_groups,
+        name, kvm_host_id: hostId, host_groups,
       });
       navigate(`/environments/${r.environment.id}`);
     } catch (err) {
@@ -65,6 +76,9 @@ export default function EnvironmentNew() {
       <Typography variant="h5">New environment</Typography>
       {error && <Alert severity="error">{error}</Alert>}
       {hosts.length === 0 && <Alert severity="warning">No KVM host is registered yet; an admin adds one under Hosts.</Alert>}
+      {hostId !== "" && networks.length === 0 && (
+        <Alert severity="warning">This host has no networks you may deploy on; an admin attaches them under Hosts.</Alert>
+      )}
       <Stack direction="row" spacing={2}>
         <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} required
           helperText="Lower case, 3–40 characters; also the OpenTofu workspace" />
@@ -74,9 +88,6 @@ export default function EnvironmentNew() {
             <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>
           ))}
         </TextField>
-        <TextField label="First static IP offset" type="number" value={offset}
-          onChange={(e) => setOffset(Number(e.target.value))}
-          helperText="Host number within the lab network for the first VM" />
       </Stack>
       <Typography variant="h6">Host groups</Typography>
       {groups.map((g, i) => (
@@ -118,6 +129,16 @@ export default function EnvironmentNew() {
                 onChange={(e) => setGroup(i, { memory_mb: Number(e.target.value) })} />
               <TextField label="Disk (GB)" type="number" value={g.disk_gb} sx={{ width: 110 }}
                 onChange={(e) => setGroup(i, { disk_gb: Number(e.target.value) })} />
+              <TextField select label="Network" value={netOf(g)?.name ?? ""} sx={{ minWidth: 180 }}
+                onChange={(e) => setGroup(i, { network: e.target.value, addressing: "static" })}
+                helperText={netOf(g) ? netOf(g)!.cidr : ""}>
+                {networks.map((n) => <MenuItem key={n.id} value={n.name}>{n.name}{n.is_default ? " (default)" : ""}</MenuItem>)}
+              </TextField>
+              <TextField select label="Addressing" value={g.addressing} sx={{ minWidth: 130 }}
+                onChange={(e) => setGroup(i, { addressing: e.target.value as HostGroup["addressing"] })}
+                helperText={g.addressing === "static" ? "Assigned from the pool" : "Found after boot"}>
+                {modesFor(g).map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+              </TextField>
               {g.os.startsWith("windows_server") && (
                 <FormControlLabel label="Server Core"
                   control={<Checkbox checked={g.windows_core}
@@ -129,7 +150,7 @@ export default function EnvironmentNew() {
       ))}
       <Stack direction="row" spacing={2}>
         <Button onClick={() => setGroups([...groups, blankGroup()])}>Add host group</Button>
-        <Button type="submit" variant="contained" disabled={busy || !hostId}>
+        <Button type="submit" variant="contained" disabled={busy || !hostId || networks.length === 0}>
           Create and deploy
         </Button>
       </Stack>

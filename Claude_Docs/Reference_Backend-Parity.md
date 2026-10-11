@@ -32,7 +32,8 @@ mode, the safety guards) exists only on libvirt.
 | Rendered answer files per workspace | Yes | Yes | — |
 | Reinstall trigger ignores password/comments | Yes (masked, comment-stripped md5) | N/A (kickstart only, no secret) | — |
 | Static IP addressing | Yes | Yes | — |
-| DHCP addressing | Not built on either (§17.4) | Not built | — |
+| DHCP addressing (discovery by MAC) | Yes (2026-10-10, `discover_dhcp_ips.py`) | Not built (needs a `Get-VMNetworkAdapter` lookup) | Hyper-V |
+| Network catalog (`networks:`, per-host-group network, address policy) | Yes (Planning_Web-Interface-Design.md §20) | No: one network, the catalog's default (`network_cidr`/`gateway`) | Hyper-V |
 | NAT network mode (M7) | Not built | Not built | — |
 | Debug disk / syslog capture | No | Yes (`debug_disk`, `syslog_host`, M2 investigation aids) | Hyper-V-only, by design |
 | Ansible configuration (`site.yml`, all roles) | Shared | Shared | — |

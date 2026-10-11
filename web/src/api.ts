@@ -58,6 +58,33 @@ export interface KvmHost {
   enabled: boolean;
 }
 
+export interface Network {
+  id: number;
+  name: string;
+  description: string;
+  cidr: string;
+  gateway: string;
+  dns_servers: string[];
+  vlan: number | null;
+  addressing: ("static" | "dhcp")[];
+  static_pools: string[];
+  dhcp_ranges: string[];
+  reserved: string[];
+  allowed_roles: string[];
+  allowed_groups: string[];
+  enabled: boolean;
+  allocated: number;
+  bridge?: string; // with ?kvm_host_id=
+  is_default?: boolean;
+}
+
+export interface HostNetwork {
+  network: string;
+  bridge: string;
+  static_pool: string[];
+  is_default: boolean;
+}
+
 export interface HostGroup {
   name: string;
   count: number;
@@ -69,6 +96,8 @@ export interface HostGroup {
   memory_mb: number;
   disk_gb: number;
   windows_core: boolean;
+  network?: string;
+  addressing: "static" | "dhcp";
 }
 
 export interface Environment {
@@ -76,12 +105,13 @@ export interface Environment {
   name: string;
   status: string;
   kvm_host: string | null;
-  spec: { static_ip_offset_start: number; host_groups: HostGroup[] };
+  spec: { host_groups: HostGroup[] };
   created_by: string;
   created_at: string;
   updated_at: string;
   is_owner: boolean;
   inventory: string;
+  addresses: Record<string, string>;
 }
 
 export interface Job {

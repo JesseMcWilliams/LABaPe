@@ -17,11 +17,12 @@
   register: nm_current_dns
   changed_when: false
 
-- name: Point this host's DNS resolver at the domain controller
+# ignore-auto-dns: a DHCP lease's DNS servers are dropped, not added.
+- name: Point this host's DNS resolver at the domain controllers
   ansible.builtin.command: >-
     nmcli connection modify "{{ nm_conn.stdout }}"
-    ipv4.dns "{{ domain_controller_ip }}" ipv4.ignore-auto-dns yes
-  when: domain_controller_ip not in nm_current_dns.stdout
+    ipv4.dns "{{ domain_controller_ips | join(',') }}" ipv4.ignore-auto-dns yes
+  when: nm_current_dns.stdout != (domain_controller_ips | join(','))
   register: nm_dns_changed
 
 # device reapply applies the pending config without tearing the link

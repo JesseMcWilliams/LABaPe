@@ -33,7 +33,8 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import session_factory
-from ..models import Environment, Job, KvmHost, utcnow
+from ..models import Environment, HostNetwork, IpAllocation, Job, KvmHost, Network, utcnow
+from ..netpolicy import release
 from ..security import audit, put_secret
 
 log = logging.getLogger("labape.worker")
@@ -119,7 +120,41 @@ def _hcl(value) -> str:
     return json.dumps(value)
 
 
-def prepare(env: Environment, host: KvmHost) -> Path:
+def network_catalog(db: Session, host: KvmHost) -> tuple[dict, str] | None:
+    """The catalog networks this host carries, in environment.yml's shape
+    (design §20; scripts/lib/labape_networks.py), or None if the host has
+    no attachments yet (then the base environment.yml's own networks apply)."""
+    rows = db.execute(select(HostNetwork, Network).join(Network, HostNetwork.network_id == Network.id)
+                      .where(HostNetwork.kvm_host_id == host.id).order_by(Network.name)).all()
+    if not rows:
+        return None
+    nets = {}
+    for hn, n in rows:
+        nets[n.name] = {
+            "cidr": n.cidr, "gateway": n.gateway, "dns_servers": list(n.dns_servers or []), "bridge": hn.bridge,
+            "addressing": list(n.addressing or []), "static_pools": list(hn.static_pool or n.static_pools or []),
+            "dhcp_ranges": list(n.dhcp_ranges or []), "reserved": list(n.reserved or []),
+        }
+    default = next((n.name for hn, n in rows if hn.is_default), rows[0][1].name)
+    return nets, default
+
+
+def profile_host_groups(db: Session, env: Environment) -> list[dict]:
+    """The spec's host groups, with each static group's allocated addresses."""
+    allocs = {a.vm_name: a.address for a in db.scalars(select(IpAllocation)
+                                                       .where(IpAllocation.environment_id == env.id))}
+    groups = []
+    for g in (env.spec or {}).get("host_groups", []):
+        g = dict(g)
+        if g.get("addressing", "static") == "static":
+            names = [f"{g['name']}{i + 1}" for i in range(g.get("count", 1))]
+            if all(n in allocs for n in names):
+                g["addresses"] = [allocs[n] for n in names]
+        groups.append(g)
+    return groups
+
+
+def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     s = get_settings()
     work = s.data_dir / "environments" / env.name / "engine"
     work.mkdir(parents=True, exist_ok=True)
@@ -132,20 +167,27 @@ def prepare(env: Environment, host: KvmHost) -> Path:
     env_yml = yaml.safe_load(base.read_text(encoding="utf-8")) or {}
     env_yml["vm_storage_path"] = host.vm_storage_path
     env_yml["template_storage_path"] = host.template_storage_path
+    catalog = network_catalog(db, host)
+    if catalog is not None:
+        env_yml.pop("network", None)
+        env_yml["networks"], env_yml["default_network"] = catalog
     (work / "environment.yml").write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
 
     # Profile: the environment's host groups plus per-host settings. A
     # -var-file beats TF_VAR_*, so libvirt_uri here overrides the vault's.
+    # Static addresses are the environment's allocations (design §20.4);
+    # bridge_device only matters for a host without network attachments.
     spec = env.spec or {}
     profile = work / "tofu" / "environments" / f"{PROFILE}.tfvars"
-    profile.write_text(
-        "# Written by the LABaPe job runner from the environment's spec.\n"
-        f"libvirt_uri = {_hcl(host.libvirt_uri)}\n"
-        f"bridge_device = {_hcl(host.bridge)}\n"
-        f"static_ip_offset_start = {_hcl(spec.get('static_ip_offset_start', 100))}\n"
-        f"host_groups = {_hcl(spec.get('host_groups', []))}\n",
-        encoding="utf-8",
-    )
+    lines = [
+        "# Written by the LABaPe job runner from the environment's spec.",
+        f"libvirt_uri = {_hcl(host.libvirt_uri)}",
+        f"bridge_device = {_hcl(host.bridge)}",
+    ]
+    if spec.get("static_ip_offset_start") is not None:  # environments created before allocations
+        lines.append(f"static_ip_offset_start = {_hcl(spec['static_ip_offset_start'])}")
+    lines.append(f"host_groups = {_hcl(profile_host_groups(db, env))}")
+    profile.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     for name, dest in (("software-manifest.yml", work / "ansible" / "software-manifest.yml"),
                        ("directory-manifest.yml", work / "ansible" / "directory-manifest.yml")):
@@ -227,7 +269,7 @@ def run(job_id: int, worker: str) -> None:
         try:
             if env is None or host is None:
                 raise RuntimeError("job has no environment or KVM host")
-            work = prepare(env, host)
+            work = prepare(db, env, host)
             cmd = command_for(job, env, work)
         except Exception as exc:  # noqa: BLE001 — any setup failure fails the job, visibly
             _append(job, f"labape: could not start: {exc}\n")
@@ -292,6 +334,7 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
         elif job.type == "environment.destroy":
             env.status = "destroyed"
             env.inventory = ""
+            release(db, env.id)
             put_secret(db, f"environment/{env.id}/credentials", "")
             put_secret(db, f"environment/{env.id}/inventory", "")
             if work is not None:

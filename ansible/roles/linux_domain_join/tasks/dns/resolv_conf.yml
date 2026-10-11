@@ -1,12 +1,38 @@
 ---
-# Debian preseed installs (ifupdown, no NetworkManager, no resolvconf
-# package): /etc/resolv.conf is a plain file d-i wrote once, so nothing
-# regenerates it and a direct write is the documented way to change it.
-- name: Point /etc/resolv.conf at the domain controller
+# Debian installs on ifupdown (no NetworkManager): /etc/resolv.conf is a
+# plain file, so a direct write is the documented way to change it. On a
+# DHCP-addressed host the DHCP client rewrites it at every lease renewal,
+# so the client is told not to: domain members use only the domain
+# controllers for DNS.
+- name: Point /etc/resolv.conf at the domain controllers
   ansible.builtin.copy:
     dest: /etc/resolv.conf
     content: |
       # Managed by LABaPe (ansible/roles/linux_domain_join).
       search {{ domain_name }}
-      nameserver {{ domain_controller_ip }}
+      {% for ip in domain_controller_ips %}
+      nameserver {{ ip }}
+      {% endfor %}
     mode: "0644"
+
+- name: Check for dhclient and dhcpcd
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: [/etc/dhcp/dhclient-enter-hooks.d, /etc/dhcpcd.conf]
+  register: dhcp_clients
+
+- name: Keep dhclient from rewriting /etc/resolv.conf
+  ansible.builtin.copy:
+    dest: /etc/dhcp/dhclient-enter-hooks.d/labape-keep-resolv-conf
+    content: |
+      # Managed by LABaPe (ansible/roles/linux_domain_join): DNS is the
+      # domain controllers, not whatever the DHCP server offers.
+      make_resolv_conf() { :; }
+    mode: "0644"
+  when: dhcp_clients.results[0].stat.exists
+
+- name: Keep dhcpcd from rewriting /etc/resolv.conf
+  ansible.builtin.lineinfile:
+    path: /etc/dhcpcd.conf
+    line: nohook resolv.conf
+  when: dhcp_clients.results[1].stat.exists

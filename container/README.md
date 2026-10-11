@@ -11,6 +11,21 @@ This folder runs the LABaPe web interface: the API, the web UI and the job worke
 
 Docker Compose v2 is the reference. Podman works with the same file (`podman compose`) or with the Quadlet units in `quadlet/`.
 
+## Host prerequisite: Docker and bridged VMs
+
+Installing Docker on a KVM host cuts bridged VMs off from the LAN. Docker loads `br_netfilter`, which sends bridged frames through iptables, and its FORWARD DROP policy then drops them. VMs can still reach the host but not the gateway. Run this once, as root, before or after installing Docker:
+
+```bash
+cat > /etc/sysctl.d/90-labape-bridge-nf.conf <<'EOF'
+# libvirt VMs are bridged onto the LAN; don't filter bridged frames with iptables.
+net.bridge.bridge-nf-call-iptables = 0
+net.bridge.bridge-nf-call-ip6tables = 0
+net.bridge.bridge-nf-call-arptables = 0
+EOF
+echo br_netfilter > /etc/modules-load.d/labape-br_netfilter.conf   # loaded before sysctl applies
+modprobe br_netfilter && sysctl --system
+```
+
 ## Set up
 
 ```bash
@@ -74,7 +89,12 @@ docker compose up -d --build
 docker compose exec labape-api labape breakglass enable     # first admin sign-in, see below
 ```
 
-Then open `https://<LABAPE_HOSTNAME>/` and sign in as an admin. Register the KVM host under **Hosts**; the defaults match a local host using `/data/VMs/LABaPe`. Deployers can then create environments.
+Then open `https://<LABAPE_HOSTNAME>/` and sign in as an admin:
+1. Register the KVM host under **Hosts**. The defaults match a local host using `/data/VMs/LABaPe`.
+2. Add the VM networks under **Networks**: CIDR, gateway, DNS, allowed addressing, static pools, DHCP scope, reserved ranges, and optionally which roles or groups may use each one.
+3. Attach networks to the host (**Hosts → Networks**): the bridge for each, an optional slice of static addresses for this host, and the default network.
+
+Deployers can then create environments. Static addresses are allocated from the pools automatically; DHCP addresses are found after boot (Claude_Docs/Planning_Web-Interface-Design.md §20).
 
 ### HTTPS
 

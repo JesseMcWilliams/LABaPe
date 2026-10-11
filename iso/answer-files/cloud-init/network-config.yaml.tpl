@@ -22,7 +22,7 @@ ethernets:
       - to: 0.0.0.0/0
         via: ${addressing.gateway}
     nameservers:
-      addresses: ["${addressing.gateway}"]
+      addresses: ${jsonencode(addressing.dns)}
 %{ else ~}
     dhcp4: true
 %{ endif ~}

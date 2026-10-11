@@ -4,20 +4,25 @@
 # role-entry `when:` guard) and this host isn't itself the DC (DCs have
 # their own membership semantics — not touched via this generic role).
 
-- name: Look up the domain controller's IP
+# Domain members use the domain controllers, and only them, as DNS
+# (whatever DHCP hands out is ignored): AD needs its SRV records, and the
+# DCs forward everything else.
+- name: Look up the domain controllers' IPs
   ansible.builtin.set_fact:
     domain_controller_ip: "{{ hostvars[groups['domain_controller'][0]].ansible_host }}"
+    domain_controller_ips: "{{ groups['domain_controller'] | map('extract', hostvars, 'ansible_host') | list }}"
 
 # realm join / microsoft.ad.membership both depend on real DNS SRV
 # record discovery against the domain's own DNS server (which the DC
 # becomes as part of promotion) — the hosts-file snippet
 # (Claude_Docs/Reference_Networking.md §4) is a human-convenience file Ansible never
 # reads, it doesn't substitute for this.
-- name: Point this host's DNS resolver at the domain controller
+# A static DNS list overrides DHCP-supplied servers on Windows, so this
+# holds for DHCP-addressed members too.
+- name: Point this host's DNS resolver at the domain controllers
   ansible.windows.win_dns_client:
     adapter_names: "*"
-    dns_servers:
-      - "{{ domain_controller_ip }}"
+    dns_servers: "{{ domain_controller_ips }}"
 
 - name: Join the domain
   microsoft.ad.membership:

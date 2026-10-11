@@ -4,16 +4,19 @@
 Claude_Docs/Design_System-Overview.md §6.3: environment.yml is the one human-edited file (shared
 conceptually across OpenTofu and Ansible), but OpenTofu doesn't read
 YAML directly — this is the conversion step that bridges the two,
-including normalizing network_address/subnet_mask into the CIDR string
-tofu/backends/libvirt/main.tf expects.
+including the network catalog (labape_networks.py; an older single
+`network:` block becomes a one-entry catalog named "default").
 
 Usage: render_environment_tfvars.py <environment.yml> <backend-dir>
 """
-import ipaddress
 import json
+import os
 import sys
 
 import yaml
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import labape_networks  # noqa: E402
 
 
 def main() -> int:
@@ -24,27 +27,30 @@ def main() -> int:
     env_path, backend_dir = sys.argv[1], sys.argv[2]
 
     with open(env_path, encoding="utf-8") as f:
-        env = yaml.safe_load(f)
+        env = yaml.safe_load(f) or {}
 
-    network = env.get("network", {})
-    address = network.get("network_address")
-    mask = network.get("subnet_mask")
-    if not address or not mask:
-        print(f"labape: {env_path}'s network.network_address/subnet_mask are required", file=sys.stderr)
+    try:
+        networks, default_network = labape_networks.load(env)
+    except (labape_networks.CatalogError, ValueError) as exc:
+        print(f"labape: {env_path}: {exc}", file=sys.stderr)
         return 1
-
-    network_obj = ipaddress.ip_network(f"{address}/{mask}", strict=False)
 
     vm_storage_path = env.get("vm_storage_path")
     if not vm_storage_path:
         print(f"labape: {env_path}'s vm_storage_path is required", file=sys.stderr)
         return 1
 
-    tfvars = {
-        "network_mode": network.get("mode", "bridged"),
-        "network_cidr": str(network_obj),
-        "gateway": network.get("gateway", ""),
-        "management_source": network.get("management_source", ""),
+    tfvars = {"network_mode": labape_networks.network_mode(env)}
+    if os.path.basename(os.path.normpath(backend_dir)) == "hyperv":
+        # The Hyper-V backend still takes one network (Claude_Docs/
+        # Reference_Backend-Parity.md): the catalog's default network.
+        net = networks[default_network]
+        tfvars.update({"network_cidr": str(net.cidr), "gateway": str(net.gateway)})
+    else:
+        tfvars.update({"networks": {name: net.tfvars() for name, net in networks.items()},
+                       "default_network": default_network})
+    tfvars |= {
+        "management_source": labape_networks.management_source(env),
         "image_source_default": env.get("image_source_default", "iso_direct"),
         "os_iso_paths": env.get("os_iso_paths", {}),
         "vm_storage_path": vm_storage_path,

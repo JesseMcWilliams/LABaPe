@@ -133,7 +133,7 @@
           <!-- No dedicated DNS field in environment.yml yet — same
                gateway-as-resolver default as the Linux kickstart
                (iso/answer-files/rhel-family/ks-rocky9.cfg.tpl). -->
-          <CommandLine>netsh interface ip set dns name="Ethernet" static ${addressing.gateway}</CommandLine>
+          <CommandLine>netsh interface ip set dns name="Ethernet" static ${addressing.dns[0]}</CommandLine>
         </SynchronousCommand>
 %{ endif ~}
         <SynchronousCommand wcm:action="add">

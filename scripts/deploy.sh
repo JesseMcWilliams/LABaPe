@@ -121,6 +121,9 @@ echo "labape: planning..." >&2
 tofu plan -input=false -var-file="$PROFILE_FILE" -out=tfplan.bin
 tofu show -json tfplan.bin > tfplan.json
 
+echo "labape: address policy check (environment.yml networks:)..." >&2
+python3 "$ROOT_DIR/scripts/lib/check_ip_policy.py" tfplan.json "$ENV_FILE"
+
 echo "labape: pre-flight network check (Claude_Docs/Reference_Networking.md §3)..." >&2
 python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
 
@@ -134,8 +137,11 @@ echo "labape: applying..." >&2
 tofu apply -input=false -parallelism=1 tfplan.bin
 rm -f tfplan.bin tfplan.json
 
-echo "labape: generating inventory in ${INVENTORY_DIR#"$ROOT_DIR"/}..." >&2
 tofu output -json hosts > hosts.json
+# DHCP-addressed VMs: find their leases by MAC (a no-op when every VM is static).
+python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" hosts.json "$ENV_FILE"
+
+echo "labape: generating inventory in ${INVENTORY_DIR#"$ROOT_DIR"/}..." >&2
 python3 "$ROOT_DIR/scripts/generate-inventory.py" hosts.json "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$INVENTORY_DIR" "$TF_VAR_windows_admin_password"
 chmod 600 "$INVENTORY_DIR/generated" "$INVENTORY_DIR/credentials.generated" 2>/dev/null || true
 rm -f hosts.json

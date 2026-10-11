@@ -10,9 +10,13 @@ output "hosts" {
   EOT
   value = {
     for name, vm in module.vm : name => {
-      ip_address = vm.ip_address
-      os_family  = vm.os_family
-      roles      = vm.roles
+      ip_address      = vm.ip_address
+      os_family       = vm.os_family
+      roles           = vm.roles
+      mac_address     = vm.mac_address
+      addressing_mode = vm.addressing_mode
+      bridge          = vm.bridge
+      network         = local.vm_instances[name].network
     }
   }
 }

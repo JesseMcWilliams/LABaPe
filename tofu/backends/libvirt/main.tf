@@ -1,6 +1,19 @@
 locals {
-  network_prefix_length = tonumber(split("/", var.network_cidr)[1])
-  gateway               = var.gateway != "" ? var.gateway : cidrhost(var.network_cidr, 1)
+  # The network catalog from environment.yml (Planning_Web-Interface-
+  # Design.md §20), resolved: gateway defaults to the network's .1, DNS to
+  # the gateway, bridge to var.bridge_device. scripts/lib/
+  # render_environment_tfvars.py turns an older single `network:` block
+  # into a one-entry catalog named "default".
+  networks = {
+    for name, n in var.networks : name => {
+      cidr          = n.cidr
+      prefix_length = tonumber(split("/", n.cidr)[1])
+      gateway       = n.gateway != "" ? n.gateway : cidrhost(n.cidr, 1)
+      dns_servers   = length(n.dns_servers) > 0 ? n.dns_servers : [n.gateway != "" ? n.gateway : cidrhost(n.cidr, 1)]
+      bridge        = n.bridge != "" ? n.bridge : var.bridge_device
+    }
+  }
+  default_network = var.default_network != "" ? var.default_network : sort(keys(var.networks))[0]
 
   # Every RHEL-family os_key follows a fixed "ks-<os_key>.cfg.tpl"
   # convention under rhel-family/ — that's still the default for
@@ -128,6 +141,11 @@ locals {
         cpu_count    = hg.cpu_count
         memory_mb    = hg.memory_mb
         disk_gb      = hg.disk_gb
+        network      = coalesce(hg.network, local.default_network)
+        addressing   = hg.addressing
+        # An explicit address (the web UI's allocation, Planning_Web-
+        # Interface-Design.md §20.4) wins over the offset scheme below.
+        address = try(hg.addresses[i], "")
       }
     }
   ]...)
@@ -136,9 +154,23 @@ locals {
   # `for_each` over a map doesn't guarantee iteration order on its own.
   vm_instance_names = sort(keys(local.vm_instances))
 
+  # Static VMs without an explicit address get <network>'s .N, .N+1, ...
+  # from the profile's offset for that network, in name order, counted
+  # per network. With one network and every VM static (every environment
+  # before networks existed), this is exactly the old single-network
+  # scheme, so existing environments plan no changes.
+  vm_offset_ips = merge([
+    for net in keys(local.networks) : {
+      for idx, name in [
+        for n in local.vm_instance_names : n
+        if local.vm_instances[n].network == net && local.vm_instances[n].addressing == "static" && local.vm_instances[n].address == ""
+      ] : name => cidrhost(local.networks[net].cidr, lookup(var.static_ip_offsets, net, var.static_ip_offset_start) + idx)
+    }
+  ]...)
+
   vm_static_ips = {
-    for idx, name in local.vm_instance_names :
-    name => cidrhost(var.network_cidr, var.static_ip_offset_start + idx)
+    for name, vm in local.vm_instances : name =>
+    vm.addressing != "static" ? null : vm.address != "" ? vm.address : local.vm_offset_ips[name]
   }
 }
 
@@ -164,13 +196,17 @@ module "vm" {
   cpu_count    = each.value.cpu_count
   memory_mb    = each.value.memory_mb
   disk_gb      = each.value.disk_gb
-  network_id   = module.network.network_id
+  # The host group's network's bridge. (module.network only validates
+  # the network mode and passes var.bridge_device through: bridged is the
+  # only mode until NAT lands, M7.)
+  network_id = local.networks[each.value.network].bridge
 
   addressing = {
-    mode          = "static"
+    mode          = each.value.addressing
     address       = local.vm_static_ips[each.key]
-    prefix_length = local.network_prefix_length
-    gateway       = local.gateway
+    prefix_length = local.networks[each.value.network].prefix_length
+    gateway       = local.networks[each.value.network].gateway
+    dns           = local.networks[each.value.network].dns_servers
   }
 
   admin_credential = {

@@ -1,4 +1,11 @@
 locals {
+  # DNS defaults to the gateway, the long-standing behavior; templates
+  # render one server as the exact text they always have, so existing
+  # VMs' reinstall triggers don't change.
+  addressing = merge(var.addressing, {
+    dns = length(var.addressing.dns) > 0 ? var.addressing.dns : [var.addressing.gateway]
+  })
+
   os_meta   = lookup(var.os_catalog, var.os, null)
   os_family = local.os_meta != null ? local.os_meta.os_family : null
 
@@ -31,7 +38,7 @@ locals {
   kickstart_content = contains(["linux", "debian_preseed"], coalesce(local.os_family, "none")) ? templatefile(local.os_meta.answer_file_template, {
     hostname          = var.name
     ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
-    addressing        = var.addressing
+    addressing        = local.addressing
     management_source = lookup(var.template_vars, "management_source", "")
     syslog_host       = lookup(var.template_vars, "syslog_host", "")
     # The debug disk (README's Known Gaps, M2) is Hyper-V-specific —
@@ -44,7 +51,7 @@ locals {
   debian_user_data_content = local.os_family == "debian" ? templatefile(local.os_meta.answer_file_template, {
     hostname          = var.name
     ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
-    addressing        = var.addressing
+    addressing        = local.addressing
     management_source = lookup(var.template_vars, "management_source", "")
     syslog_host       = lookup(var.template_vars, "syslog_host", "")
   }) : null
@@ -52,7 +59,7 @@ locals {
   windows_answer_file_vars = {
     hostname               = var.name
     windows_admin_password = coalesce(var.admin_credential.windows_admin_password, "")
-    addressing             = var.addressing
+    addressing             = local.addressing
     management_source      = lookup(var.template_vars, "management_source", "")
     # Server answer file only (client templates select by image name):
     # 2 = Standard with Desktop Experience (default), 1 = Standard Core.
@@ -199,6 +206,10 @@ resource "null_resource" "vm_iso_direct" {
       OS_VARIANT      = try(local.os_meta.os_variant, "")
       VM_STORAGE_PATH = var.vm_storage_path
       LABAPE_WORKSPACE = terraform.workspace
+      # Same deterministic MAC as clones, so DHCP-addressed VMs can be
+      # found after boot (scripts/lib/discover_dhcp_ips.py). Not a
+      # trigger: existing VMs keep their libvirt-assigned MAC.
+      MAC_ADDRESS     = local.clone_mac
     }
   }
 
@@ -256,7 +267,7 @@ locals {
       hostname = var.name
     })
     "network-config" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/network-config.yaml.tpl", {
-      addressing  = var.addressing
+      addressing  = local.addressing
       mac_address = local.clone_mac
       # Rename to eth0 only where the renderer needs a device name
       # (sysconfig on Rocky, eni on Debian). Netplan (Ubuntu, os_family
@@ -270,7 +281,7 @@ locals {
   clone_windows_template = "${path.module}/../../../../iso/answer-files/windows/autounattend-windows-clone.xml.tpl"
   clone_windows_firstboot = local.is_template && local.clone_is_windows ? templatefile(
     "${path.module}/../../../../iso/answer-files/windows/clone-firstboot.ps1.tpl",
-    { addressing = var.addressing },
+    { addressing = local.addressing },
   ) : ""
 
   # Reinstall trigger for clones: same idea as rendered_answer_file_md5

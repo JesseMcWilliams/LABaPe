@@ -10,6 +10,7 @@ import EnvironmentDetail from "./pages/EnvironmentDetail";
 import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
 import Hosts from "./pages/Hosts";
+import Networks from "./pages/Networks";
 import Audit from "./pages/Audit";
 
 interface AuthState {
@@ -80,6 +81,9 @@ export default function App() {
                 <Button color="inherit" component={RouterLink} to="/hosts">
                   Hosts
                 </Button>
+                <Button color="inherit" component={RouterLink} to="/networks">
+                  Networks
+                </Button>
                 <Button color="inherit" component={RouterLink} to="/audit">
                   Audit
                 </Button>
@@ -112,6 +116,7 @@ export default function App() {
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/hosts" element={<Hosts />} />
+          <Route path="/networks" element={<Networks />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="*" element={<Typography>Not found.</Typography>} />
         </Routes>

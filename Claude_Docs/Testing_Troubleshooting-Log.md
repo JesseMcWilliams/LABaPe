@@ -1124,27 +1124,41 @@ a throwaway Authentik (`tools/authentik-test/`). Verified there:
   and cancel through the API. The deploy got through plan, the network
   check, apply, inventory generation and Ansible's connection to the
   clone. Ansible then failed at `linux_common`'s package step, because of
-  the LAN problem below.
+  the bridged-traffic problem below.
+- **Break-glass, live through Caddy:**
+  - A one-time credential signed in once, and its reuse was refused.
+  - A `--local-only` credential was refused on the public listener, even
+    with a spoofed `X-LABaPe-Local` header, and accepted on
+    `https://localhost:8443`.
 
-### Open: lab VMs can't reach the LAN gateway (2026-10-10)
+### Installing Docker cut bridged VMs off from the LAN (2026-10-10)
 
 The UI's test clone could ping the KVM host but not the LAN gateway,
-and DNS queries to the gateway timed out, so `dnf` couldn't
-resolve the Rocky mirrors. lab1's long-lived `linsrv1` has the same
-problem. The host reaches the gateway fine, and the VMs do resolve its
-ARP entry, so the router itself isn't answering bridged VMs. This is
-environmental, not a code bug, and needs a look at the router.
+and DNS queries to the gateway timed out, so `dnf` couldn't resolve the
+Rocky mirrors. lab1's long-lived `linsrv1` has the same problem. This
+was first blamed on the router, wrongly.
+
+The cause is Docker, installed on the host the same day. The Docker
+daemon loads `br_netfilter`, which sets
+`net.bridge.bridge-nf-call-iptables = 1`, so frames crossing a Linux
+bridge go through iptables. Docker also sets the FORWARD policy to DROP.
+A VM on `br0` reaching the host is INPUT and passes; a VM reaching the
+gateway is bridged FORWARD traffic and is dropped.
+
+Fix on any KVM host that also runs Docker, as root: stop filtering
+bridged traffic, and load `br_netfilter` at boot so the setting applies
+after it (Claude_Docs/Planning_Web-Interface-Design.md §20.6). The
+alternative, `iptables -I DOCKER-USER -i br0 -o br0 -j ACCEPT` per bridge,
+doesn't survive a reboot without extra tooling. Applied on the lab host
+the same day (by hand: it needs root, beyond the automation user's scoped
+sudo). lab1's `linsrv1` reached its gateway and resolved names again right
+away. `container/README.md` lists it as a host prerequisite.
 
 Separately, `rocky9-packer-2026.10.1`'s `/etc/resolv.conf` still lists
 `nameserver 10.0.2.3`, QEMU's user-mode DNS from the Packer build, ahead
 of the real server. NetworkManager runs with `dns = none`, so nothing
 rewrites the file. That isn't the cause above, but it adds a timeout to
 every lookup. `template_finalize` should clear the file.
-- **Break-glass, live through Caddy:**
-  - A one-time credential signed in once, and its reuse was refused.
-  - A `--local-only` credential was refused on the public listener, even
-    with a spoofed `X-LABaPe-Local` header, and accepted on
-    `https://localhost:8443`.
 
 ### Authentik refused every grant for a blueprint-made provider
 
@@ -1207,8 +1221,18 @@ doesn't reap orphans. The app containers now run an init process:
 Copying this Windows working tree to the host with `tar` shipped CRLF
 endings from `core.autocrlf`: "env: 'bash\r': No such file". Sync from a
 git tree instead. Build a temporary index with `git add -A`, write it
-with `git write-tree`, and pipe `git archive <tree>` to the host. This
-normalizes to LF and needs no commit.
+with `git write-tree`, and pipe
+`git -c core.autocrlf=false archive <tree>` to the host. This needs no
+commit.
+
+The `-c core.autocrlf=false` matters. `git archive` applies
+`core.autocrlf` to its output, so without it every text file lacking an
+explicit `eol=lf` attribute (`.tf`, `.tpl`, `.yml`) arrived with CRLF
+endings. That changed the rendered answer files, and a lab1 plan from
+that copy wanted to replace all three VMs. With the flag, the plan
+matched the host's own checkout (no infrastructure changes). The phase
+10a image built earlier that day came from such a copy; images built
+from a Linux checkout aren't affected.
 
 ### Other setup notes
 
@@ -1223,3 +1247,30 @@ normalizes to LF and needs no commit.
   arrives from the bridge gateway. Caddy's loopback-only listener
   (`127.0.0.1:8443`) adds an `X-LABaPe-Local` header instead, and the
   public listener strips it.
+
+## Networks and IP address management (2026-10-10)
+
+Built per Claude_Docs/Planning_Web-Interface-Design.md §20, and tested on
+the new lab VLAN (`br1`, DHCP scope and static pool as in §20.6):
+
+- **lab1 unchanged:** lab1 planned no infrastructure changes under the
+  new engine. Its only diff was the same sensitivity marking a plan from
+  the host's own `main` shows. It also passed the policy check as the
+  legacy one-network catalog.
+- **Policy refusal:** a profile whose offset landed inside the DHCP
+  scope was refused by `check_ip_policy.py` before anything was created
+  ("172.21.48.100 is inside lab-vlan48's DHCP scope").
+- **CLI deploy** (`deploy.sh --test`, two Rocky clones):
+  - the static one took 172.21.50.8 from the pool (per-network offset 520);
+  - the DHCP one's lease (172.21.48.58) was found through the host's ARP
+    table;
+  - `site.yml` ran clean on both, including EPEL and package installs;
+  - destroy left nothing behind.
+- **Web UI deploy:**
+  - the `lab-vlan48` catalog entry was limited to `labape-deployers` and
+    attached to `kvm1` on `br1` as the default;
+  - a domain controller on DHCP was refused;
+  - the static VM was allocated 172.21.50.1 and the DHCP VM was
+    discovered at 172.21.48.120;
+  - Ansible was clean, and destroy released the allocation (0 left on
+    the network).

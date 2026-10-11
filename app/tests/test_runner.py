@@ -1,11 +1,12 @@
 """Engine-directory preparation and the commands the runner builds."""
 import yaml
 
+from labape.db import session_factory
 from labape.engine.runner import PROFILE, command_for, prepare
 from labape.models import Environment, Job, KvmHost
 
 
-def test_prepare_writes_inputs(tmp_root):
+def test_prepare_writes_inputs(tmp_root, db_reset):
     engine = tmp_root / "engine"
     for d in ("scripts", "tofu/environments", "tofu/backends/libvirt", "ansible"):
         (engine / d).mkdir(parents=True, exist_ok=True)
@@ -18,7 +19,8 @@ def test_prepare_writes_inputs(tmp_root):
     env = Environment(id=7, name="lab9", kvm_host_id=1, created_by="t",
                       spec={"static_ip_offset_start": 130,
                             "host_groups": [{"name": "app", "os": "rocky9", "roles": ["linux_server"]}]})
-    work = prepare(env, host)
+    with session_factory()() as db:
+        work = prepare(db, env, host)
     env_yml = yaml.safe_load((work / "environment.yml").read_text())
     assert env_yml["vm_storage_path"] == "/data/VMs/X"
     assert env_yml["template_storage_path"] == "/data/VMs/X/templates"

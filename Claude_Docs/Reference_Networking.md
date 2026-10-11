@@ -43,6 +43,20 @@ nmcli connection add type ethernet ifname <physical-NIC-name> master br0
 `libvirt_domain` network interface pointed straight at the bridge) is
 all OpenTofu needs — again, no extra provisioner required.
 
+### More than one network
+
+One bridge per VM network. Each network is listed in `environment.yml`'s
+`networks:` catalog with its `bridge`, allowed addressing (static and/or
+DHCP), static pools, DHCP scope and reserved ranges. Each host group then
+picks a network (Claude_Docs/Planning_Web-Interface-Design.md §20).
+- **DHCP discovery:** the KVM host should hold an address on every DHCP
+  network's bridge, without a default route there
+  (`ipv4.never-default`), because DHCP addresses are found in its ARP
+  table.
+- **Docker on the same host:** see `container/README.md`'s host
+  prerequisite. Without it, Docker's iptables rules drop bridged VM
+  traffic.
+
 ### Caution
 
 Because the domain controller and its DNS/AD services are directly

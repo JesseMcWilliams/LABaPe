@@ -9,13 +9,13 @@
 # device ("Ethernet 2") and the old name stays with a hidden device. On a
 # fresh clone Windows may still be installing that new NIC when first
 # logon starts, so this waits for it, then retries until the address
-# actually sticks. DNS: gateway as resolver, same default as the ISO
-# answer files (no dedicated field in environment.yml yet).
+# actually sticks. DNS: the network's dns_servers (default: the gateway).
 Start-Transcript -Path C:\Windows\Temp\labape-firstboot.log -Append
 %{ if addressing.mode == "static" ~}
 $ip = '${addressing.address}'
 $prefix = ${addressing.prefix_length}
 $gateway = '${addressing.gateway}'
+$dns = @(${join(", ", [for d in addressing.dns : "'${d}'"])})
 
 for ($try = 1; $try -le 10; $try++) {
   $adapter = $null
@@ -31,7 +31,7 @@ for ($try = 1; $try -le 10; $try++) {
     Get-NetIPAddress -InterfaceIndex $i -AddressFamily IPv4 -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
     Get-NetRoute -InterfaceIndex $i -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceIndex $i -IPAddress $ip -PrefixLength $prefix -DefaultGateway $gateway -ErrorAction Stop | Out-Null
-    Set-DnsClientServerAddress -InterfaceIndex $i -ServerAddresses $gateway -ErrorAction Stop
+    Set-DnsClientServerAddress -InterfaceIndex $i -ServerAddresses $dns -ErrorAction Stop
   } catch {
     Write-Output "attempt $try failed: $_"
   }
