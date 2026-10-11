@@ -491,6 +491,15 @@ def stack_up(c: Ctx):
     return DONE, f"https://{c.a.need('WebHostname')}/ is up"
 
 
+def update_agent(c: Ctx):
+    """The host-side update agent (design §23.2): a user-level systemd path
+    unit for the service user, kept running by lingering."""
+    c.r.run(["loginctl", "enable-linger", c.user])
+    c.r.run(["bash", str(c.repo / "deploy" / "update-agent" / "install.sh"), "--repo", str(c.repo)], as_user=True,
+            env={"XDG_RUNTIME_DIR": f"/run/user/{c.r.out(['id', '-u', c.user]) or '1000'}"})
+    return DONE, "update agent watching container/update/request.json"
+
+
 def remote_authorize_worker(c: Ctx):
     """kvm profile: let the web interface's worker in over SSH as the service user."""
     key = (c.a.need("WorkerPublicKey") or "").strip()

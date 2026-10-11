@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     ca_root: Path = Path("/var/lib/labape-ca/certs/root_ca.crt")
     ca_password_file: Path = Path("/run/secrets/ca_password")
     internal_api_url: str = "http://labape-api:8000"   # the API as the worker's jobs reach it
+    update_dir: Path = Path("/var/lib/labape-update")  # shared with the host's update agent (design §23.2)
 
     @property
     def ca_renew_url(self) -> str:

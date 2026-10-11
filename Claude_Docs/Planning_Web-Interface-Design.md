@@ -902,7 +902,7 @@ From the feedback after round 3:
 | Tooltip only | Navigation (top bar, Add or New links that open a form, Back, Cancel), read-only actions (filter, export, show, copy, check connection, test search) and buttons inside dialogs that are themselves the confirmation (promote, start job, send request, respond). Plain links and buttons use `title`. |
 | Verified | Type-checked in the image build and deployed on the lab host; the browser tool wasn't available in this session to click through every dialog. |
 
-### 23.2 Update flow (decided, not built)
+### 23.2 Update flow (built)
 
 Decisions: questions 76-80, 82.
 
@@ -930,6 +930,19 @@ Decisions: questions 76-80, 82.
   - a database at a revision the code doesn't know (written by a newer version) stops startup with that message.
 
   `labape db-status` and the dashboard's version banner show the database's revision next to the code's. Later schema changes are new files in `labape/migrations/versions/`. Verified on the lab host: the existing database was stamped at the baseline.
+
+As built:
+
+| Area | As built |
+|---|---|
+| Shared folder | `container/update/` (git-ignored), mounted at `/var/lib/labape-update` in the API and worker. It holds `request.json` (written by the app), `status.json`, `previous.json` and `agent.log` (written by the agent), and `agent.json` (written at install). The install script creates it, so Docker doesn't create it as root. |
+| Agent | `deploy/update-agent/labape-update.sh`, run by a user-level `labape-update.path` / `.service` (lingering keeps the user's systemd up). `install.sh` copies the script to `~/.local/libexec`, because it checks other versions out while it runs. The steps: refuse a checkout with local changes; fetch tags; `git verify-tag` against `~/.config/labape/allowed_signers` (SSH signatures; the list starts from `deploy/allowed_signers`); `labape maintenance on`; wait for running jobs (`LABAPE_DRAIN_SECONDS`, default 1800); `labape backup --label pre-update-<from>`; record the revision; tag `labape:previous` and write `previous.json`; check out, build with `LABAPE_VERSION` and `up -d` (migrations run at start); health. "Healthy" means `labape health --deep` (database at the code's head, worker heartbeat under 3 minutes, CA) **and** `/api/health` through Caddy (by `LABAPE_HOSTNAME`). It must be healthy within 2 minutes and at every check for `LABAPE_HEALTH_SECONDS` (default 300). If it passes, maintenance goes off. A failure at checkout, build, start or health rolls back on its own. |
+| Rollback | Puts back the previous checkout and the `labape:previous` image (no rebuild). When the database's revision differs from the one recorded, it restores the pre-update dump with `labape restore` in a one-off container, the API and worker stopped. Then it starts, checks health and turns maintenance off. `previous.json` is removed, so it's one step back only. If the previous version doesn't come up either, maintenance stays on and the status says so. |
+| Further back | `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`, run by hand (maintenance, backup, checkout, build, optional restore, health). |
+| App | `labape/update.py` and `/api/admin/update` (admins; allowed during maintenance). `GET` returns the current version, the newest release and a newer pre-release from GitHub's releases list (cached ten minutes), the database revision, what's on standby and the agent's status. `POST` accepts only a tag on offer and refuses while an update runs or when no agent is installed. `POST /rollback` needs a version on standby. New CLI commands for the agent: `labape maintenance on/off/status`, `labape backup --label`, `labape restore FILE --yes`, `labape health [--deep]`. The worker writes a heartbeat (`status.worker`) each cycle. |
+| UI | Check now opens the update dialog: the current version and layout, then the release, the pre-release (marked as a preview) and Roll back, each with a link to its notes. Roll back says when its backup will be restored. It explains what Continue does, or shows the commands when no agent is installed, then shows the agent's progress live. |
+| Installer | `Stack.UpdateAgent` (web profiles): `loginctl enable-linger` for the service user, then `install.sh`. |
+| Verified | Live on the lab host, with local tags signed by a throwaway SSH key (never pushed). **A:** update to a signed tag passed every step (maintenance, backup, build, 90 s of health) and kept the previous version on standby. **B:** rollback restarted the standby image in seconds and cleared the standby record. **C:** a signed tag whose API crashes failed its health checks and rolled back on its own to a healthy stack with maintenance off. **D:** an unsigned tag was refused before anything changed. The API offered nothing for local tags (they aren't GitHub releases), refused a rollback with nothing on standby and showed the agent's last status. pytest: 78. |
 
 ### 23.3 Maintenance mode (built)
 

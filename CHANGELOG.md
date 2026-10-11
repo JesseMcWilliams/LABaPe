@@ -17,6 +17,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Updates from the web interface: Check now offers the newest release,
+  a newer pre-release, or a rollback to the previous version, each with
+  its notes. A host-side agent (user systemd unit) applies only signed
+  tags, with maintenance mode, a database backup, the previous image on
+  standby, health checks and automatic rollback.
+  `deploy/labape-rollback.sh` goes back further by hand. New CLI commands:
+  `labape maintenance`, `backup`, `restore`, `health`.
 - Secret rotation (phase R1): a Secrets page listing every internal
   secret with its store, class, interval and status; scheduled rotation
   as jobs with retries and audit; elevated accounts for secrets that

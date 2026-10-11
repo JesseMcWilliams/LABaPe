@@ -1,0 +1,5 @@
+# Keys allowed to sign LABaPe release tags (git's SSH allowed-signers format):
+#   <email> namespaces="git" <key type> <public key>
+# The update agent refuses any tag not signed by a key listed here.
+# deploy/update-agent/install.sh copies this file to ~/.config/labape/allowed_signers.
+# (No release key yet: add the maintainer's public key here when it's set up.)

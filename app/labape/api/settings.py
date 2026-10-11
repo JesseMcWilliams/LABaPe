@@ -28,7 +28,7 @@ public_router = APIRouter(tags=["settings"])
 def branding(db: Session = Depends(get_db)):
     """Public: the login page shows the app name before anyone signs in."""
     return appsettings.get(db, "branding", cached=True).model_dump()
-BACKUP_NAME = re.compile(r"^labape-\d{8}-\d{6}\.dump$")
+BACKUP_NAME = re.compile(r"^labape-\d{8}-\d{6}(-[a-z0-9._-]{1,80})?\.dump$")
 
 
 @router.get("/settings")

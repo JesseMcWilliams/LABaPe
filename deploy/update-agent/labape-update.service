@@ -1,0 +1,9 @@
+# LABaPe update agent (Claude_Docs/Planning_Web-Interface-Design.md §23.2).
+[Unit]
+Description=LABaPe update agent
+
+[Service]
+Type=oneshot
+Environment=LABAPE_REPO=@REPO@
+ExecStart=%h/.local/libexec/labape-update.sh
+TimeoutStartSec=3h

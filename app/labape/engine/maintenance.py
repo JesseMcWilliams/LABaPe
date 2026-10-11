@@ -25,36 +25,70 @@ FINISHED = ("succeeded", "failed", "cancelled")
 
 # --- backups -------------------------------------------------------------------
 
-def run_backup(db: Session, job: Job) -> int:
-    """Dump the database to <backup dir>/labape-YYYYmmdd-HHMMSS.dump, then
-    drop dumps older than the retention. Returns an exit code; writes to the job log."""
+def _pg(url) -> tuple[dict, list[str]]:
+    # The password goes in the environment, not on the command line.
+    return ({**os.environ, "PGPASSWORD": url.password or ""},
+            [f"--host={url.host or 'localhost'}", f"--port={url.port or 5432}", f"--username={url.username or 'labape'}"])
+
+
+def dump_database(db: Session, logf, label: str = "") -> tuple[int, Path]:
+    """Dump the database to <backup dir>/labape-YYYYmmdd-HHMMSS[-label].dump."""
     cfg = appsettings.get(db, "backup")
     d = Path(cfg.directory)
     d.mkdir(parents=True, exist_ok=True)
-    target = d / f"labape-{utcnow():%Y%m%d-%H%M%S}.dump"
+    suffix = f"-{label}" if label else ""
+    target = d / f"labape-{utcnow():%Y%m%d-%H%M%S}{suffix}.dump"
     url = make_url(get_settings().database_url)
+    logf.write(f"labape: backing up the database to {target}\n")
+    logf.flush()
+    if url.get_backend_name() == "sqlite":
+        src = sqlite3.connect(url.database)
+        dst = sqlite3.connect(target)
+        with dst:
+            src.backup(dst)
+        src.close()
+        dst.close()
+        rc = 0
+    else:
+        env, conn = _pg(url)
+        rc = subprocess.run(["pg_dump", "--format=custom", "--no-owner", f"--file={target}", *conn,
+                             url.database or "labape"], env=env, stdout=logf, stderr=subprocess.STDOUT,
+                            check=False).returncode
+    if rc != 0:
+        target.unlink(missing_ok=True)
+        logf.write(f"labape: pg_dump failed (exit {rc})\n")
+        return rc, target
+    logf.write(f"labape: wrote {target.stat().st_size} bytes\n")
+    return 0, target
+
+
+def restore_database(path: Path, logf) -> int:
+    """Restore a dump over the database (the update agent's rollback across a
+    change of layout). The API and worker must be stopped first."""
+    url = make_url(get_settings().database_url)
+    if url.get_backend_name() == "sqlite":
+        dst = sqlite3.connect(url.database)
+        src = sqlite3.connect(path)
+        with dst:
+            src.backup(dst)
+        src.close()
+        dst.close()
+        return 0
+    env, conn = _pg(url)
+    logf.write(f"labape: restoring {path}\n")
+    logf.flush()
+    return subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction",
+                           f"--dbname={url.database or 'labape'}", *conn, str(path)],
+                          env=env, stdout=logf, stderr=subprocess.STDOUT, check=False).returncode
+
+
+def run_backup(db: Session, job: Job) -> int:
+    """A backup job: dump, then drop dumps older than the retention. Writes to the job log."""
+    cfg = appsettings.get(db, "backup")
     with open(job.log_path, "a", encoding="utf-8") as logf:
-        logf.write(f"labape: backing up the database to {target}\n")
-        logf.flush()
-        if url.get_backend_name() == "sqlite":
-            src = sqlite3.connect(url.database)
-            dst = sqlite3.connect(target)
-            with dst:
-                src.backup(dst)
-            src.close()
-            dst.close()
-            rc = 0
-        else:
-            # The password goes in the environment, not on the command line.
-            env = {**os.environ, "PGPASSWORD": url.password or ""}
-            cmd = ["pg_dump", "--format=custom", "--no-owner", f"--file={target}", f"--host={url.host or 'localhost'}",
-                   f"--port={url.port or 5432}", f"--username={url.username or 'labape'}", url.database or "labape"]
-            rc = subprocess.run(cmd, env=env, stdout=logf, stderr=subprocess.STDOUT, check=False).returncode
+        rc, _ = dump_database(db, logf, (job.params or {}).get("label", ""))
         if rc != 0:
-            target.unlink(missing_ok=True)
-            logf.write(f"labape: pg_dump failed (exit {rc})\n")
             return rc
-        logf.write(f"labape: wrote {target.stat().st_size} bytes\n")
         for old in purge_backups(cfg):
             logf.write(f"labape: removed {old.name} (older than {cfg.retention_days} days)\n")
     return 0

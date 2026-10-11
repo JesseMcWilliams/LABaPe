@@ -94,6 +94,8 @@ services:
       - ${LABAPE_ENGINE_SECRETS_PATH:-./engine-secrets}:/run/labape-secrets:ro
       - ${LABAPE_DATA_ROOT:-/data}:${LABAPE_DATA_ROOT:-/data}
       - labape-ca:/var/lib/labape-ca:ro
+      # Requests to, and status from, the host's update agent (design §23.2).
+      - ./update:/var/lib/labape-update
 
   labape-worker:
     <<: *labape
@@ -108,6 +110,7 @@ services:
       - /var/run/libvirt:/var/run/libvirt
       - ${LABAPE_DATA_ROOT:-/data}:${LABAPE_DATA_ROOT:-/data}
       - labape-ca:/var/lib/labape-ca:ro
+      - ./update:/var/lib/labape-update
     devices:
       - /dev/kvm:/dev/kvm
     cap_add: [NET_RAW]

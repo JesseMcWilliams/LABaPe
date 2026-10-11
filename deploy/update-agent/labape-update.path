@@ -1,0 +1,10 @@
+# LABaPe update agent: runs when the web interface asks for an update or rollback.
+[Unit]
+Description=LABaPe update requests
+
+[Path]
+PathExists=@REPO@/container/update/request.json
+Unit=labape-update.service
+
+[Install]
+WantedBy=default.target

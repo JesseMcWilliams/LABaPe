@@ -606,6 +606,7 @@ def serve(slots: int | None = None) -> None:
                 scan_files(db)
             hash_in_background()
             with session_factory()() as db:
+                _heartbeat(db, worker)
                 if maintenance_mode.start_if_due(db):
                     log.info("scheduled maintenance started")
                 paused = maintenance_mode.get(db)["active"]
@@ -640,6 +641,17 @@ def serve(slots: int | None = None) -> None:
                 continue
         stop.wait(3)
     log.info("worker %s: stopping; %d job(s) still running will be failed by recovery", worker, len(active))
+
+
+def _heartbeat(db: Session, worker: str) -> None:
+    from ..models import Setting
+    value = {"at": utcnow().isoformat(), "worker": worker}
+    row = db.get(Setting, "status.worker")
+    if row is None:
+        db.add(Setting(key="status.worker", value=value))
+    else:
+        row.value = value
+    db.commit()
 
 
 def _run_safely(job_id: int, worker: str) -> None:
