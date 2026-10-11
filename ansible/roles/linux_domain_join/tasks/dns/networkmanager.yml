@@ -37,3 +37,28 @@
   ansible.builtin.wait_for_connection:
     timeout: 60
   when: nm_dns_changed is changed
+
+# On template clones cloud-init runs NetworkManager with `dns = none`, so
+# NetworkManager never writes /etc/resolv.conf and the connection's DNS
+# above doesn't reach it (a clone kept its template's resolvers and
+# `realm discover` found no SRV records). Neither NetworkManager nor DHCP
+# touches the file in that mode, so it's written directly.
+- name: Read /etc/resolv.conf
+  ansible.builtin.slurp:
+    path: /etc/resolv.conf
+  register: nm_resolv
+
+- name: Point /etc/resolv.conf at the domain controllers (NetworkManager with dns=none)
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      # Managed by LABaPe (ansible/roles/linux_domain_join): NetworkManager
+      # runs with dns=none here, so this file is static.
+      search {{ domain_name }}
+      {% for ip in domain_controller_ips %}
+      nameserver {{ ip }}
+      {% endfor %}
+    mode: "0644"
+  when: >-
+    (nm_resolv.content | b64decode | regex_findall('(?m)^nameserver\s+(\S+)'))
+    != domain_controller_ips

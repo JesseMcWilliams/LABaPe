@@ -1,0 +1,42 @@
+{
+  "_comment": "Sample answer file for deploy/install-labape.py --config-file. Copy to answers.<name>.json (git-ignored) and edit. Leave a setting out (or empty) to be prompted for it. Settings starting with _ are ignored. Never put a password here: generated passwords go into the vault, and the OIDC client secret is prompted. Every setting is described in deploy/README.md.",
+  "InstanceName": "labape",
+  "ServiceUser": "labape",
+  "InstallCli": true,
+  "InstallWebUi": true,
+  "KvmHostName": "kvm1",
+  "VmStoragePath": "/data/VMs/LABaPe",
+  "TemplateStoragePath": "/data/VMs/LABaPe/templates",
+  "IsoPath": "/data/OS_Images",
+  "DomainName": "labape.test",
+  "NetbiosName": "LABAPE",
+  "ManagementSource": "192.168.1.50",
+  "Networks": [
+    {
+      "Name": "lab-vlan",
+      "Cidr": "192.168.48.0/22",
+      "Gateway": "192.168.48.1",
+      "DnsServers": ["192.168.48.1"],
+      "Bridge": "br1",
+      "Nic": "enp14s0f1",
+      "HostAddress": "dhcp",
+      "Addressing": ["static", "dhcp"],
+      "StaticPools": ["192.168.50.1-192.168.51.254"],
+      "DhcpRanges": ["192.168.48.16-192.168.49.254"],
+      "Reserved": ["192.168.48.2-192.168.48.15"],
+      "AllowedGroups": []
+    }
+  ],
+  "DefaultNetwork": "lab-vlan",
+  "WebHostname": "labape.lab.lan",
+  "Tls": "internal",
+  "ContainerRuntime": "docker",
+  "AuthMode": "existing",
+  "OidcIssuer": "https://authentik.lab.lan/application/o/labape/",
+  "OidcClientId": "labape",
+  "AdminGroups": [],
+  "TemplatesToBuild": [],
+  "TofuVersion": "1.12.6",
+  "PackerVersion": "1.16.1",
+  "AnsibleCoreVersion": "2.21.4"
+}

@@ -52,16 +52,25 @@ RUN set -eux; cd /tmp; \
     rm -f /tmp/*.zip /tmp/*SHA256SUMS; \
     tofu version; packer version
 
-# Python: the app, Ansible (+ pywinrm for Windows hosts) in one venv that
-# the scripts' `python3` resolves to (PATH above). It sees the system
+# Python: Ansible (+ pywinrm for Windows hosts) and the app in one venv
+# that the scripts' `python3` resolves to (PATH above). It sees the system
 # packages because virt-install (`#!/usr/bin/env python3`) needs Debian's
-# python3-gi and python3-libvirt.
+# python3-gi and python3-libvirt. Ansible and the collections come first,
+# in their own layer, so an app change doesn't re-download them.
+# Galaxy is flaky: one build hit a corrupted response cache ("Missing
+# expected 'results'"), another a download timeout. So: no cache, a
+# longer timeout, and three attempts.
+RUN python3 -m venv --system-site-packages /opt/labape/venv \
+ && pip install --no-cache-dir "ansible-core==${ANSIBLE_CORE_VERSION}" pywinrm \
+ && for attempt in 1 2 3; do \
+      ansible-galaxy collection install --no-cache --timeout 120 -p /usr/share/ansible/collections \
+        ansible.windows:==3.8.0 microsoft.ad:==1.12.1 community.general:==13.4.0 chocolatey.chocolatey:==1.6.0 \
+      && break; \
+      [ "$attempt" -eq 3 ] && exit 1; sleep $((attempt * 15)); \
+    done
 COPY app/pyproject.toml /opt/labape/src/app/pyproject.toml
 COPY app/labape /opt/labape/src/app/labape
-RUN python3 -m venv --system-site-packages /opt/labape/venv \
- && pip install --no-cache-dir "ansible-core==${ANSIBLE_CORE_VERSION}" pywinrm /opt/labape/src/app \
- && ansible-galaxy collection install -p /usr/share/ansible/collections \
-      ansible.windows:==3.8.0 microsoft.ad:==1.12.1 community.general:==13.4.0 chocolatey.chocolatey:==1.6.0
+RUN pip install --no-cache-dir /opt/labape/src/app
 
 # The engine: the same scripts the CLI runs, copied as a snapshot.
 COPY scripts /opt/labape/engine/scripts

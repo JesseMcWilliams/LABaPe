@@ -5,6 +5,7 @@
     labape init-db                  create tables
     labape breakglass enable [--minutes N] [--local-only]
     labape breakglass revoke
+    labape bootstrap FILE.json      hosts, networks, attachments, role bindings (idempotent)
     labape auth status
     labape auth disable-provider NAME | enable-provider NAME
 
@@ -113,6 +114,22 @@ def cmd_auth(args) -> int:
     return 0
 
 
+def cmd_bootstrap(args) -> int:
+    from .bootstrap import apply_file
+    from .db import init_db, session_factory
+    from .security import audit
+
+    init_db()
+    with session_factory()() as db:
+        changes = apply_file(db, args.file)
+        if changes:
+            audit(db, _who(), "bootstrap.apply", detail={"file": args.file, "changes": changes})
+    for c in changes:
+        print(f"labape: {c}")
+    print(f"labape: bootstrap applied ({len(changes)} change(s)).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ap = argparse.ArgumentParser(prog="labape")
@@ -134,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--minutes", type=int, default=None, help="how long the credential stays valid (default 5)")
     p.add_argument("--local-only", action="store_true", help="redeemable only from the host's loopback address")
     p.set_defaults(func=cmd_breakglass)
+
+    p = sub.add_parser("bootstrap", help="create/update hosts, networks and role bindings from a JSON file")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_bootstrap)
 
     p = sub.add_parser("auth", help="sign-in providers")
     p.add_argument("action", choices=["status", "disable-provider", "enable-provider"])

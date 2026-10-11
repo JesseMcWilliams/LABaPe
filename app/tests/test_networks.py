@@ -1,4 +1,6 @@
 """Network catalog, host attachments, allocation and the runner's rendering (design §20)."""
+from pathlib import Path
+
 import yaml
 
 from labape.db import session_factory
@@ -137,3 +139,47 @@ def test_runner_renders_catalog_and_addresses(client, tmp_root):
     assert '"addresses": ["172.21.50.1", "172.21.50.2"]' in profile
     assert "static_ip_offset_start" not in profile
     assert '"addressing": "dhcp"' in profile
+
+
+def test_refresh_addresses_job(client):
+    from labape.engine.runner import _finish, command_for
+    from labape.models import Job
+    _admin_session(client)
+    _host(client)
+    r = client.post("/api/environments", json=_env("refr", [_group("dh", addressing="dhcp")]))
+    env_id, job_id = r.json()["environment"]["id"], r.json()["job_id"]
+    # Not deployed yet: refused.
+    assert client.post(f"/api/environments/{env_id}/refresh-addresses").status_code == 409
+    with session_factory()() as db:
+        job = db.get(Job, job_id)
+        job.state = "running"
+        db.commit()
+        _finish(db, job, db.get(Environment, env_id), 0)
+    r = client.post(f"/api/environments/{env_id}/refresh-addresses")
+    assert r.status_code == 200
+    with session_factory()() as db:
+        job = db.get(Job, r.json()["job_id"])
+        env = db.get(Environment, env_id)
+        assert job.type == "environment.refresh_addresses" and env.status == "deployed"
+        assert command_for(job, env, Path("/w"))[1].endswith("refresh-addresses.sh")
+        job.state = "running"
+        db.commit()
+        _finish(db, job, env, 1)            # a failed refresh leaves the environment deployed
+        assert db.get(Environment, env_id).status == "deployed"
+
+
+def test_bootstrap_is_idempotent(db_reset):
+    from labape.bootstrap import apply
+    from labape.models import HostNetwork, Network, RoleBinding
+    data = {"networks": [VLAN48],
+            "hosts": [{"name": "kvm1", "networks": [{"network": "vlan48", "bridge": "br1", "is_default": True}]}],
+            "role_bindings": [{"principal_type": "group", "principal": "lab-admins", "role": "admin"}]}
+    with session_factory()() as db:
+        first = apply(db, data)
+        assert any("created" in c for c in first)
+        assert apply(db, data) == []                       # second run: nothing to do
+        assert db.query(Network).count() == 1 and db.query(HostNetwork).count() == 1
+        assert db.query(RoleBinding).count() == 1
+        data["networks"][0] = {**VLAN48, "dns_servers": ["172.21.48.1", "172.21.48.2"]}
+        assert apply(db, data) == ["network vlan48: dns_servers set"]
+

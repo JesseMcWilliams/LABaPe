@@ -62,3 +62,9 @@ web/node_modules/
 web/dist/
 tools/**/.env
 *.egg-info/
+
+# Installer state, logs and answer files (deploy/install-labape.py); answers.sample.json is tracked
+deploy/state/
+deploy/logs/
+deploy/answers.*.json
+!deploy/answers.sample.json

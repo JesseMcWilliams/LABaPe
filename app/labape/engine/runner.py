@@ -203,7 +203,7 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     return work
 
 
-def job_env() -> dict[str, str]:
+def job_env(host: KvmHost | None = None) -> dict[str, str]:
     s = get_settings()
     home = s.data_dir / "home"
     env = {k: v for k, v in os.environ.items() if not k.startswith("LABAPE_")}
@@ -216,6 +216,8 @@ def job_env() -> dict[str, str]:
         "TF_IN_AUTOMATION": "1",
         "PYTHONUNBUFFERED": "1",
     })
+    if host is not None:
+        env["LIBVIRT_URI"] = host.libvirt_uri   # DHCP discovery (discover_dhcp_ips.py)
     return env
 
 
@@ -255,6 +257,9 @@ def command_for(job: Job, env: Environment, work: Path) -> list[str]:
         return ["bash", str(work / "scripts" / "deploy.sh"), *common]
     if job.type == "environment.destroy":
         return ["bash", str(work / "scripts" / "destroy.sh"), *common, "--yes", "--delete-workspace"]
+    if job.type == "environment.refresh_addresses":
+        return ["bash", str(work / "scripts" / "refresh-addresses.sh"), "libvirt", env.name,
+                "--env-file", str(work / "environment.yml")]
     raise RuntimeError(f"unknown job type {job.type}")
 
 
@@ -278,7 +283,7 @@ def run(job_id: int, worker: str) -> None:
 
     with open(log_path, "ab", buffering=0) as logf:
         logf.write(f"labape: job {job_id} ({job.type}) for {env.name} on {host.name}, worker {worker}\n".encode())
-        proc = subprocess.Popen(cmd, cwd=work, env=job_env(), stdin=subprocess.DEVNULL, stdout=logf,
+        proc = subprocess.Popen(cmd, cwd=work, env=job_env(host), stdin=subprocess.DEVNULL, stdout=logf,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         cancelled_at = None
         last_beat = 0.0
@@ -326,7 +331,11 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
     else:
         job.state = "succeeded" if rc == 0 else "failed"
     if env is not None:
-        if job.state != "succeeded":
+        if job.type == "environment.refresh_addresses":
+            # Read-only for the VMs: the environment's status stays as it was.
+            if job.state == "succeeded":
+                _collect_outputs(db, job, env, work)
+        elif job.state != "succeeded":
             env.status = "failed"
         elif job.type == "environment.deploy":
             env.status = "deployed"

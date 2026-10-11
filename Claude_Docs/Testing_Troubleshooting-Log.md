@@ -1274,3 +1274,48 @@ the new lab VLAN (`br1`, DHCP scope and static pool as in §20.6):
     discovered at 172.21.48.120;
   - Ansible was clean, and destroy released the allocation (0 left on
     the network).
+
+## Network follow-ups, lab2 and the installer (2026-10-10)
+
+`lab2` is lab1's replacement on `lab-vlan48`, built through the web UI
+from templates: a static DC, plus a DHCP Linux member and a DHCP Windows
+member.
+
+### DHCP discovery rejected the Windows VM
+
+`l2win1` was in the host's ARP table, but discovery never accepted it.
+The confirmation step required a ping reply, and Windows' firewall drops
+ICMP echo. Confirmation is now "probe, then the same MAC must still map
+to that address": the probe makes the kernel re-resolve the entry,
+whether or not the guest answers it.
+
+Separately, `virsh domifaddr --source arp` sometimes came back empty
+while the host's neighbor table had REACHABLE entries for the same MACs.
+The table held only 7 entries, so this isn't truncation. Discovery now
+reads `/proc/net/arp` directly when it runs on the KVM host (the CLI), and
+only goes through libvirt from the worker container, with retries
+between looks.
+
+### A cloned Rocky member kept its template's DNS, and the realm join failed
+
+The join role set the NetworkManager connection's DNS to the DC
+(`ipv4.ignore-auto-dns`), but `/etc/resolv.conf` still listed the template's
+resolvers. cloud-init configures clones with NetworkManager `dns = none`,
+so NetworkManager never writes that file. `realm discover` then found no
+SRV records ("No such realm found").
+
+The role now checks `/etc/resolv.conf` after the NetworkManager change. If
+the file doesn't list exactly the DCs, the role writes it directly; in
+that mode neither NetworkManager nor DHCP touches it.
+
+### Ansible Galaxy failures broke image builds
+
+Two builds in a row failed installing the collections:
+- one on a corrupted response cache ("Missing expected 'results' in
+  ansible-galaxy cache");
+- one on a download timeout.
+
+The Dockerfile and the installer now use `--no-cache --timeout 120` and
+three attempts. The Dockerfile also installs Ansible and the collections
+in a layer before the app is copied in, so app changes no longer
+re-download them.
