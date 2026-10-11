@@ -15,6 +15,7 @@ dependencies = [
   "cryptography>=43",
   "pyyaml>=6.0",
   "python-multipart>=0.0.9",
+  "alembic>=1.13",
 ]
 
 [project.scripts]
@@ -32,3 +33,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["labape*"]
+
+# Alembic's environment, template and revisions ship with the package.
+[tool.setuptools.package-data]
+labape = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]

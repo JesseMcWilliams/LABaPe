@@ -68,4 +68,12 @@ def status(db: Session) -> dict:
     s = dict(row.value) if row else {"checked_at": None, "latest": "", "url": "", "error": "Not checked yet."}
     s["current"] = current()
     s["update_available"] = newer(s.get("latest", ""), s["current"])
+    # The database layout (design §23.2): an update or rollback across a
+    # change of layout needs the pre-update backup to go back.
+    from .migrate import current as db_current, head
+    try:
+        s["db_revision"] = db_current(db.connection())
+    except Exception:  # noqa: BLE001
+        s["db_revision"] = None
+    s["code_revision"] = head()
     return s
