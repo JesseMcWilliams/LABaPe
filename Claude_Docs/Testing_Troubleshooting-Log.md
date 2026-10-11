@@ -1426,3 +1426,13 @@ registered as `qemu+ssh`:
   worker, so a deploy job running at the time died and stale-job recovery
   marked it failed. Retrying it was safe (OpenTofu state was intact), but
   don't redeploy the stack while a job is running.
+
+### A syntax error in cli.py crash-looped the stack (2026-10-11)
+
+An edit to `cli.py` made through a shell heredoc turned `
+` inside an
+f-string into a real newline. pytest passed, because no test imports
+`cli.py`. The image built, and the API and worker crash-looped at start,
+with the web interface down for about five minutes. `tests/test_imports.py` now imports
+every module. Python edits go through files or the Edit tool, never
+inline heredocs with escapes (the same trap as earlier in the session).

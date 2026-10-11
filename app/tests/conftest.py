@@ -33,6 +33,8 @@ def tmp_root() -> Path:
 def db_reset():
     init_db()
     Base.metadata.drop_all(engine())
+    with engine().begin() as conn:      # Alembic's own table isn't in the models
+        conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
     init_db()
 
 

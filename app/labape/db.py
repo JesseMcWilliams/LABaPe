@@ -41,20 +41,18 @@ def get_db() -> Iterator[Session]:
 
 
 def init_db() -> None:
-    """Create tables. Phase 10a uses create_all; Alembic migrations come
-    with the first schema change after 10a (design §4)."""
+    """Create or migrate the schema (labape.migrate, design §23.2)."""
+    import logging
+
     from . import models  # noqa: F401  (registers tables)
+    from .migrate import upgrade
 
     eng = engine()
-    if eng.dialect.name != "postgresql":
-        Base.metadata.create_all(eng)
-        _seed()
-        return
-    # The API and the worker start together; without a lock both try to
-    # create a new table at once and one dies on a duplicate-type error.
     with eng.begin() as conn:
-        conn.execute(text("SELECT pg_advisory_xact_lock(4711)"))
-        Base.metadata.create_all(conn)
+        if eng.dialect.name == "postgresql":
+            # The API and the worker start together: one migrates, the other waits.
+            conn.execute(text("SELECT pg_advisory_xact_lock(4711)"))
+        logging.getLogger("labape.db").info("schema: %s", upgrade(conn))
     _seed()
 
 

@@ -130,6 +130,16 @@ def cmd_bootstrap(args) -> int:
     return 0
 
 
+def cmd_db_status(_args) -> int:
+    """The database's migration revision and this code's newest one."""
+    from .db import engine
+    from .migrate import current, head
+    with engine().connect() as conn:
+        print(f"database: {current(conn) or '(not stamped)'}")
+        print(f"code:     {head()}")
+    return 0
+
+
 def cmd_worker_key(_args) -> int:
     """Print the worker's SSH public key for remote KVM hosts (design §22.4)."""
     from .engine.hostio import ensure_key
@@ -151,7 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--slots", type=int, default=None)
     p.set_defaults(func=cmd_worker)
 
-    sub.add_parser("init-db", help="create database tables").set_defaults(func=cmd_init_db)
+    sub.add_parser("init-db", help="create or migrate the database schema").set_defaults(func=cmd_init_db)
+    sub.add_parser("db-status", help="the database's migration revision and this code's").set_defaults(func=cmd_db_status)
 
     p = sub.add_parser("breakglass", help="one-time emergency admin sign-in")
     p.add_argument("action", choices=["enable", "revoke"])

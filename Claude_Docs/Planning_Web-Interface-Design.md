@@ -923,6 +923,13 @@ Decisions: questions 76-80, 82.
 - **Rollback.** Only to the previous version, from the app. It restarts the `labape:previous` image (no rebuild), plus the pre-update backup if the database layout changed. It happens automatically when the health checks fail, or on demand with **Roll back** until the next update. A breakage the checks miss is why the previous image stays.
 - **Further back.** A manual, documented script on the host: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
 - **Persistent data.** Everything that must survive is already in named volumes (database, job data, the CA, Caddy), which updates never touch. Database migrations (Alembic) come first, so a version change knows the layout it's moving between.
+- **Migrations (built).** `labape/migrate.py` runs at startup under the shared advisory lock:
+  - a new database is created from the models and stamped at the head;
+  - a database from before migrations is stamped at `0001_baseline`, then upgraded;
+  - otherwise pending revisions are applied;
+  - a database at a revision the code doesn't know (written by a newer version) stops startup with that message.
+
+  `labape db-status` and the dashboard's version banner show the database's revision next to the code's. Later schema changes are new files in `labape/migrations/versions/`. Verified on the lab host: the existing database was stamped at the baseline.
 
 ### 23.3 Maintenance mode (decided, not built)
 

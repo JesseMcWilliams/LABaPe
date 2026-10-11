@@ -17,6 +17,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Database migrations (Alembic): existing databases are stamped at the
+  baseline on first start; `labape db-status`; the dashboard shows the
+  database revision. A database newer than the code stops startup with
+  an explanation instead of failing later.
 - Platform CA (step-ca) in the stack: web-interface deploys give every
   VM a certificate (key made on the VM, CSR signed through the API with
   a per-job token, renewed daily by a timer or scheduled task) and the

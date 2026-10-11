@@ -38,7 +38,10 @@ interface AdminHealth {
   auth: (Check & { enabled: boolean; last_sign_in: string | null })[];
   secrets: Check[];
   notifications: (Check & { enabled: boolean; summary: string; last: { at: string; ok: boolean; error: string } | null })[];
-  version: { current: string; latest: string; url: string; error: string; checked_at: string | null; update_available: boolean };
+  version: {
+    current: string; latest: string; url: string; error: string; checked_at: string | null; update_available: boolean;
+    db_revision: string | null; code_revision: string;
+  };
 }
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${v.toFixed(0)}%`);
@@ -267,6 +270,9 @@ export default function Dashboard() {
           ) : v.latest ? " · up to date" : ""}
           {v.error && ` · ${v.error}`}
           {v.checked_at && <Typography variant="caption" color="text.secondary"> (checked {fmtTime(v.checked_at)})</Typography>}
+          <Typography variant="caption" color="text.secondary" component="div">
+            Database layout {v.db_revision ?? "not stamped"}{v.db_revision && v.db_revision !== v.code_revision ? ` (this version expects ${v.code_revision})` : ""}
+          </Typography>
         </Alert>
       )}
 
