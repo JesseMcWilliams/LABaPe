@@ -4,6 +4,7 @@ import {
   IconButtonProps, Tooltip,
 } from "@mui/material";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import { useMaintenance } from "./Maintenance";
 
 // Confirmations and tooltips for every action (design §23): hovering an
 // action shows a short summary (and says when it asks to confirm); an
@@ -64,12 +65,18 @@ const tipText = (tip: string, confirm?: ConfirmOptions) => (confirm ? `${tip} (a
  * A button with a short tooltip. With `confirm`, clicking opens the
  * confirmation dialog first and runs `onClick` only after Continue.
  */
-export function ActionButton({ tip, confirm, onClick, children, ...props }: Omit<ButtonProps, "onClick"> & {
+export function ActionButton({ tip, confirm, onClick, children, allowInMaintenance, ...props }: Omit<ButtonProps, "onClick"> & {
   tip: string;
   confirm?: ConfirmOptions;
   onClick?: () => unknown;
+  allowInMaintenance?: boolean;
 }) {
   const ask = useConfirm();
+  const paused = Boolean(useMaintenance()?.active) && Boolean(confirm || props.type === "submit") && !allowInMaintenance;
+  if (paused) {
+    tip = "Unavailable during maintenance";
+    props = { ...props, disabled: true };
+  }
   const run = async () => {
     if (confirm && !(await ask(confirm))) return;
     await onClick?.();
@@ -90,6 +97,10 @@ export function ActionIconButton({ tip, confirm, onClick, children, ...props }: 
   onClick?: () => unknown;
 }) {
   const ask = useConfirm();
+  if (useMaintenance()?.active && confirm) {
+    tip = "Unavailable during maintenance";
+    props = { ...props, disabled: true };
+  }
   const run = async () => {
     if (confirm && !(await ask(confirm))) return;
     await onClick?.();

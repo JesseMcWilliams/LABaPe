@@ -40,7 +40,7 @@ from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import downloads, hostio, maintenance
-from .. import version
+from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
@@ -605,17 +605,26 @@ def serve(slots: int | None = None) -> None:
                 scan_files(db)
             hash_in_background()
             with session_factory()() as db:
-                if maintenance.schedule_backup(db):
-                    log.info("queued the daily backup")
-            if time.monotonic() - last_update_check > 86400:
+                if maintenance_mode.start_if_due(db):
+                    log.info("scheduled maintenance started")
+                paused = maintenance_mode.get(db)["active"]
+            # Maintenance mode (design §23.3): scheduled work waits.
+            if not paused:
+                with session_factory()() as db:
+                    if maintenance.schedule_backup(db):
+                        log.info("queued the daily backup")
+            if not paused and time.monotonic() - last_update_check > 86400:
                 last_update_check = time.monotonic()
                 with session_factory()() as db:
                     log.info("release check: %s", version.check(db))
-            if time.monotonic() - last_purge > 86400:
+            if not paused and time.monotonic() - last_purge > 86400:
                 last_purge = time.monotonic()
                 with session_factory()() as db:
                     log.info("retention purge: %s", maintenance.purge_history(db))
-        if len(active) < slots:
+        with session_factory()() as db:
+            # Read fresh, not cached: a stale "off" would start a job during maintenance.
+            draining = maintenance_mode.get(db)["active"]
+        if len(active) < slots and not draining:      # maintenance: running jobs finish, no new ones
             with session_factory()() as db:
                 job = claim(db, worker)
             if job is not None:

@@ -69,6 +69,16 @@ class DownloadSettings(BaseModel):
     proxy: str = Field(default="", pattern=r"^(https?://\S+)?$")    # e.g. http://proxy.example:3128
 
 
+class MaintenanceWindowSettings(BaseModel):
+    """The weekly maintenance window (design §23.3, §24): rotations that need
+    a restart run inside it; a banner gives notice before it starts. UTC."""
+    enabled: bool = False
+    weekday: int = Field(default=6, ge=0, le=6)                     # Monday = 0 ... Sunday = 6
+    time_of_day: str = Field(default="02:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    duration_minutes: int = Field(default=120, ge=15, le=1440)
+    heads_up_hours: int = Field(default=24, ge=0, le=168)
+
+
 class BrandingSettings(BaseModel):
     """The app's name in the top bar, browser title and emails (question 68)."""
     app_name: str = Field(default="LABaPe", min_length=1, max_length=40, pattern=r"^[^<>]+$")
@@ -89,6 +99,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "updates": UpdateSettings,
     "branding": BrandingSettings,
     "downloads": DownloadSettings,
+    "maintenance_window": MaintenanceWindowSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

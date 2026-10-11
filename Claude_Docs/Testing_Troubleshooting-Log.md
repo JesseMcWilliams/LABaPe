@@ -1436,3 +1436,11 @@ f-string into a real newline. pytest passed, because no test imports
 with the web interface down for about five minutes. `tests/test_imports.py` now imports
 every module. Python edits go through files or the Edit tool, never
 inline heredocs with escapes (the same trap as earlier in the session).
+
+### Maintenance mode: a cached flag let a job start (2026-10-11)
+
+The first live test of maintenance mode queued a job straight into the
+database right after turning maintenance on, and the worker ran it. The
+worker read the flag through the same 5-second cache the API uses, so it
+still saw "off". The worker now reads the flag fresh before every claim;
+the API keeps the cache (the process that changes the flag clears it).
