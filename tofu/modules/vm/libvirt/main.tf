@@ -262,6 +262,9 @@ locals {
     "user-data" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/user-data-clone.yaml.tpl", {
       hostname       = var.name
       ssh_public_key = coalesce(var.admin_credential.ssh_public_key, "")
+      # Debian clones only (other families render exactly as before).
+      static_resolv_conf = local.os_family == "debian_preseed" && local.addressing.mode == "static"
+      dns                = local.addressing.dns
     })
     "meta-data" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/meta-data-clone.yaml.tpl", {
       hostname = var.name
@@ -269,6 +272,10 @@ locals {
     "network-config" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/network-config.yaml.tpl", {
       addressing  = local.addressing
       mac_address = local.clone_mac
+      # Debian's ifupdown (eni) renderer adds `routes` with net-tools'
+      # `route`, which Debian 13 doesn't ship, so the clone had no default
+      # route; gateway4 renders as ifupdown's own `gateway` line.
+      gateway4 = local.os_family == "debian_preseed"
       # Rename to eth0 only where the renderer needs a device name
       # (sysconfig on Rocky, eni on Debian). Netplan (Ubuntu, os_family
       # "debian") matches by MAC natively, and on 26.04 the rename fails

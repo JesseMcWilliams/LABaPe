@@ -14,6 +14,10 @@
 #                       oidc_client_secret at this Authentik
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+# Docker Compose by default; Podman when Docker isn't installed, or set COMPOSE.
+if [ -z "${COMPOSE:-}" ]; then
+  if command -v docker >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="podman compose"; fi
+fi
 
 LABAPE_HOSTNAME_ARG=""
 PUBLIC_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -23,7 +27,7 @@ while [ $# -gt 0 ]; do
     --labape-hostname) LABAPE_HOSTNAME_ARG="${2:?}"; shift ;;
     --public-host) PUBLIC_HOST="${2:?}"; shift ;;
     --configure-labape) CONFIGURE=true ;;
-    --down) docker compose down -v; rm -f .env; echo "authentik-test: removed."; exit 0 ;;
+    --down) $COMPOSE down -v; rm -f .env; echo "authentik-test: removed."; exit 0 ;;
     *) sed -n '2,16p' "$0" >&2; exit 1 ;;
   esac
   shift
@@ -45,7 +49,7 @@ LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG
 EOF
 fi
 
-docker compose up -d
+$COMPOSE up -d
 echo "authentik-test: waiting for Authentik to apply the blueprint..."
 issuer="http://${PUBLIC_HOST}:9000/application/o/labape/"
 for _ in $(seq 1 90); do
@@ -55,7 +59,7 @@ for _ in $(seq 1 90); do
   sleep 5
 done
 curl -fsS "${issuer}.well-known/openid-configuration" >/dev/null || {
-  echo "authentik-test: the LABaPe application didn't appear at $issuer; check: docker compose logs worker" >&2
+  echo "authentik-test: the LABaPe application didn't appear at $issuer; check: $COMPOSE logs worker" >&2
   exit 1
 }
 
@@ -65,7 +69,7 @@ if $CONFIGURE; then
   sed -i "s|^LABAPE_OIDC_ISSUER=.*|LABAPE_OIDC_ISSUER=${issuer}|; s|^LABAPE_OIDC_CLIENT_ID=.*|LABAPE_OIDC_CLIENT_ID=labape|" "$env_file"
   (umask 077; grep '^LABAPE_TEST_CLIENT_SECRET=' .env | cut -d= -f2- > ../../container/secrets/oidc_client_secret)
   echo "authentik-test: container/.env and container/secrets/oidc_client_secret now point at $issuer"
-  echo "               (recreate the LABaPe containers: docker compose up -d)"
+  echo "               (recreate the LABaPe containers: $COMPOSE up -d)"
 fi
 
 cat <<EOF

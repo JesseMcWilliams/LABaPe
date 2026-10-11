@@ -74,8 +74,13 @@ def prereq_user(c: Ctx):
     return DONE, f"service user {user}"
 
 
+def _installed(c: Ctx, pkg: str) -> bool:
+    # Exact match: "unknown ok not-installed" also ends with "installed".
+    return c.r.out(["dpkg-query", "-W", "-f=${Status}", pkg]) == "install ok installed"
+
+
 def prereq_packages(c: Ctx):
-    missing = [p for p in APT_PACKAGES if not c.r.out(["dpkg-query", "-W", "-f=${Status}", p]).endswith("installed")]
+    missing = [p for p in APT_PACKAGES if not _installed(c, p)]
     if not missing:
         return DONE, "all present"
     c.r.run(["apt-get", "update"], env={"DEBIAN_FRONTEND": "noninteractive"})
@@ -214,7 +219,9 @@ def tools_ansible(c: Ctx):
     v = c.a.need("AnsibleCoreVersion")
     have = c.r.out([str(VENV / "bin" / "ansible"), "--version"])
     if f"core {v}" not in have or c.force:
-        if not (VENV / "bin" / "python").exists():
+        if not (VENV / "bin" / "pip").exists():
+            # A venv made without python3-venv has python but no pip: start over.
+            c.r.run(["rm", "-rf", str(VENV)])
             c.r.run(["python3", "-m", "venv", "--system-site-packages", str(VENV)])
         c.r.run([str(VENV / "bin" / "pip"), "install", "--quiet", f"ansible-core=={v}", "pywinrm", "pyyaml"])
     for tool in ("ansible", "ansible-playbook", "ansible-vault", "ansible-galaxy", "ansible-inventory", "ansible-config"):
@@ -362,13 +369,18 @@ def config_manifests(c: Ctx):
 
 def stack_runtime(c: Ctx):
     rt = c.a.need("ContainerRuntime")
-    pkgs = ["docker.io", "docker-compose", "docker-buildx"] if rt == "docker" else ["podman", "podman-compose"]
-    missing = [p for p in pkgs if not c.r.out(["dpkg-query", "-W", "-f=${Status}", p]).endswith("installed")]
+    # Podman: `podman compose` drives the Docker Compose v2 binary against
+    # Podman's API socket. podman-compose (the Python one) left compose.yaml's
+    # ${VAR:-default} values unexpanded in the shared settings block.
+    pkgs = ["docker.io", "docker-compose", "docker-buildx"] if rt == "docker" else ["podman", "docker-compose"]
+    missing = [p for p in pkgs if not _installed(c, p)]
     if missing:
         c.r.run(["apt-get", "install", "-y", *missing], env={"DEBIAN_FRONTEND": "noninteractive"})
     if rt == "docker":
         c.r.run(["systemctl", "enable", "--now", "docker"])
         c.r.run(["usermod", "-aG", "docker", c.user])
+    else:
+        c.r.run(["systemctl", "enable", "--now", "podman.socket"])
     return DONE, f"{rt} ready" + (f" (installed {', '.join(missing)})" if missing else "")
 
 
@@ -415,8 +427,10 @@ def stack_auth(c: Ctx):
     if mode == "none":
         return NA, "no sign-in provider; use `labape breakglass enable` for admin access"
     if mode == "test-authentik":
+        # As root: Podman runs rootful here, like the LABaPe stack.
         c.r.run(["bash", str(c.repo / "tools" / "authentik-test" / "deploy.sh"), "--labape-hostname",
-                 c.a.need("WebHostname"), "--configure-labape"], as_user=True)
+                 c.a.need("WebHostname"), "--public-host", c.a.need("WebHostname"), "--configure-labape"],
+                env={"COMPOSE": " ".join(c.compose)})
         return DONE, "throwaway Authentik deployed and wired in (tools/authentik-test)"
     _set_env(c, cdir / ".env", {"LABAPE_OIDC_ISSUER": c.a.need("OidcIssuer"),
                                 "LABAPE_OIDC_CLIENT_ID": c.a.need("OidcClientId")})
@@ -513,7 +527,7 @@ def smoke_cli(c: Ctx):
             raise StepError(f"{label} check failed as {c.user}: {' '.join(cmd)} "
                             "(a new group membership needs a fresh login)")
     with tempfile.TemporaryDirectory() as tmp:
-        os.chmod(tmp, 0o755)
+        shutil.chown(tmp, c.user, c.user)  # the render below runs as the service user
         c.r.run(["python3", str(c.repo / "scripts" / "lib" / "render_environment_tfvars.py"),
                  str(c.repo / "tofu" / "environment.yml"), tmp], as_user=True, capture=True, mutating=False)
     return DONE, "libvirt, tofu, ansible and environment.yml OK"
