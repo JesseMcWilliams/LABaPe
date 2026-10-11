@@ -22,6 +22,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `scripts/` — `deploy.sh`/`destroy.sh` (entry points), `bootstrap-secrets.sh`, `check-network.sh`, `generate-inventory.py`, `lib/`, `test/` (see Tests below).
 - `app/` — web interface backend (Python package `app/labape/`: FastAPI API, auth provider plugins, job runner in `engine/runner.py`, `cli.py`), tests in `app/tests/`.
 - `web/` — React + TypeScript + Vite + MUI single-page app; `package-lock.json` committed, `node_modules/`/`dist/` gitignored.
+- `deploy/` — from-scratch installer: `install-labape.py` (entry, step table) and `labape_deploy/` (answers, state, steps). `state/`, `logs/` and `answers.*.json` (except `answers.sample.json`) are gitignored; the answers files never hold secrets.
 - `container/` — Dockerfile, compose.yaml, Caddyfile, Quadlet units, `setup.sh`, README. Generated `.env`, `secrets/`, `config/`, `engine-secrets/` are gitignored; never read or commit them.
 - `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.

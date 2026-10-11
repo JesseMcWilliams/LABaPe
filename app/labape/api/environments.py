@@ -108,7 +108,8 @@ def _queue(db: Session, e: Environment, job_type: str, p: Principal) -> Job:
     job = Job(type=job_type, params={"environment_id": e.id}, kvm_host_id=e.kvm_host_id, environment_id=e.id,
               requested_by=p.username)
     db.add(job)
-    e.status = "deploying" if job_type == "environment.deploy" else "destroying"
+    if job_type != "environment.refresh_addresses":
+        e.status = "deploying" if job_type == "environment.deploy" else "destroying"
     db.commit()
     return job
 
@@ -190,6 +191,21 @@ def destroy(env_id: int, request: Request, db: Session = Depends(get_db),
     job = _queue(db, e, "environment.destroy", p)
     audit(db, p.username, "environment.destroy", object_type="environment", object_id=e.id, detail={"job": job.id},
           source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
+@router.post("/{env_id}/refresh-addresses")
+def refresh_addresses(env_id: int, request: Request, db: Session = Depends(get_db),
+                      p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Re-find DHCP VMs' addresses and regenerate the inventory (design §20.5)."""
+    e = _get(db, env_id, p)
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail="Only the environment's owners can refresh it")
+    if e.status != "deployed":
+        raise HTTPException(status_code=409, detail="Only a deployed environment's addresses can be refreshed")
+    job = _queue(db, e, "environment.refresh_addresses", p)
+    audit(db, p.username, "environment.refresh_addresses", object_type="environment", object_id=e.id,
+          detail={"job": job.id}, source_ip=client_ip(request))
     return {"job_id": job.id}
 
 

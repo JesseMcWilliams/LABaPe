@@ -5,12 +5,17 @@ them into hosts.json before inventory generation
 
 For each DHCP VM, until found or the timeout:
 1. `virsh domifaddr --source agent`, if the guest runs qemu-guest-agent;
-2. `virsh domifaddr --source arp`: libvirt reads the KVM host's ARP
-   table (so this also works from inside the web UI's worker container);
+2. the KVM host's ARP table: /proc/net/arp when this runs on that host
+   (the CLI), else `virsh domifaddr --source arp` (libvirt reads the
+   host's table, so this works from the web UI's worker container too;
+   it has been seen to come back empty now and then, hence the retries);
 3. when neither knows yet, ping-sweep the network's DHCP scope (or the
    whole network) so the host learns the neighbors, then look again.
-An ARP answer is confirmed with a ping and a second look before it's
-used, so a stale entry from an earlier VM can't be taken for the new one.
+An ARP answer is confirmed before it's used: probe the address (ICMP,
+whose reply doesn't matter -- Windows' firewall drops it -- but which
+makes the kernel re-resolve it), then the entry must still map that MAC
+to that address, so a stale entry from an earlier VM isn't taken for the
+new one.
 
 Usage: discover_dhcp_ips.py <hosts.json> <environment.yml> [--timeout SECONDS]
 libvirt URI from LIBVIRT_URI or TF_VAR_libvirt_uri (default qemu:///system).
@@ -48,6 +53,26 @@ def domifaddr(vm: str, source: str, mac: str) -> str | None:
             if not ip.startswith(("127.", "169.254.")):
                 return ip
     return None
+
+
+def local_arp(mac: str) -> str | None:
+    """This network namespace's ARP table; only the KVM host's own when the
+    CLI runs there (a container has its own, empty of the VMs)."""
+    try:
+        with open("/proc/net/arp", encoding="ascii") as fh:
+            next(fh, None)
+            for line in fh:
+                f = line.split()
+                # IP address, HW type, Flags, HW address, Mask, Device; flag 0x2 = complete
+                if len(f) >= 6 and f[3].lower() == mac.lower() and int(f[2], 16) & 0x2:
+                    return f[0]
+    except OSError:
+        pass
+    return None
+
+
+def arp_lookup(vm: str, mac: str) -> str | None:
+    return local_arp(mac) or domifaddr(vm, "arp", mac)
 
 
 def ping(ip: str) -> bool:
@@ -101,11 +126,12 @@ def main() -> int:
             ip = domifaddr(name, "agent", mac)
             how = "guest agent"
             if not ip:
-                ip = domifaddr(name, "arp", mac)
+                ip = arp_lookup(name, mac)
                 how = "ARP"
-                # Confirm: a live answer refreshes the entry; it must still be this MAC.
-                if ip and not (ping(ip) and domifaddr(name, "arp", mac) == ip):
-                    ip = None
+                if ip:
+                    ping(ip)  # the reply doesn't matter; the re-resolution does
+                    if arp_lookup(name, mac) != ip:
+                        ip = None
             if ip:
                 hosts[name]["ip_address"] = ip
                 print(f"labape: {name} ({mac}) has {ip} (via {how}).", file=sys.stderr)

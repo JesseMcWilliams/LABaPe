@@ -70,6 +70,28 @@
   when: ansible_facts['pkg_mgr'] == 'apt'
   become: true
 
+# A Packer build runs on QEMU's user-mode network, whose resolver
+# (10.0.2.3) NetworkManager writes into a plain /etc/resolv.conf; with
+# cloud-init's `dns = none` on clones nothing rewrote it, so clones tried
+# that dead server first on every lookup. Cleared here (late: nothing
+# after this needs DNS). A symlink (systemd-resolved's stub) is left alone.
+- name: Check /etc/resolv.conf
+  ansible.builtin.stat:
+    path: /etc/resolv.conf
+    follow: false
+  register: finalize_resolv
+  become: true
+
+- name: Clear the build-time resolvers from /etc/resolv.conf
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      # Cleared by LABaPe template finalize; each clone's network config
+      # (cloud-init) supplies its DNS servers.
+    mode: "0644"
+  when: finalize_resolv.stat.exists and finalize_resolv.stat.isreg
+  become: true
+
 - name: Clear cloud-init state, machine-id and SSH host keys
   ansible.builtin.shell: |
     set -e

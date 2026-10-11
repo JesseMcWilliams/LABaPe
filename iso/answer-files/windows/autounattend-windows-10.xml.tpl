@@ -153,7 +153,7 @@
         <SynchronousCommand wcm:action="add">
           <Order>2</Order>
           <Description>Set DNS</Description>
-          <CommandLine>netsh interface ip set dns name="Ethernet" static ${addressing.dns[0]}</CommandLine>
+          <CommandLine>%{ if length(addressing.dns) > 1 }cmd /c netsh interface ip set dns name=Ethernet static ${addressing.dns[0]}%{ for i, d in slice(addressing.dns, 1, length(addressing.dns)) } &amp;&amp; netsh interface ip add dns name=Ethernet ${d} index=${i + 2}%{ endfor }%{ else }netsh interface ip set dns name="Ethernet" static ${addressing.dns[0]}%{ endif }</CommandLine>
         </SynchronousCommand>
 %{ endif ~}
         <SynchronousCommand wcm:action="add">

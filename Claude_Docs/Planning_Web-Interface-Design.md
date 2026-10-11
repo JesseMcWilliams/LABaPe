@@ -307,6 +307,14 @@ automatically (decision 12).
 
 ## 14. Deployment
 
+From scratch: `deploy/install-labape.py`, which follows the BlueTrack
+installer's model (deploy/README.md). It runs named, resumable steps,
+from host prerequisites, bridges and storage through the toolchain, the
+vault, the container stack, sign-in and `labape bootstrap` (KVM host and
+network catalog), and keeps answers per instance in a reusable answers
+file that never holds a secret. The rest of this section describes what
+it sets up.
+
 - **One image** (`labape`), built from `container/Dockerfile`: Debian
   base; OpenTofu, Packer + plugins (pre-installed, mirrored per the
   central configuration), Ansible + collections, libvirt clients,
@@ -565,12 +573,40 @@ that have one still render it.
   | systemd-resolved/networkd (Ubuntu) | Global `DNS=` with `Domains=~.`, plus a per-link drop-in: `DNS=` reset, `UseDNS=no` |
   | Debian on ifupdown | `/etc/resolv.conf`, plus dhclient and dhcpcd hooks so lease renewals don't rewrite it |
 
-Not built yet:
-- a "refresh addresses" action for DHCP environments whose leases
-  changed;
-- a second DNS server in the Windows ISO answer files;
-- `build-template.sh` and Packer, which still use their own network;
-- moving lab1 off 172.21.20.0/22 (question 49).
+- **Refresh addresses:** `scripts/refresh-addresses.sh` (and the
+  environment page's **Refresh addresses** button, job type
+  `environment.refresh_addresses`) re-finds DHCP VMs' leases and
+  regenerates the inventory without touching any VM. A failed refresh
+  leaves the environment's status alone.
+- **Several DNS servers:** Windows ISO answer files take every server
+  (`netsh ... add dns` for the second onward). With one server they
+  render exactly as before.
+- **Discovery confirmation:** an ARP answer is confirmed by probing the
+  address and finding the same MAC mapping afterwards, not by a ping
+  reply (Windows' firewall drops ICMP). The CLI reads the host's
+  `/proc/net/arp` directly; the worker container goes through libvirt.
+
+**Packer builds stay on QEMU's user-mode network (decided 2026-10-10).**
+- Templates never need the LAN: each clone gets its network from its
+  host group at deploy time.
+- Packer's `net_bridge` finds the VM only by passively reading the host's
+  ARP table, which a DHCP guest that never talks to the host doesn't
+  populate.
+- It also needs root-side `qemu-bridge-helper` and `/etc/qemu/bridge.conf`
+  setup.
+
+The one real defect, the build-time resolver (10.0.2.3) left in Linux
+templates' `/etc/resolv.conf`, is now cleared by `template_finalize`.
+Existing templates lose it at their next refresh.
+
+Moving lab1 off 172.21.20.0/22 (question 49): its replacement, `lab2`,
+runs on `lab-vlan48` and was built through the web UI from templates.
+- `l2dc1` is a static DC (172.21.50.1).
+- `l2lin1` (Rocky) and `l2win1` (Windows Server 2022) are DHCP members,
+  joined to `labape.test`, each using only the DC for DNS.
+- Refresh addresses was verified on it.
+
+Retiring lab1 itself waits for the owner's go-ahead.
 
 ### 20.6 Host prerequisites (done on the lab host)
 

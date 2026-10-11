@@ -32,7 +32,7 @@ export default function EnvironmentDetail() {
     return () => clearInterval(t);
   }, [load]);
 
-  const act = async (action: "deploy" | "destroy") => {
+  const act = async (action: "deploy" | "destroy" | "refresh-addresses") => {
     setConfirm(false);
     setError("");
     try {
@@ -76,6 +76,12 @@ export default function EnvironmentDetail() {
           <Button onClick={showCreds} disabled={env.status !== "deployed"}>
             Show credentials
           </Button>
+          {env.spec.host_groups.some((g) => g.addressing === "dhcp") && (
+            <Button onClick={() => act("refresh-addresses")} disabled={busy || env.status !== "deployed"}
+              title="Find DHCP VMs' current addresses and regenerate the inventory; no VM is changed">
+              Refresh addresses
+            </Button>
+          )}
         </Stack>
       )}
       {creds !== null && (

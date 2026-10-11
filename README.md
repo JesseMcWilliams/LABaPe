@@ -33,6 +33,10 @@ for the detailed, blow-by-blow history behind every bug found along the way.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
 
+## Installing from scratch
+
+`sudo deploy/install-labape.py` sets up a Debian KVM host end to end. It runs as named, resumable steps (`--list-steps`, `--resume`, `--step`, `--dry-run`) and saves every answer to a reusable answers file, never a password. See [`deploy/README.md`](deploy/README.md). The manual quickstart below remains the reference for what it automates.
+
 ## M1 quickstart (libvirt backend)
 
 Prerequisites, none of which this repo automates yet:
