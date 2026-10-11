@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Alert, Box, Button, Checkbox, FormControlLabel, IconButton, ListItemText, MenuItem, Paper, Stack, Tooltip, Typography,
+  Alert, Autocomplete, Box, Button, Checkbox, Chip, FormControlLabel, IconButton, ListItemText, MenuItem, Paper, Stack,
+  TextField, Tooltip, Typography,
 } from "@mui/material";
+import type { CatalogItem } from "./Catalog";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { api, FieldProblem, HostGroup, HostResources, KvmHost, Network, Template } from "../api";
@@ -19,6 +21,7 @@ const ROLES = ["domain_controller", "windows_server", "windows_workstation", "li
 const blankGroup = (): HostGroup => ({
   name: "", count: 1, os: "rocky9", roles: ["linux_server"], image_source: "packer_template", template: "",
   cpu_count: 2, memory_mb: 4096, disk_gb: 40, windows_core: false, addressing: "static", names: [""],
+  services: [], applications: [], packages: [],
 });
 
 const generated = (g: HostGroup, k: number) => `${g.name || "group"}${k + 1}`;
@@ -31,6 +34,15 @@ export default function EnvironmentNew() {
   const [networks, setNetworks] = useState<Network[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [resources, setResources] = useState<HostResources | undefined>();
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  useEffect(() => {
+    api.get<CatalogItem[]>("/api/catalog").then((items) => setCatalog(items.filter((i) => i.status === "published")), () => setCatalog([]));
+  }, []);
+  // Published items that support this group's OS family (packages: any member does).
+  const catalogFor = (g: HostGroup, kind: CatalogItem["kind"]) => {
+    const family = g.os.startsWith("windows") ? "windows" : "linux";
+    return catalog.filter((i) => i.kind === kind && (kind === "package" || i.platforms.includes(family)));
+  };
   const [groups, setGroups] = useState<HostGroup[]>([blankGroup()]);
   const [summary, setSummary] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -254,6 +266,28 @@ export default function EnvironmentNew() {
                     control={<Checkbox checked={g.windows_core}
                       onChange={(e) => setGroup(i, { windows_core: e.target.checked })} />} />
                 )}
+              </Stack>
+              <Typography variant="subtitle2">Added on top of the template</Typography>
+              <Stack direction="row" spacing={2} useFlexGap sx={row}>
+                {(["service", "application", "package"] as const).map((kind) => {
+                  const key = `${kind}s` as "services" | "applications" | "packages";
+                  const options = catalogFor(g, kind);
+                  const fe = err(`${at}.${key}`);
+                  return (
+                    <Autocomplete key={kind} multiple size="small" sx={{ minWidth: 280, flex: 1 }}
+                      options={options.map((o) => o.name)} value={g[key] ?? []}
+                      getOptionLabel={(n) => options.find((o) => o.name === n)?.display_name ?? n}
+                      onChange={(_, v) => setGroup(i, { [key]: v } as Partial<HostGroup>)}
+                      renderValue={(vals, getItemProps) => vals.map((v, k) => {
+                        const { key: chipKey, ...chipProps } = getItemProps({ index: k });
+                        return <Chip key={chipKey} size="small" label={options.find((o) => o.name === v)?.display_name ?? v} {...chipProps} />;
+                      })}
+                      renderInput={(params) => (
+                        <TextField {...params} label={kind === "service" ? "Services" : kind === "application" ? "Applications" : "Packages"}
+                          error={Boolean(fe)} helperText={fe?.message ?? (options.length ? " " : `No published ${kind}s for this OS`)} />
+                      )} />
+                  );
+                })}
               </Stack>
               <Typography variant="subtitle2">Host names</Typography>
               <Stack direction="row" spacing={2} useFlexGap sx={row}>

@@ -1,0 +1,78 @@
+---
+# Services chosen for this host's group in the web UI (design §21.4),
+# added on top of what the template has. The job runner writes them to
+# inventory host_vars as `labape_services`: {name: definition}, where a
+# definition has a `windows` and/or `linux` section. Hosts with none
+# skip everything here; the CLI path never sets the variable.
+
+- name: Services for this host
+  ansible.builtin.set_fact:
+    labape_services_here: >-
+      {{ (labape_services | default({})) | dict2items
+         | selectattr('value.' ~ ('windows' if ansible_facts.os_family == 'Windows' else 'linux'), 'defined')
+         | list }}
+
+- name: Install Windows features for the selected services
+  ansible.windows.win_feature:
+    name: "{{ item.value.windows.features }}"
+    state: present
+    include_management_tools: true
+  loop: "{{ labape_services_here }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - ansible_facts.os_family == 'Windows'
+    - item.value.windows.features | default([]) | length > 0
+  register: labape_services_features
+
+- name: Reboot if a feature needs it
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+  when:
+    - ansible_facts.os_family == 'Windows'
+    - labape_services_features.results | default([]) | selectattr('reboot_required', 'defined')
+      | selectattr('reboot_required') | list | length > 0
+
+- name: Start and enable the selected Windows services
+  ansible.windows.win_service:
+    name: "{{ item.1 }}"
+    start_mode: auto
+    state: started
+  loop: "{{ labape_services_here | subelements('value.windows.services', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.key }}: {{ item.1 }}"
+  when: ansible_facts.os_family == 'Windows'
+
+- name: Install packages for the selected services
+  ansible.builtin.package:
+    name: "{{ item.value.linux.packages[ansible_facts.pkg_mgr] }}"
+    state: present
+  loop: "{{ labape_services_here }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+  when:
+    - ansible_facts.os_family != 'Windows'
+    - ansible_facts.pkg_mgr in (item.value.linux.packages | default({}))
+
+- name: Report services with no packages for this distribution
+  ansible.builtin.debug:
+    msg: "{{ item.key }}: no packages listed for {{ ansible_facts.pkg_mgr }}; skipped"
+  loop: "{{ labape_services_here }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - ansible_facts.os_family != 'Windows'
+    - item.value.linux.packages is defined
+    - ansible_facts.pkg_mgr not in item.value.linux.packages
+
+- name: Enable and start the selected systemd units
+  ansible.builtin.systemd:
+    name: "{{ item.1 }}"
+    enabled: true
+    state: started
+  loop: "{{ labape_services_here | subelements('value.linux.units', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.key }}: {{ item.1 }}"
+  become: true
+  when: ansible_facts.os_family != 'Windows'

@@ -123,7 +123,14 @@ export default function EnvironmentDetail() {
               <TableCell>{g.roles.join(", ")}</TableCell>
               <TableCell>{g.image_source === "packer_template" ? `template ${g.template}` : g.image_source ?? "default"}</TableCell>
               <TableCell>{g.cpu_count} vCPU · {g.memory_mb} MB · {g.disk_gb} GB</TableCell>
-              <TableCell>{g.network ?? "host default"} · {g.addressing ?? "static"}</TableCell>
+              <TableCell>
+                {g.network ?? "host default"} · {g.addressing ?? "static"}
+                {[...(g.services ?? []), ...(g.applications ?? []), ...(g.packages ?? [])].length > 0 && (
+                  <Typography variant="caption" component="div" color="text.secondary">
+                    + {[...(g.services ?? []), ...(g.applications ?? []), ...(g.packages ?? [])].join(", ")}
+                  </Typography>
+                )}
+              </TableCell>
               <TableCell>
                 {Array.from({ length: g.count ?? 1 }, (_, k) => g.names?.[k] || `${g.name}${k + 1}`).map((vm) => (
                   <Box key={vm}>
