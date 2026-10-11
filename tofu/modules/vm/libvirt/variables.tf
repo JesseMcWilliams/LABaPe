@@ -83,12 +83,13 @@ variable "network_id" {
 }
 
 variable "addressing" {
-  description = "{ mode = \"static\"|\"dhcp\", address, prefix_length, gateway }. DHCP is accepted here but the pipeline-level IP-discovery step is deferred (Claude_Docs/Design_System-Overview.md §17.4) — only static is exercised end-to-end as of M1."
+  description = "{ mode = \"static\"|\"dhcp\", address, prefix_length, gateway, dns }. dns defaults to [gateway]. For DHCP, deploy.sh finds the address after boot (scripts/lib/discover_dhcp_ips.py, by the MAC this module assigns)."
   type = object({
     mode          = string
     address       = optional(string)
     prefix_length = optional(number)
     gateway       = optional(string)
+    dns           = optional(list(string), [])
   })
 
   validation {

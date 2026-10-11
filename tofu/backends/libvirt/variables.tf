@@ -28,20 +28,37 @@ variable "network_mode" {
   default = "bridged"
 }
 
-variable "network_cidr" {
-  description = "network_address/subnet_mask from environment.yml, normalized to CIDR by scripts/deploy.sh's YAML->tfvars conversion (Claude_Docs/Design_System-Overview.md §6.3)."
-  type        = string
+variable "networks" {
+  description = "environment.yml's network catalog (Claude_Docs/Planning_Web-Interface-Design.md §20), via scripts/lib/render_environment_tfvars.py. Empty gateway means the network's .1; empty dns_servers means the gateway; empty bridge means var.bridge_device. Address pools and allowed addressing modes are enforced after the plan by scripts/lib/check_ip_policy.py, not here."
+  type = map(object({
+    cidr        = string
+    gateway     = optional(string, "")
+    dns_servers = optional(list(string), [])
+    bridge      = optional(string, "")
+  }))
+
+  validation {
+    condition     = length(var.networks) > 0
+    error_message = "environment.yml needs a networks: catalog (or the older network: block)."
+  }
 }
 
-variable "gateway" {
-  description = "Empty string means \"derive from network_cidr\" (main.tf) — environment.yml's gateway field is optional."
+variable "default_network" {
+  description = "Catalog network for host groups that don't name one. Empty means the first name in sorted order."
   type        = string
   default     = ""
 }
 
 variable "bridge_device" {
-  type    = string
-  default = "br0"
+  description = "Bridge for networks that don't name one (and the older single-network environment.yml)."
+  type        = string
+  default     = "br0"
+}
+
+variable "static_ip_offsets" {
+  description = "Per-network static_ip_offset_start, from the profile, e.g. { lab-vlan48 = 520 }. Networks not listed use static_ip_offset_start."
+  type        = map(number)
+  default     = {}
 }
 
 variable "management_source" {
@@ -86,7 +103,21 @@ variable "host_groups" {
     cpu_count    = optional(number, 2)
     memory_mb    = optional(number, 4096)
     disk_gb      = optional(number, 40)
+    # Catalog network (environment.yml networks:); null means
+    # default_network.
+    network = optional(string)
+    # "static" (default) or "dhcp". DHCP addresses are found after boot
+    # (scripts/lib/discover_dhcp_ips.py). Domain controllers must be static.
+    addressing = optional(string, "static")
+    # Explicit static addresses, one per instance in order (the web UI's
+    # allocations). Instances without one use the offset scheme.
+    addresses = optional(list(string), [])
   }))
+
+  validation {
+    condition     = alltrue([for hg in var.host_groups : contains(["static", "dhcp"], hg.addressing)])
+    error_message = "host_groups[*].addressing must be \"static\" or \"dhcp\"."
+  }
 }
 
 variable "template_storage_path" {

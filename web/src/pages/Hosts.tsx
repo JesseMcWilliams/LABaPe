@@ -3,6 +3,7 @@ import {
   Alert, Button, Checkbox, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
 import { api, KvmHost } from "../api";
+import HostNetworks from "./HostNetworks";
 
 type HostForm = Omit<KvmHost, "id">;
 
@@ -15,6 +16,7 @@ export default function Hosts() {
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [form, setForm] = useState<HostForm>(blank);
   const [editing, setEditing] = useState<number | null>(null);
+  const [netsFor, setNetsFor] = useState<KvmHost | null>(null);
   const [error, setError] = useState("");
 
   const load = () => api.get<KvmHost[]>("/api/hosts").then(setHosts, (e) => setError(e.message));
@@ -64,11 +66,13 @@ export default function Hosts() {
                 <Button size="small" onClick={() => { const { id, ...rest } = h; setEditing(id); setForm(rest); }}>
                   Edit
                 </Button>
+                <Button size="small" onClick={() => setNetsFor(h)}>Networks</Button>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      {netsFor && <HostNetworks host={netsFor} onClose={() => setNetsFor(null)} />}
       <Paper variant="outlined" sx={{ p: 2 }} component="form" onSubmit={submit}>
         <Stack spacing={2}>
           <Typography variant="h6">{editing ? `Edit ${form.name}` : "Register a host"}</Typography>
@@ -77,7 +81,7 @@ export default function Hosts() {
             {field("libvirt_uri", "libvirt URI")}
             {field("vm_storage_path", "VM storage path")}
             {field("template_storage_path", "Template storage path")}
-            {field("bridge", "Bridge")}
+            {field("bridge", "Fallback bridge")}
             {field("concurrency_limit", "Concurrent jobs", "number")}
             <Stack direction="row" sx={{ alignItems: "center" }}>
               <Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />

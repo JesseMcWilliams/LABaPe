@@ -166,7 +166,7 @@
         <SynchronousCommand wcm:action="add">
           <Order>2</Order>
           <Description>Set DNS</Description>
-          <CommandLine>netsh interface ip set dns name="Ethernet" static ${addressing.gateway}</CommandLine>
+          <CommandLine>netsh interface ip set dns name="Ethernet" static ${addressing.dns[0]}</CommandLine>
         </SynchronousCommand>
 %{ endif ~}
         <SynchronousCommand wcm:action="add">

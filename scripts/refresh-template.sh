@@ -6,7 +6,8 @@
 # template is never touched.
 #
 # Usage: refresh-template.sh <backend> <template> <new-template> --os <os-key>
-#          [--playbook <path>] [--ip-offset N] [--env-file <path>]
+#          [--playbook <path>] [--ip-offset N] [--network <name>]
+#          [--addressing static|dhcp] [--env-file <path>]
 #   e.g. refresh-template.sh libvirt rocky9-base-2026.10 rocky9-base-2026.10.1 --os rocky9
 #
 # --os         the template's os key (an os_iso_paths key, e.g. rocky9,
@@ -15,14 +16,18 @@
 # --playbook   what to apply (default ansible/playbooks/refresh-template.yml:
 #              all OS updates, rebooting as needed).
 # --ip-offset  static_ip_offset_start for the throwaway VM (default 120);
-#              deploy.sh's pre-flight check refuses an address in use.
+#              deploy.sh's pre-flight check refuses an address in use, and
+#              the address policy one outside the network's static pool.
+# --network    catalog network for the throwaway VM (default: environment.yml's
+#              default_network).
+# --addressing static (default) or dhcp; dhcp needs no free static address.
 #
 # On failure the throwaway environment is left running for inspection; the
 # script prints how to remove it.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: refresh-template.sh <backend> <template> <new-template> --os <os-key> [--playbook <path>] [--ip-offset N] [--env-file <path>]"
+USAGE="usage: refresh-template.sh <backend> <template> <new-template> --os <os-key> [--playbook <path>] [--ip-offset N] [--network <name>] [--addressing static|dhcp] [--env-file <path>]"
 
 BACKEND="${1:?$USAGE}"
 TEMPLATE="${2:?$USAGE}"
@@ -31,6 +36,8 @@ shift 3
 OS_KEY=""
 PLAYBOOK="$ROOT_DIR/ansible/playbooks/refresh-template.yml"
 IP_OFFSET=120
+NETWORK=""
+ADDRESSING=static
 ENV_ARGS=()
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 while [ $# -gt 0 ]; do
@@ -38,12 +45,15 @@ while [ $# -gt 0 ]; do
     --os) OS_KEY="${2:?--os needs an os key}"; shift ;;
     --playbook) PLAYBOOK="$(realpath "${2:?--playbook needs a path}")"; shift ;;
     --ip-offset) IP_OFFSET="${2:?--ip-offset needs a number}"; shift ;;
+    --network) NETWORK="${2:?--network needs a name}"; shift ;;
+    --addressing) ADDRESSING="${2:?--addressing needs static or dhcp}"; shift ;;
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; ENV_ARGS=(--env-file "$ENV_FILE"); shift ;;
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
   esac
   shift
 done
 [ -n "$OS_KEY" ] || { echo "labape: --os <os-key> is required — $USAGE" >&2; exit 1; }
+case "$ADDRESSING" in static|dhcp) ;; *) echo "labape: --addressing must be static or dhcp" >&2; exit 1 ;; esac
 if [ "$BACKEND" != "libvirt" ]; then
   echo "labape: refresh-template.sh only supports the libvirt backend so far — got \"$BACKEND\"." >&2
   exit 1
@@ -74,7 +84,7 @@ cat > "$TFVARS" <<EOF
 # Throwaway: scripts/refresh-template.sh $TEMPLATE -> $NEW_TEMPLATE
 static_ip_offset_start = $IP_OFFSET
 host_groups = [
-  { name = "$GROUP", count = 1, os = "$OS_KEY", roles = ["$role"], image_source = "packer_template", template = "$TEMPLATE", disk_gb = $disk_gb },
+  { name = "$GROUP", count = 1, os = "$OS_KEY", roles = ["$role"], image_source = "packer_template", template = "$TEMPLATE", disk_gb = $disk_gb, addressing = "$ADDRESSING"${NETWORK:+, network = \"$NETWORK\"} },
 ]
 EOF
 

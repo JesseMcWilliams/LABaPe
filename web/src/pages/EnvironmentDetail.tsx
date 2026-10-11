@@ -90,6 +90,7 @@ export default function EnvironmentDetail() {
           <TableRow>
             <TableCell>Group</TableCell><TableCell>Count</TableCell><TableCell>OS</TableCell>
             <TableCell>Roles</TableCell><TableCell>Source</TableCell><TableCell>Size</TableCell>
+            <TableCell>Network</TableCell><TableCell>Addresses</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -101,6 +102,12 @@ export default function EnvironmentDetail() {
               <TableCell>{g.roles.join(", ")}</TableCell>
               <TableCell>{g.image_source === "packer_template" ? `template ${g.template}` : g.image_source ?? "default"}</TableCell>
               <TableCell>{g.cpu_count} vCPU · {g.memory_mb} MB · {g.disk_gb} GB</TableCell>
+              <TableCell>{g.network ?? "host default"} · {g.addressing ?? "static"}</TableCell>
+              <TableCell>
+                {Array.from({ length: g.count ?? 1 }, (_, k) => `${g.name}${k + 1}`)
+                  .map((vm) => `${vm} ${env.addresses?.[vm] ?? (g.addressing === "dhcp" ? "(DHCP)" : "")}`)
+                  .join(", ")}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

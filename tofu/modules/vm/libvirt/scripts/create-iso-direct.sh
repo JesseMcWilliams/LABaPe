@@ -19,6 +19,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/existing-domain.sh"
 : "${BRIDGE_DEVICE:?}"
 : "${OS_FAMILY:?}"
 : "${VM_STORAGE_PATH:?}"
+: "${MAC_ADDRESS:=}"
 : "${LABAPE_WORKSPACE:?}"
 
 workspace_tag="labape-workspace=${LABAPE_WORKSPACE}"
@@ -58,7 +59,7 @@ linux)
     --location "$ISO_HOST_PATH" \
     --initrd-inject "$ANSWER_FILE_PATH" \
     --extra-args "inst.ks=file:/${kickstart_basename} console=ttyS0" \
-    --network "bridge=${BRIDGE_DEVICE},model=virtio" \
+    --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --os-variant detect=on,require=off \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
@@ -95,7 +96,7 @@ debian_preseed)
     --location "$ISO_HOST_PATH" \
     --initrd-inject "$ANSWER_FILE_PATH" \
     --extra-args "auto=true priority=critical preseed/file=/${preseed_basename} console=ttyS0" \
-    --network "bridge=${BRIDGE_DEVICE},model=virtio" \
+    --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --os-variant "$OS_VARIANT" \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
@@ -164,7 +165,7 @@ debian)
     --disk "path=${seed_iso},device=cdrom" \
     --location "${ISO_HOST_PATH},kernel=casper/vmlinuz,initrd=casper/initrd" \
     --extra-args "autoinstall ds=nocloud console=ttyS0" \
-    --network "bridge=${BRIDGE_DEVICE},model=virtio" \
+    --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --os-variant "$OS_VARIANT" \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
@@ -252,7 +253,7 @@ windows)
     --disk "path=${disk_path},size=${DISK_GB},format=qcow2,bus=sata" \
     --disk "path=${answer_iso},device=cdrom,bus=sata" \
     --cdrom "$ISO_HOST_PATH" \
-    --network "bridge=${BRIDGE_DEVICE},model=e1000e" \
+    --network "bridge=${BRIDGE_DEVICE},model=e1000e${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --os-variant "$OS_VARIANT" \
     --graphics vnc,listen=127.0.0.1 \
     --noautoconsole \

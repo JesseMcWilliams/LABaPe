@@ -434,3 +434,163 @@ sections above:
 | Image | Debian trixie with OpenTofu 1.12.6 and Packer 1.16.1 (checksum-verified), and ansible-core 2.21.4 plus pywinrm and the four collections. The venv uses `--system-site-packages` for virt-install. OpenTofu providers are mirrored into `/opt/labape/tofu-mirror` (`TF_CLI_CONFIG_FILE`), and Packer plugins are pre-installed. About 950 MB. |
 | Stack | `container/compose.yaml` (postgres, labape-api, labape-worker, caddy; `init: true`), `container/setup.sh` (`.env` and generated secrets), and Quadlet units in `container/quadlet/`. The containers run as root in rootful Docker. Rootless Podman and the Quadlets are written but not yet exercised on the lab host. |
 | Hosts | Only local `qemu:///system` hosts are accepted; `qemu+ssh` is refused until 10e. |
+
+## 20. Networks and IP address management (built 2026-10-10)
+
+Before this, the engine had one network per environment:
+- `network_cidr` and the gateway came from `environment.yml`;
+- one `bridge_device` served every VM;
+- static addresses were `static_ip_offset_start` + n;
+- DNS was hard-wired to the gateway;
+- DHCP was accepted by the vm module but never discovered.
+
+Networks are now configured at three levels, in both the CLI and the web
+UI (questions 46-50 in Claude_Docs/Planning_Questions.md). Each level is
+checked against the one above it, and the engine checks again after the
+plan.
+
+### 20.1 Central network catalog (what is allowed)
+
+In the web UI this is the **Networks** page (admin only, `networks`
+table). For the CLI it's the `networks:` map in `environment.yml`
+(`tofu/environment.example.yml`). Nothing outside the catalog can be used.
+
+| Field | Meaning |
+|---|---|
+| `name` | e.g. `lab-vlan48`, referenced by hosts and host groups |
+| `cidr`, `gateway`, `dns_servers` | Addressing handed to guests at install time. Gateway defaults to the network's .1, and DNS to the gateway. Domain-joined hosts then use **only the environment's domain controllers** (all of them) as DNS; see 20.5. |
+| `vlan`, `description` | Informational (web UI) |
+| `addressing` | Allowed modes: `static`, `dhcp`, or both |
+| `static_pools` | Ranges LABaPe may assign. Required when static is allowed (web UI). Must not overlap the DHCP scope, the reserved ranges or the gateway. |
+| `dhcp_ranges` | The DHCP server's scope, never assigned statically, and the range the DHCP discovery sweeps |
+| `reserved` | Never assigned (infrastructure) |
+| `allowed_roles` / `allowed_groups` | Who may deploy onto it (question 48). With both empty, anyone who can deploy may. Web UI only. |
+| `enabled` | Disabled networks keep existing environments but refuse new ones (web UI) |
+
+Validation: ranges lie inside `cidr`, pools overlap nothing reserved,
+and no two networks overlap.
+- Web UI: `app/labape/netpolicy.py`.
+- CLI: `scripts/lib/labape_networks.py`.
+
+### 20.2 KVM host network attachments (what each host provides)
+
+Web UI: **Hosts → Networks** (`host_networks` table). The runner turns
+a host's attachments into the `networks:` catalog it writes into that
+job's `environment.yml`.
+
+| Field | Meaning |
+|---|---|
+| `network` | Catalog name |
+| `bridge` | The host bridge for it, e.g. `br1` |
+| `static_pool` (optional) | A slice of the network's pools for this host, so hosts sharing a VLAN never collide. It must lie inside a pool. Empty means the whole pool, shared through the allocation table. |
+| `is_default` | What a host group gets when it doesn't name a network |
+
+`kvm_hosts.bridge` stays as the fallback for a host with no attachments.
+For the CLI, each catalog network names its own `bridge`.
+
+### 20.3 Host groups (what a deployment uses)
+
+Each host group can set:
+- `network`: a catalog name; default is the host's default network
+  (web UI) or `default_network` (CLI);
+- `addressing`: `static` (default) or `dhcp`;
+- `addresses`: optional explicit addresses, one per instance. The web UI
+  fills these from its allocations.
+
+In the CLI, static VMs without explicit addresses use the profile's
+`static_ip_offset_start`, or `static_ip_offsets = { <network> = N }` per
+network. The offset is counted per network, so an existing
+single-network environment's addresses don't change.
+
+The web UI's deploy form only offers networks that are attached to the
+host, enabled and allowed for the user, and only the modes that network
+allows. Domain controllers are always static.
+
+### 20.4 Address allocation (web UI)
+
+The `ip_allocations` table holds network, address, environment and VM
+name.
+- **Filled** when a deploy is queued, in the same transaction, with the
+  network row locked so concurrent deploys can't collide.
+- **Reused** on redeploy; **released** by a successful destroy.
+- **On failure:** if a pool runs out, the create is refused and leaves
+  nothing behind.
+
+This replaces the hand-typed `static_ip_offset_start`; older environments
+that have one still render it.
+
+### 20.5 Engine checks and DHCP discovery (CLI and web UI)
+
+- `scripts/lib/check_ip_policy.py` runs on the plan, before
+  `check-network.sh` and before anything is created. It checks that:
+  - each network is in the catalog and allows the mode used;
+  - static addresses are in a pool and outside the DHCP scope, reserved
+    ranges and the gateway;
+  - domain controllers are static;
+  - no address is used twice.
+
+  New VMs that break a rule are refused. Existing ones only get a warning,
+  so tightening the catalog never blocks redeploying an existing
+  environment.
+- Every VM gets a deterministic MAC (`52:54:00` plus a hash of workspace
+  and name). ISO installs now get it too; it's passed to virt-install
+  and isn't a reinstall trigger.
+- `scripts/lib/discover_dhcp_ips.py` runs between `tofu output` and
+  `generate-inventory.py`. For each DHCP VM:
+  1. it asks `virsh domifaddr --source agent`, then `--source arp`, which
+     is the KVM host's ARP table read through libvirt, so it also works
+     from the web UI's worker container;
+  2. between looks, it ping-sweeps the network's `dhcp_ranges` so the
+     host learns its neighbors;
+  3. it confirms an ARP answer with a ping and a second look before
+     using it;
+  4. it waits up to 45 minutes, to allow for ISO installs.
+- DNS comes from `addressing.dns`. With one DNS server equal to the
+  gateway, every answer file renders byte-for-byte as before, so
+  existing VMs' reinstall triggers don't change. lab1 still plans no
+  infrastructure changes. Windows ISO answer files set the first DNS
+  server only; Windows clones set all of them.
+- The older single `network:` block in `environment.yml` still works: it
+  reads as a one-network catalog named `default`, static only, on the
+  profile's `bridge_device`.
+- `refresh-template.sh` gained `--network` and `--addressing`.
+- **Domain members use only the domain controllers for DNS**, every DC
+  in the environment, and DNS from a DHCP lease is ignored. The join
+  roles enforce it per platform:
+
+  | Platform | How |
+  |---|---|
+  | Windows | A static DNS list, which overrides DHCP |
+  | NetworkManager (Rocky) | `ipv4.ignore-auto-dns` |
+  | systemd-resolved/networkd (Ubuntu) | Global `DNS=` with `Domains=~.`, plus a per-link drop-in: `DNS=` reset, `UseDNS=no` |
+  | Debian on ifupdown | `/etc/resolv.conf`, plus dhclient and dhcpcd hooks so lease renewals don't rewrite it |
+
+Not built yet:
+- a "refresh addresses" action for DHCP environments whose leases
+  changed;
+- a second DNS server in the Windows ISO answer files;
+- `build-template.sh` and Packer, which still use their own network;
+- moving lab1 off 172.21.20.0/22 (question 49).
+
+### 20.6 Host prerequisites (done on the lab host)
+
+1. **Bridged traffic past Docker** (Claude_Docs/Testing_Troubleshooting-Log.md,
+   "Installing Docker cut bridged VMs off from the LAN"). As root:
+   ```bash
+   printf '%s\n' 'net.bridge.bridge-nf-call-iptables = 0' 'net.bridge.bridge-nf-call-ip6tables = 0' \
+     'net.bridge.bridge-nf-call-arptables = 0' > /etc/sysctl.d/90-labape-bridge-nf.conf
+   echo br_netfilter > /etc/modules-load.d/labape-br_netfilter.conf
+   modprobe br_netfilter && sysctl --system
+   ```
+2. **A bridge per VM network.** For the lab VLAN on `enp14s0f1`
+   (172.21.48.0/22, gateway and DNS 172.21.48.1): a DHCP scope of
+   .48.16-.49.254 and LABaPe's static pool .50.1-.51.254. The host keeps
+   a DHCP address on `br1` (which DHCP discovery needs) but never takes
+   its default route there. As root:
+   ```bash
+   nmcli con add type bridge ifname br1 con-name br1 bridge.stp no \
+     ipv4.method auto ipv4.never-default yes ipv6.method ignore
+   nmcli con add type bridge-slave ifname enp14s0f1 master br1 con-name br1-port
+   nmcli con mod "Wired connection 4" connection.autoconnect no
+   nmcli con down "Wired connection 4"; nmcli con up br1
+   ```

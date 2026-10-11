@@ -58,7 +58,7 @@ autoinstall:
           - to: default
             via: ${addressing.gateway}
         nameservers:
-          addresses: ["${addressing.gateway}"]
+          addresses: ${jsonencode(addressing.dns)}
 %{ else ~}
   network:
     version: 2

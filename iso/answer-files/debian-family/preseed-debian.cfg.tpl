@@ -39,7 +39,7 @@ d-i netcfg/disable_autoconfig boolean true
 d-i netcfg/get_ipaddress string ${addressing.address}
 d-i netcfg/get_netmask string ${cidrnetmask("${addressing.address}/${addressing.prefix_length}")}
 d-i netcfg/get_gateway string ${addressing.gateway}
-d-i netcfg/get_nameservers string ${addressing.gateway}
+d-i netcfg/get_nameservers string ${join(" ", addressing.dns)}
 d-i netcfg/confirm_static boolean true
 %{ else ~}
 d-i netcfg/disable_autoconfig boolean false

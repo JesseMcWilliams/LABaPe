@@ -1,25 +1,71 @@
 ---
-# Ubuntu server (netplan + systemd-resolved). A global drop-in with the
-# domain as a routing domain (~) sends every labape.test lookup,
-# including realm's SRV discovery, to the DC while leaving other names
-# on the netplan-configured resolver. Doesn't touch netplan, so the
-# host's own addressing can't be clobbered.
+# Ubuntu server (netplan + systemd-resolved). Domain members use only the
+# domain controllers for DNS, so a global DNS= isn't enough on its own:
+# resolved also queries per-link servers (netplan's static nameservers or
+# a DHCP lease's). The global setting routes every domain (~.) to the
+# DCs, and a systemd-networkd drop-in for the active link replaces that
+# link's servers with the DCs and ignores DHCP-supplied ones. Netplan's
+# own files aren't touched, so the host's addressing can't be clobbered.
 - name: Ensure the resolved drop-in directory exists
   ansible.builtin.file:
     path: /etc/systemd/resolved.conf.d
     state: directory
     mode: "0755"
 
-- name: Route the domain's DNS lookups to the domain controller (systemd-resolved)
+- name: Use the domain controllers for all lookups (systemd-resolved)
   ansible.builtin.copy:
     dest: /etc/systemd/resolved.conf.d/labape-domain.conf
     content: |
       # Managed by LABaPe (ansible/roles/linux_domain_join).
       [Resolve]
-      DNS={{ domain_controller_ip }}
-      Domains=~{{ domain_name }}
+      DNS={{ domain_controller_ips | join(' ') }}
+      Domains=~. {{ domain_name }}
     mode: "0644"
   register: resolved_dropin
+
+- name: Find the active link's systemd-networkd file
+  ansible.builtin.shell: >-
+    networkctl status {{ ansible_facts.default_ipv4.interface }} --no-pager 2>/dev/null
+    | sed -n 's/^ *Network File: //p'
+  register: networkd_file
+  changed_when: false
+  failed_when: false
+
+- name: Replace the link's DNS servers with the domain controllers (systemd-networkd)
+  when: networkd_file.stdout is match('^/')
+  block:
+    - name: Create the drop-in directory for the link's network file
+      ansible.builtin.file:
+        path: "/etc/systemd/network/{{ networkd_file.stdout | basename }}.d"
+        state: directory
+        mode: "0755"
+
+    - name: Write the DNS drop-in
+      ansible.builtin.copy:
+        dest: "/etc/systemd/network/{{ networkd_file.stdout | basename }}.d/labape-dns.conf"
+        content: |
+          # Managed by LABaPe (ansible/roles/linux_domain_join).
+          [Network]
+          # Empty first: clears the servers netplan set, then the DCs.
+          DNS=
+          DNS={{ domain_controller_ips | join(' ') }}
+          Domains={{ domain_name }}
+
+          [DHCPv4]
+          UseDNS=no
+          UseDomains=no
+        mode: "0644"
+      register: networkd_dropin
+
+    - name: Apply the link change
+      ansible.builtin.shell: >-
+        networkctl reload && networkctl reconfigure {{ ansible_facts.default_ipv4.interface }}
+      when: networkd_dropin is changed
+
+    - name: Reconnect after the link change (defensive)
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+      when: networkd_dropin is changed
 
 - name: Restart systemd-resolved
   ansible.builtin.systemd:

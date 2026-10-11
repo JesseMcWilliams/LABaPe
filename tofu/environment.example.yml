@@ -14,15 +14,40 @@ netbios_name: COMPANY
 # (Claude_Docs/Design_Base-Images.md).
 image_source_default: iso_direct
 
-network:
-  mode: bridged                # only mode implemented as of M1 — nat lands in M7
-  network_address: 192.168.1.0 # a /24 (or whatever mask below) on your real LAN —
-  subnet_mask: 255.255.255.0   # see Claude_Docs/Reference_Networking.md §1's Caution before reusing
-                                # an address range that's actually in use elsewhere
-  gateway: 192.168.1.1         # optional; scripts/deploy.sh derives network_cidr's
-                                # .1 if omitted (tofu/backends/libvirt/main.tf)
-  management_source: 192.168.1.50   # your control machine's IP/CIDR — SSH firewall
-                                     # scoping, Claude_Docs/Reference_Credentials.md §7
+network_mode: bridged          # only mode implemented — nat lands in M7
+management_source: 192.168.1.50   # your control machine's IP/CIDR — SSH firewall
+                                   # scoping, Claude_Docs/Reference_Credentials.md §7
+
+# Network catalog (Claude_Docs/Planning_Web-Interface-Design.md §20): the
+# networks VMs may use and the rules for each. A host group picks one
+# with `network:` (default: default_network) and `addressing: static|dhcp`.
+# scripts/lib/check_ip_policy.py refuses a plan that breaks these rules
+# before anything is created. See Claude_Docs/Reference_Networking.md §1's
+# Caution before using an address range that's in use elsewhere.
+default_network: lab
+networks:
+  lab:
+    cidr: 192.168.1.0/24
+    gateway: 192.168.1.1         # optional; default the network's .1
+    dns_servers: [192.168.1.1]   # optional; default [gateway]. A domain
+                                 # controller still becomes its members' DNS.
+    bridge: br0                  # host bridge; optional, default the profile's bridge_device
+    addressing: [static, dhcp]   # allowed modes; default [static]
+    # Static addresses come from the profile's static_ip_offset_start (or
+    # static_ip_offsets.<network>) and must land in a static pool. Keep the
+    # pools outside the DHCP server's scope.
+    static_pools: ["192.168.1.100-192.168.1.199"]
+    dhcp_ranges: ["192.168.1.200-192.168.1.250"]   # the DHCP server's scope
+    reserved: ["192.168.1.2-192.168.1.20"]         # infrastructure; never assigned
+
+# Older single-network form, still accepted (read as one network named
+# "default", static only, bridge = the profile's bridge_device):
+# network:
+#   mode: bridged
+#   network_address: 192.168.1.0
+#   subnet_mask: 255.255.255.0
+#   gateway: 192.168.1.1
+#   management_source: 192.168.1.50
 
 software_store_path: ./software-store   # not yet used in M1 — no locally-sourced
                                          # installers exercised until the software

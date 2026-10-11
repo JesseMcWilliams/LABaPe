@@ -53,6 +53,55 @@ class KvmHost(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class Network(Base):
+    """Central network catalog entry: what may be used (design §20.1)."""
+
+    __tablename__ = "networks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(63), unique=True)
+    description: Mapped[str] = mapped_column(String(255), default="")
+    cidr: Mapped[str] = mapped_column(String(43))
+    gateway: Mapped[str] = mapped_column(String(15), default="")      # empty = the network's .1
+    dns_servers: Mapped[list] = mapped_column(JSON, default=list)      # empty = [gateway]
+    vlan: Mapped[int | None] = mapped_column(Integer, nullable=True)    # informational
+    addressing: Mapped[list] = mapped_column(JSON, default=lambda: ["static"])
+    static_pools: Mapped[list] = mapped_column(JSON, default=list)     # ["a-b", ...]
+    dhcp_ranges: Mapped[list] = mapped_column(JSON, default=list)      # the DHCP server's scope
+    reserved: Mapped[list] = mapped_column(JSON, default=list)
+    allowed_roles: Mapped[list] = mapped_column(JSON, default=list)    # empty + empty groups = anyone who deploys
+    allowed_groups: Mapped[list] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class HostNetwork(Base):
+    """A catalog network carried by a KVM host, and on which bridge (design §20.2)."""
+
+    __tablename__ = "host_networks"
+    __table_args__ = (UniqueConstraint("kvm_host_id", "network_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"))
+    network_id: Mapped[int] = mapped_column(ForeignKey("networks.id"))
+    bridge: Mapped[str] = mapped_column(String(64))
+    static_pool: Mapped[list] = mapped_column(JSON, default=list)      # optional slice of the network's pools
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class IpAllocation(Base):
+    """A static address handed to an environment's VM (design §20.4)."""
+
+    __tablename__ = "ip_allocations"
+    __table_args__ = (UniqueConstraint("network_id", "address"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    network_id: Mapped[int] = mapped_column(ForeignKey("networks.id"))
+    address: Mapped[str] = mapped_column(String(15))
+    environment_id: Mapped[int] = mapped_column(ForeignKey("environments.id"), index=True)
+    vm_name: Mapped[str] = mapped_column(String(63))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Environment(Base):
     __tablename__ = "environments"
 
