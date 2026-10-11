@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel,
-  LinearProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Tooltip,
+  LinearProgress, Link, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Tooltip,
   Typography,
 } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
@@ -15,17 +15,17 @@ import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 // File manager (design §9, §21.3): ISOs, installers, other files, and the
 // template library. Admins and file managers upload; template editors
 // build, refresh and edit templates; everyone can browse.
-interface StoredFile {
+export interface StoredFile {
   id: number; category: string; name: string; path: string; size: number; mtime: string | null; sha256: string;
   os_key: string; is_default: boolean; description: string; notes: string; uploaded_by: string;
   uploaded_at: string | null;
 }
 
-const OS_KEYS = ["rocky9", "ubuntu_lts", "ubuntu_26", "debian_latest", "windows_server_2019", "windows_server_2022",
+export const OS_KEYS = ["rocky9", "ubuntu_lts", "ubuntu_26", "debian_latest", "windows_server_2019", "windows_server_2022",
   "windows_server_2025", "windows_11", "windows_10"];
 const CATS = [{ key: "isos", label: "ISOs" }, { key: "installers", label: "Installers" }, { key: "files", label: "Other files" }];
 
-const size = (n: number) => n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${(n / 2 ** 20).toFixed(1)} MB`
+export const size = (n: number) => n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${(n / 2 ** 20).toFixed(1)} MB`
   : `${Math.ceil(n / 1024)} KB`;
 
 function Uploader({ category, onDone }: { category: string; onDone: () => void }) {
@@ -81,53 +81,8 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
   );
 }
 
-function FileEditor({ file, onClose }: { file: StoredFile; onClose: (changed: boolean) => void }) {
-  const [form, setForm] = useState({ description: file.description, notes: file.notes, os_key: file.os_key, is_default: file.is_default });
-  const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
-  const save = async () => {
-    try {
-      await api.put(`/api/files/${file.id}`, form);
-      onClose(true);
-    } catch (e) {
-      setErrs(fromApiError(e));
-    }
-  };
-  return (
-    <Dialog open onClose={() => onClose(false)} maxWidth="sm" fullWidth>
-      <DialogTitle>{file.name}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          <ErrorSummary summary={errs.summary} fields={errs.fields} />
-          {file.category === "isos" && (
-            <Stack direction="row" spacing={2} sx={{ alignItems: "flex-start" }}>
-              <Field select label="Installs OS" value={form.os_key} sx={{ minWidth: 220 }} error={errs.fields.os_key}
-                onChange={(e) => setForm({ ...form, os_key: e.target.value })} help="Which OS key builds from this ISO">
-                <MenuItem value="">(none)</MenuItem>
-                {OS_KEYS.map((k) => <MenuItem key={k} value={k}>{k}</MenuItem>)}
-              </Field>
-              <FormControlLabel label="Default for this OS" control={<Checkbox checked={form.is_default}
-                onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />} />
-            </Stack>
-          )}
-          <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <Field label="Notes" value={form.notes} fullWidth multiline minRows={3} help="Quirks, after-tasks, licensing"
-            onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <Typography variant="caption" color="text.secondary">
-            {file.path} · {size(file.size)} · SHA-256 {file.sha256 || "computing…"}
-          </Typography>
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => onClose(false)}>Cancel</Button>
-        <Button variant="contained" onClick={save}>Save</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
 function FileTable({ category, canManage }: { category: string; canManage: boolean }) {
   const [files, setFiles] = useState<StoredFile[]>([]);
-  const [editing, setEditing] = useState<StoredFile | null>(null);
   const [error, setError] = useState("");
   const load = () => api.get<StoredFile[]>(`/api/files?category=${category}`).then(setFiles, (e) => setError(e.message));
   useEffect(() => { load(); }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -152,7 +107,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
           {files.map((f) => (
             <TableRow key={f.id}>
               <TableCell>
-                {f.name}
+                <Link component={RouterLink} to={`/files/${f.id}`}>{f.name}</Link>
                 {f.notes && <Tooltip title={<Box sx={{ whiteSpace: "pre-wrap" }}>{f.notes}</Box>}><NotesIcon fontSize="small" sx={{ ml: 0.5, verticalAlign: "middle" }} /></Tooltip>}
               </TableCell>
               {category === "isos" && (
@@ -165,7 +120,6 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
               <TableCell>{f.description}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>{f.uploaded_by ? `${f.uploaded_by}, ${fmtTime(f.uploaded_at)}` : `found ${fmtTime(f.mtime)}`}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
-                {canManage && <Button size="small" onClick={() => setEditing(f)}>Edit</Button>}
                 {canManage && <Button size="small" color="error" onClick={() => remove(f)}>Delete</Button>}
               </TableCell>
             </TableRow>
@@ -173,47 +127,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
           {files.length === 0 && <TableRow><TableCell colSpan={7}>No files here yet.</TableCell></TableRow>}
         </TableBody>
       </Table>
-      {editing && <FileEditor file={editing} onClose={(changed) => { setEditing(null); if (changed) load(); }} />}
     </Stack>
-  );
-}
-
-function TemplateEditor({ t, onClose }: { t: Template; onClose: (changed: boolean) => void }) {
-  const [form, setForm] = useState({ description: t.description, notes: t.notes, os_key: t.os_key, edition: t.edition,
-    min_cpu: t.min_cpu, min_memory_mb: t.min_memory_mb });
-  const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
-  const save = async () => {
-    try { await api.put(`/api/templates/${t.id}`, form); onClose(true); } catch (e) { setErrs(fromApiError(e)); }
-  };
-  return (
-    <Dialog open onClose={() => onClose(false)} maxWidth="sm" fullWidth>
-      <DialogTitle>{t.name}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          <ErrorSummary summary={errs.summary} fields={errs.fields} />
-          <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-            <Field select label="OS" value={form.os_key} sx={{ minWidth: 200 }} error={errs.fields.os_key}
-              onChange={(e) => setForm({ ...form, os_key: e.target.value })}>
-              {OS_KEYS.map((k) => <MenuItem key={k} value={k}>{k}</MenuItem>)}
-            </Field>
-            <Field select label="Edition" value={form.edition} sx={{ minWidth: 140 }} onChange={(e) => setForm({ ...form, edition: e.target.value })}>
-              <MenuItem value="">(n/a)</MenuItem><MenuItem value="desktop">Desktop</MenuItem><MenuItem value="core">Core</MenuItem>
-            </Field>
-            <Field label="Min vCPUs" type="number" value={form.min_cpu} sx={{ width: 110 }} error={errs.fields.min_cpu}
-              onChange={(e) => setForm({ ...form, min_cpu: Number(e.target.value) })} />
-            <Field label="Min memory (MB)" type="number" value={form.min_memory_mb} sx={{ width: 150 }} error={errs.fields.min_memory_mb}
-              onChange={(e) => setForm({ ...form, min_memory_mb: Number(e.target.value) })} />
-          </Stack>
-          <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <Field label="Notes" value={form.notes} fullWidth multiline minRows={4} help="Quirks and after-tasks for anyone using this template"
-            onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => onClose(false)}>Cancel</Button>
-        <Button variant="contained" onClick={save}>Save</Button>
-      </DialogActions>
-    </Dialog>
   );
 }
 
@@ -246,7 +160,6 @@ function JobDialog({ title, fields, submit, onClose }: {
 function Templates({ canEdit }: { canEdit: boolean }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [hosts, setHosts] = useState<KvmHost[]>([]);
-  const [editing, setEditing] = useState<Template | null>(null);
   const [refreshing, setRefreshing] = useState<Template | null>(null);
   const [newName, setNewName] = useState("");
   const [building, setBuilding] = useState(false);
@@ -260,9 +173,10 @@ function Templates({ canEdit }: { canEdit: boolean }) {
   return (
     <Stack spacing={2}>
       {canEdit && (
-        <Box>
+        <Stack direction="row">
+          <Box sx={{ flexGrow: 1 }} />
           <Button variant="contained" onClick={() => setBuilding(true)}>Build a template</Button>
-        </Box>
+        </Stack>
       )}
       <Table size="small">
         <TableHead>
@@ -275,7 +189,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
           {templates.map((t) => (
             <TableRow key={t.id}>
               <TableCell>
-                {t.name}
+                <Link component={RouterLink} to={`/templates/${t.id}`}>{t.name}</Link>
                 {t.notes && <Tooltip title={<Box sx={{ whiteSpace: "pre-wrap" }}>{t.notes}</Box>}><NotesIcon fontSize="small" sx={{ ml: 0.5, verticalAlign: "middle" }} /></Tooltip>}
                 {t.source === "inferred" && <Chip size="small" label="inferred" sx={{ ml: 1 }} />}
               </TableCell>
@@ -285,14 +199,12 @@ function Templates({ canEdit }: { canEdit: boolean }) {
               <TableCell sx={{ whiteSpace: "nowrap" }}>{t.min_cpu} vCPU · {t.min_memory_mb} MB</TableCell>
               <TableCell>{t.description}</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
-                {canEdit && <Button size="small" onClick={() => setEditing(t)}>Edit</Button>}
                 {canEdit && <Button size="small" onClick={() => { setRefreshing(t); setNewName(`${t.name}.1`); }}>Refresh</Button>}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-      {editing && <TemplateEditor t={editing} onClose={(c) => { setEditing(null); if (c) load(); }} />}
       {refreshing && (
         <JobDialog title={`Refresh ${refreshing.name}`} onClose={() => setRefreshing(null)}
           submit={() => api.post(`/api/templates/${refreshing.id}/refresh`, { new_name: newName, addressing: "dhcp" })}
@@ -334,7 +246,9 @@ function Templates({ canEdit }: { canEdit: boolean }) {
 
 export default function Files() {
   const { me } = useAuth();
-  const [tab, setTab] = useState("isos");
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") ?? "isos";
+  const setTab = (t: string) => setParams({ tab: t }, { replace: true });
   const canManage = hasRole(me, "file_manager");
   const canEditTemplates = hasRole(me, "template_editor");
   return (

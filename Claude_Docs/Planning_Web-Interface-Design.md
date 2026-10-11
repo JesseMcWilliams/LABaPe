@@ -798,7 +798,7 @@ As built:
 | UI | The landing page `/` (the app name in the top bar links to it), refreshed every minute. KVM host cards have meters and 24-hour sparklines, built from ten-minute buckets. The environments table expands to each VM. The admin panel shows the version banner (with Check now), sign-in, secrets and notifications. |
 | Verified | Live on the lab host: host CPU, RAM, free space and disk activity. Test environment `agent1` (Rocky 9, Debian 13 and Windows Server 2022 clones) had the agent channel on every VM. All three reported responding, with guest free space (Windows: 40.8 of 60 GB free), CPU and disk rates. lab2's older VMs show unknown with allocation. The health panel showed OIDC, break-glass, the directory token, the built-in store and the vault all ok. A developer saw the host and lab2, and a viewer saw nothing and was refused the admin panel. pytest: 47. |
 
-### 22.2 Batch H: list pages and branding
+### 22.2 Batch H: list pages and branding (built)
 
 - Hosts, Networks, and the other admin lists (catalog items, templates)
   follow the Environments pattern:
@@ -808,6 +808,16 @@ As built:
   - Non-admins see Hosts and Networks read-only, limited to what they may use (question 67).
 - The app name ("LABaPe") becomes a setting (Settings → Branding). It is
   used in the top bar, the browser title and emails. A logo comes later (question 68).
+
+As built:
+
+| Area | As built |
+|---|---|
+| Pattern | `components/PageParts.tsx`: `ListHeader` (title, intro, Add at the top right for those who may add), `DetailHeader` (back link, title, actions such as Delete, Publish, Retire) and `Facts` (read-only rows). Lists link each name to its page, and the edit dialogs are gone. |
+| Pages | Hosts → `/hosts/:id` (settings, the networks it carries, load; `/hosts/new` registers). Networks → `/networks/:id` (`/networks/new`). Catalog items → `/catalog/:id` (`/catalog/new?kind=`). Files → `/files/:id`. Templates → `/templates/:id`. The Catalog and Files tabs live in the URL (`?tab=`), so Back returns to the same tab. |
+| Who sees what | Hosts and Networks are in everyone's top bar. `permissions.visible_hosts`: admins see all hosts, deployers and template editors the enabled ones, and others only the hosts of their environments. The dashboard uses the same rule. Networks keep the existing may-use rule. Non-admins get the read-only `Facts` view, plus the networks they may use on a host. New `GET` endpoints for one host, network, catalog item, template and file apply the same rules; they're declared after the literal routes (`/export`, `/requests`, `/roots`). |
+| Branding | Settings section `branding` (`app_name`, 1-40 characters, no `<` or `>`). Public `GET /api/branding` so the sign-in page can show it. Used in the top bar (which links to the dashboard), the browser title, the sign-in heading, and the job and test email subjects. Help text that means the software itself still says LABaPe. |
+| Verified | Live on the lab host: the detail endpoints, admin, developer and viewer visibility (the viewer sees no hosts and gets 404 on host 1), a developer refused an edit, the branding round trip read publicly, and every new SPA route served. pytest: 50. |
 
 ### 22.3 Batch I: downloads from a URL, hash verification
 

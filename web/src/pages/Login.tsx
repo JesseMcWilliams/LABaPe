@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Paper, Stack, Typography } from "@mui/material";
 import { api, Provider } from "../api";
+import { useAuth } from "../App";
 
 export default function Login() {
+  const { appName } = useAuth();
   const [providers, setProviders] = useState<Provider[] | null>(null);
   const [error, setError] = useState("");
 
@@ -13,7 +15,7 @@ export default function Login() {
   return (
     <Paper sx={{ maxWidth: 420, mx: "auto", mt: 8, p: 4 }}>
       <Stack spacing={2}>
-        <Typography variant="h5">Sign in to LABaPe</Typography>
+        <Typography variant="h5">Sign in to {appName}</Typography>
         {error && <Alert severity="error">{error}</Alert>}
         {providers?.length === 0 && (
           <Alert severity="info">

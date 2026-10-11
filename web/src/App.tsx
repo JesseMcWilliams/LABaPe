@@ -17,14 +17,21 @@ import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Files from "./pages/Files";
 import Catalog from "./pages/Catalog";
+import CatalogItemPage from "./pages/CatalogItem";
+import HostDetail from "./pages/HostDetail";
+import NetworkDetail from "./pages/NetworkDetail";
+import FileDetail from "./pages/FileDetail";
+import TemplateDetail from "./pages/TemplateDetail";
 import UserMenu from "./components/UserMenu";
 
 interface AuthState {
   me: Me | null;
   refresh: () => Promise<void>;
+  appName: string;                       // Settings > Branding (design §22.2)
+  setAppName: (name: string) => void;
 }
 
-const AuthContext = createContext<AuthState>({ me: null, refresh: async () => {} });
+const AuthContext = createContext<AuthState>({ me: null, refresh: async () => {}, appName: "LABaPe", setAppName: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
 export const hasRole = (me: Me | null, ...roles: string[]) =>
@@ -33,6 +40,7 @@ export const hasRole = (me: Me | null, ...roles: string[]) =>
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
+  const [appName, setAppName] = useState("LABaPe");
   const location = useLocation();
   // After Reload rights the callback lands on /?reload=done (or signin-needed).
   const [reloadNotice, setReloadNotice] = useState(() => new URLSearchParams(window.location.search).get("reload"));
@@ -50,7 +58,11 @@ export default function App() {
 
   useEffect(() => {
     refresh();
+    api.get<{ app_name: string }>("/api/branding").then((b) => setAppName(b.app_name), () => undefined);
   }, [refresh]);
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
 
   if (loading) {
     return (
@@ -71,13 +83,13 @@ export default function App() {
   };
 
   return (
-    <AuthContext.Provider value={{ me, refresh }}>
+    <AuthContext.Provider value={{ me, refresh, appName, setAppName }}>
       {me && (
         <AppBar position="static">
           <Toolbar sx={{ gap: 1 }}>
             <Typography variant="h6" component={RouterLink} to="/" title="Dashboard"
               sx={{ mr: 2, color: "inherit", textDecoration: "none" }}>
-              LABaPe
+              {appName}
             </Typography>
             <Button color="inherit" component={RouterLink} to="/environments">
               Environments
@@ -91,14 +103,14 @@ export default function App() {
             <Button color="inherit" component={RouterLink} to="/catalog">
               Catalog
             </Button>
+            <Button color="inherit" component={RouterLink} to="/hosts">
+              Hosts
+            </Button>
+            <Button color="inherit" component={RouterLink} to="/networks">
+              Networks
+            </Button>
             {hasRole(me, "admin") && (
               <>
-                <Button color="inherit" component={RouterLink} to="/hosts">
-                  Hosts
-                </Button>
-                <Button color="inherit" component={RouterLink} to="/networks">
-                  Networks
-                </Button>
                 <Button color="inherit" component={RouterLink} to="/audit">
                   Audit
                 </Button>
@@ -139,12 +151,17 @@ export default function App() {
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/hosts" element={<Hosts />} />
+          <Route path="/hosts/:id" element={<HostDetail />} />
           <Route path="/networks" element={<Networks />} />
+          <Route path="/networks/:id" element={<NetworkDetail />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/errors" element={<Errors />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/files" element={<Files />} />
+          <Route path="/files/:id" element={<FileDetail />} />
+          <Route path="/templates/:id" element={<TemplateDetail />} />
           <Route path="/catalog" element={<Catalog />} />
+          <Route path="/catalog/:id" element={<CatalogItemPage />} />
           <Route path="*" element={<Typography>Not found.</Typography>} />
         </Routes>
       </Container>

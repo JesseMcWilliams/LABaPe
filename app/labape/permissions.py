@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .models import Grant
+from .models import Environment, Grant, KvmHost
 from .security import Principal
 
 
@@ -40,3 +40,18 @@ def visible_ids(db: Session, p: Principal, object_type: str) -> set[int] | None:
 def add_owner(db: Session, object_type: str, object_id: int, username: str) -> None:
     db.add(Grant(object_type=object_type, object_id=object_id, principal_type="user", principal=username, level="owner"))
     db.commit()
+
+
+def visible_hosts(db: Session, p: Principal) -> list[KvmHost]:
+    """KVM hosts a user may see (design §22.2): admins all, deployers and
+    template editors the enabled ones, everyone else only the hosts of the
+    environments they can see."""
+    hosts = list(db.scalars(select(KvmHost).order_by(KvmHost.name)))
+    if p.is_admin:
+        return hosts
+    if p.has_role("deployer", "template_editor"):
+        return [h for h in hosts if h.enabled]
+    ids = visible_ids(db, p, "environment") or set()
+    used = set(db.scalars(select(Environment.kvm_host_id).where(Environment.id.in_(ids or {-1}),
+                                                                Environment.status != "destroyed")))
+    return [h for h in hosts if h.id in used]

@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, jobs.router,
               admin.router, reports.router, files.router, catalog.router, settings.router, directory.router,
-              dashboard.router):
+              dashboard.router, settings.public_router):
         app.include_router(r)
 
     @app.get("/api/health")

@@ -7,7 +7,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { api, HostNetwork, KvmHost, Network } from "../api";
 
 // Which catalog networks a KVM host carries, on which bridge (design §20.2).
-export default function HostNetworks({ host, onClose }: { host: KvmHost; onClose: () => void }) {
+export default function HostNetworks({ host, onClose }: { host: KvmHost; onClose?: () => void }) {
   const [rows, setRows] = useState<HostNetwork[]>([]);
   const [catalog, setCatalog] = useState<Network[]>([]);
   const [error, setError] = useState("");
@@ -82,7 +82,7 @@ export default function HostNetworks({ host, onClose }: { host: KvmHost; onClose
             {unused.map((n) => <MenuItem key={n.id} value={n.name}>{n.name} ({n.cidr})</MenuItem>)}
           </TextField>
           <Button variant="contained" onClick={save}>Save</Button>
-          <Button onClick={onClose}>Close</Button>
+          {onClose && <Button onClick={onClose}>Close</Button>}
         </Stack>
       </Stack>
     </Paper>

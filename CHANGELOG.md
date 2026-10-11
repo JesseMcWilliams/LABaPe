@@ -7,6 +7,16 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Changed
+- Hosts, Networks, catalog items, files and templates follow the
+  Environments pattern: a list with Add at the top right, and each name
+  opening the entry's own page, where editing happens. Non-admins see
+  Hosts and Networks read-only, limited to what they can use.
+
+### Added
+- Settings > Branding: rename the app (top bar, browser title, sign-in
+  page, emails). The app name links to the dashboard.
+
 ## [0.2.0] - 2026-10-11
 
 This is the first tagged release. It covers everything built so far.

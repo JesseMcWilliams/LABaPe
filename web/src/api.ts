@@ -67,6 +67,7 @@ export interface Template {
   description: string;
   notes: string;
   source: string;
+  updated_at: string;
 }
 
 export interface CredentialSection {
