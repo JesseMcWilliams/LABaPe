@@ -77,7 +77,7 @@ services:
       - "${LABAPE_CA_PORT:-9444}:9000"
     volumes:
       - labape-ca:/home/step
-      - ./ca/init.sh:/labape/init.sh:ro
+      - ./ca:/labape:ro          # init.sh, and repass.sh for the agent's password rotation
     healthcheck:
       test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000", "--root", "/home/step/certs/root_ca.crt"]
       interval: 10s

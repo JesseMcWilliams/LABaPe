@@ -86,6 +86,76 @@ def sign(csr_pem: str, hours: int = LEAF_HOURS) -> str:
         return crt.read_text(encoding="ascii")
 
 
+# --- the signing provisioner's key (phase R3) --------------------------------
+# step-ca stores labape-runner's private JWK as a compact JWE encrypted with
+# the CA password (PBES2-HS256+A128KW, A256GCM). `step crypto jwe encrypt`
+# only prompts for a password, so the agent's rotation does it here.
+
+def _b64d(s: str) -> bytes:
+    import base64
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def _b64e(b: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _pbes2_kek(header: dict, password: bytes) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    if header.get("alg") != "PBES2-HS256+A128KW":
+        raise CaError(f"unexpected key-encryption algorithm {header.get('alg')}")
+    salt = header["alg"].encode() + b"\x00" + _b64d(header["p2s"])
+    return PBKDF2HMAC(hashes.SHA256(), 16, salt, int(header["p2c"])).derive(password)
+
+
+def jwe_decrypt(token: str, password: bytes) -> bytes:
+    import json
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
+    protected, ek, iv, ct, tag = token.split(".")
+    header = json.loads(_b64d(protected))
+    if header.get("enc") != "A256GCM":
+        raise CaError(f"unexpected content encryption {header.get('enc')}")
+    cek = aes_key_unwrap(_pbes2_kek(header, password), _b64d(ek))
+    return AESGCM(cek).decrypt(_b64d(iv), _b64d(ct) + _b64d(tag), protected.encode())
+
+
+def jwe_encrypt(plaintext: bytes, password: bytes, template: dict) -> str:
+    import json
+    import os as _os
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.keywrap import aes_key_wrap
+    header = {k: v for k, v in template.items() if k not in ("p2s",)}
+    header.update(alg="PBES2-HS256+A128KW", enc="A256GCM", p2s=_b64e(_os.urandom(16)),
+                  p2c=int(template.get("p2c", 600000)))
+    protected = _b64e(json.dumps(header, separators=(",", ":")).encode())
+    cek, iv = _os.urandom(32), _os.urandom(12)
+    ek = aes_key_wrap(_pbes2_kek(header, password), cek)
+    sealed = AESGCM(cek).encrypt(iv, plaintext, protected.encode())
+    return ".".join((protected, _b64e(ek), _b64e(iv), _b64e(sealed[:-16]), _b64e(sealed[-16:])))
+
+
+def repass_provisioner(config: str, old_password: bytes, new_password: bytes) -> None:
+    """Re-encrypt labape-runner's key in ca.json with the new CA password."""
+    import json
+    from pathlib import Path as _P
+    path = _P(config)
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    prov = next(p for p in cfg["authority"]["provisioners"] if p.get("name") == PROVISIONER)
+    token = prov["encryptedKey"]
+    jwk = jwe_decrypt(token, old_password)
+    header = json.loads(_b64d(token.split(".")[0]))
+    new_token = jwe_encrypt(jwk, new_password, header)
+    if jwe_decrypt(new_token, new_password) != jwk:
+        raise CaError("the re-encrypted key didn't read back")
+    prov["encryptedKey"] = new_token
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent="\t"), encoding="utf-8")
+    tmp.replace(path)
+
+
 def health() -> tuple[bool | None, str]:
     s = get_settings()
     if not s.ca_url:

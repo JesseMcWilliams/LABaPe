@@ -55,9 +55,10 @@ def busy() -> bool:
     return status().get("state") == "running" or status()["pending"]
 
 
-def write_request(action: str, target: str, actor: str) -> dict:
-    req = {"action": action, "target": target, "requested_by": actor,
-           "requested_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+def write_request(action: str, target: str, actor: str, **extra) -> dict:
+    import uuid
+    req = {"id": uuid.uuid4().hex, "action": action, "target": target, "requested_by": actor,
+           "requested_at": dt.datetime.now(dt.timezone.utc).isoformat(), **extra}
     d = folder()
     d.mkdir(parents=True, exist_ok=True)
     tmp = d / ".request.json.tmp"

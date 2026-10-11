@@ -1464,3 +1464,23 @@ Rotating the directory token got 403 from `POST
 What worked: `deploy.sh` runs `role.assign_perms([...view_token, add_token,
 set_token_key], obj=token)` in `ak shell`, on the directory token only.
 The failed rotation in between kept the old token, as designed.
+
+### Secret rotation R3 bring-up (2026-10-11)
+
+- **`step crypto jwe encrypt` has no `--password-file`.** It only prompts.
+  `step ca provisioner update --private-key ... --password-file` didn't
+  re-encrypt the provisioner key with the new password either; the script's
+  own check caught that before the real `ca.json` was touched. The
+  provisioner key (a PBES2-HS256+A128KW / A256GCM compact JWE) is now
+  re-encrypted by `labape ca-repass` with `cryptography`, cross-checked
+  against the step CLI in both directions.
+- **Dry runs of `step ca provisioner update` need `defaults.json`**; without
+  it the CLI asks for `--ca-url`.
+- **A stale data-key cache.** `_data_keys` was keyed by id alone. In the test
+  suite (tables recreated, ids reused) a new key with an old id encrypted
+  with the stale key, and the value then didn't decrypt. It's now keyed by id
+  and wrapped value.
+- **Heredoc escapes again.** `b"\x00"` written through a shell heredoc
+  became a real NUL byte in `ca.py` ("source code string cannot contain null
+  bytes"). It was fixed with a script file. The rule stands: Python edits go
+  through files or the Edit tool.

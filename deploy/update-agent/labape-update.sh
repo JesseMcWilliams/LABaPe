@@ -11,6 +11,10 @@
 #   maintenance off. Failing health checks roll back automatically.
 # rollback: back to the version on standby (one step only), restoring the
 #   pre-update backup when the database layout changed.
+# rotate <master_key|postgres_password|ca_password>: secrets whose files the
+#   containers only read (design §24, phase R3): maintenance on -> new value ->
+#   apply -> recreate the containers using it -> health checks (the CA check
+#   signs a test request) -> maintenance off; everything put back on failure.
 set -uo pipefail
 
 REPO="${LABAPE_REPO:-$HOME/LABaPe-web}"
@@ -33,15 +37,16 @@ field() { python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get(sy
 ACTION="$(field "$U/processing.json" action)"
 TARGET="$(field "$U/processing.json" target)"
 BY="$(field "$U/processing.json" requested_by)"
+REQ_ID="$(field "$U/processing.json" id)"
 STARTED="$(date -u +%FT%TZ)"
 FROM_VER="$(git -C "$REPO" describe --tags --always 2>/dev/null)"
 
 # status <state> <step> <message> [to]
 status() {
-  python3 - "$U/status.json" "$1" "$2" "$3" "${4:-$TARGET}" "$FROM_VER" "$STARTED" "$BY" "$ACTION" <<'PY'
+  python3 - "$U/status.json" "$1" "$2" "$3" "${4:-$TARGET}" "$FROM_VER" "$STARTED" "$BY" "$ACTION" "$REQ_ID" <<'PY'
 import datetime, json, os, sys
-path, state, step, message, to, frm, started, by, action = sys.argv[1:10]
-s = {"state": state, "step": step, "message": message, "action": action, "from": frm, "to": to,
+path, state, step, message, to, frm, started, by, action, req_id = sys.argv[1:11]
+s = {"id": req_id, "state": state, "step": step, "message": message, "action": action, "from": frm, "to": to,
      "requested_by": by, "started_at": started,
      "finished_at": None if state == "running" else datetime.datetime.now(datetime.timezone.utc).isoformat()}
 tmp = path + ".tmp"
@@ -99,6 +104,87 @@ rollback() {   # rollback <why> <final state>
 
 fail() { labape maintenance off --source update >/dev/null 2>&1 || true; status failed "$1" "$2"; finish; exit 1; }
 
+drain() {   # wait for running jobs (maintenance is on)
+  local deadline=$((SECONDS + DRAIN_SECONDS)) running
+  while :; do
+    running="$(labape maintenance status | python3 -c 'import json,sys; print(json.load(sys.stdin)["running_jobs"])')"
+    [ "$running" = 0 ] && return 0
+    [ $SECONDS -lt $deadline ] || fail maintenance "$running job(s) still running after ${DRAIN_SECONDS}s"
+    sleep 15
+  done
+}
+
+# --- rotate (phase R3) -----------------------------------------------------------
+S="$C/secrets"
+recreate() { (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate "$@"); }   # new secret files need new mounts
+tool() { (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$S:/hs:ro" labape-worker labape "$@"); }
+pg_password() { printf "ALTER ROLE labape WITH PASSWORD '%s';\n" "$1" \
+  | (cd "$C" && "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -q -U labape -d labape); }
+ca_exec() { (cd "$C" && "${COMPOSE[@]}" exec -T labape-ca "$@"); }
+CA_VOLUME="${COMPOSE_PROJECT_NAME:-labape}_labape-ca"
+ca_tool() { (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$S:/hs:ro" -v "$CA_VOLUME:/home/step" labape-worker labape "$@"); }
+
+rotate() {
+  local kind="$1" new old f
+  case "$kind" in master_key|postgres_password|ca_password) ;; *) fail checking "unknown secret $kind" ;; esac
+  status running maintenance "rotating $kind: maintenance on, waiting for running jobs" "$kind"
+  labape maintenance on --reason "rotating $kind (restarts services)" --source rotation >/dev/null \
+    || fail maintenance "couldn't turn maintenance mode on"
+  drain
+  new="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  status running applying "applying a new $kind" "$kind"
+  case "$kind" in
+    master_key)
+      (umask 022; printf '%s\n' "$new" > "$S/secret_key.new")
+      tool rewrap-master --from /hs/secret_key --to /hs/secret_key.new || { rm -f "$S/secret_key.new"; fail applying "re-wrapping the data keys failed; nothing changed"; }
+      cp -p "$S/secret_key" "$S/secret_key.old" && mv "$S/secret_key.new" "$S/secret_key"
+      recreate labape-api labape-worker
+      if wait_healthy 120; then rm -f "$S/secret_key.old"; else
+        cp -p "$S/secret_key" "$S/secret_key.new"; mv "$S/secret_key.old" "$S/secret_key"
+        tool rewrap-master --from /hs/secret_key.new --to /hs/secret_key; rm -f "$S/secret_key.new"
+        recreate labape-api labape-worker; wait_healthy 120 || true
+        fail health "the new master key failed the health checks; the old one is back"
+      fi ;;
+    postgres_password)
+      old="$(tr -d '\n' < "$S/postgres_password")"
+      pg_password "$new" || fail applying "ALTER ROLE failed; nothing changed"
+      for f in postgres_password database_url tofu_pg_conn; do cp -p "$S/$f" "$S/$f.old"; sed -i "s|$old|$new|" "$S/$f"; done
+      recreate labape-api labape-worker
+      if wait_healthy 120; then for f in postgres_password database_url tofu_pg_conn; do rm -f "$S/$f.old"; done; else
+        pg_password "$old"; for f in postgres_password database_url tofu_pg_conn; do mv "$S/$f.old" "$S/$f"; done
+        recreate labape-api labape-worker; wait_healthy 120 || true
+        fail health "the new database password failed the health checks; the old one is back"
+      fi ;;
+    ca_password)
+      printf '%s' "$new" | ca_exec sh -c 'umask 077; cat > /home/step/.pw.new'
+      ca_exec bash /labape/repass.sh /run/secrets/ca_password /home/step/.pw.new \
+        || { ca_exec rm -f /home/step/.pw.new; fail applying "re-encrypting the CA keys failed; nothing changed"; }
+      ca_tool ca-repass --config /home/step/config/ca.json --old /hs/ca_password --new /home/step/.pw.new || {
+        ca_exec bash /labape/repass.sh /home/step/.pw.new /run/secrets/ca_password; ca_exec rm -f /home/step/.pw.new
+        fail applying "re-encrypting the signing provisioner failed; the CA keys were put back"; }
+      cp -p "$S/ca_password" "$S/ca_password.old"; (umask 022; printf '%s\n' "$new" > "$S/ca_password.tmp"); mv "$S/ca_password.tmp" "$S/ca_password"
+      recreate labape-ca labape-api labape-worker
+      sleep 10
+      if wait_healthy 150; then ca_exec rm -f /home/step/.pw.new; rm -f "$S/ca_password.old"; else
+        tr -d '\n' < "$S/ca_password.old" | ca_exec sh -c 'umask 077; cat > /home/step/.pw.old'
+        ca_exec bash /labape/repass.sh /run/secrets/ca_password /home/step/.pw.old
+        ca_tool ca-repass --config /home/step/config/ca.json --old /hs/ca_password --new /home/step/.pw.old
+        ca_exec rm -f /home/step/.pw.new /home/step/.pw.old
+        mv "$S/ca_password.old" "$S/ca_password"
+        recreate labape-ca labape-api labape-worker; wait_healthy 150 || true
+        fail health "the new CA password failed the health checks; the old one is back"
+      fi ;;
+  esac
+  labape maintenance off --source rotation >/dev/null 2>&1 || true
+  status succeeded done "rotated $kind" "$kind"
+  finish
+}
+
+if [ "$ACTION" = rotate ]; then
+  rotate "$TARGET"
+  exit 0
+fi
+
 if [ "$ACTION" = rollback ]; then
   rollback "rollback requested by $BY" succeeded
   exit 0
@@ -115,13 +201,7 @@ git -C "$REPO" -c gpg.ssh.allowedSignersFile="$SIGNERS" verify-tag "$TARGET" \
 
 status running maintenance "maintenance on; waiting for running jobs"
 labape maintenance on --reason "updating from $FROM_VER to $TARGET" --source update >/dev/null || fail maintenance "couldn't turn maintenance mode on"
-deadline=$((SECONDS + DRAIN_SECONDS))
-while :; do
-  running="$(labape maintenance status | python3 -c 'import json,sys; print(json.load(sys.stdin)["running_jobs"])')"
-  [ "$running" = 0 ] && break
-  [ $SECONDS -lt $deadline ] || fail maintenance "$running job(s) still running after ${DRAIN_SECONDS}s; not updating"
-  sleep 15
-done
+drain
 
 status running backup "backing up the database"
 backup="$(labape backup --label "pre-update-${FROM_VER//[^A-Za-z0-9.]/-}")" || fail backup "the database backup failed"

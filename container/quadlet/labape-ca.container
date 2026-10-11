@@ -11,7 +11,7 @@ Entrypoint=/bin/bash
 Exec=/labape/init.sh
 PublishPort=9444:9000
 Volume=labape-ca.volume:/home/step
-Volume=/etc/labape/ca-init.sh:/labape/init.sh:ro,z
+Volume=/etc/labape/ca:/labape:ro,z
 Secret=labape-ca-password,target=/run/secrets/ca_password
 
 [Service]

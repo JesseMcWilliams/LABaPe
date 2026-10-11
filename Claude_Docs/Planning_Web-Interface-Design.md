@@ -968,7 +968,7 @@ As built:
 | UI | The banner on every page shows the reason, who started it, the expected end (or "overdue") and the jobs still running, plus a scheduled-maintenance notice and the window heads-up. Every action that confirms is disabled, with the tooltip "Unavailable during maintenance", except sign-out, Reload rights, job cancel and turning maintenance off. Settings → Maintenance mode: turn on now or schedule, and turn off. |
 | Verified | Live on the lab host. With maintenance on, a developer's create was refused (503) while reads worked, health said `maintenance: true`, and an admin's Back up now was refused. A job queued directly in the database stayed queued for the whole maintenance, then ran and succeeded once it was turned off. pytest: 70. |
 
-## 24. Secret rotation (phase R1 built)
+## 24. Secret rotation (phases R1 and R3 built)
 
 Decisions: questions 81, 83, 84.
 
@@ -1009,3 +1009,16 @@ Decisions: questions 81, 83, 84.
 | UI | Top bar → Secrets: every secret with its class, store, interval, last and next rotation and status (a "restart" chip, and the reason on hover when failed), plus Add elevated account. Each secret's page shows how it rotates, the restart note, the last job, its settings and Rotate now (confirmed). |
 | Test Authentik | A `labape-rotator` service account and token. Authentik checks `POST /tokens/<id>/set_key/` as `add_token` on that token object; the `set_token_key` its docs name isn't checked in this version. The blueprint importer can't assign object permissions to a role, so `deploy.sh` grants them with `ak shell`, on the directory token only. Both tokens use `state: created`, so the blueprint never resets a rotated key. |
 | Verified | Live on the lab host. Migration `0002` upgraded the database. The directory token rotated through the elevated account: search worked with the new key, the old one got 403, the next rotation is in 7 days. The data key rotated: all 19 secrets read back and the store self-test passed. The worker key rotated. The first attempt failed with Authentik's 403, and the old token stayed in use, as designed. pytest: 75. |
+
+### 24.2 Phase R3 as built: secrets that need a restart
+
+| Area | As built |
+|---|---|
+| Who rotates | The master key, the PostgreSQL password and the CA password live in host files (`container/secrets/`) that the containers only read, so the **host's update agent** rotates them (`rotate <kind>`). The scheduler (in the maintenance window) or Rotate now writes an agent request carrying the policy and a request id, and marks the policy running. The worker isn't asked to wait as a job, because the agent restarts it. Each cycle, `reconcile_agent` matches the agent's `status.json` (which now echoes the request id) and records ok or failed (retrying an hour later). |
+| Agent steps | Maintenance on, wait for running jobs, make the new value, apply it, recreate the containers that read the file (`up -d --force-recreate`; a replaced file needs a new bind mount), health checks, maintenance off. A failure puts the old value back everywhere and recreates again. |
+| Master key | `labape rewrap-master --from --to`, in a one-off worker container with the secrets folder mounted, re-wraps every data key to the new master key in one transaction, and moves any value still encrypted with the master key itself onto a data key. Then the file is swapped and the API and worker recreated. Sessions are signed with the master key, so everyone signs in again (why it's weekly, in the window). On failure the data keys are re-wrapped back. |
+| PostgreSQL | `ALTER ROLE labape WITH PASSWORD` through `psql` on stdin (not on a command line). `postgres_password`, `database_url` and `tofu_pg_conn` are rewritten, then the API and worker recreated. On failure the old password is set again and the files restored. |
+| CA password | `container/ca/repass.sh` (the CA folder is now mounted whole at `/labape`) re-encrypts the root and intermediate keys with `step crypto change-pass`. `labape ca-repass` re-encrypts `labape-runner`'s key in `ca.json`. That key is a compact JWE (PBES2-HS256+A128KW, A256GCM), implemented with `cryptography`, because `step crypto jwe encrypt` only takes a password at a prompt; it's checked against the step CLI in both directions. It runs in a one-off container with the CA volume. Then the file is swapped and the CA, API and worker recreated. `labape health --deep` now **signs a test request**, so a wrong password fails the check. |
+| Verified | Live on the lab host, through Rotate now: the PostgreSQL password, then the master key, then the CA password, each with maintenance on and off again, a healthy stack, the secret store's self-test ok and directory search working. After the master key, all stored secrets still decrypted. After the CA password, the CA signed with the new one. No leftover files. pytest: 82. |
+| Also fixed | The store cached unwrapped data keys by id alone. A recreated table, or SQLite reusing a rowid, could then encrypt with a stale key. They're now cached by id and wrapped value. |
+

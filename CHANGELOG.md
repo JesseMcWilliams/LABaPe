@@ -17,6 +17,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Secret rotation (phase R3): the master key, the PostgreSQL password and
+  the CA password rotate through the host's update agent (weekly, in the
+  maintenance window, or with Rotate now), with health checks that
+  include a CA signing probe and full rollback on failure.
 - Updates from the web interface: Check now offers the newest release,
   a newer pre-release, or a rollback to the previous version, each with
   its notes. A host-side agent (user systemd unit) applies only signed
