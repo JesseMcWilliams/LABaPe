@@ -13,6 +13,7 @@ import Hosts from "./pages/Hosts";
 import Networks from "./pages/Networks";
 import Audit from "./pages/Audit";
 import Errors from "./pages/Errors";
+import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Files from "./pages/Files";
 import Catalog from "./pages/Catalog";
@@ -74,7 +75,8 @@ export default function App() {
       {me && (
         <AppBar position="static">
           <Toolbar sx={{ gap: 1 }}>
-            <Typography variant="h6" sx={{ mr: 2 }}>
+            <Typography variant="h6" component={RouterLink} to="/" title="Dashboard"
+              sx={{ mr: 2, color: "inherit", textDecoration: "none" }}>
               LABaPe
             </Typography>
             <Button color="inherit" component={RouterLink} to="/environments">
@@ -130,7 +132,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={me ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/breakglass" element={<Breakglass />} />
-          <Route path="/" element={<Navigate to="/environments" replace />} />
+          <Route path="/" element={<Dashboard />} />
           <Route path="/environments" element={<Environments />} />
           <Route path="/environments/new" element={<EnvironmentNew />} />
           <Route path="/environments/:id" element={<EnvironmentDetail />} />

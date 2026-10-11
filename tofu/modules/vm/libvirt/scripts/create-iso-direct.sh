@@ -2,6 +2,10 @@
 # Invoked by tofu/modules/vm/libvirt/main.tf's local-exec provisioner.
 # Not meant to be run by hand — see Claude_Docs/Design_Base-Images.md §4 for the
 # design this implements.
+#
+# Every VM gets a qemu-guest-agent channel (org.qemu.guest_agent.0) so the
+# web dashboard can read guest free space and check the agent responds
+# (Claude_Docs/Planning_Web-Interface-Design.md §22.1); Ansible installs the agent.
 set -euo pipefail
 
 # shellcheck source=lib/safe-undefine.sh
@@ -60,6 +64,7 @@ linux)
     --initrd-inject "$ANSWER_FILE_PATH" \
     --extra-args "inst.ks=file:/${kickstart_basename} console=ttyS0" \
     --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
+    --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant detect=on,require=off \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
@@ -97,6 +102,7 @@ debian_preseed)
     --initrd-inject "$ANSWER_FILE_PATH" \
     --extra-args "auto=true priority=critical preseed/file=/${preseed_basename} console=ttyS0" \
     --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
+    --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant "$OS_VARIANT" \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
@@ -166,6 +172,7 @@ debian)
     --location "${ISO_HOST_PATH},kernel=casper/vmlinuz,initrd=casper/initrd" \
     --extra-args "autoinstall ds=nocloud console=ttyS0" \
     --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
+    --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant "$OS_VARIANT" \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
@@ -254,6 +261,7 @@ windows)
     --disk "path=${answer_iso},device=cdrom,bus=sata" \
     --cdrom "$ISO_HOST_PATH" \
     --network "bridge=${BRIDGE_DEVICE},model=e1000e${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
+    --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant "$OS_VARIANT" \
     --graphics vnc,listen=127.0.0.1 \
     --noautoconsole \

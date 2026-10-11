@@ -11,6 +11,7 @@ import platform
 import secrets
 import shutil
 import string
+import subprocess
 import tempfile
 import time
 import urllib.request
@@ -447,9 +448,20 @@ def stack_auth(c: Ctx):
     return DONE, f"OIDC issuer {c.a.need('OidcIssuer')}"
 
 
+def repo_version(repo: Path) -> str:
+    """`git describe --tags` of the checkout (e.g. v0.2.0-3-gabc1234), or "dev"."""
+    try:
+        out = subprocess.run(["git", "-C", str(repo), "describe", "--tags", "--always", "--dirty"],
+                             capture_output=True, text=True, timeout=15, check=False)
+    except OSError:
+        return "dev"
+    return out.stdout.strip() or "dev"
+
+
 def stack_build(c: Ctx):
-    c.r.run(c.compose + ["build"], cwd=c.repo / "container")
-    return DONE, "image built"
+    version = repo_version(c.repo)
+    c.r.run(c.compose + ["build", "--build-arg", f"LABAPE_VERSION={version}"], cwd=c.repo / "container")
+    return DONE, f"image built ({version})"
 
 
 def _wait_health(c: Ctx, seconds: int = 180) -> bool:

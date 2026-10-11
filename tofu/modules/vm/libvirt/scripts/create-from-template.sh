@@ -3,6 +3,10 @@
 # provisioner (image_source = "packer_template"). Not meant to be run by
 # hand — Claude_Docs/Design_Base-Images.md §5/§8 for the design.
 #
+# Every VM gets a qemu-guest-agent channel (org.qemu.guest_agent.0) so the
+# web dashboard can read guest free space and check the agent responds
+# (Claude_Docs/Planning_Web-Interface-Design.md §22.1); Ansible installs the agent.
+#
 # Creates the VM's disk as a qcow2 overlay whose read-only backing file is
 # the template (so the template is never written to, and many VMs share
 # it), attaches a small CD carrying the VM's first-boot identity, and
@@ -94,6 +98,7 @@ virt-install \
   --disk "path=${disk_path},size=${DISK_GB},format=qcow2,backing_store=${TEMPLATE_PATH},backing_format=qcow2,bus=${disk_bus}" \
   --disk "path=${seed_iso},device=cdrom,bus=sata" \
   --network "bridge=${BRIDGE_DEVICE},model=${nic_model},mac=${MAC_ADDRESS}" \
+  --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
   "${os_variant_args[@]}" \
   "${graphics[@]}" \
   --noautoconsole \

@@ -765,7 +765,7 @@ These come from the next round of feedback. The decisions are questions
 62-73 in `Claude_Docs/Planning_Questions.md`, all answered 2026-10-11.
 The batches are built in the order below.
 
-### 22.1 Batch G: dashboard
+### 22.1 Batch G: dashboard (built)
 
 - A **Dashboard** page becomes the landing page (`/`). Clicking the app
   name in the top left always opens it.
@@ -784,6 +784,19 @@ The batches are built in the order below.
   - guest free space and a "responding" check through qemu-guest-agent, which every image gets (question 62);
   - samples kept 24 hours, enough for a sparkline;
   - a daily release check (question 64).
+
+As built:
+
+| Area | As built |
+|---|---|
+| Sampling | Each minute the worker makes one `virsh domstats --raw` call for all domains, and runs `virsh guestinfo --filesystem` for each running VM (in parallel, 6 s timeout). It also reads `/proc/stat` and `/proc/diskstats` (the device holding the VM storage). Rates come from the difference against the previous sample, whose counters are kept in `host_stats.stats._counters`: CPU % per VM is CPU time over elapsed time and vCPUs. `metric_samples` keeps one row a minute for each host and VM, purged after 24 hours. |
+| VM fields | State (running or blocked counts as online), responding (the guest agent answered; unknown when the VM has no agent channel), CPU %, memory used (balloon driver stats; unknown on Windows), free space from inside the guest (each device counted once), disk file allocation and capacity, and disk read/write rates. |
+| Visibility | Environments: the existing grants (admins see all), excluding new and destroyed ones. KVM hosts: admins see all, deployers see the enabled hosts, and others see only the hosts of their environments. VMs are matched to environments by `instance_names`. |
+| Admin health | `/api/dashboard/admin`, cached 30 s to 10 min per check: each sign-in provider's `test_connection` and last sign-in, break-glass tokens, the directory token, the built-in secret store (encrypt/decrypt self-test plus decrypting one stored secret), the engine's Ansible vault (`ansible-vault view`, output discarded), SMTP (connect, EHLO, STARTTLS), syslog (TCP/TLS connect; for UDP, the API process's last send), and the last job email (`status.email`). |
+| Version | The image is built with `LABAPE_VERSION` = `git describe --tags --always --dirty` (`deploy/install-labape.py`, compose build arg). The worker asks GitHub's latest-release API for `JesseMcWilliams/LABaPe` daily (Settings section `updates`: on/off and repo), and admins can check now. `CHANGELOG.md` starts at v0.2.0. |
+| Guest agent | Every `virt-install` (the four ISO paths and template clones) adds the `org.qemu.guest_agent.0` channel. On KVM guests (`ansible_system_vendor == 'QEMU'`), `linux_common` installs and starts `qemu-guest-agent`. `windows_common` downloads the virtio-win guest tools 0.1.302 (pinned SHA-256) and installs them unless the `QEMU-GA` service exists. VMs created before this change have no channel: they show "unknown" and their disk file allocation instead. |
+| UI | The landing page `/` (the app name in the top bar links to it), refreshed every minute. KVM host cards have meters and 24-hour sparklines, built from ten-minute buckets. The environments table expands to each VM. The admin panel shows the version banner (with Check now), sign-in, secrets and notifications. |
+| Verified | Live on the lab host: host CPU, RAM, free space and disk activity. Test environment `agent1` (Rocky 9, Debian 13 and Windows Server 2022 clones) had the agent channel on every VM. All three reported responding, with guest free space (Windows: 40.8 of 60 GB free), CPU and disk rates. lab2's older VMs show unknown with allocation. The health panel showed OIDC, break-glass, the directory token, the built-in store and the vault all ok. A developer saw the host and lab2, and a viewer saw nothing and was refused the admin panel. pytest: 47. |
 
 ### 22.2 Batch H: list pages and branding
 

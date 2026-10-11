@@ -63,12 +63,19 @@ class DirectorySettings(BaseModel):
     verify_tls: bool = True
 
 
+class UpdateSettings(BaseModel):
+    """Daily check for a newer LABaPe release (question 64); off for air-gapped sites."""
+    check_enabled: bool = True
+    repo: str = Field(default="JesseMcWilliams/LABaPe", pattern=r"^[\w.-]+/[\w.-]+$")
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "retention": RetentionSettings,
     "syslog": SyslogSettings,
     "smtp": SmtpSettings,
     "directory": DirectorySettings,
+    "updates": UpdateSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

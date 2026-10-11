@@ -1,6 +1,6 @@
 [project]
 name = "labape"
-version = "0.1.0"
+version = "0.2.0"
 description = "LABaPe web application: UI, REST API and job runner for lab environments"
 requires-python = ">=3.11"
 dependencies = [

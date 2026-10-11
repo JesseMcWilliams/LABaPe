@@ -56,6 +56,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_Web-Interface-Design.md`: M10 design draft (components, data model, permissions, job runner, deployment, build phases 10a-10g).
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history, filed per milestone. Over the ~500-line guideline (636 lines) — left as one file since every entry is still actively linked; split fully-closed entries into an `Archive_Testing_...` file if it grows further.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** (None exist yet.)
+- `CHANGELOG.md` (root): release history, `[Unreleased]` at the top. Kept at the root (GitHub/tooling convention). A release is a `vX.Y.Z` tag plus a GitHub release; the image is stamped with `git describe --tags`, and the web dashboard compares it with the latest release.
 - `User_Docs/`: end-user setup guides (`Install-OpenTofu.md`, `Install-Ansible.md`, and WSL variants of each).
 - `Published_Docs/`: `.docx` deliverables for end users. None exist yet.
 - When you make a user-visible change, add one line for it to `Claude_Docs/Planning_User-Docs-Backlog.md` (create it if it doesn't exist yet).
