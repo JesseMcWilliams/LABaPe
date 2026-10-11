@@ -14,6 +14,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Platform CA (step-ca) in the stack: web-interface deploys give every
+  VM a certificate (key made on the VM, CSR signed through the API with
+  a per-job token, renewed daily by a timer or scheduled task) and the
+  LABaPe root in its trust store. The web interface can take its own
+  certificate from the CA over ACME (`LABAPE_CADDYFILE=Caddyfile.labape-ca`).
+  Root download and CA health on the dashboard.
 - Remote KVM hosts over SSH (`qemu+ssh://user@host/system`): jobs run
   on the host with its own toolchain (state through an SSH tunnel), host
   stats and the template library come over SSH, and the host page shows

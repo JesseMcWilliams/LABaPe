@@ -1,0 +1,3 @@
+# LABaPe named volume (Podman Quadlet): the platform CA's keys and configuration.
+[Volume]
+VolumeName=labape-ca

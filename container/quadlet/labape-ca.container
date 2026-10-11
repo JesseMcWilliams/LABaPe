@@ -1,0 +1,21 @@
+# LABaPe: platform CA (step-ca). See container/README.md "Podman and Quadlets".
+[Unit]
+Description=LABaPe platform CA
+
+[Container]
+ContainerName=labape-ca
+Image=docker.io/smallstep/step-ca:0.30.2
+Network=labape.network
+EnvironmentFile=/etc/labape/container.env
+Entrypoint=/bin/bash
+Exec=/labape/init.sh
+PublishPort=9444:9000
+Volume=labape-ca.volume:/home/step
+Volume=/etc/labape/ca-init.sh:/labape/init.sh:ro,z
+Secret=labape-ca-password,target=/run/secrets/ca_password
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

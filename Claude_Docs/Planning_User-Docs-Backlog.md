@@ -26,3 +26,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Lists open each entry's own page (hosts, networks, catalog items, files, templates); Add is at the top right. Non-admins see Hosts and Networks read-only. Settings > Branding renames the app.
 - Files: Download from URL (HTTPS; HTTP and a proxy in Settings > Downloads) and expected-hash checks (SHA-256, SHA-1, SHA-512, MD5) on downloads and uploads.
 - Remote KVM hosts (qemu+ssh) and installer profiles (--profile kvm on the KVM host, --profile web for the web interface); authorize the worker key shown on the host page.
+- Platform CA: VM certificates and renewal, trusting the LABaPe root in browsers (dashboard download), Caddy on the platform CA (LABAPE_CADDYFILE), backing up secrets/ca_password with the labape-ca volume.

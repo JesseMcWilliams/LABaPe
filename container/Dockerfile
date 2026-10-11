@@ -42,6 +42,16 @@ RUN apt-get update \
       libvirt-clients virtinst qemu-utils xorriso qemu-system-x86 ovmf postgresql-client \
  && rm -rf /var/lib/apt/lists/*
 
+# The step CLI: the API has the platform CA sign VMs' CSRs (design §22.5).
+ARG STEP_VERSION=0.30.2
+ARG STEP_SHA256=abf5ffe9a39c01c7b4e777d50a96f30f33f5bd8eeafa2dfeef22b8a4abeee14a
+RUN set -eux; cd /tmp; \
+    curl -fsSLO "https://github.com/smallstep/cli/releases/download/v${STEP_VERSION}/step_linux_${STEP_VERSION}_amd64.tar.gz"; \
+    echo "${STEP_SHA256}  step_linux_${STEP_VERSION}_amd64.tar.gz" | sha256sum -c -; \
+    tar -xzf "step_linux_${STEP_VERSION}_amd64.tar.gz"; \
+    install -m 0755 "step_${STEP_VERSION}/bin/step" /usr/local/bin/step; \
+    rm -rf /tmp/step_*; step version
+
 # OpenTofu and Packer, checksum-verified.
 RUN set -eux; cd /tmp; \
     curl -fsSLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"; \

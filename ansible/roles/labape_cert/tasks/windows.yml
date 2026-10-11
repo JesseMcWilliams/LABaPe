@@ -1,0 +1,151 @@
+---
+# Windows: the key is made by certreq in the machine store (not
+# exportable); the signed leaf is accepted against that pending request,
+# the intermediate goes to Intermediate CAs and the root to Trusted Roots.
+- name: Fetch the platform root certificate
+  ansible.builtin.uri:
+    url: "{{ labape_cert_api }}/api/ca/root.crt"
+    return_content: true
+    validate_certs: "{{ labape_cert_validate }}"
+  register: labape_root
+  delegate_to: localhost
+
+- name: Certificate folder
+  ansible.windows.win_file:
+    path: 'C:\ProgramData\LABaPe\tls'
+    state: directory
+
+- name: Root certificate file
+  ansible.windows.win_copy:
+    content: "{{ labape_root.content }}"
+    dest: 'C:\ProgramData\LABaPe\tls\root.crt'
+
+- name: Trust the platform root
+  ansible.windows.win_certificate_store:
+    path: 'C:\ProgramData\LABaPe\tls\root.crt'
+    store_name: Root
+    store_location: LocalMachine
+
+- name: Is the current certificate good for a while yet?
+  ansible.windows.win_powershell:
+    script: |
+      $c = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.FriendlyName -eq 'LABaPe host certificate' -and $_.HasPrivateKey } |
+        Sort-Object NotAfter -Descending | Select-Object -First 1
+      $Ansible.Changed = $false
+      [bool]($c -and $c.NotAfter -gt (Get-Date).AddDays({{ labape_cert_renew_days }}))
+  register: labape_cert_current
+
+- name: Certificate request
+  when: not (labape_cert_current.output[0] | bool)
+  block:
+    - name: Request definition
+      ansible.windows.win_copy:
+        dest: 'C:\ProgramData\LABaPe\tls\host.inf'
+        content: |
+          [Version]
+          Signature="$Windows NT$"
+          [NewRequest]
+          Subject = "CN={{ labape_cert_fqdn }}"
+          KeyAlgorithm = RSA
+          KeyLength = 2048
+          Exportable = FALSE
+          MachineKeySet = TRUE
+          RequestType = PKCS10
+          HashAlgorithm = sha256
+          FriendlyName = "LABaPe host certificate"
+          KeyUsage = 0xa0
+          [EnhancedKeyUsageExtension]
+          OID=1.3.6.1.5.5.7.3.1
+          OID=1.3.6.1.5.5.7.3.2
+          [Extensions]
+          2.5.29.17 = "{text}"
+          _continue_ = "dns={{ inventory_hostname }}&"
+          _continue_ = "dns={{ labape_cert_fqdn }}{{ ('&ipaddress=' + labape_cert_ip) if labape_cert_ip is match('^[0-9]+([.][0-9]+){3}$') else '' }}"
+
+    - name: Make the key and request
+      ansible.windows.win_command: certreq -new -q -f -machine host.inf host.csr
+      args:
+        chdir: 'C:\ProgramData\LABaPe\tls'
+
+    - name: Read the request
+      ansible.builtin.slurp:
+        src: 'C:\ProgramData\LABaPe\tls\host.csr'
+      register: labape_csr
+
+    - name: Have the platform CA sign it
+      ansible.builtin.uri:
+        url: "{{ labape_cert_api }}/api/engine/certificates"
+        method: POST
+        body_format: json
+        body:
+          host: "{{ inventory_hostname }}"
+          csr: "{{ labape_csr.content | b64decode }}"
+        headers:
+          X-LABaPe-Job: "{{ labape_cert_job }}"
+          X-LABaPe-Token: "{{ labape_cert_token }}"
+        validate_certs: "{{ labape_cert_validate }}"
+      register: labape_signed
+      delegate_to: localhost
+      no_log: true
+
+    - name: Split the chain
+      ansible.builtin.set_fact:
+        labape_chain: "{{ labape_signed.json.certificate | regex_findall('-----BEGIN CERTIFICATE-----[\\s\\S]+?-----END CERTIFICATE-----') }}"
+
+    - name: Certificate files
+      ansible.windows.win_copy:
+        content: "{{ item.pem }}\n"
+        dest: 'C:\ProgramData\LABaPe\tls\{{ item.name }}'
+      loop:
+        - { name: host.crt, pem: "{{ labape_chain[0] }}" }
+        - { name: intermediate.crt, pem: "{{ labape_chain[1:] | join('\n') }}" }
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Intermediate CA
+      ansible.windows.win_certificate_store:
+        path: 'C:\ProgramData\LABaPe\tls\intermediate.crt'
+        store_name: CertificateAuthority
+        store_location: LocalMachine
+
+    - name: Accept the signed certificate against the pending request
+      ansible.windows.win_command: certreq -accept -q -machine host.crt
+      args:
+        chdir: 'C:\ProgramData\LABaPe\tls'
+
+- name: Renewal script
+  ansible.windows.win_copy:
+    dest: 'C:\ProgramData\LABaPe\tls\renew.ps1'
+    content: |
+      # Renew the LABaPe platform certificate (design §22.5): when it has fewer than
+      # {{ labape_cert_renew_days }} days left (or with -Force), ask step-ca for a new one over mTLS
+      # with the current certificate. step-ca keeps the key, so the existing private
+      # key is linked to the new certificate. Written by Ansible.
+      param([switch]$Force)
+      $ErrorActionPreference = 'Stop'
+      $c = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.FriendlyName -eq 'LABaPe host certificate' -and $_.HasPrivateKey } |
+        Sort-Object NotAfter -Descending | Select-Object -First 1
+      if (-not $c) { throw 'No LABaPe host certificate with a private key' }
+      if (-not $Force -and $c.NotAfter -gt (Get-Date).AddDays({{ labape_cert_renew_days }})) { exit 0 }
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      $r = Invoke-RestMethod -Method Post -Uri '{{ labape_ca_renew_url }}/1.0/renew' -Certificate $c -UseBasicParsing
+      $file = 'C:\ProgramData\LABaPe\tls\renewed.crt'
+      Set-Content -Path $file -Value $r.crt -Encoding ascii
+      $new = Import-Certificate -FilePath $file -CertStoreLocation Cert:\LocalMachine\My
+      certutil -repairstore my $new.Thumbprint | Out-Null
+      $new = Get-Item "Cert:\LocalMachine\My\$($new.Thumbprint)"
+      if (-not $new.HasPrivateKey) { throw 'The renewed certificate could not be linked to the key' }
+      $new.FriendlyName = 'LABaPe host certificate'
+      Remove-Item "Cert:\LocalMachine\My\$($c.Thumbprint)"
+      "Renewed; valid until $($new.NotAfter)"
+
+- name: Daily renewal task
+  ansible.windows.win_powershell:
+    script: |
+      $name = 'LABaPe certificate renewal'
+      $Ansible.Changed = -not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)
+      $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\LABaPe\tls\renew.ps1'
+      $trigger = New-ScheduledTaskTrigger -Daily -At 3:17am -RandomDelay (New-TimeSpan -Hours 4)
+      Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -User 'SYSTEM' -RunLevel Highest `
+        -Description 'Renews the LABaPe platform certificate before it expires' -Force | Out-Null

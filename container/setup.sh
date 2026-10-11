@@ -46,6 +46,7 @@ pw="$(cat secrets/postgres_password)"
 [ -f secrets/database_url ] || echo "postgresql+psycopg://labape:${pw}@postgres/labape" > secrets/database_url
 [ -f secrets/tofu_pg_conn ] || echo "postgres://labape:${pw}@postgres/labape?sslmode=disable" > secrets/tofu_pg_conn
 [ -f secrets/oidc_client_secret ] || : > secrets/oidc_client_secret
+[ -f secrets/ca_password ] || gen > secrets/ca_password   # platform CA keys and provisioner (design §22.5)
 # Containers read these as their own users (postgres reads its password
 # file as uid 70), so the files are world-readable; the 0700 directory
 # keeps other host users out.

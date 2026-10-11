@@ -1,0 +1,136 @@
+---
+- name: Fetch the platform root certificate
+  ansible.builtin.uri:
+    url: "{{ labape_cert_api }}/api/ca/root.crt"
+    return_content: true
+    validate_certs: "{{ labape_cert_validate }}"
+  register: labape_root
+  delegate_to: localhost
+  become: false
+
+- name: Trust the platform root (RHEL family)
+  ansible.builtin.copy:
+    content: "{{ labape_root.content }}"
+    dest: /etc/pki/ca-trust/source/anchors/labape-root-ca.crt
+    mode: "0644"
+  register: labape_root_rhel
+  when: ansible_os_family == 'RedHat'
+
+- name: Trust the platform root (Debian family)
+  ansible.builtin.copy:
+    content: "{{ labape_root.content }}"
+    dest: /usr/local/share/ca-certificates/labape-root-ca.crt
+    mode: "0644"
+  register: labape_root_deb
+  when: ansible_os_family == 'Debian'
+
+- name: Update the trust store
+  ansible.builtin.command: "{{ 'update-ca-trust' if ansible_os_family == 'RedHat' else 'update-ca-certificates' }}"
+  when: labape_root_rhel is changed or labape_root_deb is changed
+
+- name: Certificate directory
+  ansible.builtin.file:
+    path: /etc/labape/tls
+    state: directory
+    mode: "0755"
+
+- name: Host key (made here, never copied off)
+  ansible.builtin.command:
+    cmd: openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out /etc/labape/tls/host.key
+    creates: /etc/labape/tls/host.key
+
+- name: Protect the host key
+  ansible.builtin.file:
+    path: /etc/labape/tls/host.key
+    mode: "0600"
+
+- name: Is the current certificate good for a while yet?
+  ansible.builtin.command: openssl x509 -checkend {{ labape_cert_renew_days * 86400 }} -noout -in /etc/labape/tls/host.crt
+  register: labape_cert_current
+  changed_when: false
+  failed_when: false
+
+- name: Certificate request
+  when: labape_cert_current.rc != 0
+  block:
+    - name: Make the request
+      ansible.builtin.command: >-
+        openssl req -new -key /etc/labape/tls/host.key -subj "/CN={{ labape_cert_fqdn }}"
+        -addext "subjectAltName=DNS:{{ inventory_hostname }},DNS:{{ labape_cert_fqdn }}{{ (',IP:' + labape_cert_ip) if labape_cert_ip is match('^[0-9]+([.][0-9]+){3}$') else '' }}"
+        -out /etc/labape/tls/host.csr
+      changed_when: true
+
+    - name: Read the request
+      ansible.builtin.slurp:
+        src: /etc/labape/tls/host.csr
+      register: labape_csr
+
+    - name: Have the platform CA sign it
+      ansible.builtin.uri:
+        url: "{{ labape_cert_api }}/api/engine/certificates"
+        method: POST
+        body_format: json
+        body:
+          host: "{{ inventory_hostname }}"
+          csr: "{{ labape_csr.content | b64decode }}"
+        headers:
+          X-LABaPe-Job: "{{ labape_cert_job }}"
+          X-LABaPe-Token: "{{ labape_cert_token }}"
+        validate_certs: "{{ labape_cert_validate }}"
+      register: labape_signed
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Install the certificate (leaf and intermediate)
+      ansible.builtin.copy:
+        content: "{{ labape_signed.json.certificate }}"
+        dest: /etc/labape/tls/host.crt
+        mode: "0644"
+
+- name: Root next to the certificate (for renewal)
+  ansible.builtin.copy:
+    content: "{{ labape_root.content }}"
+    dest: /etc/labape/tls/root.crt
+    mode: "0644"
+
+- name: Renewal script
+  ansible.builtin.template:
+    src: labape-cert-renew.sh.j2
+    dest: /usr/local/sbin/labape-cert-renew
+    mode: "0755"
+
+- name: Renewal service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: labape-cert-renew.service
+      content: |
+        [Unit]
+        Description=Renew the LABaPe platform certificate
+        After=network-online.target
+        Wants=network-online.target
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/labape-cert-renew
+    - name: labape-cert-renew.timer
+      content: |
+        [Unit]
+        Description=Daily LABaPe certificate renewal check
+        [Timer]
+        OnCalendar=daily
+        RandomizedDelaySec=4h
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Enable the renewal timer
+  ansible.builtin.systemd_service:
+    name: labape-cert-renew.timer
+    enabled: true
+    state: started
+    daemon_reload: true

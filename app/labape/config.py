@@ -68,6 +68,20 @@ class Settings(BaseSettings):
     max_kvm_hosts: int = 4
     worker_slots: int = 4                              # concurrent jobs per worker process
 
+    # --- platform CA (design §22.5) ---
+    ca_url: str = ""                                   # how the API reaches step-ca, e.g. https://labape-ca:9000
+    ca_public_url: str = ""                            # where VMs renew; default https://<public host>:9444
+    ca_root: Path = Path("/var/lib/labape-ca/certs/root_ca.crt")
+    ca_password_file: Path = Path("/run/secrets/ca_password")
+    internal_api_url: str = "http://labape-api:8000"   # the API as the worker's jobs reach it
+
+    @property
+    def ca_renew_url(self) -> str:
+        if self.ca_public_url:
+            return self.ca_public_url.rstrip("/")
+        from urllib.parse import urlsplit
+        return f"https://{urlsplit(self.public_url).hostname}:9444"
+
     def model_post_init(self, __context) -> None:  # noqa: D401
         for name in ("secret_key", "oidc_client_secret", "database_url", "tofu_pg_conn"):
             value = _read_file_var(f"LABAPE_{name.upper()}")

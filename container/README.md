@@ -81,6 +81,10 @@ Override them with `LABAPE_ROLE_MAP` (JSON), or add bindings under the API's `/a
 
 Group fields (such as a network's "Or limit to groups") search Authentik as you type once an admin sets **Settings → Directory**. That section takes an Authentik API token for a service account that can only view groups (the `authentik_core.view_group` permission). The token is kept in the encrypted secrets store. Without a token, suggestions come from the groups LABaPe has seen at sign-in. A name can always be typed in.
 
+## Platform CA
+
+The stack runs its own CA, `labape-ca` (step-ca), initialized on first start from `secrets/ca_password`. Web-interface deploys give every VM a certificate from it, renewed on the VM, and add the LABaPe root to the VM's trust store (design §22.5). VMs renew on `https://<LABAPE_HOSTNAME>:9444` (`LABAPE_CA_PORT`). To serve the web interface with a certificate from the same CA, set `LABAPE_CADDYFILE=Caddyfile.labape-ca` in `.env` and recreate Caddy. Then import the root (dashboard → Download the root certificate, or `/api/ca/root.crt`) into the browsers that use LABaPe. Keep `secrets/ca_password` and the `labape-ca` volume backed up together; losing them means re-issuing every certificate.
+
 For a throwaway Authentik already configured this way, see [tools/authentik-test/](../tools/authentik-test/README.md).
 
 ## Run

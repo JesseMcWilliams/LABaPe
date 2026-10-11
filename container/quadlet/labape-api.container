@@ -18,6 +18,10 @@ Secret=labape-tofu-pg-conn,target=/run/secrets/tofu_pg_conn
 Secret=labape-secret-key,target=/run/secrets/secret_key
 Secret=labape-oidc-client-secret,target=/run/secrets/oidc_client_secret
 Volume=labape-data.volume:/var/lib/labape
+# Platform CA (design §22.5).
+Environment=LABAPE_CA_URL=https://labape-ca:9000 LABAPE_CA_ROOT=/var/lib/labape-ca/certs/root_ca.crt LABAPE_CA_PASSWORD_FILE=/run/secrets/ca_password
+Secret=labape-ca-password,target=/run/secrets/ca_password
+Volume=labape-ca.volume:/var/lib/labape-ca:ro
 Volume=/etc/labape/config:/etc/labape:ro,z
 Volume=/etc/labape/engine-secrets:/run/labape-secrets:ro,z
 # The file manager writes uploads into the data root.

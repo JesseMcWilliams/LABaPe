@@ -142,7 +142,9 @@ def test_admin_health_and_release_check(client, monkeypatch):
     names = [a["name"] for a in h["auth"]]
     assert "breakglass" in names and "directory" in names
     assert h["secrets"][0]["name"] == "builtin" and h["secrets"][0]["status"] == "ok"
-    assert h["secrets"][1]["status"] == "error"          # no engine vault in the test setup
+    secrets = {c["name"]: c for c in h["secrets"]}
+    assert secrets["ansible_vault"]["status"] == "error"      # no engine vault in the test setup
+    assert secrets["platform_ca"]["status"] == "unknown"      # no CA configured in tests
     assert {n["name"] for n in h["notifications"]} == {"smtp", "syslog"}
     assert h["version"]["current"] == "v0.2.0-3-gabc1234" and h["version"]["update_available"] is False
 
