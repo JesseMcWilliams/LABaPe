@@ -1444,3 +1444,23 @@ database right after turning maintenance on, and the worker ran it. The
 worker read the flag through the same 5-second cache the API uses, so it
 still saw "off". The worker now reads the flag fresh before every claim;
 the API keeps the cache (the process that changes the flag clears it).
+
+### Authentik: setting a token's key needs add_token on the token (2026-10-11)
+
+Rotating the directory token got 403 from `POST
+/api/v3/core/tokens/labape-directory/set_key/`. What didn't work:
+
+- A role with the global `set_token_key` permission (which the API docs
+  name) was refused. Authentik checks object permissions on the token, and
+  the `set_key` action goes through its generic `ObjectPermissions`, which
+  maps POST to `add_token`.
+- Granting it through the blueprint failed. An entry-level `permissions:`
+  block on the token raised "For global permissions, first argument must be
+  in format app_label.codename", and the failed validation stopped the
+  **whole** blueprint applying. An earlier attempt with `!KeyOf` also failed
+  validation ("failed to find entry ... and a model instance"; `!Find`
+  resolves). Token entries also need `user` and `intent` on update.
+
+What worked: `deploy.sh` runs `role.assign_perms([...view_token, add_token,
+set_token_key], obj=token)` in `ak shell`, on the directory token only.
+The failed rotation in between kept the old token, as designed.

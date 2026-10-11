@@ -22,6 +22,8 @@ import HostDetail from "./pages/HostDetail";
 import NetworkDetail from "./pages/NetworkDetail";
 import FileDetail from "./pages/FileDetail";
 import TemplateDetail from "./pages/TemplateDetail";
+import Secrets from "./pages/Secrets";
+import SecretDetail from "./pages/SecretDetail";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -122,6 +124,9 @@ export default function App() {
                 <Button color="inherit" component={RouterLink} to="/settings" title="Branding, files, backups, history, syslog, email, directory (admins)">
                   Settings
                 </Button>
+                <Button color="inherit" component={RouterLink} to="/secrets" title="Internal secrets and their rotation (admins)">
+                  Secrets
+                </Button>
               </>
             )}
             <Box sx={{ flexGrow: 1 }} />
@@ -160,6 +165,8 @@ export default function App() {
           <Route path="/audit" element={<Audit />} />
           <Route path="/errors" element={<Errors />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/secrets" element={<Secrets />} />
+          <Route path="/secrets/:id" element={<SecretDetail />} />
           <Route path="/files" element={<Files />} />
           <Route path="/files/:id" element={<FileDetail />} />
           <Route path="/templates/:id" element={<TemplateDetail />} />

@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, hostio, maintenance
+from . import downloads, hostio, maintenance, rotation
 from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -361,7 +361,8 @@ def run(job_id: int, worker: str) -> None:
         log_path = Path(job.log_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         # Jobs the worker runs itself, with no KVM host or engine scripts.
-        system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download}
+        system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
+                  "secret.rotate": rotation.run_job}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -613,6 +614,10 @@ def serve(slots: int | None = None) -> None:
                 with session_factory()() as db:
                     if maintenance.schedule_backup(db):
                         log.info("queued the daily backup")
+                with session_factory()() as db:
+                    rotation.ensure_policies(db)
+                    for jid in rotation.schedule(db):
+                        log.info("queued secret rotation job %s", jid)
             if not paused and time.monotonic() - last_update_check > 86400:
                 last_update_check = time.monotonic()
                 with session_factory()() as db:

@@ -67,7 +67,9 @@ entries:
       name: LABaPe directory lookup
       type: service_account
       roles: [!KeyOf role-directory]
+  # state: created: made once, never reset, so LABaPe's rotation of its key sticks.
   - model: authentik_core.token
+    state: created
     identifiers: {identifier: labape-directory}
     attrs:
       intent: api
@@ -105,3 +107,31 @@ entries:
     attrs:
       name: LABaPe
       provider: !KeyOf provider
+
+  # Elevated account for secret rotation (design §24): LABaPe uses it to set
+  # a new key on the read-only directory token, which can't change itself.
+  # Authentik checks token permissions on the token object, so deploy.sh
+  # grants view_token and set_token_key on the directory token only (the
+  # blueprint importer can't assign object permissions to a role).
+  - model: authentik_rbac.role
+    id: role-rotator
+    identifiers: {name: labape-token-rotator}
+    attrs:
+      name: labape-token-rotator
+      permissions: [authentik_core.view_token]
+  - model: authentik_core.user
+    id: user-rotator
+    identifiers: {username: labape-rotator}
+    attrs:
+      name: LABaPe secret rotation
+      type: service_account
+      roles: [!KeyOf role-rotator]
+  - model: authentik_core.token
+    state: created
+    identifiers: {identifier: labape-rotator}
+    attrs:
+      intent: api
+      user: !KeyOf user-rotator
+      expiring: false
+      description: LABaPe secret rotation (sets the directory token's key)
+      key: !Env [LABAPE_TEST_ROTATOR_TOKEN, ""]

@@ -29,3 +29,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Platform CA: VM certificates and renewal, trusting the LABaPe root in browsers (dashboard download), Caddy on the platform CA (LABAPE_CADDYFILE), backing up secrets/ca_password with the labape-ca volume.
 - Tooltips on every action; confirmation dialogs for every change (what each one says).
 - Maintenance mode (Settings): what pauses and what keeps working, scheduling it, the weekly maintenance window and its notice banner.
+- Secrets page: what each secret is, rotation intervals, the restart window, elevated accounts, external stores, Rotate now and failures.

@@ -50,6 +50,7 @@ EOF
 fi
 # Added later: keep an older .env working.
 grep -q '^LABAPE_TEST_DIRECTORY_TOKEN=' .env || echo "LABAPE_TEST_DIRECTORY_TOKEN=$(gen)" >> .env
+grep -q '^LABAPE_TEST_ROTATOR_TOKEN=' .env || echo "LABAPE_TEST_ROTATOR_TOKEN=$(gen)" >> .env
 
 $COMPOSE up -d
 echo "authentik-test: waiting for Authentik to apply the blueprint..."
@@ -64,6 +65,19 @@ curl -fsS "${issuer}.well-known/openid-configuration" >/dev/null || {
   echo "authentik-test: the LABaPe application didn't appear at $issuer; check: $COMPOSE logs worker" >&2
   exit 1
 }
+
+# The rotation account may set the directory token's key, on that token only
+# (object permissions; the blueprint importer can't assign them to a role).
+$COMPOSE exec -T worker ak shell -c "
+from authentik.core.models import Token
+from authentik.rbac.models import Role
+role = Role.objects.get(name='labape-token-rotator')
+token = Token.objects.get(identifier='labape-directory')
+# Authentik checks POST .../set_key/ as add_token on the object (its docs name
+# set_token_key, which this version doesn't check); grant both, on this token only.
+role.assign_perms(['authentik_core.view_token', 'authentik_core.add_token', 'authentik_core.set_token_key'], obj=token)
+print('authentik-test: labape-token-rotator may set the directory token key')
+" 2>/dev/null | tail -1 || echo "authentik-test: couldn't grant the rotator its token permissions (see $COMPOSE logs worker)" >&2
 
 if $CONFIGURE; then
   env_file=../../container/.env

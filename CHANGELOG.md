@@ -17,6 +17,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Secret rotation (phase R1): a Secrets page listing every internal
+  secret with its store, class, interval and status; scheduled rotation
+  as jobs with retries and audit; elevated accounts for secrets that
+  can't rotate themselves; the built-in store now uses data keys
+  (envelope encryption) that rotate daily without a restart; the worker's
+  SSH key for remote hosts and the Authentik directory token rotate too.
 - Maintenance mode: changes pause (503 with the reason) while reads,
   status and live logs keep working; the worker starts no new jobs and
   pauses scheduled work; banner on every page; turn on now or schedule

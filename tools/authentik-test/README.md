@@ -5,6 +5,7 @@ LABaPe signs users in through an existing Authentik by default. If you need one 
 - the `labape` OIDC application;
 - the role groups (`labape-admins`, `labape-template-editors`, `labape-deployers`, `labape-file-managers`, `labape-viewers`);
 - three local users: `labape-admin`, `labape-dev` (deployer) and `labape-viewer`;
+- a secret-rotation account, `labape-rotator`, whose token may set the directory token's key. Authentik checks that as `add_token` on that token, which `deploy.sh` grants on the token object only. Add it in LABaPe under Secrets → Add elevated account (`LABAPE_TEST_ROTATOR_TOKEN` in `.env`). Once LABaPe rotates the directory token, the value in `.env` no longer works.
 - a read-only directory account, `labape-directory` (a service account whose only permission is viewing groups), with a non-expiring API token for LABaPe's group search. To use it, enable **Settings → Directory** in LABaPe and paste `LABAPE_TEST_DIRECTORY_TOKEN` from `.env`.
 
 It isn't meant for production. The bundled-Authentik profile in phase 10g covers that.
