@@ -172,12 +172,18 @@ deployed through the web interface so it had a platform certificate).
   shows it.
 - **The minimal Debian clone had no `curl`**; the script installs `curl`,
   `openssl` and `python3` when missing.
-- **Open: a Debian clone's own host name doesn't resolve.** `/etc/hosts` still
-  has `127.0.1.1 template` from the Packer build, so `sudo` warns "unable to
-  resolve host secdev1" and `hostname -f` fails. cloud-init's
-  `update_etc_hosts` only runs with `manage_etc_hosts`. A fix in the clone
-  seed changes every Linux clone's seed hash, so it waits until it can be
-  checked against the reinstall triggers (design §24.3).
+- **A Debian clone's own host name didn't resolve (fixed).** `/etc/hosts`
+  still had `127.0.1.1 template` from the Packer build, so `sudo` warned
+  "unable to resolve host secdev1" and `hostname -f` failed. cloud-init's
+  `update_etc_hosts` only runs with `manage_etc_hosts`, but fixing it in the
+  clone seed would change every Linux clone's seed hash and reinstall
+  existing VMs on their next deploy (design §24.3). So `site.yml` fixes it
+  instead, in a play right after "Wait for connection": an existing
+  `127.0.1.1` line becomes `127.0.1.1 <vm>.<domain_name> <vm>` (RHEL-family
+  hosts have no such line and are left alone). Existing clones pick it up at
+  their next deploy, with no reinstall. Checked on `secdev1`: the line was
+  rewritten, `hostname -f` answered `secdev1.labape.test`, `sudo` stopped
+  warning, and a second run changed nothing.
 
 ### Other setup notes
 

@@ -27,6 +27,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Fixed
+- Linux VMs cloned from a template resolve their own name: the template's
+  `127.0.1.1 template` line in `/etc/hosts` is rewritten to the VM's name at
+  every deploy (no reinstall). `sudo` no longer warns "unable to resolve
+  host" and `hostname -f` works.
 - Firefox installs on Debian (as `firefox-esr`); the deploy of a Debian VM
   with the default software manifest no longer fails. Catalog entries can
   name a package per distribution (`apt: {package: ..., distributions:
