@@ -395,8 +395,8 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
 | 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
-| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/` |
-| 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15) |
+| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24); the external providers aren't |
+| 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15). Remote hosts are built (§22.4); spanning and placement aren't |
 | 10f | VM storage moves (offline) |
 | 10g | Environment import (migration), central repository configuration applied to all tools, bundled-Authentik profile with blueprint |
 | 10h | Direct LDAP and Active Directory providers (section 12) |
@@ -406,9 +406,11 @@ exercised end to end, like the M1-M6 work.
 
 ## 18. Open questions
 
-Remaining for this design (Claude_Docs/Planning_Questions.md): 29 (Kerberos timing),
-34 (Packer builds with a remote app), 35 (backups), 36 (log and audit
-retention), 38 (notifications). None blocks phase 10a.
+Remaining for this design (Claude_Docs/Planning_Questions.md): 34 (Packer
+builds with a remote app). 29 (Kerberos) was answered: later. 35 (backups),
+36 (retention) and 38 (notifications) were built as admin settings in
+batch E (§21.5: daily database backups, retention, job emails); they stay
+open in Planning_Questions.md until confirmed.
 
 ## 19. Phase 10a as built
 
@@ -759,7 +761,7 @@ are built and merged (PRs #16-#21). They were built in this order:
 | Test Authentik | The blueprint adds the `labape-directory-reader` role (only `authentik_core.view_group`), the `labape-directory` service account and its non-expiring API token. The token's key is `LABAPE_TEST_DIRECTORY_TOKEN`, which `deploy.sh` generates into `.env`, including for an existing `.env`. |
 | Verified | Live: the token listed the 8 groups and was refused a write (403). After saving it in Settings, the search for "deploy" returned `labape-deployers` from Authentik. Test search reported the groups. A wrong token gave a clear field error. A deployer is denied the search. pytest covers the fallback, secret handling, the Authentik call and the failure path. |
 
-## 22. Dashboard, list pages, installer profiles, platform CA, downloads (planned 2026-10-11)
+## 22. Dashboard, list pages, installer profiles, platform CA, downloads (built 2026-10-11)
 
 These come from the next round of feedback. The decisions are questions
 62-73 in `Claude_Docs/Planning_Questions.md`, all answered 2026-10-11.

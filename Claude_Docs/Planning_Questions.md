@@ -164,3 +164,16 @@ Design: `Claude_Docs/Planning_Web-Interface-Design.md` §23.2.
 82. ~~Does "only the previous version" also cover the automatic rollback after failed health checks?~~ **Answered (2026-10-11):** Yes.
 83. ~~Lab VM passwords: rotate on running environments, or only for new ones?~~ **Answered (2026-10-11):** Domain admin and local admin rotate every 7 days by default; the interval is set per environment, and rotation can be turned off per environment. The DSRM password never rotates.
 84. ~~Build rotation on the built-in secret store, ready for the OpenBao/Vault provider (phase 10d) later?~~ **Answered (2026-10-11):** Yes. Several secret stores may be in use at once, so the store is chosen per secret.
+
+## Update agent and rotation phases R2/R4 (added and answered 2026-10-11)
+
+Design: `Claude_Docs/Planning_Web-Interface-Design.md` §23.2 and §24.3.
+
+85. ~~The update agent checks out release tags, so `~/LABaPe-web` on the lab host must become a git clone. Convert it?~~ **Answered (2026-10-11):** Yes. It's a clone of `main` now, with a backup of the old copy.
+86. ~~Where the agent runs: (a) a user-level systemd service for the service user (needs `loginctl enable-linger`, run once as root), or (b) a system service installed as root?~~ **Answered (2026-10-11):** (a). The user enabled lingering.
+87. ~~Test signed updates with a throwaway key on local tags that are never pushed?~~ **Answered (2026-10-11):** Yes. The real key goes into the allowed-signers file when it exists.
+88. ~~Start secret rotation while the agent questions are open?~~ **Answered (2026-10-11):** Yes.
+89. ~~Go ahead with the clone conversion as described?~~ **Answered (2026-10-11):** Yes.
+90. ~~The VM SSH key is shared by the web stack and the lab host's command line. (a) give the web stack its own key, (b) the agent writes each new key into the service user's `~/.ssh` too, or (c) the command line fetches it itself? And how many previous keys stay valid?~~ **Answered (2026-10-11):** (b), keeping 7 previous keys.
+91. ~~Lab passwords: Windows local Administrator and domain Administrator rotate per environment; what about Linux?~~ **Answered (2026-10-11):** The Linux local admin is the SSH key (no password). Its user name is configurable, as a setting on the general Settings page (Settings → VM accounts).
+

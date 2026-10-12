@@ -8,9 +8,10 @@ installation.
 See [Claude_Docs/Design_System-Overview.md](./Claude_Docs/Design_System-Overview.md)
 for scope, architecture, and open decisions (milestone-by-milestone status is
 in §18); `Claude_Docs/` for the detailed design of base images, networking,
-credentials, the software manifest, directory objects, and future work (a
-`certificate_authority` role and a web interface for composable environment
-templates — §19/§20, not yet implemented); and
+credentials, the software manifest, directory objects, the web interface
+(`Claude_Docs/Planning_Web-Interface-Design.md`), and future work (a
+`certificate_authority` role and composable environment templates —
+§19/§20); and
 [Claude_Docs/Testing_Troubleshooting-Log.md](./Claude_Docs/Testing_Troubleshooting-Log.md)
 for the detailed, blow-by-blow history behind every bug found along the way.
 
@@ -36,7 +37,9 @@ for the detailed, blow-by-blow history behind every bug found along the way.
   - a Settings page: file locations, daily database backups, history retention, syslog forwarding of the audit trail, SMTP job emails, and an Authentik group search;
   - clear field errors, an admin Errors page, and masked credentials.
 
-  Verified on the lab host. Design: `Claude_Docs/Planning_Web-Interface-Design.md` §21. The next round (dashboard, list pages, installer profiles, a platform CA, URL downloads) is planned in §22.
+  Verified on the lab host. Design: `Claude_Docs/Planning_Web-Interface-Design.md` §21.
+- **M10, round 3 (2026-10-11)**: a dashboard with host and environment load; list pages that open each entry's own page; branding; downloads from a URL with hash checks; installer profiles and remote KVM hosts (`qemu+ssh`); a platform CA (step-ca) that gives every VM a renewing certificate. Design: §22.
+- **M10, operations (2026-10-11/12)**: tooltips and a confirmation for every change; database migrations; maintenance mode with a weekly window; updates from the browser through a host agent (signed releases only, one-step and automatic rollback); scheduled secret rotation for every internal secret, plus each environment's Windows Administrator and domain Administrator passwords; a configurable Linux admin account. Design: §23 and §24.
 - **Networks and IP addresses**: a network catalog in `environment.yml` and the web UI controls which networks and address ranges may be used, with optional limits by role or group. Each KVM host lists the networks it carries and on which bridge. Each host group picks a network and static or DHCP addressing. Static addresses are allocated automatically in the web UI, and DHCP addresses are found by MAC after boot. Verified on libvirt with both the CLI and the web UI; Hyper-V still uses one static network. Design: `Claude_Docs/Planning_Web-Interface-Design.md` §20.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
@@ -121,6 +124,9 @@ full deploy.
 - Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M2.
 - Hosts in different environments on the same libvirt host need unique host-group names: VM names are host-global, and a create refuses a VM tagged for another workspace (rendered answer files are already kept per workspace) — see `Claude_Docs/Testing_Troubleshooting-Log.md` § M5 (completion pass).
 - Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing.
-- Windows Server installs the Desktop Experience unless a host group sets `windows_core = true` (or a template is built with `--core`); Firefox doesn't install on Server 2019 Core.
+- Windows Server installs the Desktop Experience unless a host group sets `windows_core = true` (or a template is built with `--core`); Firefox doesn't install on Server 2019 Core, nor yet on Debian 13.
+- Updates from the web interface are refused until a release-signing key is listed in `deploy/allowed_signers` (`deploy/README.md` § Updates).
+- The Hyper-V backend's `tofu init` fails: its `taliesins/hyperv` provider isn't in the OpenTofu registry.
+- Environments on remote KVM hosts aren't included in VM-key pushes or password rotation, because the web stack can't reach their VMs (`Claude_Docs/Planning_Web-Interface-Design.md` §24.3).
 
 Full bug-by-bug history for every milestone: `Claude_Docs/Testing_Troubleshooting-Log.md`.

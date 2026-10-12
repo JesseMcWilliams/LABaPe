@@ -548,6 +548,13 @@ Ansible's own secrets-at-rest options, from simplest to most integrated:
 provider, either indirectly (vault password sourced from a script) or
 directly (a lookup plugin resolves the secret at playbook run time).
 
+The web interface keeps its own credentials in an encrypted store in
+PostgreSQL (envelope encryption with rotating data keys) and rotates every
+internal secret on a schedule: the vault password, the VM SSH key, its
+database, CA and session keys, and each environment's Windows
+Administrator and domain Administrator passwords (the DSRM password
+never). See `Claude_Docs/Planning_Web-Interface-Design.md` §24.
+
 Recommendation: start with **Ansible Vault** for v1 (zero extra
 infrastructure to stand up). `community.hashi_vault` is the natural
 upgrade path if a self-hosted HashiCorp Vault OSS instance gets added
@@ -804,11 +811,17 @@ None blocking further scaffolding right now.
 - Phase 10a (container stack, sign-in, deploy and destroy) is built.
 - 10b (Files) is built.
 - The usability and admin round is built (`Claude_Docs/Planning_Web-Interface-Design.md` §21).
-- The next round is planned there in §22.
-- M9 is still design only (§19, `Claude_Docs/Planning_Certificate-Authority.md`). §22 adds a platform-CA proposal that changes how it fits together.
+- Round 3 (dashboard, list pages, URL downloads, installer profiles, remote KVM hosts, platform CA) is built (§22).
+- Operations are built (§23-§24): confirmations, database migrations, maintenance mode, the update agent, and secret rotation phases R1-R4.
+- Next: release v0.3.0 once the release-signing key exists, user docs for the web interface, external secret stores (phase 10d), environment templates (10c).
+- M9 is still design only (§19, `Claude_Docs/Planning_Certificate-Authority.md`). The web stack's platform CA (§22.5) is built and covers VM certificates for web-interface deploys.
 - M1-M6 are complete on libvirt.
 
 ## 19. Certificate Authorities (Future)
+
+The web stack's own platform CA (step-ca, `Claude_Docs/Planning_Web-Interface-Design.md`
+§22.5) is built: it gives every VM a renewing certificate and puts its
+root in the VM's trust store. The in-environment role below is still future work.
 
 A `certificate_authority` role — Windows via AD CS, Linux via step-ca,
 combinable with other roles and following the same singleton-per-platform
