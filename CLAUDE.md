@@ -9,9 +9,9 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 
 ## Folder map
 - `README.md` — overview: milestone status, quickstart, known gaps. Start here.
-- `Claude_Docs/Design_System-Overview.md` (~800 lines, §1-§20) — architecture, backends, OS support, credentials, networking, testing, milestones. Grep for `^## ` for a section, read that range only.
+- `Claude_Docs/Design_System-Overview.md` (~870 lines, §1-§20) — architecture, backends, OS support, credentials, networking, testing, milestones. Grep for `^## ` for a section, read that range only.
 - `Claude_Docs/` — everything else Claude works from (see Documentation layout below).
-- `User_Docs/` — end-user setup guides (OpenTofu/Ansible install, WSL variants).
+- `User_Docs/` — end-user guides: the web interface (users, admins), the command line, and OpenTofu/Ansible install (with WSL variants).
 - `HANDOFF.local.md` — session-scratch handoff notes, gitignored (`*.local.md`). Treat as ephemeral, not a source of truth.
 - `Live-Testing.local.md` — gitignored; live-lab connection details, read only for live-testing tasks.
 - `secrets.vault.example.yml` — template shape only; the real `secrets.vault.yml` is gitignored and never committed.
@@ -27,7 +27,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
 - `tools/helpers/` — helper scripts used more than once (shipping a change, deploying a working tree to the lab stack, live tests); see its README. Put any reused helper here, never lab details: they come from environment variables.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.
-- Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). `Planning_Web-Interface-Design.md` (~1,040) is over; grep for a section and read that range.
+- Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). `Planning_Web-Interface-Design.md` (~1,050) is over; grep for a section and read that range.
 
 ## Tests
 - `scripts/test/run-all.sh` — runs every check (tools/collections installed, Ansible syntax, `tofu validate`, libvirt/WinRM connectivity, vault+SSH key consistency), prints a PASS/FAIL summary.
@@ -58,7 +58,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history from M10 on, filed by topic. When it grows past ~500 lines, move fully closed sections into an `Archive_Testing_...` file, as was done for M1-M6.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** Current: `Archive_Testing_Troubleshooting-Log-M1-M6.md` (closed M1-M6 troubleshooting history).
 - `CHANGELOG.md` (root): release history, `[Unreleased]` at the top. Kept at the root (GitHub/tooling convention). A release is a `vX.Y.Z` tag plus a GitHub release; the image is stamped with `git describe --tags`, and the web dashboard compares it with the latest release.
-- `User_Docs/`: end-user setup guides (`Install-OpenTofu.md`, `Install-Ansible.md`, and WSL variants of each). No web-interface guide yet; see the backlog.
+- `User_Docs/`: end-user guides. `Web-Interface-Guide.md` (everyone who signs in), `Web-Interface-Admin.md` (admins), `Command-Line.md` (scripts without the web interface), and `Install-OpenTofu.md`/`Install-Ansible.md` with WSL variants. New user-visible changes go to the backlog first, then into the matching guide.
 - `Published_Docs/`: `.docx` deliverables for end users. None exist yet.
 - When you make a user-visible change, add one line for it to `Claude_Docs/Planning_User-Docs-Backlog.md` (create it if it doesn't exist yet).
 - Rename docs with `git mv`, and update every link to them in the same change.

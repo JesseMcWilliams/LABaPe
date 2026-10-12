@@ -48,9 +48,15 @@ Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-O
 
 `sudo deploy/install-labape.py` sets up a Debian KVM host end to end. It runs as named, resumable steps (`--list-steps`, `--resume`, `--step`, `--dry-run`) and saves every answer to a reusable answers file, never a password. See [`deploy/README.md`](deploy/README.md). The manual quickstart below remains the reference for what it automates.
 
+## User guides
+
+- [User_Docs/Web-Interface-Guide.md](User_Docs/Web-Interface-Guide.md): signing in, creating and managing environments, jobs, files and templates, the catalog.
+- [User_Docs/Web-Interface-Admin.md](User_Docs/Web-Interface-Admin.md): installing, hosts, networks, settings, maintenance, secrets and rotation, updates.
+- [User_Docs/Command-Line.md](User_Docs/Command-Line.md): `deploy.sh`/`destroy.sh`, the network catalog, templates, DHCP addresses and passwords without the web interface.
+
 ## M1 quickstart (libvirt backend)
 
-Prerequisites, none of which this repo automates yet:
+Prerequisites (on a Debian host, `deploy/install-labape.py` sets these up; by hand otherwise):
 
 1. A libvirt host (Rocky/Debian) reachable via `qemu+ssh://` from your
    control machine, with a bridge device already set up
@@ -79,7 +85,7 @@ cp secrets.vault.example.yml secrets.vault.yml     # fill in libvirt_uri,
 ansible-vault encrypt secrets.vault.yml
 echo "your-vault-password" > ~/.labape-vault-pass  # or set LABAPE_VAULT_PASS_FILE
 
-cp tofu/environment.example.yml tofu/environment.yml       # fill in network.*, os_iso_paths
+cp tofu/environment.example.yml tofu/environment.yml       # fill in networks:, os_iso_paths
 cp tofu/environments/small.tfvars.example tofu/environments/small.tfvars
 cp ansible/software-manifest.example.yml ansible/software-manifest.yml
 ```
@@ -120,10 +126,10 @@ full deploy.
 
 ## Known gaps
 
-- DHCP-mode addressing, and the full OS matrix are still to come — `Claude_Docs/Design_System-Overview.md` §18 has the milestone plan.
+- The Hyper-V backend still uses one static network: no network catalog or DHCP addressing (`Claude_Docs/Reference_Backend-Parity.md`). Remaining milestones: `Claude_Docs/Design_System-Overview.md` §18.
 - Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` § M2.
 - Hosts in different environments on the same libvirt host need unique host-group names: VM names are host-global, and a create refuses a VM tagged for another workspace (rendered answer files are already kept per workspace) — see `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` § M5 (completion pass).
-- Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing.
+- Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing ([operating system notes](User_Docs/Web-Interface-Guide.md#6-operating-system-notes)).
 - Windows Server installs the Desktop Experience unless a host group sets `windows_core = true` (or a template is built with `--core`); Firefox doesn't install on Server 2019 Core, nor yet on Debian 13.
 - Updates from the web interface are refused until a release-signing key is listed in `deploy/allowed_signers` (`deploy/README.md` § Updates).
 - The Hyper-V backend's `tofu init` fails: its `taliesins/hyperv` provider isn't in the OpenTofu registry.
