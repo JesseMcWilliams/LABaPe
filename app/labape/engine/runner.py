@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, hostio, maintenance, rotation, template_versions
+from . import downloads, engine_secrets, hostio, maintenance, rotation, template_versions
 from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -232,9 +232,15 @@ def _prepare_base(db: Session, host: KvmHost, work: Path) -> None:
         src = s.config_dir / name
         if src.is_file():
             shutil.copy2(src, dest)
-    # The job's own copies of the vault and its password: a rotation (design
-    # §24, R2) swaps the mounted files, and must not change them under a
-    # running job. A copy taken mid-swap doesn't open, so take it again.
+    # The job's own copies of the vault and its password: a rotation must not
+    # change them under a running job. From the secret store once the engine
+    # secrets are imported (design §26); before that, from the mounted files
+    # (§24, R2), where a copy taken mid-swap doesn't open, so take it again.
+    if engine_secrets.in_catalog(db):
+        engine_secrets.write_vault(db, work)
+        (work / "tofu" / "backends" / "libvirt" / "labape_backend_override.tf").write_text(BACKEND_OVERRIDE,
+                                                                                           encoding="utf-8")
+        return
     vault, pw = s.secrets_dir / "secrets.vault.yml", s.secrets_dir / "vault-pass"
     for _ in range(5):
         if vault.is_file():
@@ -340,10 +346,15 @@ def overlay_vault(work: Path, overrides: dict) -> None:
 def sync_home() -> None:
     """Copy SSH keys from the secrets mount into the job HOME (OpenSSH wants 0600 files it owns).
     Runs before every job, so a rotated key (design §24, R2) applies without a restart;
-    previous keys (ssh/history/) come along for VMs that missed a rotation."""
+    previous keys (ssh/history/) come along for VMs that missed a rotation. Once the
+    engine secrets are in the secret store (design §26), they come from there."""
     s = get_settings()
     ssh_src = s.secrets_dir / "ssh"
     ssh_dst = s.data_dir / "home" / ".ssh"
+    with session_factory()() as db:
+        if engine_secrets.in_catalog(db):
+            engine_secrets.write_ssh(db, ssh_dst)
+            return
     ssh_dst.mkdir(parents=True, exist_ok=True)
     os.chmod(ssh_dst, 0o700)
     for sub in ("", "history"):

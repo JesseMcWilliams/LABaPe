@@ -33,6 +33,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Fixed
+- The admin dashboard's Platform CA row showed the last secret store's
+  check instead of the CA's.
 - Linux VMs cloned from a template resolve their own name: the template's
   `127.0.1.1 template` line in `/etc/hosts` is rewritten to the VM's name at
   every deploy (no reinstall). `sudo` no longer warns "unable to resolve
@@ -47,6 +49,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- The engine's vault password, vault and VM SSH key (with its previous keys)
+  live in OpenBao: `stores.sh` imports them (`labape engine-secrets
+  import|status|check`), every job reads them from there, and the worker
+  rotates them instead of the update agent. The command line reads them
+  with its own read-only login (`~/.config/labape/store.env`,
+  `scripts/lib/store_get.py`, `scripts/lib/cli-secrets.sh`) and re-encrypts
+  its own vault when the password was rotated.
 - OpenBao and Conjur Open Source run in the LABaPe stack (`stores` compose
   profile), set up by the installer's new `Stack.Stores` step
   (`container/stores/stores.sh`, also for existing installs): certificates

@@ -302,6 +302,47 @@ def cmd_stores_configure(args) -> int:
     return 0
 
 
+def cmd_engine_secrets(args) -> int:
+    """Import container/engine-secrets/ into the platform store (design §26, S2), or report where they are."""
+    from .db import init_db, session_factory
+    from .engine import engine_secrets
+    from .security import audit
+
+    init_db()
+    with session_factory()() as db:
+        if args.action == "status":
+            print("labape: engine secrets are in the "
+                  + ("secret store" if engine_secrets.in_catalog(db) else "engine-secrets files"))
+            return 0
+        if args.action == "check":          # what every job does: the vault opens, the key pair is there
+            import tempfile
+            from pathlib import Path
+            if not engine_secrets.in_catalog(db):
+                print("labape: the engine secrets aren't in the secret store", file=sys.stderr)
+                return 1
+            with tempfile.TemporaryDirectory() as d:
+                try:
+                    engine_secrets.write_vault(db, Path(d))
+                    engine_secrets.write_ssh(db, Path(d) / "ssh")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"labape: {exc}", file=sys.stderr)
+                    return 1
+                n = len(list((Path(d) / "ssh" / "history").glob("*.pub")))
+            print(f"labape: engine secrets ok: the vault opens with its password; VM key and {n} previous key(s)")
+            return 0
+        try:
+            done = engine_secrets.import_files(db, args.store, force=args.force)
+        except Exception as exc:  # noqa: BLE001 — a missing file or a store error, reported plainly
+            print(f"labape: {exc}", file=sys.stderr)
+            return 1
+        if done:
+            audit(db, _who(), "engine_secrets.import", detail={"store": args.store, "names": len(done)})
+    for line in done:
+        print(f"labape: {line}")
+    print(f"labape: engine secrets {'imported' if done else 'already in the secret store'}.")
+    return 0
+
+
 def cmd_push_vm_key(args) -> int:
     """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
     import json as _json
@@ -418,6 +459,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--needs", action="store_true", help="only print which stores need a new login")
     p.add_argument("--check", action="store_true", help="test LABaPe's connection to both stores (no stdin)")
     p.set_defaults(func=cmd_stores_configure)
+
+    p = sub.add_parser("engine-secrets", help="the vault password, vault and VM key: import the files into the "
+                       "secret store (design §26), or say where they are")
+    p.add_argument("action", choices=["import", "status", "check"])
+    p.add_argument("--store", default="openbao", help="the platform store (default openbao)")
+    p.add_argument("--force", action="store_true", help="import again over what's stored")
+    p.set_defaults(func=cmd_engine_secrets)
 
     p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")
     p.add_argument("--new", required=True, help="the new private key; its .pub beside it")

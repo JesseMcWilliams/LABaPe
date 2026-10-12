@@ -242,20 +242,45 @@ for kind, label, notes in (
     REGISTRY[kind] = Rotator(kind=kind, label=label, needs_restart=True, via_agent=True,
                              interval_hours=RESTART_INTERVAL_HOURS, notes=notes)
 
-# The engine's own secrets (phase R2): files in the engine-secrets folder, which
-# the containers mount read-only and every job copies when it starts. The host
-# agent swaps them; no restart, so no maintenance window.
+# The engine's own secrets (phase R2, then S2 of design §26). Once they're in
+# the catalog (engine_secrets.in_catalog) the worker rotates them in the
+# platform store; until then they're files in the engine-secrets folder that
+# the host agent swaps. No restart either way, so no maintenance window.
+ENGINE_KINDS = ("vault_password", "bootstrap_ssh_key")
+
+
+def _engine_rotator(kind: str):
+    def run(db: Session, policy: SecretPolicy, log) -> str:
+        from . import engine_secrets
+        if not engine_secrets.in_catalog(db):
+            raise RotationError("the engine secrets are still files: the update agent rotates them")
+        if kind == "vault_password":
+            return engine_secrets.rotate_vault_password(db, log)
+        return engine_secrets.rotate_ssh_key(db, log)
+    return run
+
+
 for kind, label, notes in (
     ("vault_password", "Engine Ansible vault password",
-     "The update agent re-encrypts the engine vault with a new password, checks it opens, then swaps the vault and "
-     "its password together. Running jobs keep their own copies; no restart."),
+     "The worker re-encrypts the engine vault in the secret store with a new password, checks it opens, then stores "
+     "both. Running jobs keep their own copies; the command line re-encrypts its own vault on its next run (it keeps "
+     "the 7 previous passwords for that). No restart."),
     ("bootstrap_ssh_key", "VM bootstrap SSH key (Ansible to VMs)",
-     "The update agent makes a new key and adds it on the Linux VMs of every deployed environment (with the current "
-     "or a previous key), checks it logs in, then swaps it in here and in the service user's ~/.ssh for the command "
-     "line. The 7 previous keys are kept and still tried, for VMs that were off; keys older than that are removed "
-     "from the VMs. Environments on remote KVM hosts are skipped."),
+     "The worker makes a new key and adds it on the Linux VMs of every deployed environment (with the current or a "
+     "previous key), checks it logs in, then stores it. Jobs and the command line read it from the secret store. "
+     "The 7 previous keys are kept and still tried, for VMs that were off; keys older than that are removed from "
+     "the VMs. Environments on remote KVM hosts are skipped."),
 ):
-    REGISTRY[kind] = Rotator(kind=kind, label=label, via_agent=True, notes=notes)
+    REGISTRY[kind] = Rotator(kind=kind, label=label, via_agent=True, notes=notes, run=_engine_rotator(kind))
+
+
+def uses_agent(db: Session, kind: str) -> bool:
+    """Whether the host's update agent rotates this kind (the worker otherwise)."""
+    r = REGISTRY[kind]
+    if kind in ENGINE_KINDS:
+        from . import engine_secrets
+        return not engine_secrets.in_catalog(db)
+    return r.via_agent
 
 REGISTRY["smtp_password"] = Rotator(kind="smtp_password", label="SMTP password", secret_class="external",
                                     automatic=False, interval_hours=168,
@@ -341,6 +366,9 @@ def policy_secret(p: SecretPolicy) -> str | None:
     if p.kind == "oidc_client_secret":
         from ..auth.oidc import STORED_SECRET
         return STORED_SECRET
+    if p.kind in ENGINE_KINDS:            # catalog rows once imported (design §26)
+        from . import engine_secrets
+        return engine_secrets.VAULT_PASSWORD if p.kind == "vault_password" else engine_secrets.SSH_KEY
     if p.kind in ENV_ACCOUNTS and (p.params or {}).get("environment_id"):
         from .vmaccess import env_password_name
         return env_password_name(p.params["environment_id"], p.kind)
@@ -476,7 +504,7 @@ def schedule(db: Session, now: dt.datetime | None = None) -> list[int]:
     for p in due(db, now):
         if p.id in busy or p.status == "running":
             continue
-        if REGISTRY[p.kind].via_agent:
+        if uses_agent(db, p.kind):
             try:
                 request_agent(db, p, "system")
             except RotationError as exc:

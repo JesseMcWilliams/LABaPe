@@ -95,8 +95,9 @@ The generated passwords live only in the encrypted vault: read them with `ansibl
 
 **Rotating the Windows bootstrap password on running VMs.** Change it on the running hosts first, then in the vault; changing only the vault locks Ansible out. VMs aren't reinstalled. The full procedure is [Reference_Credentials.md §9](../Claude_Docs/Reference_Credentials.md#9-rotating-the-windows-bootstrap-password-on-a-running-environment).
 
-**When the web interface runs on the same host**, its update agent keeps the command line in step:
-- it rotates the VM SSH key daily and copies the current key to `~/.ssh/labape_bootstrap` (previous keys in `~/.ssh/labape-history/`), so the command line still reaches the VMs;
-- it rotates the vault password daily and gives the command line's vault the same new password: `secrets.vault.yml` is re-encrypted and `~/.labape-vault-pass` rewritten, together with the web interface's copy. If the command line's vault doesn't open with its password file, the rotation stops and nothing changes.
+**When the web interface runs on the same host**, the vault password and the VM SSH key live in its secret store (OpenBao), and the web interface rotates both daily. The command line reads them from there on every run, with its own read-only login in `~/.config/labape/store.env` (written by `container/stores/stores.sh`):
+- `scripts/lib/cli-secrets.sh` (called by `deploy.sh`, `destroy.sh` and the template scripts) writes the vault password and the VM key with its previous keys to `$XDG_RUNTIME_DIR/labape-cli/` (in memory, yours only) and points the scripts at them. A script started by another one, or by the web interface, uses what it was given.
+- If `secrets.vault.yml` no longer opens with the current password (it was rotated since your last run), it's re-encrypted in place with it, using the previous passwords the store keeps.
+- `~/.labape-vault-pass` and `~/.ssh/labape_bootstrap` are no longer used; after the move they're stale copies. Without `~/.config/labape/store.env` the scripts use them as before.
 
-Which vault the agent updates is set when it's installed: `deploy/update-agent/install.sh --cli-vault <path> [--vault-pass-file <path>]` (default: the checkout's `secrets.vault.yml` and `~/.labape-vault-pass`; `--cli-vault none` leaves it alone). The setting is kept in `~/.config/labape/agent.env`.
+To read the vault by hand: `python3 scripts/lib/store_get.py vault-pass --vault secrets.vault.yml --out $XDG_RUNTIME_DIR/labape-cli/vault-pass`, then `ansible-vault view secrets.vault.yml --vault-password-file $XDG_RUNTIME_DIR/labape-cli/vault-pass`.

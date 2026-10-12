@@ -9,6 +9,7 @@ import ssl
 import subprocess
 import time
 from collections import defaultdict
+from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
@@ -206,6 +207,18 @@ async def _auth(db: Session) -> list[dict]:
 
 
 def _vault_check() -> dict:
+    """The engine vault opens with its password: in the secret store once imported (design §26)."""
+    import tempfile
+    from ..db import session_factory
+    from ..engine import engine_secrets
+    with session_factory()() as db:
+        if engine_secrets.in_catalog(db):
+            with tempfile.TemporaryDirectory() as d:
+                try:
+                    engine_secrets.write_vault(db, Path(d))
+                except Exception as exc:  # noqa: BLE001 — a store error or a pair that doesn't open
+                    return _check(False, f"From the secret store: {exc}")
+            return _check(True, "In the secret store; decrypts with its password")
     s = get_settings()
     vault, pw = s.secrets_dir / "secrets.vault.yml", s.secrets_dir / "vault-pass"
     if not vault.is_file() or not pw.is_file():
@@ -230,14 +243,14 @@ def _secrets(db: Session) -> list[dict]:
         builtin = _check(ok, f"Encrypt/decrypt self-test passed; {count} secret(s) stored")
     except Exception as exc:  # noqa: BLE001 — any failure here is the finding
         builtin = _check(False, f"Self-test failed ({type(exc).__name__}); the secret key may have changed")
-    ok, msg = _cached("ca", 60, ca.health)
+    ca_ok, ca_msg = _cached("ca", 60, ca.health)
     external = []
     for name in stores.configured(db)[1:]:
         ok, msg = stores.check(db, name, cached=True)
         external.append({"name": f"store.{name}", "display_name": stores.providers()[name].display_name,
                          **_check(ok, msg)})
     return [{"name": "builtin", "display_name": "Built-in store (database, encrypted)", **builtin}, *external,
-            {"name": "platform_ca", "display_name": "Platform CA (step-ca)", **_check(ok, msg)},
+            {"name": "platform_ca", "display_name": "Platform CA (step-ca)", **_check(ca_ok, ca_msg)},
             {"name": "ansible_vault", "display_name": "Engine Ansible vault",
              **_cached("vault", 600, _vault_check)}]
 
