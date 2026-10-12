@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Changed
+- An environment's rotated Windows passwords are two secrets,
+  `environment/<id>/windows_admin` and `.../domain_admin`, instead of one
+  JSON value; existing ones are converted automatically.
+- `tools/helpers/ship.sh` merges with `--delete-branch` and prunes.
 - Rotating the engine's vault password also gives the command line's vault
   on the same host (`secrets.vault.yml` and `~/.labape-vault-pass`) the
   new password, so both keep working. `deploy/update-agent/install.sh
@@ -44,8 +48,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - External secret stores, step 1 (design §25): Settings → Secret stores
   connects OpenBao or HashiCorp Vault (KV v2, AppRole) and CyberArk Conjur
   (host and API key), with Test connection and a check on the admin
-  dashboard. Their logins are kept in the built-in store. Secrets don't
-  move to them yet.
+  dashboard. Their logins are kept in the built-in store.
+- External secret stores, step 2: every stored secret names the store it
+  lives in and links the rotation policy that changes it. Secrets → Stored
+  secrets lists them and moves them between stores (copied, read back,
+  switched, then the old copy deleted); changing a secret's store on its
+  page moves it too. Settings → Secret stores sets the default store for
+  new environment secrets. Store logins, elevated accounts and job tokens
+  stay built-in.
 - `tools/secrets-test/`: throwaway OpenBao and Conjur instances for building
   the external secret stores, with platform-CA certificates (the VM's own,
   or signed by the stack on the LABaPe host), unsealing at boot,

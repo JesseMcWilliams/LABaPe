@@ -29,7 +29,7 @@ interface OpenBao extends StoreBase { mount: string; path_prefix: string; auth_m
 interface Conjur extends StoreBase { account: string; login: string; authenticator: string; branch: string; has_api_key: boolean }
 interface AllSettings {
   backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts;
-  store_openbao: OpenBao; store_conjur: Conjur;
+  store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -177,7 +177,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -185,13 +185,13 @@ export default function Settings() {
   const testStore = (name: string) => () =>
     api.post<{ ok: boolean; message: string }>(`/api/admin/settings/stores/${name}/test`)
       .then((r) => (r.ok ? r.message : Promise.reject(new Error(r.message))));
-  const tls = <K extends "store_openbao" | "store_conjur">(k: K) => (
+  const tls = (k: "store_openbao" | "store_conjur", cfg: StoreBase) => (
     <>
-      <FormControlLabel label="Verify certificate" control={<Checkbox checked={s[k].verify_tls}
-        onChange={(e) => set(k, { verify_tls: e.target.checked } as Partial<AllSettings[K]>)} />} />
-      <Field label="CA bundle (PEM)" value={s[k].ca_bundle} fullWidth multiline minRows={2}
+      <FormControlLabel label="Verify certificate" control={<Checkbox checked={cfg.verify_tls}
+        onChange={(e) => set(k, { verify_tls: e.target.checked })} />} />
+      <Field label="CA bundle (PEM)" value={cfg.ca_bundle} fullWidth multiline minRows={2}
         help="Blank: trust the LABaPe platform CA, which signs the test stores' certificates"
-        onChange={(e) => set(k, { ca_bundle: e.target.value } as Partial<AllSettings[K]>)} />
+        onChange={(e) => set(k, { ca_bundle: e.target.value })} />
     </>
   );
 
@@ -406,6 +406,18 @@ export default function Settings() {
         login stays in the built-in store and is never shown again.
       </Typography>
 
+      <Section title="Default store"
+        intro="Where new environment secrets (inventories, credential sheets, rotated passwords) are kept. Existing secrets stay where they are; move them on the Secrets page."
+        onSave={async () => { await put("secret_stores", s.secret_stores); return "Default store saved."; }}>
+        <Field select label="New environment secrets" value={s.secret_stores.default_environment_store} sx={{ width: 300 }}
+          help="A store must be turned on and pass its test first"
+          onChange={(e) => set("secret_stores", { default_environment_store: e.target.value })}>
+          <MenuItem value="builtin">Built-in store (database, encrypted)</MenuItem>
+          <MenuItem value="openbao">OpenBao / Vault</MenuItem>
+          <MenuItem value="conjur">CyberArk Conjur</MenuItem>
+        </Field>
+      </Section>
+
       <Section title="OpenBao / HashiCorp Vault"
         intro="KV version 2 with an AppRole login. LABaPe's role needs read, write, list and delete on its own mount only."
         onSave={async () => {
@@ -433,7 +445,7 @@ export default function Settings() {
             onChange={(e) => setBaoSecretId(e.target.value)} />
           <Field label="Namespace" value={s.store_openbao.namespace} sx={{ width: 180 }} help="Vault Enterprise only"
             onChange={(e) => set("store_openbao", { namespace: e.target.value })} />
-          {tls("store_openbao")}
+          {tls("store_openbao", s.store_openbao)}
         </Stack>
       </Section>
 
@@ -462,7 +474,7 @@ export default function Settings() {
           <Field label="API key" type="password" value={conjurKey} sx={{ minWidth: 260 }} autoComplete="new-password"
             help={s.store_conjur.has_api_key ? "Saved. Type a new one to replace it." : "Not set"}
             onChange={(e) => setConjurKey(e.target.value)} />
-          {tls("store_conjur")}
+          {tls("store_conjur", s.store_conjur)}
         </Stack>
       </Section>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}

@@ -6,7 +6,7 @@ What a secret store must offer, and what its LABaPe provider must do, before it 
 
 Today every secret lives in the **built-in store**: encrypted rows in PostgreSQL (`security.get_secret` / `put_secret`, envelope encryption with rotating data keys). Each rotation policy already names its store (`secret_policies.store`, offered from `STORES` in `app/labape/api/secrets.py`), so several stores can be in use at once and the store is chosen **per secret** (question 84).
 
-A backend is a **provider**: a Python class registered under the `labape.secrets_providers` entry point group, so a new one doesn't touch the core. The first external provider also brings the small core change that routes `get_secret`/`put_secret` to the provider a secret's policy names (built-in by default).
+A backend is a **provider**: a Python class registered under the `labape.secrets_providers` entry point group, so a new one doesn't touch the core. The **secret catalog** (the `secrets` table) has one row per stored secret naming its store and linking its rotation policy; `get_secret`/`put_secret` follow that row, and a new environment secret goes to the default store set in Settings (design §25.2).
 
 What may move to an external store: the engine's Ansible vault password, bootstrap and elevated credentials, per-environment passwords and credential sheets, the worker's SSH key for remote KVM hosts, SMTP and directory tokens. What stays out: the store's own login (section 5), the master key and the database password (the API needs them before it can reach any store).
 

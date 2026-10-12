@@ -64,6 +64,8 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
                          "Give the SMTP server and a From address (name@domain), or turn email off.")
     if section.startswith("store_") and model.enabled and not model.url:
         raise FieldError("url", "Give the store's https:// address, or turn it off.")
+    if section == "secret_stores" and model.default_environment_store not in stores.available(db):
+        raise FieldError("default_environment_store", "That store isn't available: set it up and pass its test first.")
     appsettings.put(db, section, model)
     if section.startswith("store_"):
         stores.forget(section.removeprefix("store_"))

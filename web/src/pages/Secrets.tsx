@@ -6,6 +6,7 @@ import {
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { ListHeader } from "../components/PageParts";
+import StoredSecrets from "../components/StoredSecrets";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 
 // Settings > Secrets (design §24): every internal secret, how it's rotated,
@@ -15,7 +16,7 @@ export interface SecretPolicy {
   needs_restart: boolean; enabled: boolean; managed_externally: boolean; elevated_ref: string;
   params: Record<string, string>; status: string; last_rotated_at: string | null; next_due_at: string | null;
   last_error: string; notes: string; automatic: boolean; needs_elevated: boolean; rotator_notes: string;
-  last_job: { id: number; state: string } | null;
+  last_job: { id: number; state: string } | null; secret_name: string | null;
 }
 
 export const interval = (h: number) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hours`);
@@ -117,6 +118,7 @@ export default function Secrets() {
           ))}
         </TableBody>
       </Table>
+      <StoredSecrets onMoved={load} />
     </Stack>
   );
 }

@@ -24,7 +24,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Environment
+from ..models import Environment, Secret
 from ..security import get_secret, put_secret
 from . import hostio
 
@@ -152,6 +152,51 @@ def push_vm_key(db: Session, new_key: Path, current_key: Path, history_dir: Path
 
 # --- lab environment passwords (R4) ----------------------------------------------------
 
+# One secret per rotated account (design §25), each linked to its own rotation
+# policy; a deploy puts them over the vault's matching keys.
+ENV_PASSWORD_VAULT_KEYS = {"windows_admin": "windows_bootstrap_admin_password",
+                           "domain_admin": "domain_admin_password"}
+
+
+def env_password_name(env_id: int, kind: str) -> str:
+    return f"environment/{env_id}/{kind}"
+
+
+def env_password_overrides(db: Session, env_id: int) -> dict[str, str]:
+    """Vault key -> this environment's rotated password, for those that have one."""
+    out = {}
+    for kind, key in ENV_PASSWORD_VAULT_KEYS.items():
+        value = get_secret(db, env_password_name(env_id, kind))
+        if value:
+            out[key] = value
+    return out
+
+
+def clear_env_passwords(db: Session, env_id: int) -> None:
+    for kind in ENV_PASSWORD_VAULT_KEYS:
+        if db.get(Secret, env_password_name(env_id, kind)) is not None:
+            put_secret(db, env_password_name(env_id, kind), "")
+
+
+def split_legacy_passwords(db: Session) -> int:
+    """Before §25 both passwords shared one JSON secret, environment/<id>/passwords.
+    Split it into the per-account secrets, then drop it. Idempotent."""
+    by_key = {v: k for k, v in ENV_PASSWORD_VAULT_KEYS.items()}
+    done = 0
+    for row in list(db.scalars(select(Secret).where(Secret.name.like("environment/%/passwords")))):
+        env_id = row.name.split("/")[1]
+        text = get_secret(db, row.name) or ""
+        for key, value in (json.loads(text) if text.strip() else {}).items():
+            if key in by_key and value:
+                put_secret(db, f"environment/{env_id}/{by_key[key]}", value)
+        if row.store != "builtin":
+            from ..stores import open_store
+            open_store(db, row.store).delete(row.name)
+        db.delete(row)
+        db.commit()
+        done += 1
+    return done
+
 def new_windows_password() -> str:
     """20 characters with every class Windows' complexity rule asks for."""
     alphabet = string.ascii_letters + string.digits
@@ -268,12 +313,7 @@ def rotate_env_password(db: Session, env: Environment, kind: str, log) -> str:
     creds = get_secret(db, f"environment/{env.id}/credentials") or ""
     if creds:
         put_secret(db, f"environment/{env.id}/credentials", update_sheet(creds, kind, new))
-    over = json.loads(get_secret(db, f"environment/{env.id}/passwords") or "{}")
-    if kind == "domain_admin":
-        over["domain_admin_password"] = new
-    else:
-        over["windows_bootstrap_admin_password"] = new
-    put_secret(db, f"environment/{env.id}/passwords", json.dumps(over))
+    put_secret(db, env_password_name(env.id, kind), new)
     put_secret(db, candidate, "")
     log.write(f"labape: {env.name}: new {kind.replace('_', ' ')} password on {', '.join(change_on)}\n")
     return f"{len(change_on)} host(s) updated"

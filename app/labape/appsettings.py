@@ -104,6 +104,12 @@ class UpdateSettings(BaseModel):
     repo: str = Field(default="JesseMcWilliams/LABaPe", pattern=r"^[\w.-]+/[\w.-]+$")
 
 
+class SecretStoreSettings(BaseModel):
+    """Where new environment secrets go (design §25, question 94). The API
+    checks the store is configured and passing its test."""
+    default_environment_store: str = Field(default="builtin", pattern=r"^[a-z][a-z0-9_]{0,63}$")
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "retention": RetentionSettings,
@@ -115,6 +121,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "downloads": DownloadSettings,
     "maintenance_window": MaintenanceWindowSettings,
     "vm_accounts": VmAccountSettings,
+    "secret_stores": SecretStoreSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

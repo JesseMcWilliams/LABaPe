@@ -39,6 +39,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/rotate_r1.py` | lab (container) | Rotate the worker-run secrets end to end |
 | `live/rotate_oidc.py` | lab (container) | Rotate the OIDC client secret end to end |
 | `live/stores.py` | lab (container) | Connect and exercise the test OpenBao and Conjur |
+| `live/stores_move.py` | lab (container) | Move real secrets between the stores and check them |
 | `live/maintenance.py` | lab (container) | Turn maintenance mode on, check it, turn it off |
 | `live/update_api.py` | lab (container) | Show the update API's view; offer it a tag |
 | `live/agent-request.sh` | lab (host) | Send the update agent a request and wait |
@@ -53,7 +54,7 @@ Run on a `YYYY-MM-DD-<topic>` branch, and only for a change you've been asked to
 1. stages everything (`git add -A`);
 2. refuses to go on if a sensitive-looking file is staged: `.env`, `secrets/`, `*.vault.yml`, `*.local.md`, installer state or answers files;
 3. refuses if an added line looks like a secret: *password* or *secret*, then `=` or `:`, then 16 or more letters and digits. `ThisIsMy_FAKE...` placeholders are allowed. The check also catches one variable assigned to another, such as a `domain_password` variable set from a `windows_admin_password` variable. If it stops on a line like that, check the line by eye and commit by hand;
-4. commits with the message file, pushes, opens a PR into `main` with the body file, merges it, then checks out and pulls `main`.
+4. commits with the message file, pushes, opens a PR into `main` with the body file, merges it with `--delete-branch` (the branch goes locally and on GitHub), then checks out and pulls `main` and prunes stale remote-tracking refs.
 
 Commit messages end with a `Co-Authored-By:` line and PR bodies with the Claude Code line, when Claude writes them.
 
@@ -97,6 +98,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `rotate_r1.py` | `rotate_r1.py` | Adds the test rotator token as an elevated account, then rotates the directory token (checking the old key now gets 403), the data key and the worker key. Needs the test tokens in Authentik's `.env`. |
 | `rotate_oidc.py` | `rotate_oidc.py` | Adds the rotator token as an elevated account if it's missing, rotates the OIDC client secret, then checks the token endpoint now refuses the old secret (`invalid_client`) and a fresh sign-in works. Afterwards `LABAPE_TEST_CLIENT_SECRET` in `.env` is out of date. |
 | `stores.py` | `stores.py` | Saves the test stores' LABaPe logins in Settings → Secret stores, runs both Test connections and the dashboard check, then writes, reads, replaces, lists and deletes a throwaway value in each store. Needs `~/.config/labape/secrets-test.env` on the lab host (`OPENBAO_ROLE_ID`, `OPENBAO_SECRET_ID`, `CONJUR_HOST_API_KEY`, copied from `/opt/labape-secrets-test/.env` by root, mode 0600); `lab-live.sh` mounts it when present. |
+| `stores_move.py` | `stores_move.py [environment]` | Needs `stores.py` first. Moves the directory token built-in → OpenBao → Conjur → built-in, running group search after each move, moves an environment's credentials sheet (default `lab2`) to OpenBao and back comparing the sheet's hash, and sets the default store to OpenBao and back. |
 | `maintenance.py` | `maintenance.py on\|check\|off` | `check`: a developer's write gets 503, a read works, and Back up now is refused. |
 | `update_api.py` | `update_api.py [tag]` | Shows the current version, releases, standby version and agent state. With a tag, offers it to the API, which refuses unpublished tags. |
 | `agent-request.sh` | `agent-request.sh <update\|rollback> [tag]` | Writes the agent's request file directly and waits up to 20 minutes. Then it shows the state, running version, checkout, standby version, maintenance mode and the log tail. |

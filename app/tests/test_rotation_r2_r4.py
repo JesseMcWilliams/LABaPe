@@ -2,7 +2,6 @@
 (each environment's Windows Administrator and domain Administrator), plus the
 configurable Linux admin account (Settings > VM accounts)."""
 import io
-import json
 
 import yaml
 
@@ -126,7 +125,8 @@ def test_env_policies_and_rotation(client, monkeypatch):
         new = inv["all"]["hosts"]["app1"]["ansible_password"]
         assert new != "ThisIsMy_FAKE_Password6!" and len(new) == 20 and hosts.pw["app1"] == new
         assert inv["all"]["hosts"]["dc1"]["ansible_password"] == "ThisIsMy_FAKE_Password6!"   # the DC isn't a member
-        assert json.loads(get_secret(db, f"environment/{env_id}/passwords")) == {"windows_bootstrap_admin_password": new}
+        assert vmaccess.env_password_overrides(db, env_id) == {"windows_bootstrap_admin_password": new}
+        assert get_secret(db, f"environment/{env_id}/windows_admin") == new
         assert f"Password: {new}" in get_secret(db, f"environment/{env_id}/credentials")
         assert not get_secret(db, f"environment/{env_id}/rotation-candidate/windows_admin")
     change = hosts.calls[0]
@@ -137,7 +137,7 @@ def test_env_policies_and_rotation(client, monkeypatch):
     hosts.calls.clear()
     with session_factory()() as db:
         vmaccess.rotate_env_password(db, db.get(Environment, env_id), "domain_admin", io.StringIO())
-        over = json.loads(get_secret(db, f"environment/{env_id}/passwords"))
+        over = vmaccess.env_password_overrides(db, env_id)
         assert set(over) == {"windows_bootstrap_admin_password", "domain_admin_password"}
         assert hosts.pw["dc1"] == over["domain_admin_password"]
     assert hosts.calls[0][:2] == ("dc1", "microsoft.ad.user")
@@ -173,7 +173,7 @@ def test_failed_change_keeps_old_password(client, monkeypatch):
             assert "rotation-candidate/windows_admin" in str(exc)
         inv = yaml.safe_load(get_secret(db, f"environment/{env_id}/inventory"))
         assert inv["all"]["hosts"]["app1"]["ansible_password"] == "ThisIsMy_FAKE_Password6!"
-        assert get_secret(db, f"environment/{env_id}/passwords") is None
+        assert get_secret(db, f"environment/{env_id}/windows_admin") is None
         assert len(get_secret(db, f"environment/{env_id}/rotation-candidate/windows_admin")) == 20
     assert hosts.pw["app1"] == "ThisIsMy_FAKE_Password6!"
 
@@ -272,10 +272,10 @@ def test_destroy_clears_rotated_passwords(client):
     from labape.engine.runner import _finish
     env_id = _deployed_env(client)
     with session_factory()() as db:
-        put_secret(db, f"environment/{env_id}/passwords", json.dumps({"domain_admin_password": "x"}))
+        put_secret(db, f"environment/{env_id}/domain_admin", "x")
         job = Job(type="environment.destroy", environment_id=env_id, state="running", requested_by="t")
         db.add(job)
         db.commit()
         _finish(db, job, db.get(Environment, env_id), 0)
         assert db.get(Environment, env_id).status == "destroyed"
-        assert not get_secret(db, f"environment/{env_id}/passwords")
+        assert not get_secret(db, f"environment/{env_id}/domain_admin")

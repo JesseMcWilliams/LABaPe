@@ -5,7 +5,7 @@ from sqlalchemy import delete as sql_delete, select
 from sqlalchemy.orm import Session
 
 from ..models import Secret
-from ..security import _fernet, get_secret, put_secret
+from ..security import _fernet, decrypt_value, encrypt_value
 from .base import SecretStore
 
 
@@ -16,18 +16,25 @@ class BuiltinStore(SecretStore):
     def __init__(self, db: Session):
         self.db = db
 
+    # Only rows the catalog places here: an external secret's row isn't a built-in value.
     def get(self, name):
-        return get_secret(self.db, name)
+        row = self.db.get(Secret, name)
+        return decrypt_value(self.db, row.value) if row is not None and row.store == "builtin" else None
 
     def put(self, name, value):
-        put_secret(self.db, name, value)
+        row = self.db.get(Secret, name)
+        if row is None:
+            self.db.add(Secret(name=name, value=encrypt_value(self.db, value), store="builtin"))
+        else:
+            row.value, row.store = encrypt_value(self.db, value), "builtin"
+        self.db.commit()
 
     def delete(self, name):
-        self.db.execute(sql_delete(Secret).where(Secret.name == name))
+        self.db.execute(sql_delete(Secret).where(Secret.name == name, Secret.store == "builtin"))
         self.db.commit()
 
     def list(self, prefix=""):
-        q = select(Secret.name).order_by(Secret.name)
+        q = select(Secret.name).where(Secret.store == "builtin").order_by(Secret.name)
         if prefix:
             q = q.where(Secret.name.startswith(prefix))
         return list(self.db.scalars(q))

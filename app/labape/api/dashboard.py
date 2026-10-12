@@ -220,11 +220,11 @@ def _vault_check() -> dict:
 
 
 def _secrets(db: Session) -> list[dict]:
-    count = db.scalar(select(func.count()).select_from(Secret)) or 0
+    count = db.scalar(select(func.count()).select_from(Secret).where(Secret.store == "builtin")) or 0
     try:
         f = _fernet()
         ok = f.decrypt(f.encrypt(b"labape-self-test")) == b"labape-self-test"
-        sample = db.scalar(select(Secret).limit(1))
+        sample = db.scalar(select(Secret).where(Secret.store == "builtin").limit(1))
         if sample is not None and decrypt_value(db, sample.value) is None:
             raise ValueError("a stored secret doesn't decrypt")
         builtin = _check(ok, f"Encrypt/decrypt self-test passed; {count} secret(s) stored")

@@ -74,7 +74,7 @@ def _write(log, text: str) -> None:
          notes="Re-encrypts every stored secret with a new data key; no restart. The master key "
                "(LABAPE_SECRET_KEY) wraps the data key and rotates separately.")
 def rotate_data_key(db: Session, policy: SecretPolicy, log) -> str:
-    rows = list(db.scalars(select(Secret)))
+    rows = list(db.scalars(select(Secret).where(Secret.store == "builtin")))     # external rows hold no value
     plain = {}
     for r in rows:
         value = decrypt_value(db, r.value)
@@ -315,6 +315,38 @@ def ensure_policies(db: Session) -> None:
                             next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
     db.commit()
     ensure_env_policies(db)
+    from .vmaccess import split_legacy_passwords
+    split_legacy_passwords(db)
+    link_secrets(db)
+
+
+def policy_secret(p: SecretPolicy) -> str | None:
+    """The stored secret a policy rotates, when it has one in the catalog. The
+    data key lives in its own table, and the worker key and the agent's
+    secrets in files on the host (question 95)."""
+    if p.kind == "directory_token":
+        return appsettings.DIRECTORY_TOKEN_SECRET
+    if p.kind == "smtp_password":
+        return appsettings.SMTP_PASSWORD_SECRET
+    if p.kind == "oidc_client_secret":
+        from ..auth.oidc import STORED_SECRET
+        return STORED_SECRET
+    if p.kind in ENV_ACCOUNTS and (p.params or {}).get("environment_id"):
+        from .vmaccess import env_password_name
+        return env_password_name(p.params["environment_id"], p.kind)
+    return None
+
+
+def link_secrets(db: Session) -> None:
+    """Point each catalog row at the policy that rotates it (design §25)."""
+    for p in db.scalars(select(SecretPolicy)):
+        name = policy_secret(p)
+        row = db.get(Secret, name) if name else None
+        if row is not None and row.policy_id != p.id:
+            row.policy_id = p.id
+        if row is not None and p.store != row.store:
+            p.store = row.store
+    db.commit()
 
 
 def env_policy_name(env_id: int, kind: str) -> str:
@@ -483,6 +515,7 @@ def run_job(db: Session, job: Job) -> int:
         policy.last_rotated_at = utcnow()
         policy.next_due_at = utcnow() + dt.timedelta(hours=policy.interval_hours)
         db.commit()
+        link_secrets(db)                                  # a first rotation makes the catalog row
         audit(db, job.requested_by, "secret.rotate", object_type="secret_policy", object_id=policy.id,
               detail={"name": policy.name, "summary": summary})
         log.write(f"labape: done: {summary}; next rotation {policy.next_due_at:%Y-%m-%d %H:%M} UTC\n")

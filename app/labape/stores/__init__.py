@@ -15,13 +15,14 @@ from importlib.metadata import entry_points
 from sqlalchemy.orm import Session
 
 from .. import appsettings
-from ..security import get_secret
+from ..models import Secret, SecretPolicy
+from ..security import audit, decrypt_value, encrypt_value, get_secret, pinned
 from .base import SecretStore, StoreError
 from .builtin import BuiltinStore
 from .conjur import ConjurStore
 from .openbao import OpenBaoStore
 
-__all__ = ["SecretStore", "StoreError", "available", "check", "configured", "credential_secret", "open_store",
+__all__ = ["SecretStore", "StoreError", "available", "check", "configured", "credential_secret", "move", "open_store",
            "providers"]
 
 _BUNDLED: dict[str, type[SecretStore]] = {"builtin": BuiltinStore, "openbao": OpenBaoStore, "conjur": ConjurStore}
@@ -107,3 +108,56 @@ def forget(name: str) -> None:
     """Drop the cached instance and check, after its settings change."""
     _instances.pop(name, None)
     _checks.pop(name, None)
+
+
+def move(db: Session, name: str, target: str, actor: str = "system", *, source_ip: str = "") -> str:
+    """Move one secret to another store (design §25): read it, write it there,
+    read it back, point the catalog row at the new store, then delete the old
+    copy. Until the row changes nothing else does, so a failure leaves the
+    secret where it was. Used by Move on the Secrets page and by a policy's
+    store change. Returns a summary; raises StoreError."""
+    row = db.get(Secret, name)
+    if row is None:
+        raise StoreError(f"There's no stored secret {name}")
+    source = row.store
+    if source == target:
+        return f"{name} is already in {_label(target)}"
+    if pinned(name) and target != "builtin":
+        raise StoreError(f"{name} stays in the built-in store: LABaPe needs it to reach the other stores")
+    if target not in available(db):
+        raise StoreError(f"{_label(target)} isn't available: set it up and pass its test in Settings → Secret stores")
+    value = get_secret(db, name)
+    if value is None:
+        raise StoreError(f"{name} can't be read from {_label(source)}, so it wasn't moved")
+    if target == "builtin":
+        token = encrypt_value(db, value)
+        if decrypt_value(db, token) != value:
+            raise StoreError(f"{name} didn't read back after encrypting; it stays in {_label(source)}")
+    else:
+        dest = open_store(db, target)
+        dest.put(name, value)
+        if dest.get(name) != value:
+            raise StoreError(f"{name} didn't read back from {_label(target)}; it stays in {_label(source)}")
+        token = ""
+    row.store, row.value = target, token
+    db.commit()
+    note = ""
+    if source != "builtin":
+        try:
+            open_store(db, source).delete(name)
+        except StoreError as exc:
+            note = f"; the old copy is still in {_label(source)} ({exc})"
+    if row.policy_id:
+        pol = db.get(SecretPolicy, row.policy_id)
+        if pol is not None and pol.store != target:
+            pol.store = target
+            db.commit()
+    audit(db, actor, "secret.move", object_type="secret", object_id=name,
+          detail={"name": name, "from": source, "to": target, "old_copy_left": bool(note)},
+          outcome="ok", source_ip=source_ip)
+    return f"{name} moved from {_label(source)} to {_label(target)}{note}"
+
+
+def _label(name: str) -> str:
+    cls = providers().get(name)
+    return cls.display_name if cls else name
