@@ -5,14 +5,15 @@
     store_get.py ssh --out-dir DIR
     store_get.py check
 
-Signs in to OpenBao with the command line's own AppRole (read-only on
-platform/engine/), from ~/.config/labape/store.env (written by
+Signs in to the platform store (question 104) with the command line's own
+read-only login, from ~/.config/labape/store.env (written by
 container/stores/stores.sh, mode 0600):
 
+    LABAPE_STORE_KIND=openbao | conjur
     LABAPE_STORE_URL=https://127.0.0.1:8200
     LABAPE_STORE_CA=<the platform root certificate>
-    LABAPE_STORE_ROLE_ID=...
-    LABAPE_STORE_SECRET_ID=...
+    LABAPE_STORE_ROLE_ID=..., LABAPE_STORE_SECRET_ID=...    (OpenBao: AppRole labape-cli)
+    LABAPE_STORE_API_KEY=...                                (Conjur: host labape/cli)
 
 vault-pass writes the current vault password to --out (0600). If --vault
 (the command line's own secrets.vault.yml) doesn't open with it, the
@@ -31,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -56,29 +58,42 @@ def config() -> dict:
 
 
 class Store:
+    """OpenBao (KV v2 under labape/) or Conjur (variables under labape/secrets/), read-only."""
+
     def __init__(self, cfg: dict):
+        self.kind = cfg.get("LABAPE_STORE_KIND", "openbao")
         self.url = cfg.get("LABAPE_STORE_URL", "").rstrip("/")
         self.ctx = ssl.create_default_context(cafile=cfg.get("LABAPE_STORE_CA") or None)
-        body = {"role_id": cfg.get("LABAPE_STORE_ROLE_ID", ""), "secret_id": cfg.get("LABAPE_STORE_SECRET_ID", "")}
-        self.token = self._call("POST", "/v1/auth/approle/login", body, "signing in")["auth"]["client_token"]
+        self.headers: dict[str, str] = {}
+        if self.kind == "conjur":
+            login = urllib.parse.quote("host/labape/cli", safe="")
+            tok = self._call("POST", f"/authn/labape/{login}/authenticate", cfg.get("LABAPE_STORE_API_KEY", "").encode(),
+                             "signing in", {"Accept-Encoding": "base64"})
+            self.headers = {"Authorization": f'Token token="{tok.decode().strip()}"'}
+        else:
+            body = json.dumps({"role_id": cfg.get("LABAPE_STORE_ROLE_ID", ""),
+                               "secret_id": cfg.get("LABAPE_STORE_SECRET_ID", "")}).encode()
+            out = json.loads(self._call("POST", "/v1/auth/approle/login", body, "signing in",
+                                        {"Content-Type": "application/json"}))
+            self.headers = {"X-Vault-Token": out["auth"]["client_token"]}
 
-    def _call(self, method: str, path: str, body: dict | None, what: str) -> dict:
-        data = json.dumps(body).encode() if body is not None else None
-        headers = {"Content-Type": "application/json"}
-        if getattr(self, "token", None):
-            headers["X-Vault-Token"] = self.token
-        req = urllib.request.Request(self.url + path, data=data, method=method, headers=headers)
+    def _call(self, method: str, path: str, data: bytes | None, what: str, headers: dict | None = None) -> bytes:
+        req = urllib.request.Request(self.url + path, data=data, method=method, headers={**self.headers, **(headers or {})})
         try:
             with urllib.request.urlopen(req, context=self.ctx, timeout=30) as r:
-                return json.loads(r.read() or b"{}")
+                return r.read()
         except urllib.error.HTTPError as exc:
             die(f"the secret store answered HTTP {exc.code} {what} ({self.url})")
         except (urllib.error.URLError, OSError) as exc:
             die(f"can't reach the secret store at {self.url} ({what}): {exc}")
-        return {}
+        return b""
 
     def get(self, name: str) -> str:
-        return self._call("GET", f"/v1/{MOUNT}/data/{BASE}{name}", None, f"reading {BASE}{name}")["data"]["data"]["value"]
+        what = f"reading {BASE}{name}"
+        if self.kind == "conjur":
+            var = urllib.parse.quote(f"labape/secrets/{BASE}{name}", safe="")
+            return self._call("GET", f"/secrets/labape/variable/{var}", None, what).decode()
+        return json.loads(self._call("GET", f"/v1/{MOUNT}/data/{BASE}{name}", None, what))["data"]["data"]["value"]
 
 
 def write(path: Path, text: str, mode: int) -> None:

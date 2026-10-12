@@ -43,6 +43,9 @@ if command -v docker >/dev/null 2>&1; then COMPOSE=(docker compose); else COMPOS
 dc() { (cd "$C" && COMPOSE_PROFILES=stores "${COMPOSE[@]}" "$@"); }
 
 BPORT="$(envget LABAPE_OPENBAO_PORT)"; BPORT="${BPORT:-8200}"
+# Which store holds LABaPe's own secrets (question 104): LABAPE_PLATFORM_STORE in .env.
+PLATFORM="$(envget LABAPE_PLATFORM_STORE)"; PLATFORM="${PLATFORM:-openbao}"
+case "$PLATFORM" in openbao|conjur) ;; *) die "LABAPE_PLATFORM_STORE must be openbao or conjur, not $PLATFORM" ;; esac
 CPORT="$(envget LABAPE_CONJUR_PORT)"; CPORT="${CPORT:-8444}"
 BAO="https://127.0.0.1:$BPORT" CONJUR="https://127.0.0.1:$CPORT"
 
@@ -161,14 +164,18 @@ configure_bao() {
 }
 
 # --- Conjur ----------------------------------------------------------------------------------
-CONJUR_HOST_KEY=""   # set when the policy load creates host labape/app; never written to disk
-configure_conjur() {
-  local i out tok
-  for i in $(seq 1 60); do
-    curl -fsS --cacert "$TLS/root.crt" -o /dev/null "$CONJUR/" 2>/dev/null && break
-    [ "$i" = 60 ] && die "Conjur isn't answering on $CONJUR (docker compose logs labape-conjur)"
+CONJUR_HOST_KEY="" CONJUR_CLI_KEY=""   # set when the policy load creates those hosts; never written to disk
+wait_conjur() {   # Conjur takes a minute or more after a start; nginx answers 502 until then
+  local i
+  for i in $(seq 1 100); do
+    curl -fsS --cacert "$TLS/root.crt" -o /dev/null "$CONJUR/" 2>/dev/null && return 0
     sleep 3
   done
+  die "Conjur isn't answering on $CONJUR (docker compose logs labape-conjur)"
+}
+configure_conjur() {
+  local out tok
+  wait_conjur
   if [ ! -s "$S/conjur_admin_api_key" ]; then
     out="$(dc exec -T labape-conjur sh -c '. /run/stores/env.sh && conjurctl account create labape' 2>&1)" \
       || die "creating the Conjur account failed: $(echo "$out" | grep -iv 'api key' | tail -1)"
@@ -176,17 +183,26 @@ configure_conjur() {
     say "Conjur account labape created"
   fi
   tok="$(conjur_login admin < "$S/conjur_admin_api_key")" || die "Conjur refused the admin key in stores/secrets"
-  # The answer lists the API keys of roles it creates: keep host labape/app's in memory only.
+  # The answer lists the API keys of the hosts it creates: the app's and the command line's stay
+  # in memory (they go to LABaPe's settings and store.env); the agent's is secret zero.
   out="$(conjur_api POST /policies/labape/policy/root "$tok" < "$HERE/conjur/policy.yml")" \
     || die "loading the Conjur policy failed"
-  CONJUR_HOST_KEY="$(echo "$out" | python3 -c 'import json, sys
+  created() { echo "$out" | python3 -c 'import json, sys
 roles = json.load(sys.stdin).get("created_roles", {})
-print(next((r["api_key"] for k, r in roles.items() if k.endswith(":host:labape/app")), ""))')"
+print(next((r["api_key"] for k, r in roles.items() if k.endswith(":host:labape/" + sys.argv[1])), ""))' "$1"; }
+  CONJUR_HOST_KEY="$(created app)"; CONJUR_CLI_KEY="$(created cli)"
+  i="$(created agent)"
+  [ -z "$i" ] || sput agent_conjur_api_key "$i"
+  if [ ! -s "$S/agent_conjur_api_key" ] || ! conjur_login host/labape/agent < "$S/agent_conjur_api_key" >/dev/null 2>&1; then
+    sput agent_conjur_api_key "$(conjur_rotate_key agent)"
+    say "Conjur: issued the update agent's key (stores/secrets/agent_conjur_api_key)"
+  fi
 }
-conjur_rotate_app_key() {   # a new API key for host labape/app (the old one stops working)
+conjur_rotate_key() {   # conjur_rotate_key <host>: a new API key for host labape/<host> (the old one stops working)
   local tok; tok="$(conjur_login admin < "$S/conjur_admin_api_key")"
-  conjur_api PUT "/authn/labape/api_key?role=host:labape/app" "$tok" < /dev/null
+  conjur_api PUT "/authn/labape/api_key?role=host:labape/$1" "$tok" < /dev/null
 }
+conjur_rotate_app_key() { conjur_rotate_key app; }
 
 # --- LABaPe's settings -----------------------------------------------------------------------
 labape() { (cd "$C" && "${COMPOSE[@]}" exec -T labape-api labape "$@"); }
@@ -234,29 +250,54 @@ REPO="$(dirname "$C")"
 CLI_VAULT="$(grep -m1 '^LABAPE_CLI_VAULT=' "$HOME/.config/labape/agent.env" 2>/dev/null | cut -d= -f2- || true)"
 CLI_VAULT="${CLI_VAULT:-$REPO/secrets.vault.yml}"
 CLI_PASS="$HOME/.labape-vault-pass"
-configure_cli() {   # the command line's read-only AppRole, in ~/.config/labape/store.env (0600)
-  local sid=""
-  policy labape-cli "$HERE/openbao/labape-cli.hcl"
-  role labape-cli labape-cli
-  if [ -f "$STORE_ENV" ]; then sid="$(grep -m1 '^LABAPE_STORE_SECRET_ID=' "$STORE_ENV" | cut -d= -f2- || true)"; fi
-  if [ -z "$sid" ] || ! python3 -c 'import json, sys; print(json.dumps({"role_id": sys.argv[1], "secret_id": sys.argv[2]}))' \
-       "$(role_id labape-cli)" "$sid" | bao_api POST auth/approle/login >/dev/null 2>&1; then
-    sid="$(new_secret_id labape-cli)"
-    say "OpenBao: issued the command line's login ($STORE_ENV)"
+configure_cli() {   # the command line's read-only login to the platform store, in ~/.config/labape/store.env (0600)
+  local sid="" key="" old_kind=""
+  [ -f "$STORE_ENV" ] && old_kind="$(grep -m1 '^LABAPE_STORE_KIND=' "$STORE_ENV" | cut -d= -f2- || true)"
+  if [ "$PLATFORM" = conjur ]; then
+    [ "${old_kind:-openbao}" = conjur ] && key="$(grep -m1 '^LABAPE_STORE_API_KEY=' "$STORE_ENV" | cut -d= -f2- || true)"
+    if [ -z "$key" ] || ! printf '%s' "$key" | conjur_login host/labape/cli >/dev/null 2>&1; then
+      key="${CONJUR_CLI_KEY:-$(conjur_rotate_key cli)}"
+      say "Conjur: issued the command line's key ($STORE_ENV)"
+    fi
+    (umask 077; mkdir -p "$(dirname "$STORE_ENV")"
+     printf '%s\n' "# The command line's login to the platform store (container/stores/stores.sh; design §26)" \
+       "LABAPE_STORE_KIND=conjur" "LABAPE_STORE_URL=$CONJUR" "LABAPE_STORE_CA=$TLS/root.crt" \
+       "LABAPE_STORE_API_KEY=$key" > "$STORE_ENV.tmp")
+  else
+    policy labape-cli "$HERE/openbao/labape-cli.hcl"
+    role labape-cli labape-cli
+    [ "${old_kind:-openbao}" = openbao ] && [ -f "$STORE_ENV" ] \
+      && sid="$(grep -m1 '^LABAPE_STORE_SECRET_ID=' "$STORE_ENV" | cut -d= -f2- || true)"
+    if [ -z "$sid" ] || ! python3 -c 'import json, sys; print(json.dumps({"role_id": sys.argv[1], "secret_id": sys.argv[2]}))' \
+         "$(role_id labape-cli)" "$sid" | bao_api POST auth/approle/login >/dev/null 2>&1; then
+      sid="$(new_secret_id labape-cli)"
+      say "OpenBao: issued the command line's login ($STORE_ENV)"
+    fi
+    (umask 077; mkdir -p "$(dirname "$STORE_ENV")"
+     printf '%s\n' "# The command line's login to the platform store (container/stores/stores.sh; design §26)" \
+       "LABAPE_STORE_KIND=openbao" "LABAPE_STORE_URL=$BAO" "LABAPE_STORE_CA=$TLS/root.crt" \
+       "LABAPE_STORE_ROLE_ID=$(role_id labape-cli)" "LABAPE_STORE_SECRET_ID=$sid" > "$STORE_ENV.tmp")
   fi
-  (umask 077; mkdir -p "$(dirname "$STORE_ENV")"
-   printf '%s\n' "# The command line's login to the platform store (container/stores/stores.sh; design §26)" \
-     "LABAPE_STORE_URL=$BAO" "LABAPE_STORE_CA=$TLS/root.crt" "LABAPE_STORE_ROLE_ID=$(role_id labape-cli)" \
-     "LABAPE_STORE_SECRET_ID=$sid" > "$STORE_ENV.tmp")
   chmod 600 "$STORE_ENV.tmp"; mv "$STORE_ENV.tmp" "$STORE_ENV"
 }
 ES_DIR() { local es; es="$(envget LABAPE_ENGINE_SECRETS_PATH)"; es="${es:-./engine-secrets}"
            case "$es" in /*) echo "$es" ;; *) echo "$C/${es#./}" ;; esac; }
-import_engine() {   # the vault, its password and the VM key into the platform store, once
-  if [ -s "$(ES_DIR)/vault-pass" ]; then
-    labape engine-secrets import --store openbao 2>/dev/null | grep '^labape:' | tail -1 \
-      || die "importing the engine secrets failed (labape engine-secrets import)"
-  fi
+ENGINE_NAMES="vault_password vault_password_history vault ssh_key ssh_key_pub ssh_history"
+conjur_cli_permits() {   # the command line may read the engine secrets (the variables exist now)
+  local tok body="- !permit
+  role: !host /labape/cli
+  privileges: [read, execute]
+  resources:"
+  for n in $ENGINE_NAMES; do body+="
+    - !variable platform/engine/$n"; done
+  tok="$(conjur_login admin < "$S/conjur_admin_api_key")"
+  printf '%s\n' "$body" | conjur_api POST "/policies/labape/policy/labape%2Fsecrets" "$tok" >/dev/null \
+    || die "granting the command line read access in Conjur failed"
+}
+import_engine() {   # the vault, its password and the VM key into the platform store (moved there if it changed)
+  labape engine-secrets import --store "$PLATFORM" 2>/dev/null | grep '^labape:' | tail -1 \
+    || die "importing or moving the engine secrets failed (labape engine-secrets import --store $PLATFORM)"
+  [ "$PLATFORM" != conjur ] || conjur_cli_permits
   labape engine-secrets check 2>/dev/null | grep '^labape:' || die "the engine secrets in the store don't check out"
 }
 check_cli() {   # the command line reads them; its own vault opens with the store's password (re-encrypted if not)
@@ -269,7 +310,7 @@ check_cli() {   # the command line reads them; its own vault opens with the stor
   say "the command line reads its vault password and VM key from the store; $CLI_VAULT opens with it"
 }
 # --- the bootstrap secrets (phase S4) --------------------------------------------------------
-# container/secrets/ moves into OpenBao (labape-host/bootstrap/, the agent's mount). The
+# container/secrets/ moves into the platform store (only the agent's login reads it). The
 # stack then reads a memory-only copy in LABAPE_SECRETS_DIR, which `unseal` refills at boot.
 hs() { python3 "$HERE/hostsecrets.py" "$@"; }
 runtime_secrets_dir() {
@@ -286,34 +327,53 @@ healthy_within() {   # healthy_within <seconds>: labape health --deep passes
   return 1
 }
 move_bootstrap() {
-  local dir running
-  if [ -n "$(envget LABAPE_SECRETS_DIR)" ]; then
-    hs same "$(envget LABAPE_SECRETS_DIR)" || die "the stack's secrets differ from OpenBao's; not changing anything"
-    say "the bootstrap secrets are in OpenBao; the stack reads them from $(envget LABAPE_SECRETS_DIR)"
+  local dir running cur tmp
+  dir="$(envget LABAPE_SECRETS_DIR)"
+  if [ -n "$dir" ]; then
+    cur="$(hs active)"
+    if [ "$cur" = "$PLATFORM" ]; then
+      hs same "$dir" || die "the stack's secrets differ from $cur's copy; not changing anything"
+      sput platform_store_active "$cur"
+      say "the bootstrap secrets are in $cur; the stack reads them from $dir"
+      return 0
+    fi
+    # The platform store changed (question 104): copy them over, check, then switch. The
+    # running stack keeps its files; a boot before the switch still reads the old store.
+    hs --store "$cur" same "$dir" || die "the stack's secrets differ from $cur's copy; not moving them"
+    hs --store "$PLATFORM" push "$dir"
+    tmp="$(mktemp -d)"; hs --store "$PLATFORM" pull "$tmp/s" >/dev/null
+    hs --store "$PLATFORM" same "$dir" || { rm -rf "$tmp"; die "$PLATFORM's copy differs; still on $cur"; }
+    rm -rf "$tmp"
+    sput platform_store_active "$PLATFORM"
+    hs --store "$cur" drop || say "the old copy in $cur couldn't be deleted; delete it by hand"
+    say "the bootstrap secrets moved from $cur to $PLATFORM"
     return 0
   fi
   running="$(labape maintenance status 2>/dev/null | tail -1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["running_jobs"])')"
   [ "$running" = 0 ] || die "$running job(s) running; moving the bootstrap secrets restarts the API and worker: try again later"
   dir="$(runtime_secrets_dir)"
-  hs push "$C/secrets"
-  hs pull "$dir"
-  hs same "$C/secrets" || die "OpenBao's copy differs from container/secrets/; nothing switched"
+  hs --store "$PLATFORM" push "$C/secrets"
+  hs --store "$PLATFORM" pull "$dir"
+  hs --store "$PLATFORM" same "$C/secrets" || die "$PLATFORM's copy differs from container/secrets/; nothing switched"
+  sput platform_store_active "$PLATFORM"
   envput LABAPE_SECRETS_DIR "$dir"
-  say "restarting the stack on the copy from OpenBao ($dir)"
+  say "restarting the stack on the copy from $PLATFORM ($dir)"
   (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate postgres labape-ca labape-api labape-worker >/dev/null 2>&1) || true
   if ! healthy_within 240; then
     sed -i '/^LABAPE_SECRETS_DIR=/d' "$C/.env"
     (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate postgres labape-ca labape-api labape-worker >/dev/null 2>&1) || true
-    die "the stack wasn't healthy on the copy from OpenBao; back on container/secrets/"
+    die "the stack wasn't healthy on the copy from $PLATFORM; back on container/secrets/"
   fi
-  say "the bootstrap secrets are in OpenBao; container/secrets/ is now an old copy (back it up and delete it)"
+  say "the bootstrap secrets are in $PLATFORM; container/secrets/ is now an old copy (back it up and delete it)"
 }
-start_stack() {   # at boot: the memory-only copy from OpenBao, then everything up
-  local dir; dir="$(envget LABAPE_SECRETS_DIR)"
+start_stack() {   # at boot: the memory-only copy from the platform store, then everything up
+  local dir store; dir="$(envget LABAPE_SECRETS_DIR)"
   [ -n "$dir" ] || return 0
+  store="$(hs active)"
+  [ "$store" != conjur ] || wait_conjur
   hs pull "$dir"
   (cd "$C" && "${COMPOSE[@]}" up -d >/dev/null 2>&1) || die "starting the stack failed (docker compose up -d in $C)"
-  say "the stack started with its secrets from OpenBao"
+  say "the stack started with its secrets from $store"
 }
 
 # --- checks ------------------------------------------------------------------------------------

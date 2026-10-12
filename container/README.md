@@ -105,6 +105,8 @@ The stack includes OpenBao and Conjur Open Source (design §26), in the `stores`
 | `stores/tls/` | The stores' certificate, key and the platform root |
 | `labape-stores.service`, `labape-stores-tls.timer` | User units: unseal OpenBao when the service user's systemd starts (lingering, so at boot), and renew the certificate daily when fewer than 10 days are left |
 
+**Platform store.** LABaPe's own secrets (the engine secrets, the bootstrap secrets below, the command line's login) live in OpenBao unless `LABAPE_PLATFORM_STORE=conjur` is set in `.env`; re-run `stores/stores.sh setup` after changing it to move them. `stores/secrets/platform_store_active` records where they are now, so a boot before the move still reads the right store.
+
 `stores/stores.sh status` shows whether OpenBao is sealed and runs LABaPe's own checks; `stores/stores.sh unseal` unseals it by hand.
 
 ## Run

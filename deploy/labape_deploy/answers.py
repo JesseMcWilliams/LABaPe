@@ -78,6 +78,8 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("WebHostname", "Hostname (or IP) browsers use for the web interface", default=lambda a: _primary_ip()),
     Answer("Tls", "HTTPS certificate: 'internal' (Caddy's own CA) or an email address for ACME", default="internal"),
     Answer("ContainerRuntime", "Container runtime", kind="choice", choices=("docker", "podman"), default="docker"),
+    Answer("PlatformStore", "Secret store for LABaPe's own secrets (both are installed)", kind="choice",
+           choices=("openbao", "conjur"), default="openbao"),
     Answer("AuthMode", "Sign-in: an existing OIDC provider (Authentik), a throwaway test Authentik, or none (break-glass only)",
            kind="choice", choices=("existing", "test-authentik", "none"), default="existing"),
     Answer("OidcIssuer", "OIDC issuer URL (e.g. https://authentik.example/application/o/labape/)"),

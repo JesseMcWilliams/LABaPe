@@ -104,6 +104,7 @@ Nothing secret is ever written to the answers file.
 | `DefaultNetwork` | For host groups that don't name one | the first network |
 | `WebHostname`, `Tls` | Web interface address; `internal` or an ACME email | this host's IP, `internal` |
 | `ContainerRuntime` | `docker` or `podman` | `docker` |
+| `PlatformStore` | Which store holds LABaPe's own secrets: `openbao` or `conjur` (both are installed). Written to `LABAPE_PLATFORM_STORE` in `container/.env`; change it there and re-run `container/stores/stores.sh setup` to move them. | `openbao` |
 | `AuthMode` | `existing`, `test-authentik` or `none` | `existing` |
 | `OidcIssuer`, `OidcClientId` | For `AuthMode=existing` | (prompted), `labape` |
 | `AdminGroups` | Extra groups mapped to admin | none |

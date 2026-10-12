@@ -49,6 +49,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- Which store holds LABaPe's own secrets is configurable: `LABAPE_PLATFORM_STORE`
+  (`openbao`, the default, or `conjur`) in `container/.env`, installer
+  answer `PlatformStore`. Re-running `container/stores/stores.sh setup`
+  moves the engine and bootstrap secrets and the command line's login to
+  the chosen store and deletes the old copies. Conjur gains hosts
+  `labape/agent` (owns `labape/host`) and `labape/cli` (read permits).
 - The master key, database password and connection strings, CA password
   and OIDC client secret move into OpenBao (`labape-host/bootstrap/`,
   only the update agent's login reads it). The stack reads a memory-only

@@ -1,11 +1,20 @@
 # Conjur policy for the LABaPe stack (design §26), loaded into the root
-# policy of the `labape` account. The app signs in as host labape/app, which
-# owns the labape/secrets policy: it declares variables there (loading policy
-# into that branch) and sets and reads their values.
+# policy of the `labape` account by stores.sh.
+# - host labape/app (the API and worker) owns labape/secrets: it declares
+#   variables there (loading policy into that branch) and sets and reads them.
+# - host labape/agent (the host's update agent) owns labape/host, where the
+#   bootstrap secrets live when Conjur is the platform store (question 104).
+# - host labape/cli (the command line) gets read permits on the engine
+#   secrets only, loaded by stores.sh once they exist.
 - !policy
   id: labape
   body:
     - !host app
+    - !host agent
+    - !host cli
     - !policy
       id: secrets
       owner: !host app
+    - !policy
+      id: host
+      owner: !host agent

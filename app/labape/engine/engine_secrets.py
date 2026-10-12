@@ -69,10 +69,17 @@ def _history(db: Session, name: str) -> list:
 # --- import (stores.sh runs `labape engine-secrets import`) -------------------------------------
 
 def import_files(db: Session, store: str, force: bool = False) -> list[str]:
-    """Copy container/engine-secrets/ into the catalog and move it to `store`."""
+    """Copy container/engine-secrets/ into the catalog and move it to `store`.
+    Once they're in the catalog, any that live in another store are moved to
+    `store` (the platform store setting changed, question 104)."""
     from ..stores import move
     if in_catalog(db) and not force:
-        return []
+        done = []
+        for name in NAMES:
+            row = db.get(Secret, name)
+            if row is not None and row.store != store:
+                done.append(f"{name}: {move(db, name, store)}")
+        return done
     src = get_settings().secrets_dir
     vault, pw = src / "secrets.vault.yml", src / "vault-pass"
     key, pub = src / "ssh" / "labape_bootstrap", src / "ssh" / "labape_bootstrap.pub"
