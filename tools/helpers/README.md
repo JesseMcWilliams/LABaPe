@@ -38,6 +38,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
 | `live/rotate_r1.py` | lab (container) | Rotate the worker-run secrets end to end |
 | `live/rotate_oidc.py` | lab (container) | Rotate the OIDC client secret end to end |
+| `live/stores.py` | lab (container) | Connect and exercise the test OpenBao and Conjur |
 | `live/maintenance.py` | lab (container) | Turn maintenance mode on, check it, turn it off |
 | `live/update_api.py` | lab (container) | Show the update API's view; offer it a tag |
 | `live/agent-request.sh` | lab (host) | Send the update agent a request and wait |
@@ -95,6 +96,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `rotate_agent.py` | `rotate_agent.py <kind>` | Kinds: `master_key`, `postgres_password`, `ca_password` (these restart the stack) and `vault_password`, `bootstrap_ssh_key`. Afterwards it checks the store's self-test, directory search, maintenance mode and health. |
 | `rotate_r1.py` | `rotate_r1.py` | Adds the test rotator token as an elevated account, then rotates the directory token (checking the old key now gets 403), the data key and the worker key. Needs the test tokens in Authentik's `.env`. |
 | `rotate_oidc.py` | `rotate_oidc.py` | Adds the rotator token as an elevated account if it's missing, rotates the OIDC client secret, then checks the token endpoint now refuses the old secret (`invalid_client`) and a fresh sign-in works. Afterwards `LABAPE_TEST_CLIENT_SECRET` in `.env` is out of date. |
+| `stores.py` | `stores.py` | Saves the test stores' LABaPe logins in Settings → Secret stores, runs both Test connections and the dashboard check, then writes, reads, replaces, lists and deletes a throwaway value in each store. Needs `~/.config/labape/secrets-test.env` on the lab host (`OPENBAO_ROLE_ID`, `OPENBAO_SECRET_ID`, `CONJUR_HOST_API_KEY`, copied from `/opt/labape-secrets-test/.env` by root, mode 0600); `lab-live.sh` mounts it when present. |
 | `maintenance.py` | `maintenance.py on\|check\|off` | `check`: a developer's write gets 503, a read works, and Back up now is refused. |
 | `update_api.py` | `update_api.py [tag]` | Shows the current version, releases, standby version and agent state. With a tag, offers it to the API, which refuses unpublished tags. |
 | `agent-request.sh` | `agent-request.sh <update\|rollback> [tag]` | Writes the agent's request file directly and waits up to 20 minutes. Then it shows the state, running version, checkout, standby version, maintenance mode and the log tail. |

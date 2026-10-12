@@ -1,5 +1,6 @@
 """Admin settings (design §21.5): file locations, backups, history
-retention, syslog output and SMTP, with test actions and backup files."""
+retention, syslog output, SMTP and secret stores (§25), with test actions
+and backup files."""
 from __future__ import annotations
 
 import datetime as dt
@@ -13,7 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, notify
+from .. import appsettings, notify, stores
 from ..db import get_db
 from ..errors import FieldError
 from ..files import roots
@@ -22,6 +23,7 @@ from ..security import Principal, audit, client_ip, get_secret, put_secret, requ
 
 router = APIRouter(prefix="/api/admin", tags=["settings"])
 public_router = APIRouter(tags=["settings"])
+stores.providers()                     # registers each external store's settings section
 
 
 @public_router.get("/api/branding")
@@ -60,7 +62,11 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
     if section == "smtp" and model.enabled and (not model.host or "@" not in model.from_address):
         raise FieldError("from_address" if model.host else "host",
                          "Give the SMTP server and a From address (name@domain), or turn email off.")
+    if section.startswith("store_") and model.enabled and not model.url:
+        raise FieldError("url", "Give the store's https:// address, or turn it off.")
     appsettings.put(db, section, model)
+    if section.startswith("store_"):
+        stores.forget(section.removeprefix("store_"))
     if secret and (value or clear):
         put_secret(db, secret, "" if clear else value)
     detail = model.model_dump()
@@ -105,6 +111,17 @@ def test_smtp(body: TestEmailIn, request: Request, db: Session = Depends(get_db)
         raise FieldError("host", f"Sending through {cfg.host}:{cfg.port} failed: {exc}") from exc
     audit(db, p.username, "settings.smtp.test", detail={"to": body.to}, source_ip=client_ip(request))
     return {"ok": True, "message": f"Test email sent to {body.to}."}
+
+
+@router.post("/settings/stores/{name}/test")
+def test_store(name: str, request: Request, db: Session = Depends(get_db),
+               p: Principal = Depends(require_roles("admin"))):
+    """Sign in to a secret store and read something harmless (design §25)."""
+    if name not in stores.providers():
+        raise FieldError("store", f"There's no secret store called {name!r}.", status_code=404)
+    ok, message = stores.check(db, name)
+    audit(db, p.username, "settings.store.test", detail={"store": name, "ok": ok}, source_ip=client_ip(request))
+    return {"ok": ok, "message": message}
 
 
 # --- backups ------------------------------------------------------------------

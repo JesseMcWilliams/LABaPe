@@ -27,6 +27,12 @@ labape = "labape.cli:main"
 oidc = "labape.auth.oidc:OidcProvider"
 breakglass = "labape.auth.breakglass:BreakglassProvider"
 
+# Secret stores are plugins too (Claude_Docs/Reference_Secrets-Backend-Requirements.md §3).
+[project.entry-points."labape.secrets_providers"]
+builtin = "labape.stores.builtin:BuiltinStore"
+openbao = "labape.stores.openbao:OpenBaoStore"
+conjur = "labape.stores.conjur:ConjurStore"
+
 [build-system]
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"

@@ -24,8 +24,12 @@ interface Downloads { allow_http: boolean; proxy: string }
 interface MaintenanceWindow { enabled: boolean; weekday: number; time_of_day: string; duration_minutes: number; heads_up_hours: number }
 interface VmAccounts { linux_admin_user: string }
 interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
+interface StoreBase { enabled: boolean; url: string; verify_tls: boolean; ca_bundle: string }
+interface OpenBao extends StoreBase { mount: string; path_prefix: string; auth_mount: string; role_id: string; namespace: string; has_secret_id: boolean }
+interface Conjur extends StoreBase { account: string; login: string; authenticator: string; branch: string; has_api_key: boolean }
 interface AllSettings {
   backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts;
+  store_openbao: OpenBao; store_conjur: Conjur;
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -160,6 +164,8 @@ export default function Settings() {
   const [smtpPassword, setSmtpPassword] = useState("");
   const [testTo, setTestTo] = useState("");
   const [dirToken, setDirToken] = useState("");
+  const [baoSecretId, setBaoSecretId] = useState("");
+  const [conjurKey, setConjurKey] = useState("");
   const [backups, setBackups] = useState<BackupList | null>(null);
 
   const loadBackups = () => api.get<BackupList>("/api/admin/backups").then(setBackups, () => setBackups(null));
@@ -171,11 +177,23 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
   const num = (v: string) => Number(v);
+  const testStore = (name: string) => () =>
+    api.post<{ ok: boolean; message: string }>(`/api/admin/settings/stores/${name}/test`)
+      .then((r) => (r.ok ? r.message : Promise.reject(new Error(r.message))));
+  const tls = <K extends "store_openbao" | "store_conjur">(k: K) => (
+    <>
+      <FormControlLabel label="Verify certificate" control={<Checkbox checked={s[k].verify_tls}
+        onChange={(e) => set(k, { verify_tls: e.target.checked } as Partial<AllSettings[K]>)} />} />
+      <Field label="CA bundle (PEM)" value={s[k].ca_bundle} fullWidth multiline minRows={2}
+        help="Blank: trust the LABaPe platform CA, which signs the test stores' certificates"
+        onChange={(e) => set(k, { ca_bundle: e.target.value } as Partial<AllSettings[K]>)} />
+    </>
+  );
 
   return (
     <Stack spacing={2}>
@@ -380,6 +398,71 @@ export default function Settings() {
             onChange={(e) => setDirToken(e.target.value)} />
           <FormControlLabel label="Verify certificate" control={<Checkbox checked={s.directory.verify_tls}
             onChange={(e) => set("directory", { verify_tls: e.target.checked })} />} />
+        </Stack>
+      </Section>
+      <Typography variant="h6" sx={{ pt: 1 }}>Secret stores</Typography>
+      <Typography variant="body2" color="text.secondary">
+        External stores that can hold LABaPe's secrets besides the built-in, encrypted database store. Each store's own
+        login stays in the built-in store and is never shown again.
+      </Typography>
+
+      <Section title="OpenBao / HashiCorp Vault"
+        intro="KV version 2 with an AppRole login. LABaPe's role needs read, write, list and delete on its own mount only."
+        onSave={async () => {
+          await put("store_openbao", { ...s.store_openbao, ...(baoSecretId ? { secret_id: baoSecretId } : {}) });
+          setBaoSecretId("");
+          return "OpenBao settings saved.";
+        }}
+        extra={<TestButton label="Test connection" tip="Sign in with the saved AppRole and list the mount (changes nothing)"
+          run={testStore("openbao")} />}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Use OpenBao / Vault" control={<Checkbox checked={s.store_openbao.enabled}
+            onChange={(e) => set("store_openbao", { enabled: e.target.checked })} />} />
+          <Field label="Address" value={s.store_openbao.url} sx={{ minWidth: 300 }} help="e.g. https://bao.example.com:8200"
+            onChange={(e) => set("store_openbao", { url: e.target.value })} />
+          <Field label="KV mount" value={s.store_openbao.mount} sx={{ width: 160 }}
+            onChange={(e) => set("store_openbao", { mount: e.target.value })} />
+          <Field label="Path prefix" value={s.store_openbao.path_prefix} sx={{ width: 180 }} help="Optional folder in the mount"
+            onChange={(e) => set("store_openbao", { path_prefix: e.target.value })} />
+          <Field label="AppRole mount" value={s.store_openbao.auth_mount} sx={{ width: 160 }}
+            onChange={(e) => set("store_openbao", { auth_mount: e.target.value })} />
+          <Field label="Role ID" value={s.store_openbao.role_id} sx={{ minWidth: 300 }}
+            onChange={(e) => set("store_openbao", { role_id: e.target.value })} />
+          <Field label="Secret ID" type="password" value={baoSecretId} sx={{ minWidth: 260 }} autoComplete="new-password"
+            help={s.store_openbao.has_secret_id ? "Saved. Type a new one to replace it." : "Not set"}
+            onChange={(e) => setBaoSecretId(e.target.value)} />
+          <Field label="Namespace" value={s.store_openbao.namespace} sx={{ width: 180 }} help="Vault Enterprise only"
+            onChange={(e) => set("store_openbao", { namespace: e.target.value })} />
+          {tls("store_openbao")}
+        </Stack>
+      </Section>
+
+      <Section title="CyberArk Conjur"
+        intro="A Conjur host signs in with its API key. The host must own the policy branch its variables live in."
+        onSave={async () => {
+          await put("store_conjur", { ...s.store_conjur, ...(conjurKey ? { api_key: conjurKey } : {}) });
+          setConjurKey("");
+          return "Conjur settings saved.";
+        }}
+        extra={<TestButton label="Test connection" tip="Sign in as the host and look up its policy branch (changes nothing)"
+          run={testStore("conjur")} />}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Use Conjur" control={<Checkbox checked={s.store_conjur.enabled}
+            onChange={(e) => set("store_conjur", { enabled: e.target.checked })} />} />
+          <Field label="Address" value={s.store_conjur.url} sx={{ minWidth: 300 }} help="e.g. https://conjur.example.com"
+            onChange={(e) => set("store_conjur", { url: e.target.value })} />
+          <Field label="Account" value={s.store_conjur.account} sx={{ width: 160 }}
+            onChange={(e) => set("store_conjur", { account: e.target.value })} />
+          <Field label="Login" value={s.store_conjur.login} sx={{ minWidth: 220 }} help="e.g. host/labape/app"
+            onChange={(e) => set("store_conjur", { login: e.target.value })} />
+          <Field label="Authenticator" value={s.store_conjur.authenticator} sx={{ width: 160 }}
+            onChange={(e) => set("store_conjur", { authenticator: e.target.value })} />
+          <Field label="Policy branch" value={s.store_conjur.branch} sx={{ minWidth: 200 }} help="Where its variables are declared"
+            onChange={(e) => set("store_conjur", { branch: e.target.value })} />
+          <Field label="API key" type="password" value={conjurKey} sx={{ minWidth: 260 }} autoComplete="new-password"
+            help={s.store_conjur.has_api_key ? "Saved. Type a new one to replace it." : "Not set"}
+            onChange={(e) => setConjurKey(e.target.value)} />
+          {tls("store_conjur")}
         </Stack>
       </Section>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}

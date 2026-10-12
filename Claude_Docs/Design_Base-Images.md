@@ -428,3 +428,14 @@ host_groups:
 - Don't delete a template immediately after rebuilding or refreshing it
   — keep it until nothing references it, so in-flight environments
   aren't broken out from under them.
+
+**Decisions 2026-10-12 (questions 15-19, not built yet):**
+- Keep **3** dated versions of each template by default; the number is a
+  setting on the general Settings tab. Older ones go once nothing
+  references them.
+- Refreshes run **once a month**, scheduled by the web UI's job runner.
+- Windows refreshes install **all** available updates, not just security,
+  critical and rollups.
+- Windows Server is **Standard** by default, with **Datacenter** as an option.
+- The earlier test templates (`rocky9-base-2026.10`, `win2022-base-2026.10`
+  and the `*-packer-2026.10` builds) are to be deleted.
