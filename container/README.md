@@ -47,6 +47,9 @@ container/setup.sh --hostname labape.lab.lan     # writes .env and secrets/, mak
 | `secrets.vault.yml` | The Ansible vault the CLI uses |
 | `vault-pass` | Its password file |
 | `ssh/<key>` and `ssh/<key>.pub` | One key pair. The runner uses it in place of the vault's `ansible_ssh_private_key_path`, because that path belongs to the CLI host. |
+| `ssh/history/` | Previous VM keys, kept by the rotation (7) and still offered to VMs |
+
+The update agent rotates the vault password and the VM key here daily, and copies the key to the service user's `~/.ssh/labape_bootstrap` for the command line (design §24.3).
 
 ### Generated secrets (`container/secrets/`)
 
@@ -152,6 +155,13 @@ For rootless Podman:
 - Put the units in `~/.config/containers/systemd/` and use `systemctl --user`.
 - The user needs to be in the `libvirt` and `kvm` groups. The worker unit keeps them with `GroupAdd=keep-groups`.
 - Ports below 1024 need `net.ipv4.ip_unprivileged_port_start` lowered, or publish 8443 and 8080 instead.
+
+## Maintenance, updates and secret rotation
+
+- **Maintenance mode** (Settings; a banner shows on every page): changes pause while reads and status keep working; the worker starts no new jobs. A weekly window can be set (design §23.3).
+- **Updates**: the host agent from `deploy/update-agent/` (installer step `Stack.UpdateAgent`) applies signed releases and rolls back. It watches `container/update/` (design §23.2, `deploy/README.md` § Updates).
+- **Secrets page**: each internal secret's interval, store and status, with Rotate now. Secrets in host files (master key, PostgreSQL and CA passwords, vault password, VM key) are rotated by the agent; the others by the worker (design §24). Each environment's page sets its Windows password rotation.
+- **CLI in the containers** (`docker compose exec labape-api labape <command>`): `maintenance on|off|status`, `backup`, `restore`, `health [--deep]`, `db-status`, `worker-key`; the agent also uses `rewrap-master`, `ca-repass` and `push-vm-key`.
 
 ## Notes
 

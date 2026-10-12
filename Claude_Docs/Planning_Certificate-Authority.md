@@ -3,7 +3,8 @@
 Extends Claude_Docs/Design_System-Overview.md §19 — a `certificate_authority` role (future work, not
 yet implemented) issuing trusted certs to hosts in the environment,
 mirroring how `domain_controller` (§8) is "just a role" rather than a
-fixed host type.
+fixed host type. The web stack's platform CA, chosen in §5, is built
+(Claude_Docs/Planning_Web-Interface-Design.md §22.5).
 
 ## 1. Two implementations, chosen by platform
 
