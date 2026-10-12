@@ -161,7 +161,7 @@ For rootless Podman:
 - **Maintenance mode** (Settings; a banner shows on every page): changes pause while reads and status keep working; the worker starts no new jobs. A weekly window can be set (design §23.3).
 - **Updates**: the host agent from `deploy/update-agent/` (installer step `Stack.UpdateAgent`) applies signed releases and rolls back. It watches `container/update/` (design §23.2, `deploy/README.md` § Updates).
 - **Secrets page**: each internal secret's interval, store and status, with Rotate now. Secrets in host files (master key, PostgreSQL and CA passwords, vault password, VM key) are rotated by the agent; the others by the worker (design §24). Each environment's page sets its Windows password rotation.
-- **CLI in the containers** (`docker compose exec labape-api labape <command>`): `maintenance on|off|status`, `backup`, `restore`, `health [--deep]`, `db-status`, `worker-key`; the agent also uses `rewrap-master`, `ca-repass` and `push-vm-key`.
+- **CLI in the containers** (`docker compose exec labape-api labape <command>`): `maintenance on|off|status`, `backup`, `restore`, `health [--deep]`, `db-status`, `worker-key`, `ca-sign` (sign a CSR from stdin with the platform CA, for the host's own services); the agent also uses `rewrap-master`, `ca-repass` and `push-vm-key`.
 
 ## Notes
 

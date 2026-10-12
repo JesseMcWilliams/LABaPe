@@ -25,6 +25,24 @@
       ansible.builtin.wait_for_connection:
         timeout: 1800
 
+- name: Linux hosts resolve their own name
+  # Template clones keep the build VM's "127.0.1.1 template" line, so the
+  # clone's own name doesn't resolve (sudo warns, hostname -f fails). Fixed
+  # here rather than in the clone seed: a seed change would reinstall every
+  # existing Linux VM on its next deploy. Only an existing 127.0.1.1 line is
+  # rewritten (the Debian family has one; the RHEL family doesn't).
+  hosts: linux_server:linux_workstation
+  gather_facts: false
+  become: true
+  vars:
+    labape_fqdn: "{{ inventory_hostname }}{{ ('.' ~ domain_name) if (domain_name | default('')) else '' }}"
+  tasks:
+    - name: Point 127.0.1.1 at this host's name
+      ansible.builtin.replace:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1\s.*$'
+        replace: "127.0.1.1\t{{ labape_fqdn }} {{ inventory_hostname }}"
+
 - name: Promote domain controller(s) first — must complete before any join
   # No become: this play runs over WinRM as the local Administrator
   # (Claude_Docs/Reference_Credentials.md §4), which already has full privileges — unlike

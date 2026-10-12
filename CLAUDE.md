@@ -25,6 +25,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `deploy/` — from-scratch installer: `install-labape.py` (entry, step table) and `labape_deploy/` (answers, state, steps); `update-agent/` (the host-side update and rotation agent, a user systemd unit), `labape-rollback.sh`, `allowed_signers` (release signers). `state/`, `logs/` and `answers.*.json` (except `answers.sample.json`) are gitignored; the answers files never hold secrets.
 - `container/` — Dockerfile, compose.yaml, Caddyfile, Quadlet units, `setup.sh`, `ca/` (platform CA scripts), README. Generated `.env`, `secrets/`, `config/`, `engine-secrets/`, `update/` are gitignored; never read or commit them.
 - `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
+- `tools/secrets-test/` — throwaway OpenBao and Conjur (compose + `deploy.sh`, run as root) with platform-CA certificates, for building the external secret stores; its `.env` and `tls/` are gitignored.
 - `tools/helpers/` — helper scripts used more than once (shipping a change, deploying a working tree to the lab stack, live tests); see its README. Put any reused helper here, never lab details: they come from environment variables.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.
 - Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). `Planning_Web-Interface-Design.md` (~1,050) is over; grep for a section and read that range.
@@ -50,6 +51,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Design_Base-Images.md`, `Design_Directory-Objects.md`, `Design_Software-Manifest.md`: detail docs for the matching `Design_System-Overview.md` sections.
   - `Reference_Credentials.md`, `Reference_Networking.md`, `Reference_Validate-Setup.md`: interface contracts / stable checklists.
   - `Reference_Backend-Parity.md`: libvirt vs Hyper-V feature/interface matrix and the order to close gaps.
+  - `Reference_Secrets-Backend-Requirements.md`: what a secret store and its LABaPe provider must offer (interface, paths, TLS, least privilege, rotation, failures, tests).
   - `Planning_Certificate-Authority.md`, `Planning_Environment-Templates.md`: proposals for the `certificate_authority` role and environment templates, not built yet (Design_System-Overview.md §19/§20). The web stack's own platform CA is built (Planning_Web-Interface-Design.md §22.5).
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.

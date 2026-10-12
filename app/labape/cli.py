@@ -238,6 +238,34 @@ def cmd_ca_repass(args) -> int:
     return 0
 
 
+def cmd_ca_sign(args) -> int:
+    """Sign a CSR from stdin with the platform CA; print the chain (and the root
+    with --with-root). For hosts outside the VM flow, such as a KVM host's own
+    services: whoever can run this inside the container controls the stack."""
+    from .ca import CaError, csr_names, root_pem, sign
+    from .db import init_db, session_factory
+    from .security import audit
+
+    if not 1 <= args.hours <= 2160:
+        print("labape: --hours must be 1-2160 (step-ca allows up to 90 days)", file=sys.stderr)
+        return 2
+    csr = sys.stdin.read()
+    try:
+        cn, dns, ips = csr_names(csr)
+        chain = sign(csr, hours=args.hours)
+    except CaError as exc:
+        print(f"labape: {exc}", file=sys.stderr)
+        return 1
+    init_db()
+    with session_factory()() as db:
+        audit(db, _who(), "ca.sign", object_type="certificate", object_id=cn,
+              detail={"dns": sorted(dns), "ips": sorted(ips), "hours": args.hours, "via": "cli"})
+    sys.stdout.write(chain if chain.endswith("\n") else chain + "\n")
+    if args.with_root:
+        sys.stdout.write(root_pem())
+    return 0
+
+
 def cmd_push_vm_key(args) -> int:
     """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
     import json as _json
@@ -343,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--old", required=True)
     p.add_argument("--new", required=True)
     p.set_defaults(func=cmd_ca_repass)
+
+    p = sub.add_parser("ca-sign", help="sign a CSR from stdin with the platform CA; print the chain")
+    p.add_argument("--hours", type=int, default=720, help="validity, 1-2160 hours (default 720, 30 days)")
+    p.add_argument("--with-root", action="store_true", help="also print the root certificate")
+    p.set_defaults(func=cmd_ca_sign)
 
     p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")
     p.add_argument("--new", required=True, help="the new private key; its .pub beside it")

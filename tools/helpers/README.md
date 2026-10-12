@@ -32,6 +32,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `lab-live.sh` | locally → lab | Run one of the `live/` scripts on the lab host |
 | `lab.sh` | sourced | Shared settings for the two above |
 | `live/oidc_login.py` | lab (container) | Sign in through the test Authentik; imported by the others |
+| `live/env_create.py` | lab (container) | Create a one-VM environment and wait for its deploy |
 | `live/env_job.py` | lab (container) | Deploy, refresh or destroy an environment and wait |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
@@ -87,7 +88,8 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 
 | Script | Usage | Notes |
 |---|---|---|
-| `oidc_login.py` | `oidc_login.py <user>` | Signs in and prints `/api/auth/me`. The others import `LABAPE`, `ENV` and `login()` from it. |
+| `oidc_login.py` | `oidc_login.py <user>` | Signs in and prints `/api/auth/me`. The others import `LABAPE`, `ENV`, `login()` and `job_log()` (a finished job's log, parsed from the event stream) from it. |
+| `env_create.py` | `env_create.py list` or `<name> <os key> <template> [--vm NAME] [--cpu N] [--mem MB] [--disk GB] [--network NAME] [--addressing static\|dhcp]` | `list` shows hosts, their templates and networks, and the environments. Otherwise it creates the environment as `labape-admin` (or `--as` user), waits for the deploy and prints the VM's address and the job's summary lines. |
 | `env_job.py` | `env_job.py <env id> <deploy\|refresh-addresses\|destroy>` | Waits, then prints the result, duration, and the `labape:`, `fatal:` and PLAY RECAP lines. **destroy deletes the VMs.** |
 | `env_password.py` | `env_password.py <env id> list` or `<env id> <windows_admin\|domain_admin>` | Lists the environment's rotation policies, or rotates one. It prints the credentials sheet's labels, never its values. |
 | `rotate_agent.py` | `rotate_agent.py <kind>` | Kinds: `master_key`, `postgres_password`, `ca_password` (these restart the stack) and `vault_password`, `bootstrap_ssh_key`. Afterwards it checks the store's self-test, directory search, maintenance mode and health. |

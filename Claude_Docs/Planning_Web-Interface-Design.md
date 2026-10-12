@@ -236,6 +236,18 @@ per-environment credentials, SSH keys for remote KVM hosts.
 `tools/secrets-test/` provides a script and doc to stand up throwaway
 OpenBao and Conjur containers for testing (question 42).
 
+**Built 2026-10-12** (`tools/secrets-test/README.md`): `deploy.sh` runs OpenBao
+2.7 (Raft storage, KV v2 at `labape/`, AppRole role `labape`) and Conjur Open
+Source 1.27 (account `labape`, host `labape/app` owning policy
+`labape/secrets`, behind an nginx TLS proxy) on ports 8200 and 8443, with
+certificates from the platform CA: the VM's own (`/etc/labape/tls`, followed on
+renewal) or, on the LABaPe host, one the stack signs with the new
+`labape ca-sign` command (renewed by a daily timer). It initializes and
+unseals OpenBao (also at boot), keeps every credential in a 0600 `.env`, and
+ends with a smoke test as LABaPe would sign in. What a provider must do is in
+`Claude_Docs/Reference_Secrets-Backend-Requirements.md`. The providers
+themselves are next.
+
 ## 12. Authentication
 
 Pluggable providers (decision 24) behind one interface, discovered as
@@ -395,7 +407,7 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
 | 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
-| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24); the external providers aren't |
+| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11); the external providers aren't |
 | 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15). Remote hosts are built (§22.4); spanning and placement aren't |
 | 10f | VM storage moves (offline) |
 | 10g | Environment import (migration), central repository configuration applied to all tools, bundled-Authentik profile with blueprint |

@@ -86,3 +86,25 @@ def test_cert_env(monkeypatch):
     env = runner._cert_env(77, "environment.deploy", False)
     assert env["LABAPE_JOB_ID"] == "77" and env["LABAPE_CERT_API"] == "http://labape-api:8000" and len(env["LABAPE_CERT_TOKEN"]) > 30
     assert runner._cert_env(78, "environment.deploy", True)["LABAPE_CERT_API"] == "http://testserver"
+
+
+def test_ca_sign_cli(client, monkeypatch, capsys):
+    """labape ca-sign: hours are checked, a CA failure is reported, a signature is audited."""
+    import io
+
+    from labape import ca, cli
+    from labape.db import session_factory
+    from labape.models import AuditLog
+    monkeypatch.setattr("sys.stdin", io.StringIO("not a request"))
+    assert cli.main(["ca-sign", "--hours", "0"]) == 2
+    assert cli.main(["ca-sign"]) == 1
+    assert "not a PEM certificate request" in capsys.readouterr().err
+    monkeypatch.setattr(ca, "csr_names", lambda csr: ("kvm1", {"kvm1", "kvm1.lab.test"}, {"192.0.2.10"}))
+    monkeypatch.setattr(ca, "sign", lambda csr, hours: "LEAF\nINTERMEDIATE\n")
+    monkeypatch.setattr(ca, "root_pem", lambda: "ROOT\n")
+    monkeypatch.setattr("sys.stdin", io.StringIO("a request"))
+    assert cli.main(["ca-sign", "--hours", "48", "--with-root"]) == 0
+    assert capsys.readouterr().out == "LEAF\nINTERMEDIATE\nROOT\n"
+    with session_factory()() as db:
+        row = db.query(AuditLog).filter(AuditLog.action == "ca.sign").one()
+    assert row.object_id == "kvm1" and row.detail["hours"] == 48 and row.detail["ips"] == ["192.0.2.10"]
