@@ -44,19 +44,11 @@ Claude_Docs/Design_Base-Images.md (templates).
 
 ## Templates
 
-15. How many dated versions of each template should be kept before old
-    ones are deleted (§8 says "until nothing references them")?
-16. Should template refreshes run on a schedule (e.g. monthly, or Patch
-    Tuesday for Windows), or stay manual? (The web UI's job runner could
-    schedule them.)
-17. Windows updates during refresh: security, critical and rollups only
-    (current default), or all available updates?
-18. Which earlier test templates should be deleted: `rocky9-base-2026.10`,
-    `win2022-base-2026.10` (promoted), and the `*-packer-2026.10` Server
-    builds now superseded by `*-desktop-*` and `*-core-*`?
-19. Windows Server edition: Standard (current) or Datacenter? The
-    evaluation ISOs expire after 180 days: are licence keys or a KMS server
-    available, or are short-lived evaluation VMs fine?
+15. ~~How many dated versions of each template should be kept before old ones are deleted (§8 says "until nothing references them")?~~ **Answered (2026-10-12):** Keep 3 dated versions by default, set on the general Settings tab. (Claude_Docs/Design_Base-Images.md §8)
+16. ~~Should template refreshes run on a schedule (e.g. monthly, or Patch Tuesday for Windows), or stay manual? (The web UI's job runner could schedule them.)~~ **Answered (2026-10-12):** Once a month, scheduled by the web UI's job runner. (Claude_Docs/Design_Base-Images.md §8)
+17. ~~Windows updates during refresh: security, critical and rollups only (current default), or all available updates?~~ **Answered (2026-10-12):** All available updates. (Claude_Docs/Design_Base-Images.md §8)
+18. ~~Which earlier test templates should be deleted: `rocky9-base-2026.10`, `win2022-base-2026.10` (promoted), and the `*-packer-2026.10` Server builds now superseded by `*-desktop-*` and `*-core-*`?~~ **Answered (2026-10-12):** All of the old test templates.
+19. ~~Windows Server edition: Standard (current) or Datacenter? The evaluation ISOs expire after 180 days: are licence keys or a KMS server available, or are short-lived evaluation VMs fine?~~ **Answered (2026-10-12):** Standard by default, with Datacenter as an option. (Claude_Docs/Design_Base-Images.md §8)
 
 ## Lab and operations
 
@@ -67,9 +59,7 @@ Claude_Docs/Design_Base-Images.md (templates).
     environment.yml?~~ **Superseded (2026-10-10):** the network catalog's static pools and reserved ranges, the web UI's address allocation, and deploy.sh's address check before apply (Planning_Web-Interface-Design.md §20).
 22. ~~Is DHCP-mode addressing needed for anything yet (§17.4 defers it
     until there's a real need)?~~ **Superseded (2026-10-10):** DHCP addressing was built for libvirt, CLI and web UI (Planning_Web-Interface-Design.md §20.5).
-23. Firefox can't install on Server 2019 Core: drop it from the example
-    software manifest for `windows_server`, or leave it and accept the
-    failure on 2019 Core hosts?
+23. ~~Firefox can't install on Server 2019 Core: drop it from the example software manifest for `windows_server`, or leave it and accept the failure on 2019 Core hosts?~~ **Answered (2026-10-12):** Firefox needs a GUI, and Server Core has none, so it's skipped on Core hosts of any Windows version rather than dropped from the manifest.
 24. Should `Published_Docs/` end-user `.docx` guides start now? (Update 2026-10-12: the Markdown user guides now cover the whole backlog: `User_Docs/Web-Interface-Guide.md`, `Web-Interface-Admin.md` and `Command-Line.md`. They could be the source for the `.docx` versions.)
 
 ## Web interface: follow-up questions (added 2026-10-10)
@@ -176,3 +166,14 @@ Design: `Claude_Docs/Planning_Web-Interface-Design.md` §23.2 and §24.3.
 90. ~~The VM SSH key is shared by the web stack and the lab host's command line. (a) give the web stack its own key, (b) the agent writes each new key into the service user's `~/.ssh` too, or (c) the command line fetches it itself? And how many previous keys stay valid?~~ **Answered (2026-10-11):** (b), keeping 7 previous keys.
 91. ~~Lab passwords: Windows local Administrator and domain Administrator rotate per environment; what about Linux?~~ **Answered (2026-10-11):** The Linux local admin is the SSH key (no password). Its user name is configurable, as a setting on the general Settings page (Settings → VM accounts).
 
+## External secret stores, phase 10d (added 2026-10-12)
+
+Design: `Claude_Docs/Planning_Web-Interface-Design.md` §25. Requirements: `Claude_Docs/Reference_Secrets-Backend-Requirements.md`.
+
+93. ~~Placement: decide the store **per stored secret** (a pointer row in the built-in table, so any secret can move, including environment credentials), with a policy's store setting moving the secrets its rotator owns? The alternative is to route only the secrets a policy owns, which leaves environment credential sheets and inventories in the built-in store.~~ **Answered (2026-10-12):** Yes, per stored secret. The secret's row also links its rotation: the rotator, the elevated account that can force a new value, and the period (§25).
+94. ~~New secrets: one default store for **new environment secrets** in Settings → Secret stores (built-in unless changed), with platform and settings secrets placed by hand on the Secrets page? Or a default per secret kind?~~ **Answered (2026-10-12):** Yes, one default store for new environment secrets. Moving needs one function that runs both by hand (Move) and automatically (a policy's store change, a new default).
+95. ~~Leave the file secrets the host's update agent keeps (Ansible vault password, VM bootstrap SSH key, master key, PostgreSQL password, CA password) out of this round? Moving them means the agent and the CLI fetching them from the store at use time, which is a separate piece of work.~~ **Answered (2026-10-12):** Yes, out of this round. They will eventually behave like every other secret.
+96. ~~Live tests: use the test stores on the KVM host (OpenBao `:8200`, Conjur `:8443`) with the AppRole and host credentials from their `.env`. To read those, I'd need you to copy `/opt/labape-secrets-test/.env` somewhere `AutomationUser` can read, or run a small `sudo` command I give you. Which do you prefer?~~ **Answered (2026-10-12):** A `sudo` command run by the user copies LABaPe's three logins into `~/.config/labape/secrets-test.env` (0600).
+97. ~~HashiCorp Vault: count it as covered by the OpenBao provider (same KV v2 and AppRole API, tested against OpenBao only), or also test against a real Vault container?~~ **Answered (2026-10-12):** Yes, OpenBao covers Vault.
+98. ~~Ship this round phase by phase (P1-P4: commit, push, PR, merge after each, as in earlier rounds)?~~ **Answered (2026-10-12):** Yes, ship after each phase.
+99. ~~Templates and Firefox (questions 15-19, 23): build them as the next round after 10d? Deleting the old test templates removes them from the KVM host; I'd list exactly what goes and wait for your OK first.~~ **Answered (2026-10-12):** Yes, next round after 10d; deleting templates waits for an OK on the exact list.

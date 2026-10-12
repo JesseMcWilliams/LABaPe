@@ -41,6 +41,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- External secret stores, step 1 (design §25): Settings → Secret stores
+  connects OpenBao or HashiCorp Vault (KV v2, AppRole) and CyberArk Conjur
+  (host and API key), with Test connection and a check on the admin
+  dashboard. Their logins are kept in the built-in store. Secrets don't
+  move to them yet.
 - `tools/secrets-test/`: throwaway OpenBao and Conjur instances for building
   the external secret stores, with platform-CA certificates (the VM's own,
   or signed by the stack on the LABaPe host), unsealing at boot,

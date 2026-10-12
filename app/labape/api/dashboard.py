@@ -11,10 +11,11 @@ import time
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, ca, notify, version
+from .. import appsettings, ca, notify, stores, version
 from ..auth import load_providers, provider_enabled
 from ..config import get_settings
 from ..db import get_db
@@ -230,7 +231,12 @@ def _secrets(db: Session) -> list[dict]:
     except Exception as exc:  # noqa: BLE001 — any failure here is the finding
         builtin = _check(False, f"Self-test failed ({type(exc).__name__}); the secret key may have changed")
     ok, msg = _cached("ca", 60, ca.health)
-    return [{"name": "builtin", "display_name": "Built-in store (database, encrypted)", **builtin},
+    external = []
+    for name in stores.configured(db)[1:]:
+        ok, msg = stores.check(db, name, cached=True)
+        external.append({"name": f"store.{name}", "display_name": stores.providers()[name].display_name,
+                         **_check(ok, msg)})
+    return [{"name": "builtin", "display_name": "Built-in store (database, encrypted)", **builtin}, *external,
             {"name": "platform_ca", "display_name": "Platform CA (step-ca)", **_check(ok, msg)},
             {"name": "ansible_vault", "display_name": "Engine Ansible vault",
              **_cached("vault", 600, _vault_check)}]
@@ -286,7 +292,7 @@ def _notifications(db: Session) -> list[dict]:
 
 @router.get("/admin")
 async def admin_health(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
-    return {"auth": await _auth(db), "secrets": _secrets(db), "notifications": _notifications(db),
+    return {"auth": await _auth(db), "secrets": await run_in_threadpool(_secrets, db), "notifications": _notifications(db),
             "version": version.status(db)}
 
 

@@ -407,7 +407,7 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
 | 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
-| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11); the external providers aren't |
+| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) and the OpenBao/Vault and Conjur providers (§25.1, P1); placing secrets in them is next |
 | 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15). Remote hosts are built (§22.4); spanning and placement aren't |
 | 10f | VM storage moves (offline) |
 | 10g | Environment import (migration), central repository configuration applied to all tools, bundled-Authentik profile with blueprint |
@@ -1060,3 +1060,43 @@ Decisions: questions 81, 83, 84, 90, 91.
 | Elevated account | The token needs `view_oauth2provider` and `change_oauth2provider` on the LABaPe provider only. The test Authentik's `labape-rotator` gets both from `deploy.sh`. |
 | Reminder rule | A rotator that needs an elevated account (this one and `directory_token`) isn't scheduled until its policy names one, and the Secrets page shows it as a reminder rather than failing every hour. Rotate now still runs it and says what's missing. |
 | Verified | Live on the lab host with the test Authentik (`tools/helpers/live/rotate_oidc.py`): rotated through the worker, the old secret then got `invalid_client` at the token endpoint, a fresh sign-in worked, and sign-in still worked after restarting the API. pytest: 96. |
+
+## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, P1 built 2026-10-12)
+
+Requirements: `Claude_Docs/Reference_Secrets-Backend-Requirements.md`. Test stores: `tools/secrets-test/` (live on the KVM host). Decisions: questions 93-99 (all answered 2026-10-12).
+
+**The gap.** Rotation policies name a store, but a policy maps to a rotator, not to stored secrets. Several policies share one secret (an environment's `windows_admin` and `domain_admin` both write `environment/<id>/passwords`), and most secrets have no policy at all (environment credential sheets and inventories, settings tokens, job certificate tokens). So the store is decided **per stored secret**, not per policy.
+
+**Design.**
+
+| Area | Plan |
+|---|---|
+| Providers | `labape.secrets_providers` entry points: `builtin`, `openbao` (KV v2, AppRole; HashiCorp Vault speaks the same API), `conjur` (host + API key). Each implements the interface in the requirements doc §3, with `httpx` (5 s connect, 15 s per request), certificates checked against the platform root or a CA bundle, and the session token in memory only. |
+| Placement | Every stored secret has a **catalog row** in the `secrets` table naming its store. For an external store the row holds no value; `get_secret`/`put_secret` follow it, so every caller stays as it is, and the data key and master key rotations skip it. The row also links the secret's **rotation**: rotator, elevated account and period (question 93), through its rotation policy, so the scheduler keeps one source of truth. To keep that one-to-one, an environment's `passwords` value splits into `environment/<id>/windows_admin` and `.../domain_admin`. |
+| Moving | One move function, run by hand (Move) and automatically (a policy's store change, a new default): copy, read back and compare, point the row at the new store, then delete the old copy. On any failure the secret stays where it was. Audited. Secrets → Stored secrets lists every secret's name, store and rotation, with Move. |
+| New secrets | Settings → Secret stores has a default store for new environment secrets (built-in unless changed). The secrets the stores themselves depend on always stay built-in: provider credentials, elevated accounts, job certificate tokens. |
+| Settings | Settings → Secret stores: one section per provider (address, CA bundle, verify TLS, auth identity, write-only credential, Test connection). A store is offered on the Secrets page once it's configured and its test passes. |
+| Provider credentials | Rotators of their own: `openbao_secret_id` (issue a new AppRole secret ID, log in with it, revoke the old one) and `conjur_api_key` (the host rotates its own key). |
+| Externally rotated | `managed_externally` secrets are never written by LABaPe and are read fresh (cache of 60 s at most). |
+| Failure | No silent fallback to the built-in store: a job fails before it starts work if its store doesn't answer. Errors name the LABaPe secret and the store, never a value or a response body. |
+
+**Phases.**
+1. **P1 providers:** the interface, `builtin`/`openbao`/`conjur`, Settings → Secret stores, Test connection, dashboard check, pytest with the stores' HTTP APIs faked.
+2. **P2 placement:** pointer rows, routing, Move, the Stored secrets list, the default store for new environment secrets, policy store changes moving their secrets.
+3. **P3 credential rotation and external rotation:** the two provider credential rotators, `managed_externally` reads.
+4. **P4 live test and docs:** `tools/helpers/live/` script against the KVM host's test stores (move a secret there and back, rotate it, check the dashboard), User_Docs admin guide, CHANGELOG, the requirements doc where it changed.
+
+Out of this round (question 95): the secrets the host's update agent keeps in files (the engine's Ansible vault password, the VM bootstrap SSH key, the master key, the PostgreSQL password, the CA password). They will later behave like every other secret.
+
+### 25.1 P1 as built
+
+| Area | As built |
+|---|---|
+| Package | `app/labape/stores/`: `base.py` (`SecretStore`, `HttpStore`, `StoreError`, name encoding), `builtin.py`, `openbao.py`, `conjur.py`, and the registry in `__init__.py` (bundled stores plus any `labape.secrets_providers` entry point; `open_store`, `check`, `configured`, `available`). One instance per configuration keeps its session token until the settings change. |
+| OpenBao / Vault | AppRole login (`/v1/auth/<mount>/login`), token renewed at 80% of its lease and once more after a 401/403. KV v2 `data/` for get and put, `metadata/` for delete (all versions) and a recursive LIST. Optional path prefix and Vault Enterprise namespace. Test connection: `lookup-self`, then LIST the mount. |
+| Conjur | `POST /<authenticator>/<account>/<login>/authenticate` with `Accept-Encoding: base64`; the token is used for 6 of its 8 minutes. A first write that gets 404 loads `- !variable` into the branch (`POST /policies`) and writes again. Delete is a policy `PATCH` with `!delete`, skipped when the variable doesn't exist. List pages `/resources/<account>/variable`. Test connection: `/whoami` and the branch's policy resource. |
+| TLS and errors | HTTPS only (settings refuse `http://`). Certificates are checked against the CA bundle in the settings, else the platform root (`ca_root`), else the system store. 5 s to connect, 15 s per request. Errors name the store and the LABaPe secret only, never a value, token or body. |
+| Settings | Sections `store_openbao` and `store_conjur`, registered by the registry. The credential (`secret_id`, `api_key`) is write-only and stored built-in as `stores/<name>/<field>`. `POST /api/admin/settings/stores/<name>/test` (audited). The Settings page has both sections under "Secret stores". |
+| Dashboard | Each configured store appears under "Secrets and certificates" with its cached (60 s) test result; the secrets checks run off the event loop. |
+| Tests | `app/tests/test_stores.py` fakes both APIs with `httpx.MockTransport`: name encoding, CRUD and list, session expiry and new login, no values in errors, timeouts, the built-in wrapper, settings and dashboard. pytest: 107. |
+| Verified | Live on the lab host against the test stores (`tools/helpers/live/stores.py`): both saved through Settings, both Test connections and dashboard checks ok with the platform root, and a write, read, replace, list and delete (a name with a space) in each store. |
