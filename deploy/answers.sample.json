@@ -31,6 +31,7 @@
   "WebHostname": "labape.lab.lan",
   "Tls": "internal",
   "ContainerRuntime": "docker",
+  "PlatformStore": "openbao",
   "AuthMode": "existing",
   "OidcIssuer": "https://authentik.lab.lan/application/o/labape/",
   "OidcClientId": "labape",

@@ -56,3 +56,15 @@ def test_import_refuses_missing_files(db_reset):
     shutil.rmtree(get_settings().secrets_dir, ignore_errors=True)
     with session_factory()() as db, pytest.raises(es.EngineSecretsError, match="missing"):
         es.import_files(db, "builtin")
+
+
+def test_import_moves_to_a_new_platform_store(secret_files, monkeypatch):
+    """question 104: a changed platform store moves what's already in the catalog."""
+    from labape import stores
+    moved = []
+    monkeypatch.setattr(stores, "move", lambda db, name, target, *a, **k: moved.append((name, target)) or "moved")
+    with session_factory()() as db:
+        es.import_files(db, "builtin")
+        assert es.import_files(db, "builtin") == []
+        out = es.import_files(db, "conjur")
+    assert len(out) == len(es.NAMES) and {t for _, t in moved} == {"conjur"}

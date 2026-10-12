@@ -339,7 +339,7 @@ def cmd_engine_secrets(args) -> int:
             audit(db, _who(), "engine_secrets.import", detail={"store": args.store, "names": len(done)})
     for line in done:
         print(f"labape: {line}")
-    print(f"labape: engine secrets {'imported' if done else 'already in the secret store'}.")
+    print(f"labape: engine secrets {'imported or moved to ' + args.store if done else 'already in ' + args.store}.")
     return 0
 
 

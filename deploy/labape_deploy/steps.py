@@ -497,6 +497,7 @@ def stack_stores(c: Ctx):
     settings, and the user units that unseal OpenBao at boot. Safe to re-run,
     including on an install from before the stores existed."""
     uid = c.r.out(["id", "-u", c.user]) or "1000"
+    _set_env(c, c.repo / "container" / ".env", {"LABAPE_PLATFORM_STORE": c.a.need("PlatformStore")})
     c.r.run(["loginctl", "enable-linger", c.user])     # the unseal unit is a user unit
     c.r.run(["bash", str(c.repo / "container" / "stores" / "stores.sh"), "setup"], as_user=True,
             cwd=c.repo / "container", env={"XDG_RUNTIME_DIR": f"/run/user/{uid}"})
