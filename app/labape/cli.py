@@ -266,6 +266,42 @@ def cmd_ca_sign(args) -> int:
     return 0
 
 
+def cmd_stores_configure(args) -> int:
+    """stdin: {"stores": {name: settings}, "credentials": {name: login}} (design §26).
+    --needs prints {name: true|false}; otherwise the settings are applied and audited."""
+    import json
+
+    from .db import init_db, session_factory
+    from .security import audit
+    from .stores import stack
+
+    data = {} if args.check else json.load(sys.stdin)
+    init_db()
+    with session_factory()() as db:
+        if args.needs:
+            print(json.dumps(stack.needs(db, data.get("stores", {}))))
+            return 0
+        if args.check:
+            from .stores import check
+            bad = 0
+            for name in stack.STACK_STORES:
+                ok, msg = check(db, name)
+                bad += not ok
+                print(f"labape: {name} check {'ok' if ok else 'FAILED'}: {msg}")
+            return 1 if bad else 0
+        try:
+            changes = stack.configure(db, data.get("stores", {}), data.get("credentials", {}))
+        except ValueError as exc:
+            print(f"labape: {exc}", file=sys.stderr)
+            return 2
+        if changes:
+            audit(db, _who(), "stores.configure", detail={"changes": changes})
+    for c in changes:
+        print(f"labape: {c}")
+    print(f"labape: store settings applied ({len(changes)} change(s)).")
+    return 0
+
+
 def cmd_push_vm_key(args) -> int:
     """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
     import json as _json
@@ -376,6 +412,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hours", type=int, default=720, help="validity, 1-2160 hours (default 720, 30 days)")
     p.add_argument("--with-root", action="store_true", help="also print the root certificate")
     p.set_defaults(func=cmd_ca_sign)
+
+    p = sub.add_parser("stores-configure", help="point the store settings at the stack's OpenBao and Conjur "
+                       "(JSON on stdin; stores/stores.sh runs it)")
+    p.add_argument("--needs", action="store_true", help="only print which stores need a new login")
+    p.add_argument("--check", action="store_true", help="test LABaPe's connection to both stores (no stdin)")
+    p.set_defaults(func=cmd_stores_configure)
 
     p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")
     p.add_argument("--new", required=True, help="the new private key; its .pub beside it")

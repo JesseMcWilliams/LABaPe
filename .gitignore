@@ -58,6 +58,8 @@ container/.env
 container/secrets/
 container/config/
 container/engine-secrets/
+container/stores/secrets/
+container/stores/tls/
 web/node_modules/
 web/dist/
 tools/**/.env

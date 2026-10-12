@@ -491,6 +491,18 @@ def stack_up(c: Ctx):
     return DONE, f"https://{c.a.need('WebHostname')}/ is up"
 
 
+def stack_stores(c: Ctx):
+    """The stack's own OpenBao and Conjur (design §26): certificates from the
+    platform CA, initialize and unseal, policies and logins, LABaPe's store
+    settings, and the user units that unseal OpenBao at boot. Safe to re-run,
+    including on an install from before the stores existed."""
+    uid = c.r.out(["id", "-u", c.user]) or "1000"
+    c.r.run(["loginctl", "enable-linger", c.user])     # the unseal unit is a user unit
+    c.r.run(["bash", str(c.repo / "container" / "stores" / "stores.sh"), "setup"], as_user=True,
+            cwd=c.repo / "container", env={"XDG_RUNTIME_DIR": f"/run/user/{uid}"})
+    return DONE, "OpenBao and Conjur running in the stack, unsealed and connected to LABaPe"
+
+
 def update_agent(c: Ctx):
     """The host-side update agent (design §23.2): a user-level systemd path
     unit for the service user, kept running by lingering."""

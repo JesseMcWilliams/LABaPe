@@ -47,6 +47,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- OpenBao and Conjur Open Source run in the LABaPe stack (`stores` compose
+  profile), set up by the installer's new `Stack.Stores` step
+  (`container/stores/stores.sh`, also for existing installs): certificates
+  from the platform CA, OpenBao unsealed at boot by a user unit, LABaPe's
+  store settings and logins filled in. `labape stores-configure` sets them.
 - Dated template versions (`<name>-YYYY.MM`): a monthly refresh of each
   template's newest version, scheduled by the worker, and retention that
   keeps the newest 3 versions by default and deletes older ones once no

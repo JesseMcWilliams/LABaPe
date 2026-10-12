@@ -78,6 +78,7 @@ Nothing secret is ever written to the answers file.
 | `Stack.Setup` | `container/setup.sh`, then copies the config and engine secrets into `container/` | |
 | `Stack.Auth` | Existing OIDC provider (issuer, client ID, prompted secret), a throwaway Authentik (`tools/authentik-test`), or none (break-glass only) | |
 | `Stack.Build`, `Stack.Up` | Builds the image and starts the stack; waits for `/api/health` | |
+| `Stack.Stores` | `container/stores/stores.sh setup` as the service user: OpenBao and Conjur in the stack with certificates from the platform CA, initialized and unsealed, LABaPe's logins set in its store settings, and user units that unseal OpenBao at boot and renew the certificate daily. Re-run it on an existing install to add the stores. | loginctl |
 | `Stack.Bootstrap` | `labape bootstrap`: registers this KVM host, the network catalog, the host's network attachments (the default network marked) and admin role bindings. Idempotent. | |
 | `Templates.Build` | `scripts/build-template.sh` for each `TemplatesToBuild` entry (`os-key:name`, or `os-key:name:core`). Skips existing templates. | |
 | `Smoke.Cli` | As the service user: libvirt, tofu, ansible, and `environment.yml` rendering | |
