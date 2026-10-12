@@ -61,6 +61,8 @@ Before the move, the update agent rotates the vault password and the VM key here
 - The directory is mode 0700. The files are 0644 because each container reads them as its own user (PostgreSQL reads as uid 70).
 - Never commit any of these. `.gitignore` already excludes them.
 
+**After `stores/stores.sh setup`** (design §26, S4) these files live in OpenBao (`labape-host/bootstrap/`, readable only with the update agent's login), and the stack reads a memory-only copy in `LABAPE_SECRETS_DIR` (`/run/user/<uid>/labape-secrets`, set in `.env`). At boot Docker can't start the containers that need them (their files aren't there yet, so the start fails cleanly); `labape-stores.service` unseals OpenBao, refills the folder (`stores/hostsecrets.py pull`) and runs `docker compose up -d`. The update agent's rotations of the master key, database password and CA password write OpenBao as they swap the files. `container/secrets/` is then an old copy: back it up and delete it. To change the OIDC client secret by hand after the move, edit the file in `LABAPE_SECRETS_DIR`, run `stores/hostsecrets.py push "$LABAPE_SECRETS_DIR"`, and recreate the API and worker.
+
 ### Sign-in (`container/.env`)
 
 Point LABaPe at Authentik (or any OIDC provider):

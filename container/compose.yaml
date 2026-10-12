@@ -201,19 +201,22 @@ services:
     ports:
       - "${LABAPE_STORES_BIND:-127.0.0.1}:${LABAPE_CONJUR_PORT:-8444}:8443"
 
+# The bootstrap secrets (design §26, S4): container/secrets/ until stores/stores.sh
+# moves them into OpenBao; then LABAPE_SECRETS_DIR names a memory-only folder the
+# update agent fills from the store before it starts the stack.
 secrets:
   postgres_password:
-    file: ./secrets/postgres_password
+    file: ${LABAPE_SECRETS_DIR:-./secrets}/postgres_password
   database_url:
-    file: ./secrets/database_url
+    file: ${LABAPE_SECRETS_DIR:-./secrets}/database_url
   tofu_pg_conn:
-    file: ./secrets/tofu_pg_conn
+    file: ${LABAPE_SECRETS_DIR:-./secrets}/tofu_pg_conn
   secret_key:
-    file: ./secrets/secret_key
+    file: ${LABAPE_SECRETS_DIR:-./secrets}/secret_key
   oidc_client_secret:
-    file: ./secrets/oidc_client_secret
+    file: ${LABAPE_SECRETS_DIR:-./secrets}/oidc_client_secret
   ca_password:
-    file: ./secrets/ca_password
+    file: ${LABAPE_SECRETS_DIR:-./secrets}/ca_password
 
 volumes:
   postgres-data:

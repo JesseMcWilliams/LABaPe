@@ -49,6 +49,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- The master key, database password and connection strings, CA password
+  and OIDC client secret move into OpenBao (`labape-host/bootstrap/`,
+  only the update agent's login reads it). The stack reads a memory-only
+  copy (`LABAPE_SECRETS_DIR`), refilled at boot by `labape-stores.service`
+  before it starts the stack; the agent's rotations write OpenBao too
+  (`container/stores/hostsecrets.py push|pull|same`).
 - The engine's vault password, vault and VM SSH key (with its previous keys)
   live in OpenBao: `stores.sh` imports them (`labape engine-secrets
   import|status|check`), every job reads them from there, and the worker

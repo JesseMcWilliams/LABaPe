@@ -128,7 +128,14 @@ drain() {   # wait for running jobs (maintenance is on)
 }
 
 # --- rotate (phase R3) -----------------------------------------------------------
-S="$C/secrets"
+# The bootstrap secrets: container/secrets/, or, once stores.sh has moved them into
+# OpenBao (design §26, S4), the memory-only folder LABAPE_SECRETS_DIR names. Then
+# each rotation writes the store right after swapping the files (and again when it
+# puts the old ones back), so the stack comes back with the same values after a boot.
+S="$(grep -m1 '^LABAPE_SECRETS_DIR=' "$C/.env" 2>/dev/null | cut -d= -f2-)"
+IN_STORE=0; [ -n "$S" ] && IN_STORE=1
+S="${S:-$C/secrets}"
+store_push() { [ $IN_STORE = 0 ] || python3 "$C/stores/hostsecrets.py" push "$S"; }
 recreate() { (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate "$@"); }   # new secret files need new mounts
 tool() { (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$S:/hs:ro" labape-worker labape "$@"); }
 pg_password() { printf "ALTER ROLE labape WITH PASSWORD '%s';\n" "$1" \
@@ -151,10 +158,13 @@ rotate() {
       (umask 022; printf '%s\n' "$new" > "$S/secret_key.new")
       tool rewrap-master --from /hs/secret_key --to /hs/secret_key.new || { rm -f "$S/secret_key.new"; fail applying "re-wrapping the data keys failed; nothing changed"; }
       cp -p "$S/secret_key" "$S/secret_key.old" && mv "$S/secret_key.new" "$S/secret_key"
+      store_push || { mv "$S/secret_key.old" "$S/secret_key"; tool rewrap-master --from /hs/secret_key.old --to /hs/secret_key 2>/dev/null
+                      store_push; fail applying "writing the new master key to OpenBao failed; the old one is back"; }
       recreate labape-api labape-worker
       if wait_healthy 120; then rm -f "$S/secret_key.old"; else
         cp -p "$S/secret_key" "$S/secret_key.new"; mv "$S/secret_key.old" "$S/secret_key"
         tool rewrap-master --from /hs/secret_key.new --to /hs/secret_key; rm -f "$S/secret_key.new"
+        store_push || true
         recreate labape-api labape-worker; wait_healthy 120 || true
         fail health "the new master key failed the health checks; the old one is back"
       fi ;;
@@ -162,9 +172,12 @@ rotate() {
       old="$(tr -d '\n' < "$S/postgres_password")"
       pg_password "$new" || fail applying "ALTER ROLE failed; nothing changed"
       for f in postgres_password database_url tofu_pg_conn; do cp -p "$S/$f" "$S/$f.old"; sed -i "s|$old|$new|" "$S/$f"; done
+      store_push || { pg_password "$old"; for f in postgres_password database_url tofu_pg_conn; do mv "$S/$f.old" "$S/$f"; done
+                      store_push; fail applying "writing the new database password to OpenBao failed; the old one is back"; }
       recreate labape-api labape-worker
       if wait_healthy 120; then for f in postgres_password database_url tofu_pg_conn; do rm -f "$S/$f.old"; done; else
         pg_password "$old"; for f in postgres_password database_url tofu_pg_conn; do mv "$S/$f.old" "$S/$f"; done
+        store_push || true
         recreate labape-api labape-worker; wait_healthy 120 || true
         fail health "the new database password failed the health checks; the old one is back"
       fi ;;
@@ -176,6 +189,12 @@ rotate() {
         ca_exec bash /labape/repass.sh /home/step/.pw.new /run/secrets/ca_password; ca_exec rm -f /home/step/.pw.new
         fail applying "re-encrypting the signing provisioner failed; the CA keys were put back"; }
       cp -p "$S/ca_password" "$S/ca_password.old"; (umask 022; printf '%s\n' "$new" > "$S/ca_password.tmp"); mv "$S/ca_password.tmp" "$S/ca_password"
+      # The running CA still reads the old file (a replaced file keeps its old mount), so undoing is the same two steps back.
+      store_push || {
+        ca_exec bash /labape/repass.sh /home/step/.pw.new /run/secrets/ca_password
+        ca_tool ca-repass --config /home/step/config/ca.json --old /hs/ca_password --new /hs/ca_password.old
+        ca_exec rm -f /home/step/.pw.new; mv "$S/ca_password.old" "$S/ca_password"
+        store_push; fail applying "writing the new CA password to OpenBao failed; the old one is back"; }
       recreate labape-ca labape-api labape-worker
       sleep 10
       if wait_healthy 150; then ca_exec rm -f /home/step/.pw.new; rm -f "$S/ca_password.old"; else
@@ -184,6 +203,7 @@ rotate() {
         ca_tool ca-repass --config /home/step/config/ca.json --old /hs/ca_password --new /home/step/.pw.old
         ca_exec rm -f /home/step/.pw.new /home/step/.pw.old
         mv "$S/ca_password.old" "$S/ca_password"
+        store_push || true
         recreate labape-ca labape-api labape-worker; wait_healthy 150 || true
         fail health "the new CA password failed the health checks; the old one is back"
       fi ;;
