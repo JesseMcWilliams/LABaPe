@@ -134,7 +134,7 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 | Authentik directory token | the worker, with an elevated account | weekly |
 | OIDC client secret | the worker, with an elevated account | daily |
 | Master key, PostgreSQL password, platform CA password | the update agent, with a restart | weekly, in the maintenance window |
-| Engine vault password, VM bootstrap SSH key | the update agent, no restart | daily |
+| Engine vault password (and the command line's vault on the same host), VM bootstrap SSH key | the update agent, no restart | daily |
 | SMTP password | you, on the mail server | reminder only |
 
 **How a rotation works.** LABaPe makes the new value, applies it, checks it works, and only then switches. If anything fails, the old secret stays, the status shows the error (also on the dashboard and in syslog) and it retries an hour later.

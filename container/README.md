@@ -49,7 +49,7 @@ container/setup.sh --hostname labape.lab.lan     # writes .env and secrets/, mak
 | `ssh/<key>` and `ssh/<key>.pub` | One key pair. The runner uses it in place of the vault's `ansible_ssh_private_key_path`, because that path belongs to the CLI host. |
 | `ssh/history/` | Previous VM keys, kept by the rotation (7) and still offered to VMs |
 
-The update agent rotates the vault password and the VM key here daily, and copies the key to the service user's `~/.ssh/labape_bootstrap` for the command line (design §24.3).
+The update agent rotates the vault password and the VM key here daily. For the command line on the same host it copies the key to the service user's `~/.ssh/labape_bootstrap`, and gives the command line's vault the same new password (`install.sh --cli-vault`; design §24.3).
 
 ### Generated secrets (`container/secrets/`)
 

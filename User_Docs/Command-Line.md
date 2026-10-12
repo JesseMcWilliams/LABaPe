@@ -95,4 +95,8 @@ The generated passwords live only in the encrypted vault: read them with `ansibl
 
 **Rotating the Windows bootstrap password on running VMs.** Change it on the running hosts first, then in the vault; changing only the vault locks Ansible out. VMs aren't reinstalled. The full procedure is [Reference_Credentials.md §9](../Claude_Docs/Reference_Credentials.md#9-rotating-the-windows-bootstrap-password-on-a-running-environment).
 
-**When the web interface runs on the same host**, its update agent rotates the VM SSH key daily and copies the current key to `~/.ssh/labape_bootstrap` (previous keys in `~/.ssh/labape-history/`), so the command line still reaches the VMs. It also rotates the web interface's own copy of the vault password (in `container/engine-secrets/`); the command line's `secrets.vault.yml` and `~/.labape-vault-pass` aren't changed.
+**When the web interface runs on the same host**, its update agent keeps the command line in step:
+- it rotates the VM SSH key daily and copies the current key to `~/.ssh/labape_bootstrap` (previous keys in `~/.ssh/labape-history/`), so the command line still reaches the VMs;
+- it rotates the vault password daily and gives the command line's vault the same new password: `secrets.vault.yml` is re-encrypted and `~/.labape-vault-pass` rewritten, together with the web interface's copy. If the command line's vault doesn't open with its password file, the rotation stops and nothing changes.
+
+Which vault the agent updates is set when it's installed: `deploy/update-agent/install.sh --cli-vault <path> [--vault-pass-file <path>]` (default: the checkout's `secrets.vault.yml` and `~/.labape-vault-pass`; `--cli-vault none` leaves it alone). The setting is kept in `~/.config/labape/agent.env`.
