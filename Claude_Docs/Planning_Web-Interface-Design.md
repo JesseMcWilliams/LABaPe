@@ -408,9 +408,8 @@ exercised end to end, like the M1-M6 work.
 
 Remaining for this design (Claude_Docs/Planning_Questions.md): 34 (Packer
 builds with a remote app). 29 (Kerberos) was answered: later. 35 (backups),
-36 (retention) and 38 (notifications) were built as admin settings in
-batch E (§21.5: daily database backups, retention, job emails); they stay
-open in Planning_Questions.md until confirmed.
+36 (retention) and 38 (notifications) were answered as built in batch E
+(§21.5: daily database backups, retention, job emails).
 
 ## 19. Phase 10a as built
 

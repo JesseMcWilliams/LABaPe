@@ -687,7 +687,7 @@ None blocking further scaffolding right now.
    until then; the discovery step gets built only once a real need for
    DHCP-mode hosts actually shows up, not preemptively. Left here as a
    documented, known gap rather than something silently unhandled.
-5. ~~**Windows Setup answer-file reliability**~~ — **resolved** (Claude_Docs/Testing_Troubleshooting-Log.md's
+5. ~~**Windows Setup answer-file reliability**~~ — **resolved** (Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md's
    Windows answer-file deserialization entry, round 10). The libvirt Windows path (§18 M3, landed
    early — see below) mounts `autounattend.xml` on a separate CD-ROM
    rather than modifying the vendor ISO, matching this section's own
@@ -715,7 +715,7 @@ None blocking further scaffolding right now.
   `windows_common` role. **Landed early for libvirt, and solid** (Server
   2019/2022/2025, `autounattend.xml`-based, real WinRM bootstrap, a
   working `windows_common` role) — see Open Question 5 above and
-  Claude_Docs/Testing_Troubleshooting-Log.md's Windows answer-file
+  Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md's Windows answer-file
   deserialization entry (round 10) for the answer-file reliability bug
   that blocked this for a long stretch and is now fixed. Hyper-V still
   pending M2.
@@ -730,7 +730,7 @@ None blocking further scaffolding right now.
   `linsrv`/`winsrv` small profile): a real forest promoted, both
   platforms' domain join succeeded, software install ran cleanly
   afterward — see
-  [Claude_Docs/Testing_Troubleshooting-Log.md § M4](./Testing_Troubleshooting-Log.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs)
+  [Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md § M4](./Archive_Testing_Troubleshooting-Log-M1-M6.md#m4-domain-services-ad-ds-promotion-and-domain-join-bugs)
   for the two real bugs (a `become: true` mistake, and platform-opposite
   domain-join credential formats) this took to get working. The
   `windows_workstation` join path has since been confirmed (Windows 11
@@ -747,7 +747,7 @@ None blocking further scaffolding right now.
   local users, and a domain principal added to a local group, all via a
   single optional `directory-manifest.yml`. Three real bugs found along
   the way — see
-  [Claude_Docs/Testing_Troubleshooting-Log.md § M5](./Testing_Troubleshooting-Log.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working)
+  [Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md § M5](./Archive_Testing_Troubleshooting-Log-M1-M6.md#m5-directory-objects-three-bugs-found-getting-ousgroupsusersmembership-working)
   — most notably that `Claude_Docs/Design_Directory-Objects.md`'s original `hosts:`
   field convention (host-group *names* like `winsrv`/`linsrv`) didn't
   match what the inventory actually groups by (role names); corrected in
@@ -761,15 +761,15 @@ None blocking further scaffolding right now.
   still-open issue — subiquity's guided storage configuration doesn't
   honor either documented autoinstall storage directive on this Ubuntu
   24.04.3 build — see
-  [Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu LTS half)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-all-resolved).
+  [Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md § M5 (workstation support, Ubuntu LTS half)](./Archive_Testing_Troubleshooting-Log-M1-M6.md#m5-workstation-support-ubuntu-lts-half-five-real-bugs-all-resolved).
   No Ubuntu LTS host has completed a full unattended install yet
   (Ubuntu 26.04 hits the identical bug). The follow-on OS-matrix pass
-  ([Claude_Docs/Testing_Troubleshooting-Log.md § M5 (workstation support, Ubuntu 26 / Debian / Windows client)](./Testing_Troubleshooting-Log.md#m5-workstation-support-ubuntu-26--debian--windows-client-os-matrix-pass))
+  ([Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md § M5 (workstation support, Ubuntu 26 / Debian / Windows client)](./Archive_Testing_Troubleshooting-Log-M1-M6.md#m5-workstation-support-ubuntu-26--debian--windows-client-os-matrix-pass))
   confirmed **Windows 11 and Windows 10 clients end-to-end** (unattended
   install on legacy BIOS, domain join as `windows_workstation`, clean
   `site.yml`) and a fully unattended **Debian 13** install via the new
   `debian_preseed` os_family. The completion pass
-  ([Claude_Docs/Testing_Troubleshooting-Log.md § M5 (completion pass)](./Testing_Troubleshooting-Log.md#m5-workstation-support-completion-pass-ubuntu-fixed-linux-workstation-join-medium-profile))
+  ([Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md § M5 (completion pass)](./Archive_Testing_Troubleshooting-Log-M1-M6.md#m5-workstation-support-completion-pass-ubuntu-fixed-linux-workstation-join-medium-profile))
   traced the Ubuntu "storage bug" to a seed-discovery mistake (the
   installer had been running interactive all along), after which Ubuntu
   24.04 and 26.04 install unattended; made the Linux domain join work
@@ -786,7 +786,7 @@ None blocking further scaffolding right now.
   overlay with a cloud-init seed (Linux) or `unattend.xml` (sysprepped
   Windows) for its identity, and `scripts/promote-to-template.sh`
   turns any ISO-built VM into a template (Claude_Docs/Design_Base-Images.md §5;
-  bugs in Claude_Docs/Testing_Troubleshooting-Log.md § M6 phase A). Phase B
+  bugs in Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md § M6 phase A). Phase B
   added Packer builds (`scripts/build-template.sh`, `packer/`) using the
   same answer files and finalize role: every supported OS key (Rocky 9,
   Ubuntu 24.04/26.04, Debian 13, Windows Server 2019/2022/2025, Windows

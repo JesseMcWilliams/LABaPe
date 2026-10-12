@@ -87,12 +87,12 @@ Claude_Docs/Design_Base-Images.md (templates).
 34. Remote libvirt: when the app doesn't run on a KVM host, where should
     Packer template builds run: on the app's container host (needs
     `/dev/kvm`), or on each KVM host?
-35. Backups: who backs up PostgreSQL (app and Authentik data) and the
-    template library, and how often?
-36. How long should job logs and the audit log be kept?
+35. ~~Backups: who backs up PostgreSQL (app and Authentik data) and the
+    template library, and how often?~~ **Answered (2026-10-12):** As built in batch E (design §21.5): LABaPe takes a daily `pg_dump` of its own database (time and retention set in Settings > Backups, default 02:30 UTC, 14 days), with Back up now, download and restore. Authentik's data and the template library aren't included; the host's backup covers them.
+36. ~~How long should job logs and the audit log be kept?~~ **Answered (2026-10-12):** As built in batch E (§21.5), set in Settings > History: job logs and user errors 90 days, the audit log forever by default; the worker purges daily.
 37. ~~Should the app take over existing environments (lab1's OpenTofu state, the vault, `environment.yml`) on first start, or start empty and run alongside the current CLI setup until migrated?~~ **Answered (2026-10-10):** Optional import of existing CLI-built environments; most will be new (decision 15). (Claude_Docs/Planning_Web-Interface-Options.md)
-38. Notifications on job completion or failure: email, Teams, Slack, a
-    webhook, or none?
+38. ~~Notifications on job completion or failure: email, Teams, Slack, a
+    webhook, or none?~~ **Answered (2026-10-12):** Email, as built in batch E (§21.5): SMTP in Settings, and the requester is emailed when a job finishes if that's turned on. The audit trail can also go to syslog. Teams, Slack and webhooks aren't built.
 
 ## Web interface: design questions (added 2026-10-10, second round)
 
