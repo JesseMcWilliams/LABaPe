@@ -406,10 +406,11 @@ exercised end to end, like the M1-M6 work.
 
 ## 18. Open questions
 
-Remaining for this design (Claude_Docs/Planning_Questions.md): 34 (Packer
-builds with a remote app). 29 (Kerberos) was answered: later. 35 (backups),
-36 (retention) and 38 (notifications) were answered as built in batch E
-(§21.5: daily database backups, retention, job emails).
+None remaining for this design (Claude_Docs/Planning_Questions.md). 34
+(Packer builds with a remote app) was answered as built in §22.4: each
+KVM host builds its own templates. 29 (Kerberos) was answered: later. 35
+(backups), 36 (retention) and 38 (notifications) were answered as built in
+batch E (§21.5: daily database backups, retention, job emails).
 
 ## 19. Phase 10a as built
 
@@ -422,14 +423,14 @@ sections above:
 
 | Area | As built |
 |---|---|
-| Backend | `app/labape/` with FastAPI, SQLAlchemy 2 and Authlib. Tables come from `create_all`; Alembic arrives with the first schema change. `pytest app/tests` runs the API, break-glass, permission and claim tests on SQLite. |
+| Backend | `app/labape/` with FastAPI, SQLAlchemy 2 and Authlib. Tables come from `create_all`; Alembic arrives with the first schema change (it did: §23.2, migrations). `pytest app/tests` runs the API, break-glass, permission and claim tests on SQLite. |
 | Web UI | React 19, TypeScript and Vite, with **MUI** as the component library (question 9). Pages: sign-in, break-glass, environments (list, create form, detail with deploy/destroy/credentials), jobs (list, detail with live log, cancel, retry), hosts, audit. |
 
 **Jobs and state**
 
 | Area | As built |
 |---|---|
-| Job claim | A `pg_advisory_xact_lock` serializes claims so per-host `concurrency_limit` holds across workers, plus `FOR UPDATE SKIP LOCKED`. Workers heartbeat every 10 s, and a job whose worker stops for 2 minutes is marked failed. The global limit and Packer's double weight wait for 10b. |
+| Job claim | A `pg_advisory_xact_lock` serializes claims so per-host `concurrency_limit` holds across workers, plus `FOR UPDATE SKIP LOCKED`. Workers heartbeat every 10 s, and a job whose worker stops for 2 minutes is marked failed. The global limit and Packer's double weight wait for 10b. (Later: 10b shipped without them; each worker runs up to `LABAPE_WORKER_SLOTS` jobs, default 4, and a Packer build counts as one.) |
 | Working directory | Per **environment**, not per job: `/var/lib/labape/environments/<name>/engine`, refreshed from the image's engine snapshot before each job. That keeps `.rendered/` answer files and `.terraform` between deploy and destroy. Only one job per environment runs at a time, so environments never share a directory. It's removed after a successful destroy. |
 | Inputs | The runner writes `environment.yml` (the instance base from `/etc/labape` plus the host's storage paths) and `tofu/environments/labape-ui.tfvars`. The tfvars holds the host groups, `static_ip_offset_start`, the host's bridge and `libvirt_uri`; a `-var-file` beats the vault's `TF_VAR_libvirt_uri`. It also copies the software and directory manifests and the vault, and adds `labape_backend_override.tf` (`backend "pg"`, with `PG_CONN_STR` from the environment). |
 | Script changes | `destroy.sh` gained `--yes`, `--delete-workspace` and a `tofu init` when `.terraform` is missing. `deploy.sh` and `destroy.sh` honor `LABAPE_SSH_PRIVATE_KEY_PATH`. `safe-undefine.sh` skips sudo when it's root. `create-from-template.sh` raises a disk smaller than its template to the template's size. |
@@ -441,8 +442,8 @@ sections above:
 |---|---|
 | Break-glass host-only | Section 12 assumed a loopback client IP. Behind the runtime's port publishing, a host-local browser arrives from the bridge gateway instead. So Caddy runs a second listener published on `127.0.0.1:8443` that sets `X-LABaPe-Local: 1`, and the public listener strips that header. The API also refuses cross-origin writes, except from that listener. |
 | Image | Debian trixie with OpenTofu 1.12.6 and Packer 1.16.1 (checksum-verified), and ansible-core 2.21.4 plus pywinrm and the four collections. The venv uses `--system-site-packages` for virt-install. OpenTofu providers are mirrored into `/opt/labape/tofu-mirror` (`TF_CLI_CONFIG_FILE`), and Packer plugins are pre-installed. About 950 MB. |
-| Stack | `container/compose.yaml` (postgres, labape-api, labape-worker, caddy; `init: true`), `container/setup.sh` (`.env` and generated secrets), and Quadlet units in `container/quadlet/`. The containers run as root in rootful Docker. Rootless Podman and the Quadlets are written but not yet exercised on the lab host. |
-| Hosts | Only local `qemu:///system` hosts are accepted; `qemu+ssh` is refused until 10e. |
+| Stack | `container/compose.yaml` (postgres, labape-api, labape-worker, caddy; `init: true`), `container/setup.sh` (`.env` and generated secrets), and Quadlet units in `container/quadlet/`. The containers run as root in rootful Docker. Rootless Podman and the Quadlets are written but not yet exercised on the lab host. (Later: rootful Podman with `podman compose` was verified by the installer on a fresh VM, deploy/README.md § Status; rootless Podman and the Quadlets still aren't.) |
+| Hosts | Only local `qemu:///system` hosts are accepted; `qemu+ssh` is refused until 10e. (Later: remote `qemu+ssh` hosts were built in §22.4.) |
 
 ## 20. Networks and IP address management (built 2026-10-10)
 

@@ -60,18 +60,17 @@ Claude_Docs/Design_Base-Images.md (templates).
 
 ## Lab and operations
 
-20. lab1 runs Server Core and was built from ISO. Keep it as it is, or
-    rebuild it from Desktop Experience templates?
-21. Should a block of addresses be reserved for test environments
+20. ~~lab1 runs Server Core and was built from ISO. Keep it as it is, or
+    rebuild it from Desktop Experience templates?~~ **Moot (2026-10-10):** lab1 was destroyed on request; lab2 replaced it.
+21. ~~Should a block of addresses be reserved for test environments
     (offsets 100-199 hit a device on `.117` once), and recorded in
-    environment.yml?
-22. Is DHCP-mode addressing needed for anything yet (§17.4 defers it
-    until there's a real need)?
+    environment.yml?~~ **Superseded (2026-10-10):** the network catalog's static pools and reserved ranges, the web UI's address allocation, and deploy.sh's address check before apply (Planning_Web-Interface-Design.md §20).
+22. ~~Is DHCP-mode addressing needed for anything yet (§17.4 defers it
+    until there's a real need)?~~ **Superseded (2026-10-10):** DHCP addressing was built for libvirt, CLI and web UI (Planning_Web-Interface-Design.md §20.5).
 23. Firefox can't install on Server 2019 Core: drop it from the example
     software manifest for `windows_server`, or leave it and accept the
     failure on 2019 Core hosts?
-24. Should `Published_Docs/` end-user `.docx` guides start now (the
-    user-docs backlog has about fifteen items)?
+24. Should `Published_Docs/` end-user `.docx` guides start now? (Update 2026-10-12: the Markdown user guides now cover the whole backlog: `User_Docs/Web-Interface-Guide.md`, `Web-Interface-Admin.md` and `Command-Line.md`. They could be the source for the `.docx` versions.)
 
 ## Web interface: follow-up questions (added 2026-10-10)
 
@@ -84,9 +83,9 @@ Claude_Docs/Design_Base-Images.md (templates).
 31. ~~Where should the container image be published: GitHub Container Registry (public or private), or a local registry?~~ **Answered (2026-10-10):** Local by default, external registry optional, all sources in one central repository configuration (decisions 18, 19). (Claude_Docs/Planning_Web-Interface-Options.md)
 32. ~~HTTPS: should the stack include a reverse proxy (e.g. Caddy or Traefik) that terminates TLS, or will it sit behind an existing proxy?~~ **Answered (2026-10-10):** Self-signed to start, ACME supported, hostname asked at setup; whether a reverse proxy container terminates TLS is a design detail (decision 16). (Claude_Docs/Planning_Web-Interface-Options.md)
 33. ~~Remote libvirt: how many KVM hosts should one LABaPe instance manage?~~ **Answered (2026-10-10):** Up to 4 KVM hosts, configurable (decision 20). (Claude_Docs/Planning_Web-Interface-Options.md) Spanning: **Answered (2026-10-10):** environments can span hosts, per host group in the template or best-fit placement (decision 26).
-34. Remote libvirt: when the app doesn't run on a KVM host, where should
+34. ~~Remote libvirt: when the app doesn't run on a KVM host, where should
     Packer template builds run: on the app's container host (needs
-    `/dev/kvm`), or on each KVM host?
+    `/dev/kvm`), or on each KVM host?~~ **Answered as built (2026-10-11):** on each KVM host, with its own Packer (the `kvm` installer profile installs it), as part of remote hosts (question 69, Planning_Web-Interface-Design.md §22.4).
 35. ~~Backups: who backs up PostgreSQL (app and Authentik data) and the
     template library, and how often?~~ **Answered (2026-10-12):** As built in batch E (design §21.5): LABaPe takes a daily `pg_dump` of its own database (time and retention set in Settings > Backups, default 02:30 UTC, 14 days), with Back up now, download and restore. Authentik's data and the template library aren't included; the host's backup covers them.
 36. ~~How long should job logs and the audit log be kept?~~ **Answered (2026-10-12):** As built in batch E (§21.5), set in Settings > History: job logs and user errors 90 days, the audit log forever by default; the worker purges daily.

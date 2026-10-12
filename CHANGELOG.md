@@ -22,7 +22,16 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   opening the entry's own page, where editing happens. Non-admins see
   Hosts and Networks read-only, limited to what they can use.
 
+### Fixed
+- Seven shell scripts (the update agent's installer and script, the
+  rollback script, the platform CA scripts and two libvirt helpers) are
+  executable in the repository again; `install.sh` and
+  `labape-rollback.sh` failed with "Permission denied" when run directly.
+
 ### Added
+- User guides: `User_Docs/Web-Interface-Guide.md` (everyone who signs
+  in), `User_Docs/Web-Interface-Admin.md` (admins) and
+  `User_Docs/Command-Line.md`, linked from the README.
 - Secret rotation: the OIDC client secret rotates daily through the Authentik
   API with an elevated Authentik token, is checked at the token endpoint
   (put back if it fails), and takes effect at the next sign-in with no

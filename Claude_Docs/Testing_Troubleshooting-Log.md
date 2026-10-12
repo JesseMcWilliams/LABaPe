@@ -137,6 +137,20 @@ matched the host's own checkout (no infrastructure changes). The phase
 10a image built earlier that day came from such a copy; images built
 from a Linux checkout aren't affected.
 
+### Operational: scripts committed without the executable bit (2026-10-12)
+
+Seven `.sh` files were committed from the Windows checkout as mode
+100644: `container/ca/init.sh`, `container/ca/repass.sh`,
+`deploy/labape-rollback.sh`, `deploy/update-agent/install.sh`,
+`deploy/update-agent/labape-update.sh` and the two
+`tofu/modules/vm/libvirt/scripts/lib/` helpers. On the lab host,
+`~/LABaPe-web/deploy/update-agent/install.sh` then failed with
+"Permission denied" after a `git reset --hard`; `bash install.sh` worked.
+Windows has no executable bit, so git keeps whatever mode the index
+already had, and a new file starts as 100644. Fixed with
+`git update-index --chmod=+x`. For a new script, run that before the first
+commit (or check with `git ls-files -s -- '*.sh'`).
+
 ### Other setup notes
 
 - **PostgreSQL password file:** PostgreSQL reads its password file as
