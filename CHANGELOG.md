@@ -60,6 +60,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   stores every 24 hours (OpenBao/Vault AppRole secret ID, Conjur host API
   key), once the store is set up. A secret can be marked as rotated by its
   external store only when it lives in one.
+- Stale copies of LABaPe's store logins are cleaned up: the test stores'
+  `deploy.sh` removes them from its `.env` (on every run and at boot) and
+  never re-issues them, and the live-test copy is deleted once it's stale.
+  The admin guide has the steps for other copies.
 - `tools/secrets-test/`: throwaway OpenBao and Conjur instances for building
   the external secret stores, with platform-CA certificates (the VM's own,
   or signed by the stack on the LABaPe host), unsealing at boot,
