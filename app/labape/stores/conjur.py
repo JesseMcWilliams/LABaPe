@@ -39,9 +39,9 @@ class ConjurStore(HttpStore):
     credential_field = "api_key"
     credential_label = "Host API key"
 
-    def _login(self, client):
+    def _login(self, client, api_key: str | None = None):
         r = self._send(client, "POST", f"/{self.cfg.authenticator}/{_q(self.cfg.account)}/{_q(self.cfg.login)}/authenticate",
-                       content=self._credential.encode(), headers={"Accept-Encoding": "base64"})
+                       content=(api_key or self._credential).encode(), headers={"Accept-Encoding": "base64"})
         if r.status_code in (401, 403):
             raise StoreError(f"{self.display_name} refused the login of {self.cfg.login}")
         if r.status_code != 200 or not r.text.strip():
@@ -103,3 +103,28 @@ class ConjurStore(HttpStore):
         except (StoreError, ValueError) as exc:
             return False, str(exc) if isinstance(exc, StoreError) else f"{self.display_name} sent an odd answer"
         return True, f"Signed in as {who}; policy branch {self.cfg.branch} is visible"
+
+    # --- rotating its own API key (design §25, P3) --------------------------------
+    def rotate_api_key(self) -> str:
+        """Ask Conjur for a new API key for LABaPe's own identity. The old key
+        stops working at once, so the caller stores the new one straight away."""
+        kind, _, ident = self.cfg.login.partition("/")
+        with self._client() as client:
+            r = self._send(client, "PUT", f"/authn/{_q(self.cfg.account)}/api_key",
+                           params={"role": f"{kind}:{ident}"}, headers=self._auth_headers(self._session(client)))
+            if r.status_code in (401, 403):        # some versions only allow it with the current key itself
+                r = self._send(client, "PUT", f"/authn/{_q(self.cfg.account)}/api_key",
+                               auth=(self.cfg.login, self._credential))
+        if r.status_code in (401, 403):
+            raise StoreError(f"{self.display_name} doesn't let {self.cfg.login} rotate its own API key")
+        if r.status_code != 200 or not r.text.strip():
+            raise StoreError(f"{self.display_name} answered HTTP {r.status_code} to the API key rotation")
+        return r.text.strip()
+
+    def check_login(self, api_key: str) -> bool:
+        with self._client() as client:
+            try:
+                self._login(client, api_key)
+                return True
+            except StoreError:
+                return False

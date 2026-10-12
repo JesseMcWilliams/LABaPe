@@ -313,6 +313,13 @@ def ensure_policies(db: Session) -> None:
                             interval_hours=r.interval_hours, needs_restart=r.needs_restart, params=dict(r.defaults),
                             notes=r.notes, status="pending" if r.automatic else "manual",
                             next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
+    from .rotation_stores import STORE_ROTATORS, store_ready
+    for kind in STORE_ROTATORS:                     # once its store is set up (design §25, P3)
+        name, r = f"platform.{kind}", REGISTRY[kind]
+        if name not in have and store_ready(db, kind):
+            db.add(SecretPolicy(name=name, kind=kind, label=r.label, secret_class=r.secret_class,
+                                interval_hours=r.interval_hours, needs_restart=False, notes=r.notes, status="pending",
+                                next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
     db.commit()
     ensure_env_policies(db)
     from .vmaccess import split_legacy_passwords
@@ -328,6 +335,9 @@ def policy_secret(p: SecretPolicy) -> str | None:
         return appsettings.DIRECTORY_TOKEN_SECRET
     if p.kind == "smtp_password":
         return appsettings.SMTP_PASSWORD_SECRET
+    if p.kind in STORE_ROTATORS:
+        from .. import stores
+        return stores.credential_secret(STORE_ROTATORS[p.kind])
     if p.kind == "oidc_client_secret":
         from ..auth.oidc import STORED_SECRET
         return STORED_SECRET
@@ -412,6 +422,8 @@ def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
         if p.kind in ENV_ACCOUNTS and not _env_deployed(db, p):
             continue
         if r.needs_elevated and not p.elevated_ref:      # a reminder until it has an elevated account
+            continue
+        if p.kind in STORE_ROTATORS and not store_ready(db, p.kind):
             continue
         out.append(p)
     return out
@@ -521,3 +533,6 @@ def run_job(db: Session, job: Job) -> int:
         log.write(f"labape: done: {summary}; next rotation {policy.next_due_at:%Y-%m-%d %H:%M} UTC\n")
         return 0
 
+
+# The stores' own logins (design §25, P3); imported last, since it registers with this module.
+from .rotation_stores import STORE_ROTATORS, store_ready  # noqa: E402

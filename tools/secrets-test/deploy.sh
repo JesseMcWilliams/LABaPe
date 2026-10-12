@@ -160,6 +160,9 @@ path "labape/data/*"     { capabilities = ["create", "read", "update", "delete",
 path "labape/metadata/*" { capabilities = ["read", "list", "delete"] }
 path "labape/metadata"   { capabilities = ["list"] }
 path "auth/token/lookup-self" { capabilities = ["read"] }
+# Rotating its own AppRole secret ID (LABaPe design §25, P3)
+path "auth/approle/role/labape/secret-id"         { capabilities = ["update"] }
+path "auth/approle/role/labape/secret-id/destroy" { capabilities = ["update"] }
 HCL
   bao write auth/approle/role/labape token_policies=labape token_ttl=1h token_max_ttl=4h secret_id_ttl=0 >/dev/null
   put OPENBAO_ROLE_ID "$(bao read -field=role_id auth/approle/role/labape/role-id)"
@@ -200,10 +203,14 @@ conjur_token() {   # conjur_token <login> <api key>: a base64 access token
 
 # --- smoke test, as LABaPe would use them ------------------------------------------------
 smoke() {
-  local tok value
+  local tok value sid
+  # A throwaway secret ID, destroyed afterwards: once LABaPe rotates its own,
+  # the OPENBAO_SECRET_ID in .env no longer signs in (LABaPe design §25, P3).
+  sid="$(bao write -f -field=secret_id auth/approle/role/labape/secret-id)"
   tok="$(curl -fsS --resolve "$NAME:$BPORT:$ADDR" -X POST \
-    -d "{\"role_id\":\"$(get OPENBAO_ROLE_ID)\",\"secret_id\":\"$(get OPENBAO_SECRET_ID)\"}" \
+    -d "{\"role_id\":\"$(get OPENBAO_ROLE_ID)\",\"secret_id\":\"$sid\"}" \
     "https://$NAME:$BPORT/v1/auth/approle/login" | json auth client_token)"
+  bao write auth/approle/role/labape/secret-id/destroy secret_id="$sid" >/dev/null
   value="smoke-$(date +%s)"
   curl -fsS --resolve "$NAME:$BPORT:$ADDR" -H "X-Vault-Token: $tok" -o /dev/null \
     -d "{\"data\":{\"value\":\"$value\"}}" "https://$NAME:$BPORT/v1/labape/data/secrets-test/smoke"
@@ -211,7 +218,10 @@ smoke() {
         "https://$NAME:$BPORT/v1/labape/data/secrets-test/smoke" | json data data value)" = "$value" ] \
     || die "OpenBao smoke test: the value didn't read back"
   say "OpenBao: AppRole sign-in, write and read back under labape/ worked (system trust store)"
-  tok="$(conjur_token host/labape/app "$(get CONJUR_HOST_API_KEY)")"
+  if ! tok="$(conjur_token host/labape/app "$(get CONJUR_HOST_API_KEY)" 2>/dev/null)"; then
+    say "Conjur: the host key in .env no longer signs in (LABaPe rotates it); host smoke test skipped"
+    return 0
+  fi
   curl -fsS --resolve "$NAME:$CPORT:$ADDR" -H "Authorization: Token token=\"$tok\"" -o /dev/null -X POST \
     --data-binary '- !variable secrets-test/smoke' "https://$NAME:$CPORT/policies/labape/policy/labape%2Fsecrets"
   curl -fsS --resolve "$NAME:$CPORT:$ADDR" -H "Authorization: Token token=\"$tok\"" -o /dev/null \

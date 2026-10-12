@@ -56,6 +56,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   page moves it too. Settings → Secret stores sets the default store for
   new environment secrets. Store logins, elevated accounts and job tokens
   stay built-in.
+- External secret stores, step 3: LABaPe rotates its own logins to the
+  stores every 24 hours (OpenBao/Vault AppRole secret ID, Conjur host API
+  key), once the store is set up. A secret can be marked as rotated by its
+  external store only when it lives in one.
 - `tools/secrets-test/`: throwaway OpenBao and Conjur instances for building
   the external secret stores, with platform-CA certificates (the VM's own,
   or signed by the stack on the LABaPe host), unsealing at boot,

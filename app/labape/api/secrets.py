@@ -78,6 +78,8 @@ def update_policy(policy_id: int, body: PolicyIn, request: Request, db: Session 
     if pol.needs_restart and body.interval_hours < RESTART_INTERVAL_HOURS and not body.managed_externally:
         raise FieldError("interval_hours", "This rotation restarts services, so it runs at most weekly, in the "
                                            f"maintenance window ({RESTART_INTERVAL_HOURS} hours or more).")
+    if body.managed_externally and body.store == "builtin":
+        raise FieldError("managed_externally", "Only a secret in an external store can be rotated by that store.")
     if body.store != pol.store:                       # the secret moves first; the policy follows (design §25)
         name = policy_secret(pol)
         if not name or db.get(Secret, name) is None:
