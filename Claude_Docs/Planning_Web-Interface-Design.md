@@ -407,7 +407,7 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
 | 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
-| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) the OpenBao/Vault and Conjur providers (§25.1) per-secret placement with Move (§25.2) and rotation of the stores' own logins (§25.3); user docs are next |
+| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) the OpenBao/Vault and Conjur providers (§25.1) per-secret placement with Move (§25.2) and rotation of the stores' own logins (§25.3), documented in `User_Docs/Web-Interface-Admin.md` §8.1. Left for later: the agent's file secrets (question 95) |
 | 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15). Remote hosts are built (§22.4); spanning and placement aren't |
 | 10f | VM storage moves (offline) |
 | 10g | Environment import (migration), central repository configuration applied to all tools, bundled-Authentik profile with blueprint |
@@ -1061,7 +1061,7 @@ Decisions: questions 81, 83, 84, 90, 91.
 | Reminder rule | A rotator that needs an elevated account (this one and `directory_token`) isn't scheduled until its policy names one, and the Secrets page shows it as a reminder rather than failing every hour. Rotate now still runs it and says what's missing. |
 | Verified | Live on the lab host with the test Authentik (`tools/helpers/live/rotate_oidc.py`): rotated through the worker, the old secret then got `invalid_client` at the token endpoint, a fresh sign-in worked, and sign-in still worked after restarting the API. pytest: 96. |
 
-## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, P1 to P3 built 2026-10-12)
+## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, built 2026-10-12)
 
 Requirements: `Claude_Docs/Reference_Secrets-Backend-Requirements.md`. Test stores: `tools/secrets-test/` (live on the KVM host). Decisions: questions 93-99 (all answered 2026-10-12).
 
@@ -1084,7 +1084,7 @@ Requirements: `Claude_Docs/Reference_Secrets-Backend-Requirements.md`. Test stor
 1. **P1 providers:** the interface, `builtin`/`openbao`/`conjur`, Settings → Secret stores, Test connection, dashboard check, pytest with the stores' HTTP APIs faked.
 2. **P2 placement:** pointer rows, routing, Move, the Stored secrets list, the default store for new environment secrets, policy store changes moving their secrets.
 3. **P3 credential rotation and external rotation:** the two provider credential rotators, `managed_externally` reads.
-4. **P4 live test and docs:** `tools/helpers/live/` script against the KVM host's test stores (move a secret there and back, rotate it, check the dashboard), User_Docs admin guide, CHANGELOG, the requirements doc where it changed.
+4. **P4 live test and docs:** `tools/helpers/live/` script against the KVM host's test stores (move a secret there and back, rotate it, check the dashboard), User_Docs admin guide, CHANGELOG, the requirements doc where it changed. The live scripts arrived with each phase (§25.1-§25.3); P4 wrote `User_Docs/Web-Interface-Admin.md` §8.1 and the README status line.
 
 Out of this round (question 95): the secrets the host's update agent keeps in files (the engine's Ansible vault password, the VM bootstrap SSH key, the master key, the PostgreSQL password, the CA password). They will later behave like every other secret.
 
