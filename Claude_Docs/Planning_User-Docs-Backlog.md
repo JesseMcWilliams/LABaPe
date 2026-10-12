@@ -6,3 +6,4 @@ Everything up to PR #43 is in `User_Docs/Web-Interface-Guide.md`, `Web-Interface
 
 - Settings → Secret stores: OpenBao/Vault and Conjur sections, Test connection, dashboard check (design §25, P1). Document with P4.
 - Secrets → Stored secrets (store per secret, Move), a secret's store on its page, Settings → Secret stores → Default store (design §25, P2). Document with P4.
+- Secrets page: the stores' own logins rotate (OpenBao secret ID, Conjur API key); 'rotated by its store' needs an external store (design §25, P3). Document with P4.

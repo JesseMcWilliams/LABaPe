@@ -47,6 +47,8 @@ Everything secret goes into `.env` here (mode 0600, git-ignored), and nothing se
 
 If `CONJUR_HOST_API_KEY` is removed from `.env`, the next run issues the host a new key with the admin key (the old one stops working).
 
+LABaPe rotates its own logins (its design §25.3): once it has, `OPENBAO_SECRET_ID` and `CONJUR_HOST_API_KEY` here are out of date. The smoke test doesn't depend on them: it signs in to OpenBao with a throwaway secret ID (destroyed afterwards) and skips the Conjur host check with a note. LABaPe's OpenBao policy includes `update` on its own role's `secret-id` and `secret-id/destroy` paths for that rotation.
+
 ## What runs on the host
 
 | Unit | Does |

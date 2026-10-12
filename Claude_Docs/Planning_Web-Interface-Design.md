@@ -407,7 +407,7 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
 | 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
-| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) the OpenBao/Vault and Conjur providers (§25.1) and per-secret placement with Move (§25.2); provider credential rotation is next |
+| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) the OpenBao/Vault and Conjur providers (§25.1) per-secret placement with Move (§25.2) and rotation of the stores' own logins (§25.3); user docs are next |
 | 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15). Remote hosts are built (§22.4); spanning and placement aren't |
 | 10f | VM storage moves (offline) |
 | 10g | Environment import (migration), central repository configuration applied to all tools, bundled-Authentik profile with blueprint |
@@ -1061,7 +1061,7 @@ Decisions: questions 81, 83, 84, 90, 91.
 | Reminder rule | A rotator that needs an elevated account (this one and `directory_token`) isn't scheduled until its policy names one, and the Secrets page shows it as a reminder rather than failing every hour. Rotate now still runs it and says what's missing. |
 | Verified | Live on the lab host with the test Authentik (`tools/helpers/live/rotate_oidc.py`): rotated through the worker, the old secret then got `invalid_client` at the token endpoint, a fresh sign-in worked, and sign-in still worked after restarting the API. pytest: 96. |
 
-## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, P1 and P2 built 2026-10-12)
+## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, P1 to P3 built 2026-10-12)
 
 Requirements: `Claude_Docs/Reference_Secrets-Backend-Requirements.md`. Test stores: `tools/secrets-test/` (live on the KVM host). Decisions: questions 93-99 (all answered 2026-10-12).
 
@@ -1112,3 +1112,15 @@ Out of this round (question 95): the secrets the host's update agent keeps in fi
 | UI | Secrets page → Stored secrets: every secret's name, store, linked rotation (period, status, link to the policy) and elevated account, with tick boxes and Move to. A secret's page offers the available stores and moves it on Save. Settings → Secret stores → Default store. |
 | Tests | `app/tests/test_stores_catalog.py`: move there and back, failures leave it in place, no fallback when the store is down, the default store, data key rotation with external rows, the policy link and store change, the move endpoint, the passwords split. pytest: 115. |
 | Verified | Live on the lab host (`tools/helpers/live/stores_move.py`): migration `0004` upgraded PostgreSQL; lab2's old passwords JSON split into two secrets linked to their policies; the directory token moved built-in → OpenBao → Conjur → built-in with group search working after each move; lab2's credentials sheet moved to OpenBao and back and read the same; the default store saved. |
+
+### 25.3 P3 as built: the stores' own logins, externally rotated secrets
+
+| Area | As built |
+|---|---|
+| Policies | `engine/rotation_stores.py` registers `openbao_secret_id` and `conjur_api_key` (privileged, 24 h, no restart). Each policy is created once its store is configured, scheduled only while it stays configured, and linked to its catalog row (`stores/<name>/<field>`, always built-in). |
+| OpenBao / Vault | Issue a new secret ID (`POST auth/<mount>/role/<role>/secret-id`) with LABaPe's own session, or with an elevated account's token when the policy names one; sign in with it; store it; destroy the old one (`.../secret-id/destroy`). If the new one doesn't sign in it's destroyed and the old one stays. LABaPe's policy needs `update` on those two paths of its own role; `tools/secrets-test/deploy.sh` grants it. |
+| Conjur | `PUT /authn/<account>/api_key?role=host:<id>` with the host's own access token (falling back to basic auth with the current key). The old key dies at once, so the new one is stored before the sign-in check; if that check fails the job says to set the key by hand. |
+| Externally rotated | `managed_externally` is only accepted for a secret in an external store; such a policy is never scheduled, and every read goes to the store (no cache), so the store's own rotation is seen at once. |
+| Test stores | `deploy.sh`'s smoke test signs in to OpenBao with a throwaway secret ID (destroyed after), and skips the Conjur host check with a note when `.env`'s host key has been rotated by LABaPe. `stores.py` no longer overwrites LABaPe's saved logins while they work. |
+| Tests | `app/tests/test_stores_rotation.py`: policies appear with their store and pause when it's off, both rotations end to end against the fakes, a refused OpenBao rotation keeps the old secret ID, and the `managed_externally` rule with fresh reads. pytest: 120. |
+| Verified | Live (`tools/helpers/live/stores_rotate.py`) after re-running `deploy.sh` for the policy grant: Conjur's host key and OpenBao's secret ID each rotated through a worker job; Test connection then signed in with the new login and the previous one was refused. `stores.py` kept the rotated logins, and `stores_move.py` moved secrets through both stores with them. |

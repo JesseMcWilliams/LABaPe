@@ -75,7 +75,11 @@ LABaPe's identity may read, write, list and delete its own area, and nothing els
   path "labape/metadata/*" { capabilities = ["read", "list", "delete"] }
   path "labape/metadata"   { capabilities = ["list"] }
   path "auth/token/lookup-self" { capabilities = ["read"] }
+  path "auth/approle/role/labape/secret-id"         { capabilities = ["update"] }
+  path "auth/approle/role/labape/secret-id/destroy" { capabilities = ["update"] }
   ```
+
+  The last two let LABaPe rotate its own secret ID (design §25.3); without them, give the rotation policy an elevated account holding a token that has them.
 
   It's attached to AppRole role `labape` (token TTL 1 h, max 4 h).
 - **Conjur**: host `labape/app` owns policy `labape/secrets`, so it can declare variables there and read and update them; it has no rights outside that branch.

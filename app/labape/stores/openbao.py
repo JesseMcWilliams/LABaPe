@@ -18,6 +18,7 @@ class OpenBaoSettings(BaseModel):
     mount: str = Field(default="labape", pattern=rf"^{_SEGMENT}(/{_SEGMENT})*$")
     path_prefix: str = Field(default="", pattern=rf"^({_SEGMENT}(/{_SEGMENT})*)?$")
     auth_mount: str = Field(default="approle", pattern=rf"^{_SEGMENT}(/{_SEGMENT})*$")
+    role_name: str = Field(default="labape", pattern=rf"^{_SEGMENT}$")         # for rotating its secret ID
     role_id: str = Field(default="", max_length=200)
     namespace: str = Field(default="", pattern=rf"^({_SEGMENT}(/{_SEGMENT})*)?$")   # Vault Enterprise only
     verify_tls: bool = True
@@ -34,9 +35,9 @@ class OpenBaoStore(HttpStore):
     def _ns(self) -> dict[str, str]:
         return {"X-Vault-Namespace": self.cfg.namespace} if self.cfg.namespace else {}
 
-    def _login(self, client):
+    def _login(self, client, secret_id: str | None = None):
         r = self._send(client, "POST", f"/v1/auth/{self.cfg.auth_mount}/login", headers=self._ns(),
-                       json={"role_id": self.cfg.role_id, "secret_id": self._credential})
+                       json={"role_id": self.cfg.role_id, "secret_id": secret_id or self._credential})
         if r.status_code in (400, 401, 403):
             raise StoreError(f"{self.display_name} refused the AppRole login")
         if r.status_code != 200:
@@ -100,3 +101,35 @@ class OpenBaoStore(HttpStore):
         except StoreError as exc:
             return False, str(exc)
         return True, f"Signed in with AppRole; policies {policies}; KV v2 at {self.cfg.mount}/ is readable"
+
+    # --- rotating its own secret ID (design §25, P3) ------------------------------
+    def _role_call(self, op: str, token: str | None, body: dict | None = None) -> dict:
+        """POST to the AppRole role's `secret-id` endpoints, with LABaPe's own
+        session or an elevated token."""
+        url = f"/v1/auth/{self.cfg.auth_mount}/role/{self.cfg.role_name}/{op}"
+        with self._client() as client:
+            headers = self._auth_headers(token or self._session(client))
+            r = self._send(client, "POST", url, headers=headers, json=body or {})
+        if r.status_code in (401, 403):
+            raise StoreError(f"{self.display_name} doesn't let {'the elevated token' if token else 'LABaPe'} "
+                             f"change role {self.cfg.role_name}'s secret IDs")
+        if r.status_code not in (200, 204):
+            raise StoreError(f"{self.display_name} answered HTTP {r.status_code} to {op}")
+        return r.json() if r.status_code == 200 and r.content else {}
+
+    def issue_secret_id(self, token: str | None = None) -> str:
+        sid = (self._role_call("secret-id", token).get("data") or {}).get("secret_id")
+        if not sid:
+            raise StoreError(f"{self.display_name} didn't return a new secret ID")
+        return sid
+
+    def check_login(self, secret_id: str) -> bool:
+        with self._client() as client:
+            try:
+                self._login(client, secret_id)
+                return True
+            except StoreError:
+                return False
+
+    def destroy_secret_id(self, secret_id: str, token: str | None = None) -> None:
+        self._role_call("secret-id/destroy", token, {"secret_id": secret_id})

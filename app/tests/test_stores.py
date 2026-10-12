@@ -21,7 +21,8 @@ class FakeBao:
     """Enough of OpenBao's API: AppRole login, KV v2 data/metadata, lookup-self."""
 
     def __init__(self, secret_id=FAKE, denied=()):
-        self.secret_id, self.denied = secret_id, set(denied)
+        self.secret_ids, self.denied = {secret_id}, set(denied)
+        self.may_rotate = True
         self.kv: dict[str, str] = {}
         self.tokens: set[str] = set()
         self.logins = 0
@@ -30,7 +31,7 @@ class FakeBao:
         path = unquote(req.url.raw_path.decode().split("?")[0])
         if path == "/v1/auth/approle/login":
             body = json.loads(req.content)
-            if body != {"role_id": "role-1", "secret_id": self.secret_id}:
+            if body.get("role_id") != "role-1" or body.get("secret_id") not in self.secret_ids:
                 return httpx.Response(400, json={"errors": ["invalid role or secret ID"]})
             self.logins += 1
             tok = f"s.tok{self.logins}"
@@ -38,6 +39,15 @@ class FakeBao:
             return httpx.Response(200, json={"auth": {"client_token": tok, "lease_duration": 3600}})
         if req.headers.get("X-Vault-Token") not in self.tokens:
             return httpx.Response(403, json={"errors": ["permission denied"]})
+        if path.startswith("/v1/auth/approle/role/labape/secret-id"):
+            if not self.may_rotate:
+                return httpx.Response(403, json={"errors": ["permission denied"]})
+            if path.endswith("/destroy"):
+                self.secret_ids.discard(json.loads(req.content)["secret_id"])
+                return httpx.Response(204)
+            sid = f"new-secret-id-{len(self.secret_ids)}"
+            self.secret_ids.add(sid)
+            return httpx.Response(200, json={"data": {"secret_id": sid}})
         if path == "/v1/auth/token/lookup-self":
             return httpx.Response(200, json={"data": {"policies": ["default", "labape"]}})
         kind, _, key = path.removeprefix("/v1/labape/").partition("/")
@@ -80,6 +90,12 @@ class FakeConjur:
             tok = f"dG9r{self.logins}"
             self.tokens.add(tok)
             return httpx.Response(200, text=tok)
+        if parts[:2] == ["authn", "labape"] and parts[2:] == ["api_key"] and req.method == "PUT":
+            tok = req.headers.get("Authorization", "").removeprefix('Token token="').removesuffix('"')
+            if tok not in self.tokens or req.url.params.get("role") != "host:labape/app":
+                return httpx.Response(401)
+            self.api_key = f"rotated-key-{self.logins}"
+            return httpx.Response(200, text=self.api_key)
         auth = req.headers.get("Authorization", "")
         if auth.removeprefix('Token token="').removesuffix('"') not in self.tokens:
             return httpx.Response(401)
