@@ -134,6 +134,73 @@ services:
       - caddy-data:/data
       - caddy-config:/config
 
+  # --- The secret stores (design §26): OpenBao and Conjur Open Source -------------
+  # In the `stores` profile, which stores/stores.sh turns on (COMPOSE_PROFILES in
+  # .env) once their secret files and certificates exist. Published on the
+  # host's loopback by default, for the update agent and the command line;
+  # LABAPE_STORES_BIND opens them to other hosts. Files are mounted one by one:
+  # a missing source would otherwise become an empty directory.
+  labape-openbao:
+    image: docker.io/openbao/openbao:2.7.1
+    profiles: [stores]
+    command: server
+    # always: it exits 0 when the host shuts down, and unless-stopped then left it down.
+    restart: always
+    cap_add: [IPC_LOCK]
+    environment:
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /openbao/tls/root.crt
+      BAO_TLS_SERVER_NAME: labape-openbao
+    volumes:
+      - ./stores/openbao/config.hcl:/openbao/config/config.hcl:ro
+      - ./stores/tls:/openbao/tls:ro
+      - labape-openbao:/openbao/file
+    ports:
+      - "${LABAPE_STORES_BIND:-127.0.0.1}:${LABAPE_OPENBAO_PORT:-8200}:8200"
+
+  labape-conjur-db:
+    image: docker.io/library/postgres:17-alpine
+    profiles: [stores]
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/stores/conjur_db_password
+    volumes:
+      - ./stores/secrets/conjur_db_password:/run/stores/conjur_db_password:ro
+      - labape-conjur-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  labape-conjur:
+    image: docker.io/cyberark/conjur:1.27.0
+    profiles: [stores]
+    restart: unless-stopped
+    depends_on:
+      labape-conjur-db:
+        condition: service_healthy
+    # Conjur takes its data key and database URL only from the environment (stores/conjur/env.sh).
+    entrypoint: ["/bin/sh", "-c", ". /run/stores/env.sh && exec conjurctl server"]
+    environment:
+      CONJUR_AUTHENTICATORS: authn
+    volumes:
+      - ./stores/secrets/conjur_data_key:/run/stores/conjur_data_key:ro
+      - ./stores/secrets/conjur_db_password:/run/stores/conjur_db_password:ro
+      - ./stores/conjur/policy.yml:/policy/labape.yml:ro
+      - ./stores/conjur/env.sh:/run/stores/env.sh:ro
+
+  labape-conjur-tls:
+    image: docker.io/library/nginx:1.28-alpine
+    profiles: [stores]
+    restart: unless-stopped
+    depends_on: [labape-conjur]
+    volumes:
+      - ./stores/conjur/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./stores/tls:/etc/nginx/tls:ro
+    ports:
+      - "${LABAPE_STORES_BIND:-127.0.0.1}:${LABAPE_CONJUR_PORT:-8444}:8443"
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
@@ -154,3 +221,5 @@ volumes:
   labape-ca:
   caddy-data:
   caddy-config:
+  labape-openbao:
+  labape-conjur-db:

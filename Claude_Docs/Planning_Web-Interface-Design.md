@@ -1124,3 +1124,34 @@ Out of this round (question 95): the secrets the host's update agent keeps in fi
 | Test stores | `deploy.sh`'s smoke test signs in to OpenBao with a throwaway secret ID (destroyed after), and skips the Conjur host check with a note when `.env`'s host key has been rotated by LABaPe. Stale copies are removed automatically: `deploy.sh` (every run and at boot) drops a copy the store refuses and sets `LABAPE_OWNS_LOGINS=1`, after which it never issues those logins again; `lab-live.sh` deletes the live tests' copy once `stores.py` or `stores_rotate.py` reports it stale. LABaPe itself can't delete copies outside its containers, so the admin guide (§8.1) has a step to rotate once and delete setup copies. `stores.py` no longer overwrites LABaPe's saved logins while they work. |
 | Tests | `app/tests/test_stores_rotation.py`: policies appear with their store and pause when it's off, both rotations end to end against the fakes, a refused OpenBao rotation keeps the old secret ID, and the `managed_externally` rule with fresh reads. pytest: 120. |
 | Verified | Live (`tools/helpers/live/stores_rotate.py`) after re-running `deploy.sh` for the policy grant: Conjur's host key and OpenBao's secret ID each rotated through a worker job; Test connection then signed in with the new login and the previous one was refused. `stores.py` kept the rotated logins, and `stores_move.py` moved secrets through both stores with them. |
+
+## 26. OpenBao and Conjur in the stack; LABaPe's own secrets in the store (planned 2026-10-12)
+
+Decisions: questions 100-103 (and 104-106, going ahead with the defaults). Until now the master key, PostgreSQL password, CA password, Ansible vault password and VM bootstrap key were host files the update agent rotated (§24.2, §24.3); the external stores (§25) were optional and held catalog secrets only.
+
+- **Required stores.** OpenBao and Conjur Open Source are services of the LABaPe stack (`container/compose.yaml`), set up by the installer for every install with the web interface. Their TLS certificates come from the platform CA. The **platform store** (OpenBao by default, question 104) holds LABaPe's own secrets; both are available for catalog secrets.
+- **Secret zero.** What opens the stores stays on the host, readable only by the service user, in `container/stores/secrets/`: OpenBao's unseal key and root token, Conjur's data key and database password, and the agent's own store login. The agent unseals OpenBao when the stack starts (question 105).
+- **Logins.** Three, each with least privilege: the **app** (the API and worker: catalog secrets and the engine secrets), the **agent** (bootstrap secrets: read and write), and the **command line** (read the engine secrets only).
+- **Bootstrap secrets** (master key, PostgreSQL password, CA password): kept in the platform store. The agent fetches them into memory-only files (`$XDG_RUNTIME_DIR`, tmpfs) and points the stack's secret files there before starting it; its R3 rotations write the store instead of the files.
+- **Engine secrets** (vault password, encrypted engine vault, VM key and its 7 previous keys): ordinary catalog secrets in the platform store. Each job takes its own copies from the store when it starts. The worker rotates them (no agent, no restart). `container/engine-secrets/` is backed up into the agent's state folder and deleted.
+- **Command line** (question 102 c): `scripts/lib/store_get.py` (standard library only, both stores) reads the vault password and VM key with the command-line login (`~/.config/labape/store.env`) into temporary 0600 files that the scripts delete on exit. The command line's own vault (`secrets.vault.yml`, its own contents) is encrypted with the same password, so a vault-password rotation asks the agent to rekey it (old and new are read from the store, never passed in a request).
+
+**Phases, each shipped on its own:**
+
+| Phase | What |
+|---|---|
+| S1 | The stores in the stack: compose services, `container/stores/` (configuration, policies, `init.sh`), installer step `Stack.Stores` (also runnable on an existing install), agent unseal at start, LABaPe's Settings → Secret stores filled in by the installer. |
+| S2 | Engine secrets into the platform store; jobs read them; the worker's rotators replace the agent's R2 ones; `engine-secrets/` retired. |
+| S3 | The command line reads from the store (`store_get.py`, the command-line login). |
+| S4 | Bootstrap secrets into the platform store, fetched by the agent at start; R3 rotations write the store. |
+
+### 26.1 S1 as built: the stores in the stack
+
+| Area | As built |
+|---|---|
+| Services | `labape-openbao` (2.7.1, Raft storage on the `labape-openbao` volume), `labape-conjur-db` (PostgreSQL 17), `labape-conjur` (1.27.0) and `labape-conjur-tls` (nginx) in `container/compose.yaml`, in the `stores` profile so an install that hasn't run the setup still starts. Secret files are mounted one by one (a missing source would become a directory). Conjur's data key and database URL come from `stores/conjur/env.sh`, which its entrypoint and `stores.sh`'s `conjurctl` calls both source. |
+| Setup | `container/stores/stores.sh setup`, the installer's `Stack.Stores` step, as the service user with no root. It talks to both stores over HTTPS with `curl`: tokens and keys go in headers through process substitution or in bodies on stdin, never on a command line. Conjur's policy is loaded through the API with the admin key, and the API key it creates for `host/labape/app` is kept in memory only. |
+| LABaPe's logins | `labape stores-configure --needs` says which stores LABaPe lacks a login for (none stored, or its settings name another address); `stores.sh` issues only those (a new Conjur key would end LABaPe's) and passes them on stdin; `labape stores-configure` saves the settings (address in the stack, role ID, platform root as the CA bundle) and logins; `--check` runs LABaPe's own checks. |
+| Secret zero | `stores/secrets/` (0700, files 0644 like `container/secrets/`). The update agent's AppRole (`labape-agent`, policy on `labape-host/` only) is checked on each run and reissued if it no longer signs in. |
+| Unattended start | User units `labape-stores.service` (unseal at start; it waits up to five minutes for OpenBao) and `labape-stores-tls.timer`. |
+| Verified | Live on the lab host (an existing install): setup from scratch, a re-run with no changes, OpenBao restarted (sealed, LABaPe's check failed with HTTP 503) and unsealed by the unit, LABaPe's daily rotation of both logins against the stack's stores, the agent's write and read-back. The old test stores are no longer used by LABaPe (question 106). Not yet checked: a full host reboot. pytest: 129. |

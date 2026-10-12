@@ -1,0 +1,11 @@
+# Conjur policy for the LABaPe stack (design §26), loaded into the root
+# policy of the `labape` account. The app signs in as host labape/app, which
+# owns the labape/secrets policy: it declares variables there (loading policy
+# into that branch) and sets and reads their values.
+- !policy
+  id: labape
+  body:
+    - !host app
+    - !policy
+      id: secrets
+      owner: !host app

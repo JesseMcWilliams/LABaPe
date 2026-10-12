@@ -261,3 +261,21 @@ def test_settings_and_test_connection(client, bao):
     store = next(c for c in r.json()["secrets"] if c["name"] == "store.openbao")
     assert store["status"] == "error"
     assert client.post("/api/admin/settings/stores/nope/test").status_code == 404
+
+
+def test_stack_stores_configure(db_reset):
+    """design §26: stores.sh points the settings at the stack's stores, keeping a login LABaPe owns."""
+    from labape.db import session_factory
+    from labape.security import get_secret
+    from labape.stores import credential_secret, stack
+    want = {"openbao": {"url": "https://labape-openbao:8200", "role_id": "r1"},
+            "conjur": {"url": "https://labape-conjur-tls:8443"}}
+    with session_factory()() as db:
+        assert stack.needs(db, want) == {"openbao": True, "conjur": True}
+        stack.configure(db, want, {"openbao": "sid-1", "conjur": "key-1"})
+        assert stack.needs(db, want) == {"openbao": False, "conjur": False}
+        assert get_secret(db, credential_secret("openbao")) == "sid-1"
+        stack.configure(db, want, {})                      # a re-run keeps the rotated login
+        assert get_secret(db, credential_secret("conjur")) == "key-1"
+        moved = {**want, "openbao": {"url": "https://other:8200"}}
+        assert stack.needs(db, moved)["openbao"] is True    # another address: a new login is needed

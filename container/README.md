@@ -90,6 +90,19 @@ The stack runs its own CA, `labape-ca` (step-ca), initialized on first start fro
 
 For a throwaway Authentik already configured this way, see [tools/authentik-test/](../tools/authentik-test/README.md).
 
+## Secret stores (OpenBao and Conjur)
+
+The stack includes OpenBao and Conjur Open Source (design §26), in the `stores` compose profile: `labape-openbao`, and `labape-conjur` with its database and an nginx TLS front (`labape-conjur-tls`). `stores/stores.sh setup` (the installer's `Stack.Stores` step) sets them up once the rest of the stack is running: a certificate from the platform CA for `labape-openbao`, `labape-conjur-tls`, this host's names and addresses; OpenBao initialized and unsealed, with KV v2 mounts `labape/` (the app) and `labape-host/` (the update agent) and an AppRole for each; the Conjur account `labape` with host `labape/app`; LABaPe's Settings → Secret stores filled in; `COMPOSE_PROFILES=stores` in `.env`. It's safe to re-run, and it never replaces a login LABaPe already has (LABaPe rotates them daily).
+
+| Where | What |
+|---|---|
+| `https://127.0.0.1:8200`, `https://127.0.0.1:8444` | OpenBao and Conjur for the host (`LABAPE_OPENBAO_PORT`, `LABAPE_CONJUR_PORT`; `LABAPE_STORES_BIND` publishes them on another address) |
+| `stores/secrets/` (0700) | Secret zero: OpenBao's unseal key and root token, Conjur's data key, database password and admin key, the update agent's AppRole login. Back it up with the `labape-openbao` and `labape-conjur-db` volumes. |
+| `stores/tls/` | The stores' certificate, key and the platform root |
+| `labape-stores.service`, `labape-stores-tls.timer` | User units: unseal OpenBao when the service user's systemd starts (lingering, so at boot), and renew the certificate daily when fewer than 10 days are left |
+
+`stores/stores.sh status` shows whether OpenBao is sealed and runs LABaPe's own checks; `stores/stores.sh unseal` unseals it by hand.
+
 ## Run
 
 ```bash
