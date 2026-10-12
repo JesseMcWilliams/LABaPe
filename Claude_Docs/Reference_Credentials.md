@@ -76,6 +76,12 @@ up (e.g. group policy disabling local accounts), not a v1 requirement.
 
 ## 5. Linux VM bootstrap (SSH key)
 
+The account is `labape` by default. In the web interface it's
+Settings → VM accounts → Linux admin user, recorded per environment when
+it's created (Planning_Web-Interface-Design.md §24.3). The web stack's
+host agent rotates the key daily, adds it on running VMs and keeps the 7
+previous keys; the command line's `~/.ssh/labape_bootstrap` is kept in step.
+
 Kickstart/cloud-init/AutoYaST files bake in an **SSH public key**, not a
 password — standard practice, and it means there's no plaintext
 credential in the answer file at all. The key used is the Ansible
@@ -224,7 +230,9 @@ changing only the vault locks Ansible out:
   value;
 - the domain Administrator on the DC (promotion carried the local
   account over, §4);
-- `domain_admin_password`, which must stay equal to it (secrets.vault.example.yml);
+- `domain_admin_password`, which must equal it when the domain is created
+  (secrets.vault.example.yml). Afterwards the DC's inventory entry uses
+  `domain_admin_password`, so the two can rotate separately;
 - the generated inventory and tester handout (`ansible/inventory/generated`,
   `credentials.generated`).
 
@@ -237,6 +245,11 @@ the vault still matches everything else. Expect the password task
 itself to report FAILED: it changes the password of the account the
 WinRM session is using, so the result can't come back. Check whether
 the new password works before retrying (Claude_Docs/Testing_Troubleshooting-Log.md).
+
+The web interface does all of this per environment, weekly by default
+(Planning_Web-Interface-Design.md §24.3). It starts the change detached
+(`async`, `poll: 0`) and decides by signing in, so the FAILED result
+doesn't matter.
 
 Rotation doesn't reinstall VMs: the reinstall trigger hashes the answer
 file with the password masked (`tofu/modules/vm/libvirt/main.tf`). The

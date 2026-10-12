@@ -35,8 +35,8 @@ network --bootproto=dhcp --hostname=${hostname} --activate
 %{ endif ~}
 
 rootpw --lock
-sshkey --username=labape "${ssh_public_key}"
-user --name=labape --groups=wheel
+sshkey --username=${admin_user} "${ssh_public_key}"
+user --name=${admin_user} --groups=wheel
 
 # Bootstrap-only, sudo without a password prompt so Ansible's first
 # connection (which authenticates as `labape` via the SSH key above,
@@ -53,7 +53,7 @@ dosfstools
 %end
 
 %post
-echo 'labape ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/labape
+echo '${admin_user} ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/labape
 chmod 0440 /etc/sudoers.d/labape
 
 systemctl enable sshd

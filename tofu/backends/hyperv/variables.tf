@@ -95,6 +95,16 @@ variable "gateway" {
   default     = ""
 }
 
+variable "linux_admin_user" {
+  description = "Admin account created on Linux VMs (SSH key only, passwordless sudo); the web UI's Settings > VM accounts, recorded per environment."
+  type        = string
+  default     = "labape"
+  validation {
+    condition     = can(regex("^[a-z_][a-z0-9_-]{0,31}$", var.linux_admin_user))
+    error_message = "linux_admin_user must be a valid Linux user name."
+  }
+}
+
 variable "management_source" {
   description = "Control machine IP/CIDR for firewall scoping (Claude_Docs/Reference_Credentials.md §7)."
   type        = string

@@ -1484,3 +1484,40 @@ The failed rotation in between kept the old token, as designed.
   became a real NUL byte in `ca.py` ("source code string cannot contain null
   bytes"). It was fixed with a script file. The rule stands: Python edits go
   through files or the Edit tool.
+
+### Secret rotation R2/R4 bring-up (2026-10-12)
+
+- **A Windows password change that "failed" had worked, and the password
+  was lost.** The first live rotation of `lab2`'s local Administrator ran
+  `win_user` connected as that Administrator over Basic auth. The module
+  set the password, then its next request (sent with the old password)
+  was rejected, so it reported FAILED. The rotation treated that as
+  "nothing changed" and dropped the new value, and `l2win1` then rejected
+  the stored password. It was put back through the domain admin over NTLM
+  (`net user` showed "Password last set" at the job's time).
+  Reference_Credentials.md §9 already warned about exactly this, and it
+  wasn't read first. Now the change runs detached (`async`, `poll: 0`) and
+  signing in decides; the candidate password is stored before anything
+  changes.
+- **ansible-core 2.19+ has no built-in `json` stdout callback** (it's in
+  `ansible.posix`), so the first VM-key push failed ("Could not load
+  'json' callback plugin"). The old key stayed, as designed. `ansible -o`
+  (oneline) works but is deprecated for removal in 2.23. Ad-hoc calls now
+  go through a generated playbook and parse PLAY RECAP.
+- **A comment edit in a clone seed would have replaced every Linux
+  clone.** The clone reinstall hash covers the rendered user-data, comments
+  included (the Windows one strips comments). The comment was put back;
+  all four Linux answer files render byte-identically for `labape`.
+- **A rotated VM key reinstalled a Linux clone.** The end-to-end redeploy
+  of `lab2` after the rotations succeeded, but OpenTofu replaced
+  `l2lin1`'s `null_resource.vm_from_template`: the clone seed (and the ISO
+  answer files) carry the public key, and the reinstall trigger hashes
+  them. The Windows password had been masked for exactly this reason; the
+  key never rotated before R2. Fixed by hashing with the key each VM was
+  created with (`terraform_data.creation_ssh_key`, `ignore_changes`).
+  `l2lin1` was rebuilt from its template and redeployed cleanly; it was a
+  test VM.
+- **`tofu init` for the Hyper-V backend fails** in the image: the
+  `taliesins/hyperv` provider isn't in the OpenTofu registry. It's not
+  related to this change; libvirt validates.
+

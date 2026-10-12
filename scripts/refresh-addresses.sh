@@ -72,6 +72,7 @@ tofu output -json hosts > "$hosts_json"
 export LIBVIRT_URI="${LIBVIRT_URI:-$TF_VAR_libvirt_uri}"
 
 python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" "$hosts_json" "$ENV_FILE" --timeout "$TIMEOUT"
-python3 "$ROOT_DIR/scripts/generate-inventory.py" "$hosts_json" "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$INVENTORY_DIR" "$WINDOWS_PASSWORD"
+LABAPE_DOMAIN_ADMIN_PASSWORD="$(vault domain_admin_password 2>/dev/null || echo '')" \
+  python3 "$ROOT_DIR/scripts/generate-inventory.py" "$hosts_json" "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$INVENTORY_DIR" "$WINDOWS_PASSWORD"
 chmod 600 "$INVENTORY_DIR/generated" "$INVENTORY_DIR/credentials.generated" 2>/dev/null || true
 echo "labape: addresses refreshed; inventory: ${INVENTORY_DIR#"$ROOT_DIR"/}/hosts.generated" >&2

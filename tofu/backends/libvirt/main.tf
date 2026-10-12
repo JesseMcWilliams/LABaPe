@@ -217,6 +217,7 @@ module "vm" {
 
   template_vars = {
     management_source = var.management_source
+    linux_admin_user  = var.linux_admin_user
   }
 
   libvirt_uri     = var.libvirt_uri

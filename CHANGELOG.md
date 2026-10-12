@@ -8,6 +8,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Changed
+- The credentials sheet lists the domain Administrator in its own
+  section, and a domain controller's inventory entry uses
+  `domain_admin_password`.
+- One job runs per environment at a time.
+- A Linux VM's reinstall check uses the SSH key it was created with, so
+  rotating the VM key doesn't reinstall running VMs.
 - Every action shows a short tooltip, and every action that changes
   something asks first in a dialog with a fuller note (Continue or
   Cancel); the browser's confirm boxes are gone.
@@ -17,6 +23,19 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Secret rotation (phase R2): the engine's Ansible vault password and the
+  VM bootstrap SSH key rotate daily through the host agent, with no
+  restart and no maintenance mode. The new key is added and checked on
+  the deployed Linux VMs first, then swapped in for the web stack and the
+  command line (`~/.ssh`); the 7 previous keys are kept and still tried.
+  New CLI command: `labape push-vm-key`.
+- Lab password rotation (phase R4): each deployed environment's Windows
+  Administrator and domain Administrator passwords rotate weekly by
+  default, changeable or off on the environment's page (DSRM never). The
+  change is checked by signing in, all hosts or none; the inventory,
+  credentials sheet and later deploys follow.
+- Settings → VM accounts: the admin account made on new Linux VMs
+  (default `labape`), recorded per environment.
 - Secret rotation (phase R3): the master key, the PostgreSQL password and
   the CA password rotate through the host's update agent (weekly, in the
   maintenance window, or with Rotate now), with health checks that

@@ -6,6 +6,7 @@ import {
 } from "@mui/material";
 import { api, CredentialSection, Environment, fmtTime, Job } from "../api";
 import Credentials from "../components/Credentials";
+import PasswordRotation from "../components/PasswordRotation";
 import { hasRole, useAuth } from "../App";
 import { StateChip } from "../components";
 import { ActionButton } from "../components/Confirm";
@@ -118,6 +119,7 @@ export default function EnvironmentDetail() {
           <Credentials envId={id!} sections={creds} />
         </Paper>
       )}
+      {env.is_owner && env.status === "deployed" && <PasswordRotation envId={id!} />}
       <Typography variant="h6">Host groups</Typography>
       <Table size="small">
         <TableHead>

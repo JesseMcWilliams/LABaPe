@@ -29,5 +29,7 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Platform CA: VM certificates and renewal, trusting the LABaPe root in browsers (dashboard download), Caddy on the platform CA (LABAPE_CADDYFILE), backing up secrets/ca_password with the labape-ca volume.
 - Tooltips on every action; confirmation dialogs for every change (what each one says).
 - Maintenance mode (Settings): what pauses and what keeps working, scheduling it, the weekly maintenance window and its notice banner.
-- Secrets page: what each secret is, rotation intervals, the restart window, elevated accounts, external stores, Rotate now and failures.
+- Secrets page: what each secret is, rotation intervals, the restart window, elevated accounts, external stores, Rotate now and failures; the update agent rotates the engine vault password and the VM key (7 previous keys kept, also copied into ~/.ssh for the command line).
 - Updating LABaPe: Check now, releases vs pre-releases, what Continue does, rollback (one step in the app, labape-rollback.sh beyond), the release-signing list.
+- Environment page > Password rotation: Windows Administrator and domain Administrator every N days or off; DSRM never; what a failed rotation means and the rotation-candidate secret.
+- Settings > VM accounts: the Linux admin user for new environments (existing ones keep theirs).

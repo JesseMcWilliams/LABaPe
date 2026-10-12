@@ -73,14 +73,18 @@ def claim(db: Session, worker: str) -> Job | None:
     pg = db.bind.dialect.name == "postgresql"
     if pg:
         db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": CLAIM_LOCK})
-    running = {}
-    for host_id, in db.execute(select(Job.kvm_host_id).where(Job.state == "running")):
+    running, busy_envs = {}, set()
+    for host_id, env_id in db.execute(select(Job.kvm_host_id, Job.environment_id).where(Job.state == "running")):
         running[host_id] = running.get(host_id, 0) + 1
+        busy_envs.add(env_id)
     limits = {h.id: (h.concurrency_limit, h.enabled) for h in db.scalars(select(KvmHost))}
     q = select(Job).where(Job.state == "queued").order_by(Job.id)
     if pg:
         q = q.with_for_update(skip_locked=True)
     for job in db.scalars(q):
+        # One job per environment at a time (e.g. a password rotation and a deploy).
+        if job.environment_id is not None and job.environment_id in busy_envs:
+            continue
         if job.kvm_host_id is not None:
             limit, enabled = limits.get(job.kvm_host_id, (0, False))
             if not enabled or running.get(job.kvm_host_id, 0) >= limit:
@@ -227,9 +231,21 @@ def _prepare_base(db: Session, host: KvmHost, work: Path) -> None:
         src = s.config_dir / name
         if src.is_file():
             shutil.copy2(src, dest)
-    vault = s.secrets_dir / "secrets.vault.yml"
-    if vault.is_file():
-        shutil.copy2(vault, work / "secrets.vault.yml")
+    # The job's own copies of the vault and its password: a rotation (design
+    # §24, R2) swaps the mounted files, and must not change them under a
+    # running job. A copy taken mid-swap doesn't open, so take it again.
+    vault, pw = s.secrets_dir / "secrets.vault.yml", s.secrets_dir / "vault-pass"
+    for _ in range(5):
+        if vault.is_file():
+            shutil.copy2(vault, work / "secrets.vault.yml")
+        if pw.is_file():
+            shutil.copyfile(pw, work / ".vault-pass")
+            os.chmod(work / ".vault-pass", 0o600)
+        if not (vault.is_file() and pw.is_file() and shutil.which("ansible-vault")) or subprocess.run(
+                ["ansible-vault", "view", "--vault-password-file", str(work / ".vault-pass"),
+                 str(work / "secrets.vault.yml")], capture_output=True, timeout=60, check=False).returncode == 0:
+            break
+        time.sleep(2)
 
     (work / "tofu" / "backends" / "libvirt" / "labape_backend_override.tf").write_text(BACKEND_OVERRIDE,
                                                                                        encoding="utf-8")
@@ -256,6 +272,16 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     lines.append(f"host_groups = {_hcl(profile_host_groups(db, env))}")
     profile.write_text("\n".join(lines) + "\n", encoding="utf-8")
     write_catalog_inputs(db, env, work)
+
+    # The Linux admin account this environment was created with (Settings > VM accounts).
+    env_file = work / "environment.yml"
+    env_yml = yaml.safe_load(env_file.read_text(encoding="utf-8")) or {}
+    env_yml["linux_admin_user"] = spec.get("linux_admin_user") or "labape"
+    env_file.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
+    # Passwords rotated for this environment (design §24, R4) replace the vault's.
+    rotated = get_secret(db, f"environment/{env.id}/passwords")
+    if rotated and json.loads(rotated):
+        overlay_vault(work, json.loads(rotated))
 
     return work
 
@@ -293,19 +319,50 @@ def ssh_key_path() -> str:
     return ""
 
 
+def overlay_vault(work: Path, overrides: dict) -> None:
+    """Rewrite the job's vault copy with this environment's own passwords."""
+    vault, pw = work / "secrets.vault.yml", work / ".vault-pass"
+    plain = subprocess.run(["ansible-vault", "view", "--vault-password-file", str(pw), str(vault)],
+                           capture_output=True, text=True, check=True, timeout=60).stdout
+    data = yaml.safe_load(plain) or {}
+    data.update({k: v for k, v in overrides.items() if v})
+    tmp = work / ".vault-plain.yml"
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    try:
+        subprocess.run(["ansible-vault", "encrypt", "--vault-password-file", str(pw), "--output", str(vault), str(tmp)],
+                       capture_output=True, check=True, timeout=60)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def sync_home() -> None:
-    """Copy SSH keys from the secrets mount into the job HOME (OpenSSH wants 0600 files it owns)."""
+    """Copy SSH keys from the secrets mount into the job HOME (OpenSSH wants 0600 files it owns).
+    Runs before every job, so a rotated key (design §24, R2) applies without a restart;
+    previous keys (ssh/history/) come along for VMs that missed a rotation."""
     s = get_settings()
     ssh_src = s.secrets_dir / "ssh"
     ssh_dst = s.data_dir / "home" / ".ssh"
     ssh_dst.mkdir(parents=True, exist_ok=True)
     os.chmod(ssh_dst, 0o700)
-    if ssh_src.is_dir():
-        for f in ssh_src.iterdir():
+    for sub in ("", "history"):
+        src, dst_dir = ssh_src / sub if sub else ssh_src, ssh_dst / sub if sub else ssh_dst
+        if not src.is_dir():
+            continue
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(dst_dir, 0o700)
+        for f in src.iterdir():
             if f.is_file():
-                dst = ssh_dst / f.name
+                dst = dst_dir / f.name
                 shutil.copyfile(f, dst)
-                os.chmod(dst, 0o644 if f.suffix == ".pub" else 0o600)
+                os.chmod(dst, 0o644 if f.suffix in (".pub", ".json") else 0o600)
+
+
+def history_keys() -> list[str]:
+    """Previous VM keys, newest first, offered to SSH after the current one."""
+    d = get_settings().data_dir / "home" / ".ssh" / "history"
+    keys = [f for f in d.iterdir() if f.is_file() and f.suffix not in (".pub", ".json")] if d.is_dir() else []
+    return [str(k) for k in sorted(keys, key=lambda f: f.name, reverse=True)]
 
 
 # --- running ---------------------------------------------------------------
@@ -393,7 +450,11 @@ def run(job_id: int, worker: str) -> None:
         what = env.name if env is not None and not job.type.startswith("template.") else \
             (job.params or {}).get("name") or (job.params or {}).get("new_name", "")
         logf.write(f"labape: job {job_id} ({job.type}) for {what} on {host.name}, worker {worker}\n".encode())
+        sync_home()
         run_env = job_env(host)
+        run_env["LABAPE_VAULT_PASS_FILE"] = str(work / ".vault-pass")
+        if history_keys() and remote is None:
+            run_env["ANSIBLE_SSH_COMMON_ARGS"] = " ".join(f"-i {k}" for k in history_keys())
         run_env.update(_cert_env(job_id, job.type, remote is not None))
         cert_token = run_env.get("LABAPE_CERT_TOKEN", "")
         if remote is not None:
@@ -401,7 +462,7 @@ def run(job_id: int, worker: str) -> None:
                 logf.write(f"labape: running on {remote.host.target} over SSH in {remote.root}\n".encode())
                 _sync_isos(work, remote.host, host, iso_keys, _TextLog(logf))
                 secrets_dir = get_settings().secrets_dir
-                files = {"vault-pass": secrets_dir / "vault-pass"}
+                files = {"vault-pass": work / ".vault-pass"}
                 if ssh_key_path():   # the scripts check the key has its .pub beside it
                     files["ssh-key"] = Path(ssh_key_path())
                     files["ssh-key.pub"] = Path(ssh_key_path() + ".pub")
@@ -548,6 +609,9 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
             release(db, env.id)
             put_secret(db, f"environment/{env.id}/credentials", "")
             put_secret(db, f"environment/{env.id}/inventory", "")
+            # Rotated passwords (design §24, R4) belonged to these VMs; a new
+            # deploy builds its DC from the vault's matching pair again.
+            put_secret(db, f"environment/{env.id}/passwords", "")
             if work is not None:
                 shutil.rmtree(work.parent, ignore_errors=True)
     db.commit()

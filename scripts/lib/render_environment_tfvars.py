@@ -56,6 +56,8 @@ def main() -> int:
         "vm_storage_path": vm_storage_path,
         # Optional; empty means "<vm_storage_path>/templates" (backend main.tf).
         "template_storage_path": env.get("template_storage_path", ""),
+        # The Linux admin account (web UI: Settings > VM accounts, recorded per environment).
+        "linux_admin_user": env.get("linux_admin_user") or "labape",
     }
 
     out_path = f"{backend_dir}/environment.auto.tfvars.json"

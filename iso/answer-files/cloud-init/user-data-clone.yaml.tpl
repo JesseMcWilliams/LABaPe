@@ -8,7 +8,7 @@
 hostname: ${hostname}
 preserve_hostname: false
 users:
-  - name: labape
+  - name: ${admin_user}
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     shell: /bin/bash
     lock_passwd: true

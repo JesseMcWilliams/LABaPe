@@ -32,6 +32,7 @@ variable "disk_gb" {
 locals {
   answer_vars = {
     hostname          = "template"
+    admin_user        = "labape"   # templates keep the build account; clones get the configured one
     ssh_public_key    = var.ssh_public_key
     addressing        = { mode = "dhcp", address = "", prefix_length = 0, gateway = "" }
     management_source = ""
