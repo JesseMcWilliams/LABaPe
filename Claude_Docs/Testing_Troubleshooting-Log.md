@@ -293,7 +293,7 @@ died at startup with `duplicate key value violates unique constraint
 table. Docker restarted the worker, so no harm was done. `init_db` now
 takes a PostgreSQL advisory lock around `create_all`.
 
-### Open: Firefox doesn't install on Debian 13 (found 2026-10-11)
+### Firefox didn't install on Debian 13 (found 2026-10-11, fixed 2026-10-12)
 
 While testing batch G (the guest agent), a Debian 13 template clone failed
 `linux_common`'s apt install with "No package matching 'firefox' is
@@ -302,8 +302,19 @@ is a transitional package. `ansible/package_catalog.yml` names one apt
 package for every apt distribution, so the default software manifest's
 Firefox fails on Debian. Everything else in the run completed. A fix needs
 per-distribution names in the catalog (for example `apt: {debian:
-firefox-esr, default: firefox}`). Not fixed yet; the Rocky and Windows
-hosts in the same run were clean.
+firefox-esr, default: firefox}`). The Rocky and Windows hosts in the same
+run were clean.
+
+**Fixed (2026-10-12).** A package-manager spec may now be
+`{package: <name>, distributions: {<ansible_facts['distribution']>: <name>}}`;
+`linux_common` picks the distribution's name and falls back to `package`.
+The repository catalog's Firefox uses it (`Debian: firefox-esr`). Web jobs
+merge the database catalog over the file, and the web catalog was seeded
+from the old entry, so migration `0003_firefox_debian` updates the seeded
+Firefox entry (only while it's still as seeded). It blocked the secrets
+dev VM (`secretsdev`), whose first deploy failed here before the platform
+certificate step; the redeploy installed `firefox-esr` and got its
+certificate.
 
 ### Remote KVM hosts: libvirt refused the host key; the scripts wanted the .pub (2026-10-11)
 

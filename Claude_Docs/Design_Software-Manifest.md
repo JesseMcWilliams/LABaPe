@@ -35,6 +35,14 @@ packages:
       repo: microsoft
     # no zypper entry — silently skipped on openSUSE/SLES hosts, §2
 
+  firefox:
+    chocolatey: firefox
+    apt:
+      package: firefox            # Ubuntu
+      distributions:
+        Debian: firefox-esr       # one distribution's own name (ansible_facts['distribution'])
+    dnf: firefox
+
   sevenzip:
     chocolatey: 7zip
     apt: p7zip-full

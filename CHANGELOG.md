@@ -27,6 +27,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Fixed
+- Firefox installs on Debian (as `firefox-esr`); the deploy of a Debian VM
+  with the default software manifest no longer fails. Catalog entries can
+  name a package per distribution (`apt: {package: ..., distributions:
+  {Debian: ...}}`), and a migration updates the web catalog's seeded entry.
 - Seven shell scripts (the update agent's installer and script, the
   rollback script, the platform CA scripts and two libvirt helpers) are
   executable in the repository again; `install.sh` and

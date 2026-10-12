@@ -38,3 +38,24 @@ def test_newer_database_is_refused(tmp_root):
         conn.execute(text("UPDATE alembic_version SET version_num = '9999_from_the_future'"))
     with eng.begin() as conn, pytest.raises(migrate.LayoutError, match="newer version"):
         migrate.upgrade(conn)
+
+
+def test_0003_fixes_seeded_firefox_only(tmp_root):
+    import json
+    eng = _engine(tmp_root, "mig-firefox")
+    with eng.begin() as conn:
+        Base.metadata.create_all(conn)
+        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
+        conn.execute(text("INSERT INTO alembic_version VALUES ('0002_secret_rotation')"))
+        for name, by, apt in (("firefox", "seed", "firefox"), ("firefox-custom", "seed", "firefox")):
+            conn.execute(text("INSERT INTO catalog_items (kind, name, display_name, description, definition, platforms,"
+                              " status, created_by, updated_by, notes, updated_at) VALUES ('application', :n, :n, '',"
+                              " :d, '[]', 'published', :b, :b, '', CURRENT_TIMESTAMP)"),
+                         {"n": name, "b": by, "d": json.dumps({"chocolatey": "firefox", "apt": apt})})
+        migrate.upgrade(conn)
+        rows = dict(conn.execute(text("SELECT name, definition FROM catalog_items")).all())
+    fixed = json.loads(rows["firefox"]) if isinstance(rows["firefox"], str) else rows["firefox"]
+    assert fixed["apt"] == {"package": "firefox", "distributions": {"Debian": "firefox-esr"}}
+    assert fixed["chocolatey"] == "firefox"
+    other = json.loads(rows["firefox-custom"]) if isinstance(rows["firefox-custom"], str) else rows["firefox-custom"]
+    assert other["apt"] == "firefox"
