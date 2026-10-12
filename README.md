@@ -130,7 +130,7 @@ full deploy.
 - Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` § M2.
 - Hosts in different environments on the same libvirt host need unique host-group names: VM names are host-global, and a create refuses a VM tagged for another workspace (rendered answer files are already kept per workspace) — see `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` § M5 (completion pass).
 - Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing ([operating system notes](User_Docs/Web-Interface-Guide.md#6-operating-system-notes)).
-- Windows Server installs the Desktop Experience unless a host group sets `windows_core = true` (or a template is built with `--core`); Firefox doesn't install on Server 2019 Core, nor yet on Debian 13.
+- Windows Server installs the Desktop Experience unless a host group sets `windows_core = true` (or a template is built with `--core`); Firefox doesn't install on Server 2019 Core (on Debian it installs as `firefox-esr`).
 - Updates from the web interface are refused until a release-signing key is listed in `deploy/allowed_signers` (`deploy/README.md` § Updates).
 - The Hyper-V backend's `tofu init` fails: its `taliesins/hyperv` provider isn't in the OpenTofu registry.
 - Environments on remote KVM hosts aren't included in VM-key pushes or password rotation, because the web stack can't reach their VMs (`Claude_Docs/Planning_Web-Interface-Design.md` §24.3).

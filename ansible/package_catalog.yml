@@ -10,7 +10,10 @@
 packages:
   firefox:
     chocolatey: firefox
-    apt: firefox
+    apt:
+      package: firefox              # Ubuntu (a transitional package for the snap)
+      distributions:
+        Debian: firefox-esr         # Debian ships only the ESR
     dnf: firefox
     zypper: MozillaFirefox        # deliberately not the same string everywhere
 

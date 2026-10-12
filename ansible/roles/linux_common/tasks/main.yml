@@ -132,10 +132,13 @@
   when: ansible_facts['pkg_mgr'] == 'apt'
 
 # --- Install: package-manager entries (no `type` in spec) ---
+# A spec is a package name, or {package, distributions: {<distribution>: name}}
+# when one distribution names it differently (Debian's firefox-esr).
 
 - name: Install package-manager entries (dnf)
   ansible.builtin.dnf:
-    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    name: "{{ item.spec if item.spec is string
+            else (item.spec.distributions | default({})).get(ansible_facts['distribution'], item.spec.package) }}"
     state: present
   loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
   loop_control:
@@ -144,7 +147,8 @@
 
 - name: Install package-manager entries (apt)
   ansible.builtin.apt:
-    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    name: "{{ item.spec if item.spec is string
+            else (item.spec.distributions | default({})).get(ansible_facts['distribution'], item.spec.package) }}"
     state: present
   loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
   loop_control:
@@ -153,7 +157,8 @@
 
 - name: Install package-manager entries (zypper)
   community.general.zypper:
-    name: "{{ item.spec if item.spec is string else item.spec.package }}"
+    name: "{{ item.spec if item.spec is string
+            else (item.spec.distributions | default({})).get(ansible_facts['distribution'], item.spec.package) }}"
     state: present
   loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
   loop_control:
