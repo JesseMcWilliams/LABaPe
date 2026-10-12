@@ -31,6 +31,10 @@ def tmp_root() -> Path:
 
 @pytest.fixture()
 def db_reset():
+    from labape import appsettings, stores
+    appsettings._cache.clear()           # settings and store sessions belong to the old database
+    stores._instances.clear()
+    stores._checks.clear()
     init_db()
     Base.metadata.drop_all(engine())
     with engine().begin() as conn:      # Alembic's own table isn't in the models

@@ -372,10 +372,15 @@ class SecretPolicy(Base):
 
 
 class Secret(Base):
-    """Built-in secrets store (encrypted at rest); design §11."""
+    """The secret catalog (design §11, §25): one row per stored secret. A
+    built-in secret's value is here, encrypted; an external one's row holds
+    no value, only the store it lives in. `policy_id` links the rotation
+    policy (rotator, elevated account, period) that changes it, if any."""
 
     __tablename__ = "secrets"
 
     name: Mapped[str] = mapped_column(String(255), primary_key=True)
-    value: Mapped[str] = mapped_column(Text)                   # Fernet token
+    value: Mapped[str] = mapped_column(Text)                   # "v2:..." token; "" for an external store
+    store: Mapped[str] = mapped_column(String(64), default="builtin")
+    policy_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

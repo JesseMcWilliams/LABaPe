@@ -44,6 +44,7 @@ from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
+from .vmaccess import clear_env_passwords, env_password_overrides
 
 log = logging.getLogger("labape.worker")
 
@@ -279,9 +280,9 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     env_yml["linux_admin_user"] = spec.get("linux_admin_user") or "labape"
     env_file.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
     # Passwords rotated for this environment (design §24, R4) replace the vault's.
-    rotated = get_secret(db, f"environment/{env.id}/passwords")
-    if rotated and json.loads(rotated):
-        overlay_vault(work, json.loads(rotated))
+    rotated = env_password_overrides(db, env.id)
+    if rotated:
+        overlay_vault(work, rotated)
 
     return work
 
@@ -611,7 +612,7 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
             put_secret(db, f"environment/{env.id}/inventory", "")
             # Rotated passwords (design §24, R4) belonged to these VMs; a new
             # deploy builds its DC from the vault's matching pair again.
-            put_secret(db, f"environment/{env.id}/passwords", "")
+            clear_env_passwords(db, env.id)
             if work is not None:
                 shutil.rmtree(work.parent, ignore_errors=True)
     db.commit()

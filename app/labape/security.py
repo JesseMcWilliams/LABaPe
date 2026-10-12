@@ -134,7 +134,7 @@ def rewrap_master(db: Session, old_key: str, new_key: str) -> int:
         db.flush()
         deks[active.id] = Fernet(dek)
     moved = 0
-    for row in db.scalars(select(Secret)):
+    for row in db.scalars(select(Secret).where(Secret.store == "builtin")):
         if not row.value.startswith("v2:"):
             row.value = f"v2:{active.id}:{deks[active.id].encrypt(old.decrypt(row.value.encode())).decode()}"
             moved += 1
@@ -198,13 +198,39 @@ def decrypt_value(db: Session, token: str) -> str | None:
         return None
 
 
+# Secrets LABaPe needs before it can reach an external store, or that are
+# too short-lived to send there, always stay built-in (design §25).
+PINNED_PREFIXES = ("stores/", "elevated/", "job/")
+DEFAULT_STORE_PREFIX = "environment/"     # new secrets here go to Settings → Secret stores' default
+
+
+def pinned(name: str) -> bool:
+    return name.startswith(PINNED_PREFIXES)
+
+
+def default_store(db: Session, name: str) -> str:
+    if pinned(name) or not name.startswith(DEFAULT_STORE_PREFIX):
+        return "builtin"
+    from . import appsettings
+    return appsettings.get(db, "secret_stores", cached=True).default_environment_store
+
+
 def put_secret(db: Session, name: str, value: str) -> None:
-    token = encrypt_value(db, value)
+    """Write a secret where its catalog row says it lives (a new one goes to
+    its default store). An external write happens first, so a store that
+    fails leaves everything as it was; StoreError reaches the caller."""
     row = db.get(Secret, name)
+    store = row.store if row else default_store(db, name)
+    if store != "builtin":
+        from .stores import open_store
+        open_store(db, store).put(name, value)
+        token = ""
+    else:
+        token = encrypt_value(db, value)
     if row:
         row.value = token
     else:
-        db.add(Secret(name=name, value=token))
+        db.add(Secret(name=name, value=token, store=store))
     db.commit()
 
 
@@ -212,4 +238,7 @@ def get_secret(db: Session, name: str) -> str | None:
     row = db.get(Secret, name)
     if not row:
         return None
+    if row.store != "builtin":
+        from .stores import open_store
+        return open_store(db, row.store).get(name)
     return decrypt_value(db, row.value)

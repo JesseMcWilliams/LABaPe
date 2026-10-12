@@ -407,7 +407,7 @@ answer-file mirror settings, Chocolatey sources) for every job.
 | 10a | Container stack (Docker + Podman, Quadlets), Caddy TLS, OIDC sign-in against an existing Authentik, break-glass command, roles from groups, KVM host registration, job runner running the existing scripts, deploy/destroy of an environment from a tfvars-level form, live logs, audit log, OpenTofu state in PostgreSQL |
 | 10b | File manager (chunked uploads, `/data/<type>`), ISO and installer catalogs feeding `os_iso_paths` and the software store, template library view, build/promote/refresh jobs. **Built** as batch C (§21.3) |
 | 10c | Environment templates: git-backed repository, editor with sub-assemblies, owners/users, external remote sync, bundle export/import |
-| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) and the OpenBao/Vault and Conjur providers (§25.1, P1); placing secrets in them is next |
+| 10d | Secrets providers (built-in, OpenBao/Vault, Conjur) and `tools/secrets-test/`. The built-in store and rotation are built (§24), and so are the test instances (§11) the OpenBao/Vault and Conjur providers (§25.1) and per-secret placement with Move (§25.2); provider credential rotation is next |
 | 10e | Remote libvirt, multiple hosts, environments spanning hosts with best-fit placement (section 15). Remote hosts are built (§22.4); spanning and placement aren't |
 | 10f | VM storage moves (offline) |
 | 10g | Environment import (migration), central repository configuration applied to all tools, bundled-Authentik profile with blueprint |
@@ -1061,7 +1061,7 @@ Decisions: questions 81, 83, 84, 90, 91.
 | Reminder rule | A rotator that needs an elevated account (this one and `directory_token`) isn't scheduled until its policy names one, and the Secrets page shows it as a reminder rather than failing every hour. Rotate now still runs it and says what's missing. |
 | Verified | Live on the lab host with the test Authentik (`tools/helpers/live/rotate_oidc.py`): rotated through the worker, the old secret then got `invalid_client` at the token endpoint, a fresh sign-in worked, and sign-in still worked after restarting the API. pytest: 96. |
 
-## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, P1 built 2026-10-12)
+## 25. External secret stores: OpenBao/Vault and Conjur providers (phase 10d, P1 and P2 built 2026-10-12)
 
 Requirements: `Claude_Docs/Reference_Secrets-Backend-Requirements.md`. Test stores: `tools/secrets-test/` (live on the KVM host). Decisions: questions 93-99 (all answered 2026-10-12).
 
@@ -1100,3 +1100,15 @@ Out of this round (question 95): the secrets the host's update agent keeps in fi
 | Dashboard | Each configured store appears under "Secrets and certificates" with its cached (60 s) test result; the secrets checks run off the event loop. |
 | Tests | `app/tests/test_stores.py` fakes both APIs with `httpx.MockTransport`: name encoding, CRUD and list, session expiry and new login, no values in errors, timeouts, the built-in wrapper, settings and dashboard. pytest: 107. |
 | Verified | Live on the lab host against the test stores (`tools/helpers/live/stores.py`): both saved through Settings, both Test connections and dashboard checks ok with the platform root, and a write, read, replace, list and delete (a name with a space) in each store. |
+
+### 25.2 P2 as built: the catalog and moves
+
+| Area | As built |
+|---|---|
+| Catalog | Migration `0004` adds `secrets.store` (default `builtin`) and `secrets.policy_id`. An external secret's row keeps `value` empty. `security.get_secret`/`put_secret` follow the row's store; a new secret goes to `default_store()`: Settings → Secret stores' default (section `secret_stores`) for names under `environment/`, the built-in store otherwise. Names under `stores/`, `elevated/` and `job/` are pinned built-in. The data key and master key rotations and the dashboard self-test only touch built-in rows. |
+| Rotation link | `rotation.policy_secret()` names the secret each policy rotates (directory token, OIDC client secret, SMTP password, each environment's `windows_admin` and `domain_admin`); `link_secrets()` sets `policy_id` and keeps `policy.store` equal to the row's store. It runs with `ensure_policies` and after every successful rotation. The data key, the worker key and the agent's secrets have no row. |
+| Passwords split | Each environment's rotated passwords are `environment/<id>/windows_admin` and `.../domain_admin`, one secret per policy. `split_legacy_passwords()` converts an old `environment/<id>/passwords` JSON once and deletes it; `env_password_overrides()` maps them onto the vault keys for a deploy, and a destroy clears them. |
+| Move | `stores.move()`: refuse a pinned name or an unavailable store, read the value, write it to the target, read it back and compare, switch the row, then delete the old copy (a failed delete is reported, not fatal), update the linked policy's store, audit `secret.move`. Called by `POST /api/admin/stored-secrets/move` (several names, each moves or stays) and by saving a policy with a new store. |
+| UI | Secrets page → Stored secrets: every secret's name, store, linked rotation (period, status, link to the policy) and elevated account, with tick boxes and Move to. A secret's page offers the available stores and moves it on Save. Settings → Secret stores → Default store. |
+| Tests | `app/tests/test_stores_catalog.py`: move there and back, failures leave it in place, no fallback when the store is down, the default store, data key rotation with external rows, the policy link and store change, the move endpoint, the passwords split. pytest: 115. |
+| Verified | Live on the lab host (`tools/helpers/live/stores_move.py`): migration `0004` upgraded PostgreSQL; lab2's old passwords JSON split into two secrets linked to their policies; the directory token moved built-in → OpenBao → Conjur → built-in with group search working after each move; lab2's credentials sheet moved to OpenBao and back and read the same; the default store saved. |

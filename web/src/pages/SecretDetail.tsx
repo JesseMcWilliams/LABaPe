@@ -77,8 +77,10 @@ export default function SecretDetail() {
               error={errs.fields.interval_hours} help={interval(form.interval_hours)}
               onChange={(e) => setForm({ ...form, interval_hours: Number(e.target.value) })} />
             <Field select label="Store" value={form.store} sx={{ width: 160 }} error={errs.fields.store}
+              help={p.secret_name ? "Saving a new store moves the secret" : "Not in the catalog: it stays where it is"}
+              disabled={!p.secret_name}
               onChange={(e) => setForm({ ...form, store: e.target.value })}>
-              {p.stores.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+              {[...new Set([p.store, ...p.stores])].map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
             </Field>
             <Field select label="Elevated account" value={form.elevated_ref} sx={{ minWidth: 220 }} error={errs.fields.elevated_ref}
               help={p.needs_elevated ? "Needed: this secret can't rotate itself" : "Not needed"}

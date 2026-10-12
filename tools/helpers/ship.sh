@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ship.sh <title> <commit-message-file> <pr-body-file>
 # Stage everything on the current topic branch, refuse sensitive-looking files
-# and secret-like lines, commit, push, open a PR into main, merge it, and
-# update local main. Only for changes you've been asked to ship.
+# and secret-like lines, commit, push, open a PR into main, merge it (deleting
+# the branch here and on GitHub), and update local main. Only for changes you've been asked to ship.
 set -euo pipefail
 [ $# -eq 3 ] || { sed -n '2,5p' "$0" >&2; exit 1; }
 title="$1"; msg="$(realpath "$2")"; body="$(realpath "$3")"
@@ -25,7 +25,9 @@ git commit -q -F "$msg"
 git push -q -u origin "$branch" 2>&1 | grep -v -E '^remote:\s*$|pull/new|Create a pull' || true
 url="$(gh pr create --base main --head "$branch" --title "$title" --body-file "$body")"
 echo "PR: $url"
-gh pr merge "$url" --merge >/dev/null
+gh pr merge "$url" --merge --delete-branch >/dev/null
 echo "state: $(gh pr view "$url" --json state -q .state)"
 git checkout -q main && git pull -q
+git branch -d "$branch" 2>/dev/null || true      # gh usually deletes it already
+git fetch -q --prune
 git log --oneline -1
