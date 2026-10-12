@@ -11,7 +11,7 @@ This guide is for LABaPe admins (the `admin` role, `labape-admins` by default). 
 5. [The catalog](#5-the-catalog)
 6. [Settings](#6-settings)
 7. [Maintenance mode](#7-maintenance-mode)
-8. [Secrets and rotation](#8-secrets-and-rotation)
+8. [Secrets and rotation](#8-secrets-and-rotation) ([external stores](#81-external-secret-stores))
 9. [Updating LABaPe](#9-updating-labape)
 10. [Audit log and user errors](#10-audit-log-and-user-errors)
 11. [Commands inside the containers](#11-commands-inside-the-containers)
@@ -105,9 +105,10 @@ Each section saves on its own and asks you to confirm.
 | Directory (group search) | An Authentik API token that can only view groups (`authentik_core.view_group`), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. |
 | Downloads | Allow plain HTTP for Download from URL (off by default), and an HTTP(S) proxy |
 | VM accounts | The Linux admin user for new environments (default `labape`). Existing environments keep theirs. |
+| Secret stores | The default store for new environment secrets, and an OpenBao/Vault and a Conjur section, each with **Test connection**. See [§8.1](#81-external-secret-stores). |
 | Maintenance mode, Maintenance window | See [§7](#7-maintenance-mode) |
 
-Passwords and tokens entered here are kept encrypted in LABaPe's built-in secret store and never shown again.
+Passwords and tokens entered here are kept encrypted in LABaPe's built-in secret store, unless you move them to an external store ([§8.1](#81-external-secret-stores)), and never shown again.
 
 ## 7. Maintenance mode
 
@@ -136,6 +137,7 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 | Master key, PostgreSQL password, platform CA password | the update agent, with a restart | weekly, in the maintenance window |
 | Engine vault password (and the command line's vault on the same host), VM bootstrap SSH key | the update agent, no restart | daily |
 | SMTP password | you, on the mail server | reminder only |
+| OpenBao/Vault AppRole secret ID, Conjur host API key (LABaPe's own logins to the stores) | the worker, no restart; listed once the store is set up | daily |
 
 **How a rotation works.** LABaPe makes the new value, applies it, checks it works, and only then switches. If anything fails, the old secret stays, the status shows the error (also on the dashboard and in syslog) and it retries an hour later.
 
@@ -149,7 +151,36 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 
 **VM bootstrap key.** The 7 previous keys are kept and still tried, so a VM that was off during a rotation is still reached. The agent also copies the current key into the service user's `~/.ssh/labape_bootstrap` for the command line. Environments on remote KVM hosts are skipped.
 
-**External stores** (OpenBao/Vault, Conjur) aren't available yet; the Store field offers the built-in store only. A secret marked "The secret store rotates it" is only read by LABaPe.
+### 8.1 External secret stores
+
+Besides its built-in store (encrypted in LABaPe's database), LABaPe can keep secrets in **OpenBao** or **HashiCorp Vault** and in **CyberArk Conjur**. Each secret lives in one store, and several stores can be in use at once.
+
+**Connecting a store** (Settings → Secret stores):
+
+| Store | What LABaPe needs |
+|---|---|
+| OpenBao / Vault | The `https://` address, the KV version 2 mount (default `labape`) and an optional path prefix, the AppRole mount (default `approle`), role name and role ID, and the **secret ID**. Vault Enterprise: the namespace. |
+| Conjur | The `https://` address, the account, the login (e.g. `host/labape/app`), the authenticator (default `authn`), the policy branch the host owns (default `labape/secrets`), and the host's **API key**. |
+
+Certificates are checked against the LABaPe platform CA unless you paste another CA bundle; you can turn checking off, but don't outside a lab. **Test connection** signs in and reads something harmless; the dashboard's **Secrets and certificates** panel shows the same check. A store is offered for secrets only once it's turned on and its test passes.
+
+Give LABaPe's identity rights to its own area and nothing else:
+- **OpenBao / Vault:** read, write, list and delete under its KV mount, `read` on `auth/token/lookup-self`, and `update` on `auth/approle/role/<role>/secret-id` and `.../secret-id/destroy` so LABaPe can rotate its own secret ID. The full policy is in [Reference_Secrets-Backend-Requirements.md §7](../Claude_Docs/Reference_Secrets-Backend-Requirements.md#7-least-privilege-in-the-store).
+- **Conjur:** a host that owns its policy branch. LABaPe declares a variable there the first time it writes one.
+
+The secret ID and API key are kept in the built-in store, are never shown again, and rotate daily (the table above). After the first rotation, a copy kept anywhere else no longer works.
+
+**Where secrets live.** **Secrets → Stored secrets** lists every stored secret: its name, its store, the rotation that changes it (with a link to its page) and the elevated account that rotation uses. Values are never shown.
+- **Move**: tick secrets, choose **Move to** and confirm. LABaPe copies each one, reads it back, switches to the new copy, then deletes the old one. If any step fails, that secret stays where it was and the result says why.
+- A secret's page has a **Store** field too: saving a new store moves that secret.
+- **Settings → Secret stores → Default store** decides where new environment secrets go (inventories, credential sheets, rotated passwords). Existing ones stay until you move them.
+- The stores' own logins, elevated accounts and one-time job tokens always stay in the built-in store, since LABaPe needs them to reach the others.
+
+Once a secret is in an external store, LABaPe reads it from there every time it's used. If the store is down, whatever needs that secret fails with the store's error, such as a deploy that needs the environment's inventory. LABaPe never falls back to an old copy.
+
+**Rotated by the store.** If OpenBao/Vault or Conjur rotates a secret itself, tick **The secret store rotates it** on the secret's page. LABaPe then never changes it and reads the current value each time. This only works for a secret that's in an external store.
+
+The secrets the update agent keeps in files on the host (master key, PostgreSQL and CA passwords, engine vault password, VM bootstrap key), the data key and the worker key stay where they are for now.
 
 Lab environments' Windows passwords rotate per environment, from each environment's page ([Web-Interface-Guide.md §4](Web-Interface-Guide.md#4-working-with-an-environment)).
 
@@ -157,7 +188,7 @@ Lab environments' Windows passwords rotate per environment, from each environmen
 
 Admins see every host and environment on the dashboard, plus a platform panel:
 - **Sign-in**: each provider's health and last successful sign-in, break-glass state and the directory token;
-- **Secrets and certificates**: the built-in store's self-test, the engine vault, the platform CA's health and its root;
+- **Secrets and certificates**: the built-in store's self-test, each connected external store's check, the engine vault, the platform CA's health and its root;
 - **Notifications**: SMTP and syslog settings and their last result;
 - the **installed version**, the database layout, and whether a newer release is published (checked daily).
 

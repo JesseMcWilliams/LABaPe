@@ -40,6 +40,7 @@ for the detailed, blow-by-blow history behind every bug found along the way.
   Verified on the lab host. Design: `Claude_Docs/Planning_Web-Interface-Design.md` §21.
 - **M10, round 3 (2026-10-11)**: a dashboard with host and environment load; list pages that open each entry's own page; branding; downloads from a URL with hash checks; installer profiles and remote KVM hosts (`qemu+ssh`); a platform CA (step-ca) that gives every VM a renewing certificate. Design: §22.
 - **M10, operations (2026-10-11/12)**: tooltips and a confirmation for every change; database migrations; maintenance mode with a weekly window; updates from the browser through a host agent (signed releases only, one-step and automatic rollback); scheduled secret rotation for every internal secret, plus each environment's Windows Administrator and domain Administrator passwords; a configurable Linux admin account. Design: §23 and §24.
+- **M10, external secret stores (2026-10-12)**: OpenBao/HashiCorp Vault and CyberArk Conjur alongside the built-in store; each secret names its store and is moved between stores from the Secrets page; LABaPe rotates its own logins to them. Test instances: `tools/secrets-test/`. Design: §25.
 - **Networks and IP addresses**: a network catalog in `environment.yml` and the web UI controls which networks and address ranges may be used, with optional limits by role or group. Each KVM host lists the networks it carries and on which bridge. Each host group picks a network and static or DHCP addressing. Static addresses are allocated automatically in the web UI, and DHCP addresses are found by MAC after boot. Verified on libvirt with both the CLI and the web UI; Hyper-V still uses one static network. Design: `Claude_Docs/Planning_Web-Interface-Design.md` §20.
 
 Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-Overview.md` §18.
@@ -51,7 +52,7 @@ Full milestone plan and per-milestone status notes: `Claude_Docs/Design_System-O
 ## User guides
 
 - [User_Docs/Web-Interface-Guide.md](User_Docs/Web-Interface-Guide.md): signing in, creating and managing environments, jobs, files and templates, the catalog.
-- [User_Docs/Web-Interface-Admin.md](User_Docs/Web-Interface-Admin.md): installing, hosts, networks, settings, maintenance, secrets and rotation, updates.
+- [User_Docs/Web-Interface-Admin.md](User_Docs/Web-Interface-Admin.md): installing, hosts, networks, settings, maintenance, secrets, rotation and external secret stores, updates.
 - [User_Docs/Command-Line.md](User_Docs/Command-Line.md): `deploy.sh`/`destroy.sh`, the network catalog, templates, DHCP addresses and passwords without the web interface.
 
 ## M1 quickstart (libvirt backend)
