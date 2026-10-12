@@ -26,7 +26,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `container/` — Dockerfile, compose.yaml, Caddyfile, Quadlet units, `setup.sh`, `ca/` (platform CA scripts), README. Generated `.env`, `secrets/`, `config/`, `engine-secrets/`, `update/` are gitignored; never read or commit them.
 - `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.
-- Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). Two docs are over: `Planning_Web-Interface-Design.md` (~1,040) and `Testing_Troubleshooting-Log.md` (~1,520); grep for a section and read that range.
+- Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). `Planning_Web-Interface-Design.md` (~1,040) is over; grep for a section and read that range.
 
 ## Tests
 - `scripts/test/run-all.sh` — runs every check (tools/collections installed, Ansible syntax, `tofu validate`, libvirt/WinRM connectivity, vault+SSH key consistency), prints a PASS/FAIL summary.
@@ -54,8 +54,8 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.
   - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number).
   - `Planning_Web-Interface-Design.md`: M10 design and as-built record (components, data model, permissions, job runner, deployment, build phases 10a-10h; §19-§24 cover what's built, through secret rotation).
-  - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history, filed per milestone. Well over the ~500-line guideline (~1,520 lines): split fully-closed milestone entries (M1-M6) into an `Archive_Testing_...` file when convenient, keeping the open ones here.
-  - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** (None exist yet.)
+  - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history from M10 on, filed by topic. When it grows past ~500 lines, move fully closed sections into an `Archive_Testing_...` file, as was done for M1-M6.
+  - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** Current: `Archive_Testing_Troubleshooting-Log-M1-M6.md` (closed M1-M6 troubleshooting history).
 - `CHANGELOG.md` (root): release history, `[Unreleased]` at the top. Kept at the root (GitHub/tooling convention). A release is a `vX.Y.Z` tag plus a GitHub release; the image is stamped with `git describe --tags`, and the web dashboard compares it with the latest release.
 - `User_Docs/`: end-user setup guides (`Install-OpenTofu.md`, `Install-Ansible.md`, and WSL variants of each). No web-interface guide yet; see the backlog.
 - `Published_Docs/`: `.docx` deliverables for end users. None exist yet.
