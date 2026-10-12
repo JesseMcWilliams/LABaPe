@@ -190,3 +190,4 @@ Run these with `docker compose exec labape-api labape <command>` in the `contain
 | `health [--deep]` | The checks the update agent uses |
 | `db-status` | The database's schema revision against the code's |
 | `worker-key` | The worker's public SSH key for remote KVM hosts |
+| `ca-sign [--hours N] [--with-root]` | Signs a certificate request from stdin with the platform CA and prints the chain (default 30 days, at most 90), for services on the host itself. Audited. |

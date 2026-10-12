@@ -151,6 +151,34 @@ already had, and a new file starts as 100644. Fixed with
 `git update-index --chmod=+x`. For a new script, run that before the first
 commit (or check with `git ls-files -s -- '*.sh'`).
 
+### Secrets test stores bring-up (2026-10-12)
+
+`tools/secrets-test/` was developed on `secretsdev` (VM `secdev1`, Debian 13,
+deployed through the web interface so it had a platform certificate).
+- **OpenBao 2 has no `file` storage.** The container restarted with "unknown
+  storage type file". It uses one-node Raft storage now (`cluster_addr` set).
+- **`bao status` exits 2 when sealed.** Under `pipefail`, piping it into the
+  "initialized?" check made a sealed, initialized OpenBao look uninitialized,
+  and the script tried `operator init` again (refused). It reads the JSON
+  output instead, and refuses to initialize while `.env` holds an unseal key.
+- **OpenBao stayed down after a reboot.** It exits 0 when the host shuts down,
+  and `unless-stopped` didn't restart it; the other containers came back. It
+  uses `restart: always`, and the boot unit runs `docker compose up -d`
+  before unsealing.
+- **`conjurctl policy load` prints created roles' API keys on stderr.** One
+  test host key reached a session transcript before the output was
+  captured; the next run issued the host a new key through the admin API, and
+  the printed one then got 401. The script captures the output now and never
+  shows it.
+- **The minimal Debian clone had no `curl`**; the script installs `curl`,
+  `openssl` and `python3` when missing.
+- **Open: a Debian clone's own host name doesn't resolve.** `/etc/hosts` still
+  has `127.0.1.1 template` from the Packer build, so `sudo` warns "unable to
+  resolve host secdev1" and `hostname -f` fails. cloud-init's
+  `update_etc_hosts` only runs with `manage_etc_hosts`. A fix in the clone
+  seed changes every Linux clone's seed hash, so it waits until it can be
+  checked against the reinstall triggers (design §24.3).
+
 ### Other setup notes
 
 - **PostgreSQL password file:** PostgreSQL reads its password file as

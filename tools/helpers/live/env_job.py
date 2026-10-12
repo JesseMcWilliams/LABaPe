@@ -8,7 +8,7 @@ destroys the environment's VMs.
 import sys
 import time
 
-from oidc_login import LABAPE, login
+from oidc_login import LABAPE, job_log, login
 
 admin = login("labape-admin")
 env_id, action = sys.argv[1], sys.argv[2]
@@ -26,6 +26,6 @@ while True:
     if j["state"] not in ("queued", "running"):
         break
 print("job:", job, j["state"], f"{int(time.time() - start)}s")
-log = admin.get(f"{LABAPE}/api/jobs/{job}/log").text.splitlines()
+log = job_log(admin, job).splitlines()
 keep = [line for line in log if line.startswith(("labape:", "PLAY RECAP", "fatal:", "ERROR")) or " : ok=" in line]
 print("\n".join(keep[-40:]))

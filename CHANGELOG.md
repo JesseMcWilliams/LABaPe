@@ -37,6 +37,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- `tools/secrets-test/`: throwaway OpenBao and Conjur instances for building
+  the external secret stores, with platform-CA certificates (the VM's own,
+  or signed by the stack on the LABaPe host), unsealing at boot,
+  certificate renewal and a smoke test.
+- `labape ca-sign`: signs a certificate request with the platform CA from the
+  host's command line, for services on the LABaPe host itself.
+- `Claude_Docs/Reference_Secrets-Backend-Requirements.md`: what a new secrets
+  backend and its provider must offer.
 - User guides: `User_Docs/Web-Interface-Guide.md` (everyone who signs
   in), `User_Docs/Web-Interface-Admin.md` (admins) and
   `User_Docs/Command-Line.md`, linked from the README.

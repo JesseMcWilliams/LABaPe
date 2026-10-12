@@ -1,0 +1,11 @@
+# Conjur policy for tools/secrets-test, loaded into the root policy of the
+# `labape` account. LABaPe signs in as host labape/app, which owns the
+# labape/secrets policy: it may declare variables there (loading policy into
+# that branch) and set and read their values.
+- !policy
+  id: labape
+  body:
+    - !host app
+    - !policy
+      id: secrets
+      owner: !host app

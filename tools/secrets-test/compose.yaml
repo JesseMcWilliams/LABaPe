@@ -1,0 +1,58 @@
+# Throwaway OpenBao and CyberArk Conjur (Open Source) for building LABaPe's
+# external secret stores (design §11, phase 10d). Run through deploy.sh,
+# which writes .env and tls/ first. Not for production secrets: OpenBao has
+# one unseal key, kept in .env next to its root token.
+name: labape-secrets-test
+
+services:
+  openbao:
+    image: openbao/openbao:2.7.1
+    command: server
+    # always: it exits 0 when the host shuts down, and unless-stopped then left it down after a reboot.
+    restart: always
+    cap_add: [IPC_LOCK]
+    environment:
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /openbao/tls/root.crt
+      BAO_TLS_SERVER_NAME: ${SERVER_NAME}
+    volumes:
+      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
+      - ./tls:/openbao/tls:ro
+      - openbao-data:/openbao/file
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${OPENBAO_PORT:-8200}:8200"
+
+  conjur-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${CONJUR_DB_PASSWORD}
+    volumes:
+      - conjur-db:/var/lib/postgresql/data
+
+  conjur:
+    image: cyberark/conjur:1.27.0
+    command: server
+    restart: unless-stopped
+    depends_on: [conjur-db]
+    environment:
+      DATABASE_URL: postgres://postgres:${CONJUR_DB_PASSWORD}@conjur-db/postgres
+      CONJUR_DATA_KEY: ${CONJUR_DATA_KEY}
+      CONJUR_AUTHENTICATORS: authn
+    volumes:
+      - ./conjur/policy.yml:/policy/labape.yml:ro
+
+  # Conjur Open Source speaks plain HTTP; this terminates TLS in front of it.
+  conjur-tls:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    depends_on: [conjur]
+    volumes:
+      - ./conjur/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/nginx/tls:ro
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${CONJUR_PORT:-8443}:8443"
+
+volumes:
+  openbao-data:
+  conjur-db:

@@ -1,6 +1,6 @@
 """Sign in to LABaPe through the test Authentik's flow executor (no browser).
 
-Imported by the other live scripts (`from oidc_login import LABAPE, login`);
+Imported by the other live scripts (`from oidc_login import LABAPE, job_log, login`);
 run alone it signs in and prints /api/auth/me: `oidc_login.py <username>`.
 Environment (set by lab-live.sh): LABAPE (the web interface's URL) and
 AK_ENV (tools/authentik-test/.env, which holds the test users' password).
@@ -18,6 +18,19 @@ LABAPE = os.environ.get("LABAPE", "").rstrip("/")
 ENV = os.environ.get("AK_ENV", "/authentik.env")
 if not LABAPE:
     raise SystemExit("set LABAPE to the web interface's URL (lab-live.sh does)")
+
+
+def job_log(c: httpx.Client, job_id) -> str:
+    """A finished job's whole log. The endpoint streams Server-Sent Events whose
+    `log` events carry JSON {offset, text}; it ends after the job has."""
+    out = []
+    for line in c.get(f"{LABAPE}/api/jobs/{job_id}/log").text.splitlines():
+        if line.startswith("data: "):
+            try:
+                out.append(json.loads(line[6:]).get("text", ""))
+            except (ValueError, AttributeError):
+                pass
+    return "".join(out)
 
 
 def password() -> str:
