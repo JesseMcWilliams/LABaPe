@@ -812,8 +812,8 @@ None blocking further scaffolding right now.
 - 10b (Files) is built.
 - The usability and admin round is built (`Claude_Docs/Planning_Web-Interface-Design.md` §21).
 - Round 3 (dashboard, list pages, URL downloads, installer profiles, remote KVM hosts, platform CA) is built (§22).
-- Operations are built (§23-§24): confirmations, database migrations, maintenance mode, the update agent, and secret rotation phases R1-R4.
-- Next: release v0.3.0 once the release-signing key exists, user docs for the web interface, external secret stores (phase 10d), environment templates (10c).
+- Operations are built (§23-§24): confirmations, database migrations, maintenance mode, the update agent, and secret rotation phases R1-R4 plus the OIDC client secret rotator.
+- Next: user docs for the web interface; deployment scripts for throwaway OpenBao and Conjur containers, then external secret stores (phase 10d); release v0.3.0 once the release-signing key exists; environment templates (10c).
 - M9 is still design only (§19, `Claude_Docs/Planning_Certificate-Authority.md`). The web stack's platform CA (§22.5) is built and covers VM certificates for web-interface deploys.
 - M1-M6 are complete on libvirt.
 

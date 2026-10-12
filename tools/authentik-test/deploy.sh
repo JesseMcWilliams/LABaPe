@@ -66,18 +66,23 @@ curl -fsS "${issuer}.well-known/openid-configuration" >/dev/null || {
   exit 1
 }
 
-# The rotation account may set the directory token's key, on that token only
-# (object permissions; the blueprint importer can't assign them to a role).
+# The rotation account may set the directory token's key and the LABaPe
+# provider's client secret, on those two objects only (object permissions; the
+# blueprint importer can't assign them to a role).
 $COMPOSE exec -T worker ak shell -c "
 from authentik.core.models import Token
+from authentik.providers.oauth2.models import OAuth2Provider
 from authentik.rbac.models import Role
 role = Role.objects.get(name='labape-token-rotator')
 token = Token.objects.get(identifier='labape-directory')
 # Authentik checks POST .../set_key/ as add_token on the object (its docs name
 # set_token_key, which this version doesn't check); grant both, on this token only.
 role.assign_perms(['authentik_core.view_token', 'authentik_core.add_token', 'authentik_core.set_token_key'], obj=token)
-print('authentik-test: labape-token-rotator may set the directory token key')
-" 2>/dev/null | tail -1 || echo "authentik-test: couldn't grant the rotator its token permissions (see $COMPOSE logs worker)" >&2
+provider = OAuth2Provider.objects.get(client_id='labape')
+role.assign_perms(['authentik_providers_oauth2.view_oauth2provider',
+                   'authentik_providers_oauth2.change_oauth2provider'], obj=provider)
+print('authentik-test: labape-token-rotator may set the directory token key and the client secret')
+" 2>/dev/null | tail -1 || echo "authentik-test: couldn't grant the rotator its permissions (see $COMPOSE logs worker)" >&2
 
 if $CONFIGURE; then
   env_file=../../container/.env
