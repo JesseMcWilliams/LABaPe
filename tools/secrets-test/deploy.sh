@@ -86,8 +86,12 @@ stack_sign() {   # a new key and certificate from the LABaPe stack in STACK_DIR
   install -d -m 0755 "$TLS"
   openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$TLS/server.key.new" \
     -subj "/CN=$cn" -addext "subjectAltName=${san%,}" -out "$TLS/server.csr" 2>/dev/null
+  # The CLI logs its database checks on stderr: shown only when signing fails.
   (cd "$dir" && "${COMPOSE[@]}" exec -T labape-api labape ca-sign --with-root) < "$TLS/server.csr" > "$TLS/bundle.pem" \
-    || { rm -f "$TLS/server.key.new" "$TLS/bundle.pem"; die "the platform CA didn't sign the request (labape ca-sign in $dir)"; }
+      2> "$TLS/ca-sign.log" \
+    || { grep -v ' INFO ' "$TLS/ca-sign.log" >&2; rm -f "$TLS/server.key.new" "$TLS/bundle.pem" "$TLS/ca-sign.log"
+         die "the platform CA didn't sign the request (labape ca-sign in $dir)"; }
+  rm -f "$TLS/ca-sign.log"
   python3 - "$TLS/bundle.pem" "$TLS" <<'PY'
 import re, sys
 certs = re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----\n?", open(sys.argv[1]).read(), re.S)
@@ -104,9 +108,9 @@ own_tls() {   # OpenBao runs as its own user; nginx's master reads as root
 }
 trust_root() {   # the host trusts the platform root (the VM role does this already)
   if [ -d /usr/local/share/ca-certificates ] && ! cmp -s "$TLS/root.crt" /usr/local/share/ca-certificates/labape-root-ca.crt; then
-    install -m 0644 "$TLS/root.crt" /usr/local/share/ca-certificates/labape-root-ca.crt && update-ca-certificates >/dev/null
+    install -m 0644 "$TLS/root.crt" /usr/local/share/ca-certificates/labape-root-ca.crt && update-ca-certificates >/dev/null 2>&1
   elif [ -d /etc/pki/ca-trust/source/anchors ] && ! cmp -s "$TLS/root.crt" /etc/pki/ca-trust/source/anchors/labape-root-ca.crt; then
-    install -m 0644 "$TLS/root.crt" /etc/pki/ca-trust/source/anchors/labape-root-ca.crt && update-ca-trust
+    install -m 0644 "$TLS/root.crt" /etc/pki/ca-trust/source/anchors/labape-root-ca.crt && update-ca-trust >/dev/null 2>&1
   fi
 }
 server_name() {   # the certificate's first DNS name, for clients that connect by address
@@ -349,6 +353,11 @@ ADDR="$(get BIND_ADDRESS)"; [ "$ADDR" = 0.0.0.0 ] && ADDR=127.0.0.1
 [ -n "$NAME" ] || die "the certificate has no DNS name"
 
 say "starting the containers"
+for try in 1 2 3; do   # a registry timeout shouldn't end the run (seen on the LABaPe host)
+  dc pull -q >/dev/null 2>&1 && break
+  [ "$try" = 3 ] && die "pulling the images failed three times (docker compose pull in $HERE)"
+  say "pulling the images failed; trying again in 15 seconds"; sleep 15
+done
 dc up -d >/dev/null
 reload_tls
 unseal
