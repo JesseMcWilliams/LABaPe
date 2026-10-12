@@ -110,6 +110,8 @@ variable "host_groups" {
     # Windows Server installs the Desktop Experience unless this is true
     # (Server Core). iso_direct only: a clone gets its template's edition.
     windows_core = optional(bool, false)
+    # Windows Server Datacenter instead of Standard (iso_direct only, like windows_core).
+    windows_datacenter = optional(bool, false)
     cpu_count    = optional(number, 2)
     memory_mb    = optional(number, 4096)
     disk_gb      = optional(number, 40)

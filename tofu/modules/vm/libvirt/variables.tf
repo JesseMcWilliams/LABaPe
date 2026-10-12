@@ -40,6 +40,12 @@ variable "windows_core" {
   default     = false
 }
 
+variable "windows_datacenter" {
+  description = "Windows Server only, iso_direct only: install Datacenter (image index 3 or 4) instead of Standard (1 or 2, the default)."
+  type        = bool
+  default     = false
+}
+
 variable "template_name" {
   description = "Template to clone when image_source = \"packer_template\" (file <template_storage_path>/<template_name>.qcow2). Ignored for iso_direct."
   type        = string

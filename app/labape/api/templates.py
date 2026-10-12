@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..engine import template_versions
 from ..errors import FieldError
 from ..models import Environment, Job, KvmHost, Template
 from ..naming import instance_names
@@ -15,7 +16,7 @@ from ..security import Principal, audit, client_ip, current_principal, require_r
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
-FIELDS = ("id", "kvm_host_id", "name", "os_key", "edition", "disk_gb", "min_cpu", "min_memory_mb",
+FIELDS = ("id", "kvm_host_id", "name", "os_key", "edition", "sku", "disk_gb", "min_cpu", "min_memory_mb",
           "description", "notes", "source", "present", "updated_at")
 
 
@@ -39,6 +40,7 @@ class TemplateIn(BaseModel):
     notes: str = Field(default="", max_length=8000)
     os_key: str = Field(default="", pattern=r"^[a-z0-9_]*$")
     edition: str = Field(default="", pattern=r"^(|core|desktop)$")
+    sku: str = Field(default="", pattern=r"^(|standard|datacenter)$")
     min_cpu: int = Field(default=1, ge=1, le=32)
     min_memory_mb: int = Field(default=1024, ge=256, le=262144)
 
@@ -73,6 +75,7 @@ class BuildIn(BaseModel):
     os_key: str
     name: str = Field(pattern=NAME_PATTERN)
     core: bool = False
+    datacenter: bool = False          # Windows Server: Datacenter instead of Standard (question 19)
     disk_gb: int | None = Field(default=None, ge=20, le=2048)
 
 
@@ -87,6 +90,8 @@ def build_template(body: BuildIn, request: Request, db: Session = Depends(get_db
         raise FieldError("os_key", f"Choose an OS: {', '.join(OS_KEYS)}.")
     if body.core and not body.os_key.startswith("windows_server"):
         raise FieldError("core", "Server Core applies to Windows Server only.")
+    if body.datacenter and not body.os_key.startswith("windows_server"):
+        raise FieldError("datacenter", "Datacenter applies to Windows Server only.")
     _name_free(db, host.id, body.name, "name")
     return _job(db, p, request, host.id, "template.build", body.model_dump(exclude={"kvm_host_id"}))
 
@@ -151,6 +156,22 @@ def update_template(template_id: int, body: TemplateIn, request: Request, db: Se
     audit(db, p.username, "template.update", object_type="template", object_id=t.id, detail=body.model_dump(),
           source_ip=client_ip(request))
     return _out(t)
+
+
+@router.delete("/{template_id}")
+def delete_template(template_id: int, request: Request, db: Session = Depends(get_db),
+                    p: Principal = Depends(require_roles("template_editor"))):
+    """Delete a template from its host's library, as a job. Refused while an
+    environment or a template job uses it; the job also refuses while any VM
+    on the host has it as a backing file (Design_Base-Images.md §8)."""
+    t = db.get(Template, template_id)
+    if t is None or not t.present:
+        raise FieldError("template", "No such template.", status_code=404)
+    in_use = template_versions.users(db, t.kvm_host_id, t.name)
+    if in_use:
+        raise FieldError("template", f"{t.name} is in use: {', '.join(in_use)}. Destroy or move those first.",
+                         status_code=409)
+    return _job(db, p, request, t.kvm_host_id, "template.delete", {"name": t.name, "manual": True})
 
 
 @router.get("/{template_id}")

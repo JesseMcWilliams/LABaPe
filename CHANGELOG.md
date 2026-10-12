@@ -8,6 +8,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Changed
+- Template refreshes install every available Windows update (all
+  categories), not only security, critical and rollup updates.
 - An environment's rotated Windows passwords are two secrets,
   `environment/<id>/windows_admin` and `.../domain_admin`, instead of one
   JSON value; existing ones are converted automatically.
@@ -45,6 +47,19 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   `labape-rollback.sh` failed with "Permission denied" when run directly.
 
 ### Added
+- Dated template versions (`<name>-YYYY.MM`): a monthly refresh of each
+  template's newest version, scheduled by the worker, and retention that
+  keeps the newest 3 versions by default and deletes older ones once no
+  environment or VM uses them (Settings → Templates).
+- Delete on a template's page: a `template.delete` job that refuses while
+  an environment uses the template or any VM on the host is built on it.
+- Windows Server Datacenter as an option (Standard stays the default): the
+  Build a template form and `build-template.sh --datacenter`, and
+  `windows_datacenter` on a direct-ISO host group. Templates record their
+  `sku`; migration `0005` adds the column.
+- `requires_gui: true` on a catalog application marks software that needs
+  a desktop. Firefox has it, so Windows Server Core hosts skip it instead
+  of failing the deploy.
 - External secret stores, step 1 (design §25): Settings → Secret stores
   connects OpenBao or HashiCorp Vault (KV v2, AppRole) and CyberArk Conjur
   (host and API key), with Test connection and a check on the admin

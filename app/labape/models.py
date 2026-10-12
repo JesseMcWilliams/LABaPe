@@ -168,6 +168,7 @@ class Template(Base):
     name: Mapped[str] = mapped_column(String(128))
     os_key: Mapped[str] = mapped_column(String(64), default="")       # e.g. rocky9, windows_server_2022
     edition: Mapped[str] = mapped_column(String(32), default="")      # windows: core | desktop
+    sku: Mapped[str] = mapped_column(String(16), default="")          # windows server: standard | datacenter
     disk_gb: Mapped[int] = mapped_column(Integer, default=0)          # virtual size: the clone's disk floor
     min_cpu: Mapped[int] = mapped_column(Integer, default=1)
     min_memory_mb: Mapped[int] = mapped_column(Integer, default=1024)

@@ -139,6 +139,7 @@ locals {
         image_source = coalesce(hg.image_source, var.image_source_default)
         template     = hg.template == null ? "" : hg.template
         windows_core = hg.windows_core
+        windows_datacenter = hg.windows_datacenter
         cpu_count    = hg.cpu_count
         memory_mb    = hg.memory_mb
         disk_gb      = hg.disk_gb
@@ -193,6 +194,7 @@ module "vm" {
   image_source = each.value.image_source
   template_name = each.value.template
   windows_core = each.value.windows_core
+  windows_datacenter = each.value.windows_datacenter
   template_storage_path = var.template_storage_path != "" ? var.template_storage_path : "${var.vm_storage_path}/templates"
   cpu_count    = each.value.cpu_count
   memory_mb    = each.value.memory_mb

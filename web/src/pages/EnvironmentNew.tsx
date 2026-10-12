@@ -20,7 +20,7 @@ const ROLES = ["domain_controller", "windows_server", "windows_workstation", "li
 
 const blankGroup = (): HostGroup => ({
   name: "", count: 1, os: "rocky9", roles: ["linux_server"], image_source: "packer_template", template: "",
-  cpu_count: 2, memory_mb: 4096, disk_gb: 40, windows_core: false, addressing: "static", names: [""],
+  cpu_count: 2, memory_mb: 4096, disk_gb: 40, windows_core: false, windows_datacenter: false, addressing: "static", names: [""],
   services: [], applications: [], packages: [],
 });
 
@@ -157,6 +157,7 @@ export default function EnvironmentNew() {
         network: netOf(g)?.name,
         template: g.image_source === "packer_template" ? g.template : undefined,
         windows_core: g.os.startsWith("windows_server") ? g.windows_core : false,
+        windows_datacenter: g.os.startsWith("windows_server") ? g.windows_datacenter : false,
         names: (g.names ?? []).slice(0, g.count),
       }));
       const r = await api.post<{ environment: { id: number } }>("/api/environments", {
@@ -273,6 +274,11 @@ export default function EnvironmentNew() {
                   <FormControlLabel label="Server Core" sx={{ mt: 0.5 }}
                     control={<Checkbox checked={g.windows_core}
                       onChange={(e) => setGroup(i, { windows_core: e.target.checked })} />} />
+                )}
+                {g.os.startsWith("windows_server") && g.image_source === "iso_direct" && (
+                  <FormControlLabel label="Datacenter" sx={{ mt: 0.5 }} title="Install Datacenter instead of Standard"
+                    control={<Checkbox checked={g.windows_datacenter}
+                      onChange={(e) => setGroup(i, { windows_datacenter: e.target.checked })} />} />
                 )}
               </Stack>
               <Typography variant="subtitle2">Added on top of the template</Typography>

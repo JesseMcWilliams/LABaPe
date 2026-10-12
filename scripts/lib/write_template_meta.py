@@ -2,6 +2,7 @@
 """Write a template's metadata file, <template_dir>/<name>.json (design §21.1).
 
 Usage: write_template_meta.py <template_dir> <name> [--os KEY] [--edition core|desktop]
+                              [--sku standard|datacenter]
                               [--from SOURCE_NAME] [--note TEXT]
 
 --from copies the source template's metadata first (a refresh keeps its
@@ -22,11 +23,12 @@ def main() -> int:
     ap.add_argument("name")
     ap.add_argument("--os", default="")
     ap.add_argument("--edition", default="")
+    ap.add_argument("--sku", default="", choices=("", "standard", "datacenter"))
     ap.add_argument("--from", dest="source", default="")
     ap.add_argument("--note", default="")
     a = ap.parse_args()
     lib = Path(a.template_dir)
-    meta = {"os_key": "", "edition": "", "min_cpu": 1, "min_memory_mb": 1024, "description": "", "notes": ""}
+    meta = {"os_key": "", "edition": "", "sku": "", "min_cpu": 1, "min_memory_mb": 1024, "description": "", "notes": ""}
     if a.source:
         try:
             meta.update(json.loads((lib / f"{a.source}.json").read_text(encoding="utf-8")))
@@ -39,6 +41,8 @@ def main() -> int:
             meta["min_cpu"], meta["min_memory_mb"] = cpu, mem
     if a.edition:
         meta["edition"] = a.edition
+    if a.sku:
+        meta["sku"] = a.sku
     if a.note:
         stamp = dt.date.today().isoformat()
         meta["notes"] = (meta.get("notes", "").rstrip() + f"\n{stamp}: {a.note}").strip()

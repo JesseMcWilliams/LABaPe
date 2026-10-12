@@ -3,7 +3,7 @@
 Each template is <template_storage_path>/<name>.qcow2 with a metadata
 file <name>.json beside it:
 
-    {"os_key": "windows_server_2022", "edition": "core", "min_cpu": 2,
+    {"os_key": "windows_server_2022", "edition": "core", "sku": "standard", "min_cpu": 2,
      "min_memory_mb": 2048, "description": "...", "notes": "..."}
 
 build-template.sh and promote-to-template.sh write it. For templates made
@@ -51,19 +51,27 @@ MINIMUMS = {
     "linux": (1, 1024),
 }
 
-META_KEYS = ("os_key", "edition", "min_cpu", "min_memory_mb", "description", "notes")
+META_KEYS = ("os_key", "edition", "sku", "min_cpu", "min_memory_mb", "description", "notes")
 
 
 def infer(name: str) -> dict:
     os_key = next((key for pat, key in NAME_PATTERNS if re.search(pat, name)), "")
-    edition = ""
+    edition = sku = ""
     if os_key.startswith("windows_server"):
         edition = "core" if "-core" in name else "desktop" if "-desktop" in name else ""
+        sku = "datacenter" if re.search(r"-(dc|datacenter)([-.]|$)", name) else "standard"
     family = os_key if os_key in ("windows_11", "windows_10") else \
         "windows_server" if os_key.startswith("windows_server") else "linux"
     cpu, mem = MINIMUMS[family]
-    return {"os_key": os_key, "edition": edition, "min_cpu": cpu, "min_memory_mb": mem,
+    return {"os_key": os_key, "edition": edition, "sku": sku, "min_cpu": cpu, "min_memory_mb": mem,
             "description": "", "notes": ""}
+
+
+def _with_sku(meta: dict, name: str) -> dict:
+    """Metadata written before templates recorded a SKU: infer it (Server only)."""
+    if "sku" not in meta and str(meta.get("os_key", "")).startswith("windows_server"):
+        return {**meta, "sku": infer(name)["sku"]}
+    return meta
 
 
 def disk_gb(path: Path) -> int:
@@ -104,6 +112,7 @@ def sync_remote(db: Session, host: KvmHost) -> int:
         elif meta is None:
             meta, source = infer(name), "inferred"
             writes[meta_path] = json.dumps({k: meta.get(k) for k in META_KEYS}, indent=2) + "\n"
+        meta = _with_sku(meta, name)
         if t is None:
             t = Template(kvm_host_id=host.id, name=name)
             db.add(t)
@@ -148,6 +157,7 @@ def sync_host(db: Session, host: KvmHost) -> int:
             meta = infer(name)
             source = "inferred"
             write_meta(meta_file, meta)
+        meta = _with_sku(meta, name)
         if t is None:
             t = Template(kvm_host_id=host.id, name=name)
             db.add(t)

@@ -69,14 +69,13 @@
       ansible.builtin.meta: end_host
       when: ansible_facts['os_family'] != "Windows"
 
-    # Security/critical updates and rollups, rebooting as often as needed.
-    # Can take an hour or more on an older image.
+    # Every available update, not only security/critical and rollups
+    # (question 17), rebooting as often as needed. "*" matches all
+    # categories (ansible.windows 1.7+). Can take an hour or more on an
+    # older image.
     - name: Install Windows updates
       ansible.windows.win_updates:
-        category_names:
-          - SecurityUpdates
-          - CriticalUpdates
-          - UpdateRollups
+        category_names: "*"
         reboot: true
         reboot_timeout: 3600
       register: refresh_win_updates

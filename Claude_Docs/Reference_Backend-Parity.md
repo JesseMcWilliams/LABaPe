@@ -20,7 +20,7 @@ mode, the safety guards) exists only on libvirt.
 | Area | libvirt/KVM | Hyper-V | Gap |
 |---|---|---|---|
 | RHEL family from ISO (kickstart) | Yes | Yes | — |
-| Windows Server / client from ISO | Yes (2019/2022/2025, 10, 11; Desktop Experience default, `windows_core`) | No | Large |
+| Windows Server / client from ISO | Yes (2019/2022/2025, 10, 11; Desktop Experience default, `windows_core`, `windows_datacenter`) | No | Large |
 | Ubuntu (subiquity) / Debian (preseed) from ISO | Yes | No | Large |
 | Templates: clone (`image_source = "packer_template"`) | Yes (qcow2 overlay + cloud-init / unattend.xml) | No (`packer_template_not_implemented` fail-fast) | Large |
 | Templates: Packer build (`build-template.sh`) | Yes (QEMU builder, all OS keys) | No (`hyperv-iso` builder planned) | Large |
@@ -43,16 +43,16 @@ mode, the safety guards) exists only on libvirt.
 `vm` module inputs present on one side only:
 
 - libvirt only: `libvirt_uri`, `template_name`, `template_storage_path`,
-  `windows_core`.
+  `windows_core`, `windows_datacenter`.
 - Hyper-V only: `hyperv_host`, `hyperv_user`, `hyperv_password`,
   `iso_storage_path`, `debug_disk`.
 
 The connection and storage inputs are inherently per-hypervisor and fine.
-`template_name`, `template_storage_path` and `windows_core` describe the
+`template_name`, `template_storage_path`, `windows_core` and `windows_datacenter` describe the
 *environment*, not the hypervisor; the Hyper-V module should accept them
 (failing clearly where unimplemented) so the same host-group definition
 plans on both. The backends' `host_groups` type also differs: Hyper-V
-lacks the `template` and `windows_core` fields, so a host group using them
+lacks the `template`, `windows_core` and `windows_datacenter` fields, so a host group using them
 is a type error there rather than a clear "not implemented".
 
 Outputs match (`name`, `roles`, `os_family`, `ip_address`), which is
@@ -61,7 +61,7 @@ what keeps inventory generation and Ansible backend-agnostic.
 ## Closing the gaps, suggested order
 
 1. Interface parity first (cheap, prevents silent divergence): add
-   `template`/`windows_core` to Hyper-V's `host_groups` and the vm
+   `template`/`windows_core`/`windows_datacenter` to Hyper-V's `host_groups` and the vm
    module's inputs, failing fast where unimplemented; let
    `deploy.sh`/`destroy.sh` drive the Hyper-V backend.
 2. Remove the manual boot-order step (set the boot order at create time).

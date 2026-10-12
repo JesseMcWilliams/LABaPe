@@ -23,12 +23,13 @@ interface Branding { app_name: string }
 interface Downloads { allow_http: boolean; proxy: string }
 interface MaintenanceWindow { enabled: boolean; weekday: number; time_of_day: string; duration_minutes: number; heads_up_hours: number }
 interface VmAccounts { linux_admin_user: string }
+interface Templates { keep_versions: number; refresh_enabled: boolean; refresh_day: number; refresh_time: string }
 interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
 interface StoreBase { enabled: boolean; url: string; verify_tls: boolean; ca_bundle: string }
 interface OpenBao extends StoreBase { mount: string; path_prefix: string; auth_mount: string; role_id: string; namespace: string; has_secret_id: boolean }
 interface Conjur extends StoreBase { account: string; login: string; authenticator: string; branch: string; has_api_key: boolean }
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts;
+  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   file_roots: Record<string, string>;
 }
@@ -177,7 +178,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -224,6 +225,20 @@ export default function Settings() {
         <Field label="Linux admin user" value={s.vm_accounts.linux_admin_user} sx={{ maxWidth: 320 }}
           help="Lower case letters, digits, _ and -; up to 32 characters"
           onChange={(e) => set("vm_accounts", { linux_admin_user: e.target.value })} />
+      </Section>
+
+      <Section title="Templates" intro="Templates named <name>-YYYY.MM are dated versions. Once a month the worker refreshes each template's newest version into this month's (every OS update applied), and versions beyond the newest few are deleted once no environment or VM uses them. Times are UTC."
+        onSave={async () => { await put("templates", s.templates); return "Template settings saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <Field label="Versions to keep" type="number" value={s.templates.keep_versions} sx={{ width: 150 }}
+            help="Per template; 0 keeps all" onChange={(e) => set("templates", { keep_versions: Number(e.target.value) })} />
+          <FormControlLabel label="Monthly refresh" control={<Checkbox checked={s.templates.refresh_enabled}
+            onChange={(e) => set("templates", { refresh_enabled: e.target.checked })} />} />
+          <Field label="Day of the month" type="number" value={s.templates.refresh_day} sx={{ width: 150 }}
+            help="1-28" onChange={(e) => set("templates", { refresh_day: Number(e.target.value) })} />
+          <Field label="Time (UTC)" value={s.templates.refresh_time} sx={{ width: 120 }} help="HH:MM"
+            onChange={(e) => set("templates", { refresh_time: e.target.value })} />
+        </Stack>
       </Section>
 
       <Section title="Branding" intro="The name in the top bar, the browser tab, the sign-in page and emails. A logo comes later."
