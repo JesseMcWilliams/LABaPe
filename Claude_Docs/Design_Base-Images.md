@@ -361,8 +361,8 @@ scripts/refresh-template.sh libvirt win2022-desktop-2026.10 win2022-desktop-2026
 It clones the template into a throwaway `test-refresh-<id>` environment
 (`deploy.sh --test --no-ansible`, the clone's disk sized from the
 template's own virtual size), runs `ansible/playbooks/refresh-template.yml`
-(all package upgrades on Linux, Windows security/critical updates and
-rollups, rebooting as often as needed) or the playbook given with
+(all package upgrades on Linux, every available Windows update in all
+categories, rebooting as often as needed) or the playbook given with
 `--playbook`, promotes the result with `promote-to-template.sh`
 (flattening the overlay into a self-contained copy), and destroys the
 environment. `--os` is required because a template name doesn't reliably
@@ -429,13 +429,47 @@ host_groups:
   — keep it until nothing references it, so in-flight environments
   aren't broken out from under them.
 
-**Decisions 2026-10-12 (questions 15-19, not built yet):**
+**Decisions 2026-10-12 (questions 15-19):**
 - Keep **3** dated versions of each template by default; the number is a
   setting on the general Settings tab. Older ones go once nothing
   references them.
 - Refreshes run **once a month**, scheduled by the web UI's job runner.
+- *Built* (`app/labape/engine/template_versions.py`, Settings → Templates):
+  - A name `<line>-YYYY.MM` (or `.N` after it, a second version in one
+    month) is a version of the line `<line>`; names without a date are
+    never refreshed or deleted automatically.
+  - Monthly refresh: on the set day and time (default the 15th, 03:00
+    UTC, after Patch Tuesday) the worker queues a `template.refresh` of
+    each line's newest version into `<line>-<this month>` on every
+    enabled KVM host, once per month (`status.template_refresh` records
+    the month). A line already at this month, or without an OS, is
+    skipped.
+  - Retention: versions beyond the newest `keep_versions` (default 3; 0
+    keeps all) get a `template.delete` job once nothing references them:
+    no environment that isn't destroyed names the template, and no queued
+    or running template job reads, makes or deletes it.
+  - The `template.delete` job (also the template page's **Delete**, which
+    any name can use) checks the host itself as well: it reads every
+    libvirt domain's disks with `qemu-img info --backing-chain` and
+    refuses while any of them is built on the image. It fails closed: if
+    a domain's disks can't be read, nothing is deleted (CD-ROMs aren't
+    checked: an ISO or seed is never built on a template). On a remote
+    host the SSH user must be able to read the VM disks.
+  - *Verified 2026-10-12* on the lab host: a Server 2019 Core clone with
+    Firefox chosen deployed with no failures ("Server Core has no
+    desktop: skipping firefox"); migration `0005` upgraded the database
+    and marked the seeded Firefox entry; existing Server templates synced
+    as `standard`; Delete was refused for a template an environment used,
+    and deleted a throwaway one on the host; the host check found each
+    template's VMs (`fxcore1`, `l2dc1`/`l2win1`, `l2lin1`). pytest: 128.
 - Windows refreshes install **all** available updates, not just security,
-  critical and rollups.
+  critical and rollups. *Built:* `refresh-template.yml` passes
+  `category_names: "*"`.
 - Windows Server is **Standard** by default, with **Datacenter** as an option.
+  *Built:* `build-template.sh --datacenter` (Build a template: the
+  Datacenter box) and a host group's `windows_datacenter` for direct ISO
+  boot pick image index 3/4 instead of 1/2. A template's metadata records
+  `sku` (`standard`/`datacenter`), inferred as Datacenter from a `-dc-` or
+  `-datacenter-` name, and the template page can change it.
 - The earlier test templates (`rocky9-base-2026.10`, `win2022-base-2026.10`
   and the `*-packer-2026.10` builds) are to be deleted.

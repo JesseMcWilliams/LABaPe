@@ -32,7 +32,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `lab-live.sh` | locally → lab | Run one of the `live/` scripts on the lab host |
 | `lab.sh` | sourced | Shared settings for the two above |
 | `live/oidc_login.py` | lab (container) | Sign in through the test Authentik; imported by the others |
-| `live/env_create.py` | lab (container) | Create a one-VM environment and wait for its deploy |
+| `live/env_create.py` | lab (container) | Create a one-VM environment (optionally with catalog applications, `--apps`) and wait for its deploy |
 | `live/env_job.py` | lab (container) | Deploy, refresh or destroy an environment and wait |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
@@ -41,6 +41,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/stores.py` | lab (container) | Connect and exercise the test OpenBao and Conjur |
 | `live/stores_move.py` | lab (container) | Move real secrets between the stores and check them |
 | `live/stores_rotate.py` | lab (container) | Rotate LABaPe's logins to the test stores |
+| `live/templates.py` | lab (container) | Show Settings → Templates; delete a template and wait for the job |
 | `live/maintenance.py` | lab (container) | Turn maintenance mode on, check it, turn it off |
 | `live/update_api.py` | lab (container) | Show the update API's view; offer it a tag |
 | `live/agent-request.sh` | lab (host) | Send the update agent a request and wait |

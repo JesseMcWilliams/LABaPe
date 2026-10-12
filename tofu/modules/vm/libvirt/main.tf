@@ -72,8 +72,9 @@ locals {
     addressing             = local.addressing
     management_source      = lookup(var.template_vars, "management_source", "")
     # Server answer file only (client templates select by image name):
-    # 2 = Standard with Desktop Experience (default), 1 = Standard Core.
-    server_image_index = var.windows_core ? 1 : 2
+    # 2 = Standard with Desktop Experience (default), 1 = Standard Core,
+    # 4 / 3 = the same for Datacenter.
+    server_image_index = (var.windows_core ? 1 : 2) + (var.windows_datacenter ? 2 : 0)
   }
   # The reinstall trigger hashes the Windows answer file with the
   # password masked, so rotating windows_bootstrap_admin_password in the

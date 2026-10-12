@@ -9,6 +9,7 @@
 
 packages:
   firefox:
+    requires_gui: true            # skipped on Windows Server Core, which has no desktop
     chocolatey: firefox
     apt:
       package: firefox              # Ubuntu (a transitional package for the snap)

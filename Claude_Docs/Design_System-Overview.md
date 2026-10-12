@@ -239,6 +239,13 @@ reuses the same generalize/sysprep steps a Packer build would run. Full
 process, including promotion, in
 [`Claude_Docs/Design_Base-Images.md`](./Design_Base-Images.md).
 
+Templates are dated (`<name>-YYYY.MM`). The web interface's worker
+refreshes each template's newest version once a month (every OS update,
+Windows included), keeps the newest three versions by default and deletes
+older ones once no environment or VM uses them
+([`Design_Base-Images.md` §8](./Design_Base-Images.md#8-versioning--rebuild-cadence)).
+Windows Server templates are Standard unless built as Datacenter.
+
 ## 8. Directory Services (Domain Controller & Domain Join)
 
 - The AD domain is deployed **as part of the environment**, not assumed

@@ -175,6 +175,11 @@ happened to load last.
 ## 6. `windows_common` and `linux_common`
 
 **`windows_common`**, for each entry in `resolved_packages`:
+- On Server Core (registry `InstallationType` = `Server Core`), skip any
+  entry marked `requires_gui: true` (Firefox): Core has no desktop, so
+  it's skipped on Core hosts of every Windows Server version and logged,
+  not failed (question 23). The flag sits beside the package-manager
+  fields in `package_catalog.yml` or a web catalog application.
 - Look up the entry's `windows`/`chocolatey` field (inline entries use
   the same shape as catalog entries, so one lookup path handles both).
 - `type: msi`/`exe`, `source: url` → `ansible.windows.win_package` with

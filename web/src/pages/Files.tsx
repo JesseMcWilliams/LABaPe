@@ -240,7 +240,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
   const [refreshing, setRefreshing] = useState<Template | null>(null);
   const [newName, setNewName] = useState("");
   const [building, setBuilding] = useState(false);
-  const [build, setBuild] = useState({ kvm_host_id: 0, os_key: "rocky9", name: "", core: false });
+  const [build, setBuild] = useState({ kvm_host_id: 0, os_key: "rocky9", name: "", core: false, datacenter: false });
   const load = () => api.get<Template[]>("/api/templates").then(setTemplates);
   useEffect(() => {
     load();
@@ -272,7 +272,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                 {t.source === "inferred" && <Chip size="small" label="inferred" sx={{ ml: 1 }} />}
               </TableCell>
               <TableCell>{hostName(t.kvm_host_id)}</TableCell>
-              <TableCell>{t.os_key}{t.edition ? ` (${t.edition})` : ""}</TableCell>
+              <TableCell>{t.os_key}{t.edition ? ` (${t.edition})` : ""}{t.sku === "datacenter" ? ", Datacenter" : ""}</TableCell>
               <TableCell>{t.disk_gb} GB</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>{t.min_cpu} vCPU · {t.min_memory_mb} MB</TableCell>
               <TableCell>{t.description}</TableCell>
@@ -308,15 +308,19 @@ function Templates({ canEdit }: { canEdit: boolean }) {
                   {hosts.map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
                 </Field>
                 <Field select label="OS" value={build.os_key} sx={{ minWidth: 200 }} error={errs.os_key}
-                  onChange={(e) => setBuild({ ...build, os_key: e.target.value, core: false })}>
+                  onChange={(e) => setBuild({ ...build, os_key: e.target.value, core: false, datacenter: false })}>
                   {OS_KEYS.map((k) => <MenuItem key={k} value={k}>{k}</MenuItem>)}
                 </Field>
               </Stack>
               <Field label="Template name" value={build.name} placeholder={`${build.os_key.replace(/_/g, "")}-base-2026.10`}
                 error={errs.name} fullWidth help="Letters, digits, . _ -; never reused" onChange={(e) => setBuild({ ...build, name: e.target.value })} />
               {build.os_key.startsWith("windows_server") && (
-                <FormControlLabel label="Server Core (no desktop)" control={<Checkbox checked={build.core}
-                  onChange={(e) => setBuild({ ...build, core: e.target.checked })} />} />
+                <Stack direction="row" spacing={2}>
+                  <FormControlLabel label="Server Core (no desktop)" control={<Checkbox checked={build.core}
+                    onChange={(e) => setBuild({ ...build, core: e.target.checked })} />} />
+                  <FormControlLabel label="Datacenter (default: Standard)" control={<Checkbox checked={build.datacenter}
+                    onChange={(e) => setBuild({ ...build, datacenter: e.target.checked })} />} />
+                </Stack>
               )}
             </Stack>
           )} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import { Alert, Box, Button, Chip, MenuItem, Paper, Stack } from "@mui/material";
 import { api, fmtTime, KvmHost, Template } from "../api";
 import { hasRole, useAuth } from "../App";
@@ -13,17 +13,18 @@ import { OS_KEYS } from "./Files";
 export default function TemplateDetail() {
   const { id } = useParams();
   const { me } = useAuth();
+  const navigate = useNavigate();
   const canEdit = hasRole(me, "template_editor");
   const [t, setT] = useState<Template | null>(null);
   const [hosts, setHosts] = useState<KvmHost[]>([]);
-  const [form, setForm] = useState({ description: "", notes: "", os_key: "", edition: "", min_cpu: 1, min_memory_mb: 1024 });
+  const [form, setForm] = useState({ description: "", notes: "", os_key: "", edition: "", sku: "", min_cpu: 1, min_memory_mb: 1024 });
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     api.get<Template>(`/api/templates/${id}`).then((x) => {
       setT(x);
-      setForm({ description: x.description, notes: x.notes, os_key: x.os_key, edition: x.edition,
+      setForm({ description: x.description, notes: x.notes, os_key: x.os_key, edition: x.edition, sku: x.sku,
         min_cpu: x.min_cpu, min_memory_mb: x.min_memory_mb });
     }, (e) => setErrs({ summary: e.message, fields: {} }));
     api.get<KvmHost[]>("/api/hosts").then(setHosts, () => setHosts([]));
@@ -38,6 +39,13 @@ export default function TemplateDetail() {
     } catch (e) { setErrs(fromApiError(e)); }
   };
 
+  const remove = async () => {
+    try {
+      const r = await api.del<{ job_id: number }>(`/api/templates/${id}`);
+      navigate(`/jobs/${r.job_id}`);
+    } catch (e) { setErrs(fromApiError(e)); }
+  };
+
   return (
     <Stack spacing={2}>
       <DetailHeader back="/files?tab=templates" backLabel="Templates"
@@ -49,7 +57,7 @@ export default function TemplateDetail() {
           ["KVM host", hosts.find((h) => h.id === t.kvm_host_id)?.name ?? t.kvm_host_id],
           ["Disk", `${t.disk_gb} GB`],
           ...(canEdit ? [] : [
-            ["OS", `${t.os_key}${t.edition ? ` (${t.edition})` : ""}`],
+            ["OS", `${t.os_key}${t.edition ? ` (${t.edition})` : ""}${t.sku ? `, ${t.sku}` : ""}`],
             ["Minimums", `${t.min_cpu} vCPU · ${t.min_memory_mb} MB`],
             ["Description", t.description],
             ["Notes", <Box sx={{ whiteSpace: "pre-wrap" }}>{t.notes}</Box>],
@@ -69,6 +77,10 @@ export default function TemplateDetail() {
               <Field select label="Edition" value={form.edition} sx={{ minWidth: 140 }} onChange={(e) => setForm({ ...form, edition: e.target.value })}>
                 <MenuItem value="">(n/a)</MenuItem><MenuItem value="desktop">Desktop</MenuItem><MenuItem value="core">Core</MenuItem>
               </Field>
+              <Field select label="Server SKU" value={form.sku} sx={{ minWidth: 150 }} error={errs.fields.sku}
+                onChange={(e) => setForm({ ...form, sku: e.target.value })}>
+                <MenuItem value="">(n/a)</MenuItem><MenuItem value="standard">Standard</MenuItem><MenuItem value="datacenter">Datacenter</MenuItem>
+              </Field>
               <Field label="Min vCPUs" type="number" value={form.min_cpu} sx={{ width: 110 }} error={errs.fields.min_cpu}
                 onChange={(e) => setForm({ ...form, min_cpu: Number(e.target.value) })} />
               <Field label="Min memory (MB)" type="number" value={form.min_memory_mb} sx={{ width: 150 }} error={errs.fields.min_memory_mb}
@@ -82,6 +94,12 @@ export default function TemplateDetail() {
                 confirm={{ title: `Save ${t.name}?`, confirmLabel: "Save",
                   body: "The OS, edition and minimums change what the deploy form offers and warns about; they're also written to the template's metadata file on its KVM host." }}>
                 Save
+              </ActionButton>
+              <ActionButton variant="outlined" color="error" onClick={remove}
+                tip="Delete this template from its KVM host's library, as a job"
+                confirm={{ title: `Delete ${t.name}?`, danger: true, confirmLabel: "Delete",
+                  body: "The template's image and metadata file are deleted from its KVM host. Refused while an environment uses it or any VM on the host is still built on it. This can't be undone." }}>
+                Delete
               </ActionButton>
               <Button component={RouterLink} to="/files?tab=templates" title="Back to the template library without saving">Back</Button>
             </Stack>

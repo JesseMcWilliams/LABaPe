@@ -40,6 +40,7 @@ class HostGroup(BaseModel):
     memory_mb: int = Field(default=4096, ge=512, le=262144)
     disk_gb: int = Field(default=40, ge=10, le=2048)
     windows_core: bool = False
+    windows_datacenter: bool = False
     # Catalog network (design §20); None means the KVM host's default network.
     network: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,62}$")
     addressing: Literal["static", "dhcp"] = "static"

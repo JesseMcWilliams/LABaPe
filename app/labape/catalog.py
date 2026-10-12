@@ -7,7 +7,9 @@ One table, `catalog_items`, holds three kinds:
   per-package-manager names (`chocolatey`, `apt`, `dnf`, `zypper`), and/or
   `windows` / `linux` custom installers ({type: msi|exe|deb|rpm, source:
   url|local, url | path, arguments, product_id, ...}). A local `path` is a
-  file in the Files tab's installers location.
+  file in the Files tab's installers location. `requires_gui: true` marks
+  software that needs a desktop: it's skipped on Windows Server Core
+  (question 23).
 - service: what to enable on top of the template: {windows: {features:
   [...], services: [...]}, linux: {packages: {apt: [...], dnf: [...]},
   units: [...]}}.
@@ -51,10 +53,13 @@ def platforms(kind: str, definition: dict) -> list[str]:
 def validate(db: Session, kind: str, definition: dict) -> None:
     d = definition or {}
     if kind == "application":
-        unknown = [k for k in d if k not in PKG_MANAGERS + ("windows", "linux")]
+        unknown = [k for k in d if k not in PKG_MANAGERS + ("windows", "linux", "requires_gui")]
         if unknown:
-            raise CatalogError(f"Unknown keys {unknown}; use {', '.join(PKG_MANAGERS)}, windows or linux.")
-        if not d:
+            raise CatalogError(f"Unknown keys {unknown}; use {', '.join(PKG_MANAGERS)}, windows, linux or "
+                               "requires_gui.")
+        if "requires_gui" in d and not isinstance(d["requires_gui"], bool):
+            raise CatalogError("requires_gui must be true or false.")
+        if not any(k in d for k in PKG_MANAGERS + ("windows", "linux")):
             raise CatalogError("Give at least one install method (a package name or an installer).")
         for plat in ("windows", "linux"):
             if plat in d:

@@ -57,6 +57,11 @@
       {{ (windows_common_package_entries | default([])) +
          [{
            'name': (item.name if item is mapping else item),
+           'requires_gui': (
+             (item.requires_gui | default(false))
+             if item is mapping
+             else (packages[item].requires_gui | default(false) if item in packages else false)
+           ),
            'spec': (
              (item.windows | default({}))
              if item is mapping
@@ -84,6 +89,29 @@
       {{ (windows_common_raw_packages | unique | length) - (windows_common_package_entries | length) }}
       resolved package(s) have nothing applicable to Windows on this host — skipped (§2).
   when: (windows_common_raw_packages | unique | length) != (windows_common_package_entries | length)
+
+# Server Core has no desktop, so a package marked requires_gui (Firefox)
+# can't install there: it's skipped on Core hosts of every Windows Server
+# version rather than dropped from the manifest (question 23).
+- name: Read the Windows installation type (Server Core or not)
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion
+    name: InstallationType
+  register: windows_common_installation_type
+
+- name: Report GUI-only packages skipped on Server Core
+  ansible.builtin.debug:
+    msg: >-
+      Server Core has no desktop: skipping {{ windows_common_package_entries
+      | selectattr('requires_gui') | map(attribute='name') | join(', ') }}.
+  when:
+    - windows_common_installation_type.value | default('') == 'Server Core'
+    - windows_common_package_entries | selectattr('requires_gui') | list | length > 0
+
+- name: Drop GUI-only packages on Server Core
+  ansible.builtin.set_fact:
+    windows_common_package_entries: "{{ windows_common_package_entries | rejectattr('requires_gui') | list }}"
+  when: windows_common_installation_type.value | default('') == 'Server Core'
 
 # --- §8: locally-sourced installers — copy before install ---
 

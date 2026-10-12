@@ -104,6 +104,16 @@ class UpdateSettings(BaseModel):
     repo: str = Field(default="JesseMcWilliams/LABaPe", pattern=r"^[\w.-]+/[\w.-]+$")
 
 
+class TemplateSettings(BaseModel):
+    """Dated template versions (Design_Base-Images.md §8, questions 15-16):
+    how many versions of each template to keep, and the monthly refresh
+    (UTC, worker's clock). 0 versions keeps them all."""
+    keep_versions: int = Field(default=3, ge=0, le=50)
+    refresh_enabled: bool = True
+    refresh_day: int = Field(default=15, ge=1, le=28)      # after Patch Tuesday (the 2nd Tuesday, 8th-14th)
+    refresh_time: str = Field(default="03:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
 class SecretStoreSettings(BaseModel):
     """Where new environment secrets go (design §25, question 94). The API
     checks the store is configured and passing its test."""
@@ -122,6 +132,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "maintenance_window": MaintenanceWindowSettings,
     "vm_accounts": VmAccountSettings,
     "secret_stores": SecretStoreSettings,
+    "templates": TemplateSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

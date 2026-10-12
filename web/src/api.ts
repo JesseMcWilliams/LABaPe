@@ -61,6 +61,7 @@ export interface Template {
   name: string;
   os_key: string;
   edition: string;
+  sku: string;
   disk_gb: number;
   min_cpu: number;
   min_memory_mb: number;
@@ -160,6 +161,7 @@ export interface HostGroup {
   memory_mb: number;
   disk_gb: number;
   windows_core: boolean;
+  windows_datacenter: boolean;
   network?: string;
   addressing: "static" | "dhcp";
   names?: string[];

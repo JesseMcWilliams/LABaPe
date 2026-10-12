@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, hostio, maintenance, rotation
+from . import downloads, hostio, maintenance, rotation, template_versions
 from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -390,7 +390,8 @@ def command_for(job: Job, env: Environment | None, work: Path) -> list[str]:
     p = job.params or {}
     if job.type == "template.build":
         return ["bash", str(work / "scripts" / "build-template.sh"), p["os_key"], p["name"], *envfile,
-                *(["--core"] if p.get("core") else []), *(["--disk-gb", str(p["disk_gb"])] if p.get("disk_gb") else [])]
+                *(["--core"] if p.get("core") else []),
+                *(["--datacenter"] if p.get("datacenter") else []), *(["--disk-gb", str(p["disk_gb"])] if p.get("disk_gb") else [])]
     if job.type == "template.refresh":
         return ["bash", str(work / "scripts" / "refresh-template.sh"), "libvirt", p["template"], p["new_name"],
                 "--os", p["os_key"], *envfile, "--addressing", p.get("addressing", "dhcp"),
@@ -420,7 +421,7 @@ def run(job_id: int, worker: str) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         # Jobs the worker runs itself, with no KVM host or engine scripts.
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
-                  "secret.rotate": rotation.run_job}
+                  "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -684,6 +685,11 @@ def serve(slots: int | None = None) -> None:
                     rotation.ensure_policies(db)
                     for jid in rotation.schedule(db):
                         log.info("queued secret rotation job %s", jid)
+                with session_factory()() as db:
+                    for jid in template_versions.schedule_refresh(db):
+                        log.info("queued monthly template refresh job %s", jid)
+                    for jid in template_versions.schedule_retention(db):
+                        log.info("queued template retention delete job %s", jid)
             if not paused and time.monotonic() - last_update_check > 86400:
                 last_update_check = time.monotonic()
                 with session_factory()() as db:

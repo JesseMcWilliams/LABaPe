@@ -4,15 +4,19 @@
 # is scripts/promote-to-template.sh; both produce the same thing, used via
 # image_source = "packer_template" + template = "<name>".
 #
-# Usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N] [--core]
+# Usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N] [--core] [--datacenter]
 #   e.g. build-template.sh rocky9 rocky9-base-2026.10
+#
+# Windows Server is Standard unless --datacenter is given (question 19);
+# --core picks Server Core. The evaluation ISOs' image indexes: 1/2 =
+# Standard Core/Desktop, 3/4 = Datacenter Core/Desktop.
 #
 # <os-key> is an os_iso_paths key in environment.yml (the ISO to install
 # from). Templates are never overwritten: pick a new, dated name (§8).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N] [--core]"
+USAGE="usage: build-template.sh <os-key> <template-name> [--env-file <path>] [--disk-gb N] [--core] [--datacenter]"
 
 OS_KEY="${1:?$USAGE}"
 TEMPLATE_NAME="${2:?$USAGE}"
@@ -20,11 +24,13 @@ shift 2
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 DISK_GB=""
 CORE=false
+DATACENTER=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
     --disk-gb) DISK_GB="${2:?--disk-gb needs a number}"; shift ;;
     --core) CORE=true ;;   # Windows Server: Server Core instead of the Desktop Experience
+    --datacenter) DATACENTER=true ;;   # Windows Server: Datacenter instead of Standard
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
   esac
   shift
@@ -95,7 +101,9 @@ case "$PACKER_DIR" in
     chmod 600 "$ansible_vars_file"
     python3 -c 'import json, os, sys; json.dump({"ansible_password": os.environ["PKR_VAR_admin_password"]}, open(sys.argv[1], "w"))' "$ansible_vars_file"
     packer_vars+=(-var "answer_template=$ANSWER_TEMPLATE" -var "ansible_vars_file=$ansible_vars_file")
-    if $CORE; then packer_vars+=(-var "server_image_index=1"); fi
+    index=2; if $CORE; then index=1; fi
+    if $DATACENTER; then index=$((index + 2)); fi
+    packer_vars+=(-var "server_image_index=$index")
     ;;
 esac
 
@@ -122,8 +130,14 @@ virsh_ pool-refresh "$POOL" >/dev/null
 rm -rf "$OUTPUT_DIR"
 virsh_ vol-info --pool "$POOL" "$TEMPLATE_NAME.qcow2"
 edition=""
-case "$OS_KEY" in windows_server_*) if $CORE; then edition=core; else edition=desktop; fi ;; esac
+sku=""
+case "$OS_KEY" in
+  windows_server_*)
+    if $CORE; then edition=core; else edition=desktop; fi
+    if $DATACENTER; then sku=datacenter; else sku=standard; fi
+    ;;
+esac
 python3 "$ROOT_DIR/scripts/lib/write_template_meta.py" "$TEMPLATE_DIR" "$TEMPLATE_NAME" --os "$OS_KEY" \
-  ${edition:+--edition "$edition"} --note "Built with Packer from $(basename "$ISO_PATH")." \
+  ${edition:+--edition "$edition"} ${sku:+--sku "$sku"} --note "Built with Packer from $(basename "$ISO_PATH")." \
   || echo "labape: couldn't write the template's metadata file (permissions?); the web UI will infer it." >&2
 echo "labape: template ready: $target" >&2
