@@ -49,6 +49,7 @@ done
 say() { echo "secrets-test: $*"; }
 die() { echo "secrets-test: $*" >&2; exit 1; }
 get() { grep -m1 "^$1=" "$ENVF" 2>/dev/null | cut -d= -f2- || true; }
+drop() { [ -f "$ENVF" ] && sed -i "/^$1=/d" "$ENVF"; return 0; }   # drop KEY: remove one .env line
 put() {   # put KEY VALUE: set one .env line
   touch "$ENVF"; chmod 600 "$ENVF"
   if grep -q "^$1=" "$ENVF"; then sed -i "s|^$1=.*|$1=$2|" "$ENVF"; else echo "$1=$2" >> "$ENVF"; fi
@@ -166,7 +167,8 @@ path "auth/approle/role/labape/secret-id/destroy" { capabilities = ["update"] }
 HCL
   bao write auth/approle/role/labape token_policies=labape token_ttl=1h token_max_ttl=4h secret_id_ttl=0 >/dev/null
   put OPENBAO_ROLE_ID "$(bao read -field=role_id auth/approle/role/labape/role-id)"
-  [ -n "$(get OPENBAO_SECRET_ID)" ] || put OPENBAO_SECRET_ID "$(bao write -f -field=secret_id auth/approle/role/labape/secret-id)"
+  [ -n "$(get OPENBAO_SECRET_ID)" ] || [ "$(get LABAPE_OWNS_LOGINS)" = 1 ] \
+    || put OPENBAO_SECRET_ID "$(bao write -f -field=secret_id auth/approle/role/labape/secret-id)"
 }
 
 # --- Conjur -------------------------------------------------------------------------
@@ -188,7 +190,9 @@ configure_conjur() {
     || die "loading the Conjur policy failed: $(echo "$out" | grep -iv api_key | tail -1)"
   i="$(echo "$out" | sed -n 's/.*"api_key": *"\([^"]*\)".*/\1/p' | head -1)"
   if [ -n "$i" ]; then put CONJUR_HOST_API_KEY "$i"; fi
-  if [ -z "$(get CONJUR_HOST_API_KEY)" ]; then   # lost: issue host labape/app a new key as admin
+  # Lost before LABaPe ever had it: issue host labape/app a new key as admin.
+  # Never once LABaPe owns the key (forget_rotated): that would lock it out.
+  if [ -z "$(get CONJUR_HOST_API_KEY)" ] && [ "$(get LABAPE_OWNS_LOGINS)" != 1 ]; then
     local tok
     tok="$(conjur_token admin "$(get CONJUR_ADMIN_API_KEY)")"
     put CONJUR_HOST_API_KEY "$(curl -fsS --cacert "$TLS/root.crt" --resolve "$NAME:$CPORT:$ADDR" -X PUT \
@@ -199,6 +203,38 @@ conjur_token() {   # conjur_token <login> <api key>: a base64 access token
   local login; login="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1")"
   curl -fsS --cacert "$TLS/root.crt" --resolve "$NAME:$CPORT:$ADDR" -H "Accept-Encoding: base64" \
     --data-binary "$2" "https://$NAME:$CPORT/authn/labape/$login/authenticate"
+}
+
+# --- LABaPe's own logins, once LABaPe has rotated them -------------------------------
+# LABaPe rotates its AppRole secret ID and its Conjur host key (LABaPe design
+# §25.3). From then on the copies here are stale: drop them and record
+# LABAPE_OWNS_LOGINS=1, so this script never issues them again (a new Conjur
+# host key would lock LABaPe out). Only a refused sign-in counts: a store that
+# isn't answering yet (at boot) leaves everything as it is.
+forget_rotated() {
+  local name addr code sid key
+  name="$(get SERVER_NAME)"; addr="$(get BIND_ADDRESS)"; [ "$addr" = 0.0.0.0 ] && addr=127.0.0.1
+  [ -n "$name" ] || return 0
+  sid="$(get OPENBAO_SECRET_ID)"
+  if [ -n "$sid" ]; then
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$name:$(get OPENBAO_PORT):$addr" -X POST \
+      -d "{\"role_id\":\"$(get OPENBAO_ROLE_ID)\",\"secret_id\":\"$sid\"}" \
+      "https://$name:$(get OPENBAO_PORT)/v1/auth/approle/login" 2>/dev/null || true)"
+    case "$code" in
+      400|401|403) drop OPENBAO_SECRET_ID; put LABAPE_OWNS_LOGINS 1
+                   say "OpenBao: LABaPe has rotated its secret ID; removed the stale copy from .env" ;;
+    esac
+  fi
+  key="$(get CONJUR_HOST_API_KEY)"
+  if [ -n "$key" ]; then
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$name:$(get CONJUR_PORT):$addr" \
+      --data-binary "$key" "https://$name:$(get CONJUR_PORT)/authn/labape/host%2Flabape%2Fapp/authenticate" \
+      2>/dev/null || true)"
+    case "$code" in
+      401|403) drop CONJUR_HOST_API_KEY; put LABAPE_OWNS_LOGINS 1
+               say "Conjur: LABaPe has rotated the host's API key; removed the stale copy from .env" ;;
+    esac
+  fi
 }
 
 # --- smoke test, as LABaPe would use them ------------------------------------------------
@@ -312,7 +348,7 @@ case "$MODE" in
       say "stopped (data kept; deploy.sh starts it again and unseals)"
     fi
     exit 0 ;;
-  unseal) dc up -d >/dev/null 2>&1 || true; unseal; exit 0 ;;   # never rely on the restart policy alone
+  unseal) dc up -d >/dev/null 2>&1 || true; unseal; forget_rotated; exit 0 ;;   # never rely on the restart policy alone
   tls-reload)
     [ "$(get TLS_SOURCE)" = stack ] || copy_host_tls
     own_tls; reload_tls; say "certificate reloaded"; exit 0 ;;
@@ -371,15 +407,17 @@ done
 dc up -d >/dev/null
 reload_tls
 unseal
+forget_rotated
 configure_bao
 configure_conjur
 install_units
 smoke
+OWNED=""; [ "$(get LABAPE_OWNS_LOGINS)" = 1 ] && OWNED="its login is LABaPe's own (rotated; no copy here)"
 cat <<EOF
 secrets-test: ready (credentials in $ENVF, mode 0600; never commit it).
   OpenBao: https://$NAME:$BPORT  (or by address; the certificate covers: $(openssl x509 -in "$TLS/server.crt" -noout -ext subjectAltName | tail -1 | tr -d ' '))
-           KV v2 at labape/, AppRole role labape: OPENBAO_ROLE_ID, OPENBAO_SECRET_ID; root: OPENBAO_ROOT_TOKEN
+           KV v2 at labape/, AppRole role labape: OPENBAO_ROLE_ID, ${OWNED:-OPENBAO_SECRET_ID}; root: OPENBAO_ROOT_TOKEN
   Conjur:  https://$NAME:$CPORT  account labape
-           host labape/app (owns policy labape/secrets): CONJUR_HOST_API_KEY; admin: CONJUR_ADMIN_API_KEY
+           host labape/app (owns policy labape/secrets): ${OWNED:-CONJUR_HOST_API_KEY}; admin: CONJUR_ADMIN_API_KEY
   Trust:   the LABaPe platform root (tls/root.crt), also added to this host's trust store.
 EOF

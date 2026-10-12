@@ -7,7 +7,8 @@ Secret stores, unless LABaPe's saved ones already work (they're rotated, so
 the file's copies go stale). Runs each Test connection through the API, then,
 while the file's logins still work, writes, reads, lists and deletes a
 throwaway value in each store directly with the provider classes, checking
-certificates against the platform root. STORE_HOST
+certificates against the platform root. Once every login in the file has
+been rotated, it prints a marker and lab-live.sh deletes the file. STORE_HOST
 overrides the stores' address (default: the LABaPe host). Never prints a secret.
 """
 import os
@@ -20,16 +21,20 @@ from oidc_login import LABAPE, login
 from labape.stores.conjur import ConjurSettings, ConjurStore
 from labape.stores.openbao import OpenBaoSettings, OpenBaoStore
 
-env = dict(line.strip().split("=", 1) for line in open("/secrets-test.env") if "=" in line and not line.startswith("#"))
+STALE_MARK = "labape-live: secrets-test.env is stale"
+try:      # deleted by lab-live.sh once LABaPe has rotated every login in it
+    env = dict(line.strip().split("=", 1) for line in open("/secrets-test.env") if "=" in line and not line.startswith("#"))
+except FileNotFoundError:
+    env = {}
 host = os.environ.get("STORE_HOST", urlparse(LABAPE).hostname)
 bao_url, conjur_url = f"https://{host}:8200", f"https://{host}:8443"
 admin = login("labape-admin")
 
 # LABaPe rotates these logins (design §25, P3), after which the copies in
 # secrets-test.env are stale: only save them while LABaPe's own don't work.
-creds = {"openbao": {"url": bao_url, "role_id": env["OPENBAO_ROLE_ID"], "secret_id": env["OPENBAO_SECRET_ID"]},
-         "conjur": {"url": conjur_url, "api_key": env["CONJUR_HOST_API_KEY"]}}
-for name, body in creds.items():
+creds = {"openbao": {"url": bao_url, "role_id": env.get("OPENBAO_ROLE_ID"), "secret_id": env.get("OPENBAO_SECRET_ID")},
+         "conjur": {"url": conjur_url, "api_key": env.get("CONJUR_HOST_API_KEY")}}
+for name, body in creds.items() if env else ():
     if admin.post(f"{LABAPE}/api/admin/settings/stores/{name}/test").json()["ok"]:
         print(f"{name}: LABaPe's saved login works; not replacing it")
         continue
@@ -43,12 +48,17 @@ checks = {c["name"]: c for c in admin.get(f"{LABAPE}/api/dashboard/admin").json(
 for name in ("store.openbao", "store.conjur"):
     print(f"dashboard {name}:", checks.get(name, {}).get("status", "missing"))
 
+if not env:
+    raise SystemExit("no secrets-test.env (LABaPe owns its logins now); direct checks skipped")
 root = httpx.get(f"{LABAPE}/api/ca/root.crt", verify=False).text
 stores = [OpenBaoStore(OpenBaoSettings(enabled=True, url=bao_url, role_id=env["OPENBAO_ROLE_ID"], ca_bundle=root),
                        env["OPENBAO_SECRET_ID"]),
           ConjurStore(ConjurSettings(enabled=True, url=conjur_url, ca_bundle=root), env["CONJUR_HOST_API_KEY"])]
-for s in stores:
-    if not s.check_login(s._credential):
+stale = [not s.check_login(s._credential) for s in stores]
+if all(stale):
+    print(STALE_MARK)          # lab-live.sh deletes the file: LABaPe has rotated every login in it
+for s, is_stale in zip(stores, stale):
+    if is_stale:
         print(f"{s.name}: the login in secrets-test.env was rotated by LABaPe; direct checks skipped")
         continue
     name, value = f"live-test/p1 check {secrets.token_hex(3)}", secrets.token_urlsafe(24)

@@ -168,7 +168,13 @@ Give LABaPe's identity rights to its own area and nothing else:
 - **OpenBao / Vault:** read, write, list and delete under its KV mount, `read` on `auth/token/lookup-self`, and `update` on `auth/approle/role/<role>/secret-id` and `.../secret-id/destroy` so LABaPe can rotate its own secret ID. The full policy is in [Reference_Secrets-Backend-Requirements.md §7](../Claude_Docs/Reference_Secrets-Backend-Requirements.md#7-least-privilege-in-the-store).
 - **Conjur:** a host that owns its policy branch. LABaPe declares a variable there the first time it writes one.
 
-The secret ID and API key are kept in the built-in store, are never shown again, and rotate daily (the table above). After the first rotation, a copy kept anywhere else no longer works.
+The secret ID and API key are kept in the built-in store, are never shown again, and rotate daily (the table above). After the first rotation, any other copy no longer works, but it isn't removed: LABaPe can't reach files outside its own containers. So after connecting a store:
+
+1. Save the store's settings and check that **Test connection** passes.
+2. On **Secrets**, open the store's login (*OpenBao / Vault: LABaPe's AppRole secret ID* or *CyberArk Conjur: LABaPe's host API key*) and choose **Rotate now**. From then on, only LABaPe holds a working login.
+3. Delete every copy you made while setting it up: the file or note you pasted it from, and shell history. They no longer work, but they shouldn't be left lying around.
+
+With the test stores from `tools/secrets-test/`, step 3 happens automatically. `deploy.sh` removes the stale lines from its `.env` on its next run or at boot, and the live-test scripts delete their copy (see that folder's README).
 
 **Where secrets live.** **Secrets → Stored secrets** lists every stored secret: its name, its store, the rotation that changes it (with a link to its page) and the elevated account that rotation uses. Values are never shown.
 - **Move**: tick secrets, choose **Move to** and confirm. LABaPe copies each one, reads it back, switches to the new copy, then deletes the old one. If any step fails, that secret stays where it was and the result says why.

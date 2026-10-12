@@ -39,15 +39,22 @@ Everything secret goes into `.env` here (mode 0600, git-ignored), and nothing se
 
 | Key | What it is |
 |---|---|
-| `OPENBAO_ROLE_ID`, `OPENBAO_SECRET_ID` | LABaPe's AppRole login |
+| `OPENBAO_ROLE_ID`, `OPENBAO_SECRET_ID` | LABaPe's AppRole login. `OPENBAO_SECRET_ID` goes once LABaPe has rotated it (below). |
 | `OPENBAO_ROOT_TOKEN`, `OPENBAO_UNSEAL_KEY` | Administration only |
-| `CONJUR_HOST_API_KEY` | API key of host `labape/app` (login `host/labape/app`) |
+| `CONJUR_HOST_API_KEY` | API key of host `labape/app` (login `host/labape/app`). Goes once LABaPe has rotated it (below). |
+| `LABAPE_OWNS_LOGINS` | `1` once LABaPe has rotated a login: the script then never issues those logins again |
 | `CONJUR_ADMIN_API_KEY` | Conjur's `admin` user, administration only |
 | `CONJUR_DB_PASSWORD`, `CONJUR_DATA_KEY` | Conjur's database password and its encryption key |
 
 If `CONJUR_HOST_API_KEY` is removed from `.env`, the next run issues the host a new key with the admin key (the old one stops working).
 
-LABaPe rotates its own logins (its design §25.3): once it has, `OPENBAO_SECRET_ID` and `CONJUR_HOST_API_KEY` here are out of date. The smoke test doesn't depend on them: it signs in to OpenBao with a throwaway secret ID (destroyed afterwards) and skips the Conjur host check with a note. LABaPe's OpenBao policy includes `update` on its own role's `secret-id` and `secret-id/destroy` paths for that rotation.
+**After LABaPe rotates its logins.** LABaPe rotates its secret ID and host API key daily (its design §25.3). LABaPe's OpenBao policy includes `update` on its own role's `secret-id` and `secret-id/destroy` paths for this. Once LABaPe has rotated them, the copies here are stale, and they're removed automatically:
+- On every run, and at boot (`--unseal`), `deploy.sh` tries each copy. If the store refuses it, the line is removed from `.env` and `LABAPE_OWNS_LOGINS=1` is set. A store that isn't answering yet changes nothing.
+- With `LABAPE_OWNS_LOGINS=1`, the script never issues the logins again. In particular it doesn't give the Conjur host a new key, which would lock LABaPe out.
+- The smoke test doesn't use them: it signs in to OpenBao with a throwaway secret ID (destroyed afterwards) and skips the Conjur host check with a note.
+- The copy for the live tests (`~/.config/labape/secrets-test.env`, from `tools/helpers/`) is deleted by `lab-live.sh` once `stores.py` or `stores_rotate.py` reports that none of its logins work any more.
+
+If you ever need LABaPe's login again, for example after restoring an old LABaPe backup, issue a new one as root and paste it in LABaPe's Settings → Secret stores. For OpenBao: `bao write -f auth/approle/role/labape/secret-id`. For Conjur: `PUT /authn/labape/api_key?role=host:labape/app` as admin. Either way, the previous one stops working.
 
 ## What runs on the host
 
