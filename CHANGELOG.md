@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Changed
+- Rotating the engine's vault password also gives the command line's vault
+  on the same host (`secrets.vault.yml` and `~/.labape-vault-pass`) the
+  new password, so both keep working. `deploy/update-agent/install.sh
+  --cli-vault FILE|none [--vault-pass-file FILE]` says which vault.
 - The credentials sheet lists the domain Administrator in its own
   section, and a domain controller's inventory entry uses
   `domain_admin_password`.

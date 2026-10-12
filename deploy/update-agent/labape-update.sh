@@ -21,7 +21,14 @@
 #   then swapped in; nothing changes when a step fails. The VM key goes to
 #   the deployed environments' Linux VMs first (`labape push-vm-key`), then
 #   into ~/.ssh as well, for the command line; 7 previous keys are kept.
+#   The vault password also goes to the command line's vault on this host
+#   (LABAPE_CLI_VAULT and LABAPE_VAULT_PASS_FILE, which install.sh writes to
+#   ~/.config/labape/agent.env), rekeyed beside the engine's and swapped
+#   with it; LABAPE_CLI_VAULT=none leaves it alone.
 set -uo pipefail
+
+# shellcheck source=/dev/null
+[ -f "$HOME/.config/labape/agent.env" ] && . "$HOME/.config/labape/agent.env"
 
 REPO="${LABAPE_REPO:-$HOME/LABaPe-web}"
 C="$REPO/container"
@@ -190,6 +197,13 @@ rotate() {
 ES="$(grep -m1 '^LABAPE_ENGINE_SECRETS_PATH=' "$C/.env" 2>/dev/null | cut -d= -f2-)"
 ES="${ES:-./engine-secrets}"; case "$ES" in /*) ;; *) ES="$C/${ES#./}" ;; esac
 KEEP_KEYS=7
+CLI_VAULT="${LABAPE_CLI_VAULT:-$REPO/secrets.vault.yml}"
+CLI_PASS="${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}"
+# cli_opens: the command line's vault opens with its password file (checked in a one-off container).
+cli_opens() {
+  (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$CLI_VAULT:/cli/vault.yml:ro" -v "$CLI_PASS:/cli/pass:ro" \
+     labape-worker ansible-vault view --vault-password-file /cli/pass /cli/vault.yml >/dev/null)
+}
 etool() { (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$ES:/es" labape-worker "$@"); }
 r2fail() { status failed "$1" "$2"; finish; exit 1; }   # maintenance mode was never turned on
 prune() {   # prune <dir>: keep the newest $KEEP_KEYS key pairs
@@ -209,13 +223,37 @@ rotate_engine() {
           /es/secrets.vault.yml.new >/dev/null \
         && etool ansible-vault view --vault-password-file /es/vault-pass.new /es/secrets.vault.yml.new >/dev/null \
         || { rm -f "$ES/vault-pass.new" "$ES/secrets.vault.yml.new"; r2fail applying "re-encrypting the vault failed; nothing changed"; }
+      # The command line's vault (its own contents) gets the same new password, prepared beside the engine's.
+      local cli=0
+      if [ "$CLI_VAULT" != none ] && [ -f "$CLI_VAULT" ]; then
+        (umask 077; cp "$CLI_VAULT" "$ES/cli-vault.new"; cp "$CLI_PASS" "$ES/cli-pass.cur")
+        etool ansible-vault rekey --vault-password-file /es/cli-pass.cur --new-vault-password-file /es/vault-pass.new \
+            /es/cli-vault.new >/dev/null \
+          && etool ansible-vault view --vault-password-file /es/vault-pass.new /es/cli-vault.new >/dev/null \
+          || { rm -f "$ES/vault-pass.new" "$ES/secrets.vault.yml.new" "$ES/cli-vault.new" "$ES/cli-pass.cur"
+               r2fail applying "the command line's vault ($CLI_VAULT) didn't re-encrypt with its password file ($CLI_PASS); nothing changed"; }
+        cli=1
+      else
+        echo "labape-update: no command-line vault to update ($CLI_VAULT)"
+      fi
       # Jobs copy both files when they start and check the pair opens (retrying), so swap them back to back.
+      # The command line's files are rewritten in place (cat), keeping their owner and mode.
       cp -p "$ES/vault-pass" "$ES/vault-pass.old"; cp -p "$ES/secrets.vault.yml" "$ES/secrets.vault.yml.old"
+      if [ $cli = 1 ]; then
+        cp -p "$CLI_VAULT" "$CLI_VAULT.old"; cp -p "$CLI_PASS" "$CLI_PASS.old"
+        cat "$ES/cli-vault.new" > "$CLI_VAULT" && cat "$ES/vault-pass.new" > "$CLI_PASS"
+      fi
       mv "$ES/secrets.vault.yml.new" "$ES/secrets.vault.yml" && mv "$ES/vault-pass.new" "$ES/vault-pass"
-      if etool ansible-vault view --vault-password-file /es/vault-pass /es/secrets.vault.yml >/dev/null; then
+      rm -f "$ES/cli-vault.new" "$ES/cli-pass.cur"
+      if etool ansible-vault view --vault-password-file /es/vault-pass /es/secrets.vault.yml >/dev/null \
+         && { [ $cli = 0 ] || cli_opens; }; then
         rm -f "$ES/vault-pass.old" "$ES/secrets.vault.yml.old"
+        [ $cli = 0 ] || rm -f "$CLI_VAULT.old" "$CLI_PASS.old"
       else
         mv "$ES/secrets.vault.yml.old" "$ES/secrets.vault.yml"; mv "$ES/vault-pass.old" "$ES/vault-pass"
+        if [ $cli = 1 ]; then
+          cat "$CLI_VAULT.old" > "$CLI_VAULT"; cat "$CLI_PASS.old" > "$CLI_PASS"; rm -f "$CLI_VAULT.old" "$CLI_PASS.old"
+        fi
         r2fail checking "the swapped vault didn't open; the old one is back"
       fi ;;
     bootstrap_ssh_key)
