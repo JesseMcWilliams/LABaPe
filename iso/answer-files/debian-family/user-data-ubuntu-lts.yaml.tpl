@@ -34,7 +34,7 @@ autoinstall:
 
   identity:
     hostname: ${hostname}
-    username: labape
+    username: ${admin_user}
     password: "!"
 
   ssh:
@@ -92,7 +92,7 @@ autoinstall:
 %{ endif ~}
 
   late-commands:
-    - "echo 'labape ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/labape"
+    - "echo '${admin_user} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/labape"
     - "chmod 0440 /target/etc/sudoers.d/labape"
 %{ if syslog_host != "" ~}
     - "echo '*.* @${syslog_host}:1514' >> /target/etc/rsyslog.conf"

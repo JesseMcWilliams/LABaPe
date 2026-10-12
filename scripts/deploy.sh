@@ -142,7 +142,8 @@ tofu output -json hosts > hosts.json
 python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" hosts.json "$ENV_FILE"
 
 echo "labape: generating inventory in ${INVENTORY_DIR#"$ROOT_DIR"/}..." >&2
-python3 "$ROOT_DIR/scripts/generate-inventory.py" hosts.json "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$INVENTORY_DIR" "$TF_VAR_windows_admin_password"
+LABAPE_DOMAIN_ADMIN_PASSWORD="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" domain_admin_password 2>/dev/null || echo '')" \
+  python3 "$ROOT_DIR/scripts/generate-inventory.py" hosts.json "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$INVENTORY_DIR" "$TF_VAR_windows_admin_password"
 chmod 600 "$INVENTORY_DIR/generated" "$INVENTORY_DIR/credentials.generated" 2>/dev/null || true
 rm -f hosts.json
 

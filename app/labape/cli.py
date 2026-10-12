@@ -238,6 +238,41 @@ def cmd_ca_repass(args) -> int:
     return 0
 
 
+def cmd_push_vm_key(args) -> int:
+    """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
+    import json as _json
+    import os as _os
+    import shutil as _shutil
+    import sys as _sys
+    import tempfile as _tempfile
+    from pathlib import Path as _P
+    from .config import get_settings
+    from .db import session_factory
+    from .engine.vmaccess import AccessError, push_vm_key
+    ssh = get_settings().secrets_dir / "ssh"
+    with _tempfile.TemporaryDirectory() as d:
+        # OpenSSH only uses private keys this process owns with 0600; take copies.
+        def copy(src: _P, dst: _P) -> _P:
+            _shutil.copyfile(src, dst)
+            _os.chmod(dst, 0o600)
+            return dst
+        new = copy(_P(args.new), _P(d) / "new")
+        copy(_P(args.new + ".pub"), _P(d) / "new.pub")
+        current = copy(ssh / "labape_bootstrap", _P(d) / "current")
+        hist = _P(d) / "history"
+        hist.mkdir()
+        for f in sorted((ssh / "history").glob("*")) if (ssh / "history").is_dir() else []:
+            copy(f, hist / f.name)
+        try:
+            with session_factory()() as db:
+                report = push_vm_key(db, new, current, hist, _sys.stdout)
+        except AccessError as exc:
+            print(f"labape: {exc}", file=_sys.stderr)
+            return 1
+    print(_json.dumps(report))
+    return 0
+
+
 def cmd_db_status(_args) -> int:
     """The database's migration revision and this code's newest one."""
     from .db import engine
@@ -308,6 +343,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--old", required=True)
     p.add_argument("--new", required=True)
     p.set_defaults(func=cmd_ca_repass)
+
+    p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")
+    p.add_argument("--new", required=True, help="the new private key; its .pub beside it")
+    p.set_defaults(func=cmd_push_vm_key)
 
     p = sub.add_parser("health", help="exit 0 when healthy (--deep: worker heartbeat and CA too)")
     p.add_argument("--deep", action="store_true")

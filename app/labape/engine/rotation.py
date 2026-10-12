@@ -199,9 +199,22 @@ for kind, label, notes in (
     REGISTRY[kind] = Rotator(kind=kind, label=label, needs_restart=True, via_agent=True,
                              interval_hours=RESTART_INTERVAL_HOURS, notes=notes)
 
+# The engine's own secrets (phase R2): files in the engine-secrets folder, which
+# the containers mount read-only and every job copies when it starts. The host
+# agent swaps them; no restart, so no maintenance window.
+for kind, label, notes in (
+    ("vault_password", "Engine Ansible vault password",
+     "The update agent re-encrypts the engine vault with a new password, checks it opens, then swaps the vault and "
+     "its password together. Running jobs keep their own copies; no restart."),
+    ("bootstrap_ssh_key", "VM bootstrap SSH key (Ansible to VMs)",
+     "The update agent makes a new key and adds it on the Linux VMs of every deployed environment (with the current "
+     "or a previous key), checks it logs in, then swaps it in here and in the service user's ~/.ssh for the command "
+     "line. The 7 previous keys are kept and still tried, for VMs that were off; keys older than that are removed "
+     "from the VMs. Environments on remote KVM hosts are skipped."),
+):
+    REGISTRY[kind] = Rotator(kind=kind, label=label, via_agent=True, notes=notes)
+
 for kind, label, cls, restart, notes in (
-    ("vault_password", "Engine Ansible vault password", "privileged", False, "Rotator coming (phase R2)."),
-    ("bootstrap_ssh_key", "VM bootstrap SSH key (Ansible to VMs)", "privileged", False, "Rotator coming (phase R2)."),
     ("oidc_client_secret", "OIDC client secret (Authentik)", "privileged", False,
      "Rotates with an elevated Authentik token (rotator coming); until then a reminder."),
     ("smtp_password", "SMTP password", "external", False,
@@ -210,6 +223,36 @@ for kind, label, cls, restart, notes in (
     REGISTRY[kind] = Rotator(kind=kind, label=label, secret_class=cls, needs_restart=restart, automatic=False,
                              interval_hours=RESTART_INTERVAL_HOURS if restart else (24 if cls == "privileged" else 168),
                              notes=notes)
+
+# Lab environment accounts (phase R4, question 83): one policy per deployed
+# environment and account, weekly by default, changeable or off per environment.
+# The DSRM password is never rotated.
+ENV_ACCOUNTS = {
+    "windows_admin": ("Windows Administrator (local, member servers)",
+                      "Sets a new password for the local Administrator on the environment's Windows hosts other than "
+                      "domain controllers (Ansible's WinRM account), checks it signs in, and stores it for later jobs."),
+    "domain_admin": ("Domain Administrator",
+                     "Sets a new password for the domain's Administrator on its domain controller, checks it signs in, "
+                     "and stores it for later jobs (joins, new hosts). The DSRM password is not rotated."),
+}
+
+
+def _env_rotator(kind: str):
+    def run(db: Session, policy: SecretPolicy, log) -> str:
+        from ..models import Environment
+        from .vmaccess import AccessError, rotate_env_password
+        env = db.get(Environment, (policy.params or {}).get("environment_id"))
+        if env is None or env.status != "deployed":
+            raise RotationError("the environment isn't deployed")
+        try:
+            return rotate_env_password(db, env, kind, log)
+        except AccessError as exc:
+            raise RotationError(str(exc)) from exc
+    return run
+
+
+for kind, (label, notes) in ENV_ACCOUNTS.items():
+    REGISTRY[kind] = Rotator(kind=kind, label=label, interval_hours=168, notes=notes, run=_env_rotator(kind))
 
 PLATFORM = ("builtin_data_key", "worker_ssh_key", "directory_token", "master_key", "postgres_password", "ca_password",
             "vault_password", "bootstrap_ssh_key", "oidc_client_secret", "smtp_password")
@@ -234,6 +277,40 @@ def ensure_policies(db: Session) -> None:
                             notes=r.notes, status="pending" if r.automatic else "manual",
                             next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
     db.commit()
+    ensure_env_policies(db)
+
+
+def env_policy_name(env_id: int, kind: str) -> str:
+    return f"env.{env_id}.{kind}"
+
+
+def ensure_env_policies(db: Session) -> None:
+    """A policy per deployed environment with Windows hosts (windows_admin) or a
+    domain controller (domain_admin). Kept when the environment goes away, so
+    its settings survive a redeploy; due() skips it meanwhile."""
+    from ..models import Environment
+    from .vmaccess import _inventory, env_targets, remote_env
+    have = set(db.scalars(select(SecretPolicy.name).where(SecretPolicy.name.startswith("env."))))
+    for env in db.scalars(select(Environment).where(Environment.status == "deployed")):
+        missing = [k for k in ENV_ACCOUNTS if env_policy_name(env.id, k) not in have]
+        if not missing or remote_env(env):
+            continue
+        inv = _inventory(db, env)
+        for kind in missing:
+            if not env_targets(env, inv, kind):
+                continue
+            r = REGISTRY[kind]
+            db.add(SecretPolicy(name=env_policy_name(env.id, kind), kind=kind, label=f"{env.name}: {r.label}",
+                                secret_class=r.secret_class, interval_hours=r.interval_hours, needs_restart=False,
+                                params={"environment_id": env.id}, notes=r.notes, status="pending",
+                                next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
+    db.commit()
+
+
+def _env_deployed(db: Session, p: SecretPolicy) -> bool:
+    from ..models import Environment
+    env = db.get(Environment, (p.params or {}).get("environment_id"))
+    return env is not None and env.status == "deployed"
 
 
 def elevated_value(db: Session, policy: SecretPolicy) -> str:
@@ -262,6 +339,8 @@ def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
         if p.next_due_at and _aware(p.next_due_at) > now:
             continue
         if p.needs_restart and not (window and window["in_window"]):
+            continue
+        if p.kind in ENV_ACCOUNTS and not _env_deployed(db, p):
             continue
         out.append(p)
     return out
@@ -322,7 +401,8 @@ def schedule(db: Session, now: dt.datetime | None = None) -> list[int]:
                 p.next_due_at = utcnow() + dt.timedelta(hours=RETRY_HOURS)
                 db.commit()
             continue
-        job = Job(type="secret.rotate", params={"policy_id": p.id}, requested_by="system")
+        job = Job(type="secret.rotate", params={"policy_id": p.id}, requested_by="system",
+                  environment_id=(p.params or {}).get("environment_id") if p.kind in ENV_ACCOUNTS else None)
         db.add(job)
         db.commit()
         queued.append(job.id)

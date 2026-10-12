@@ -59,8 +59,8 @@ d-i mirror/http/proxy string
 # (matching the other two templates' convention) rather than group
 # membership + the account's own — nonexistent — password.
 d-i passwd/root-login boolean false
-d-i passwd/user-fullname string labape
-d-i passwd/username string labape
+d-i passwd/user-fullname string ${admin_user}
+d-i passwd/username string ${admin_user}
 d-i passwd/user-password-crypted password !
 d-i passwd/user-default-groups string
 
@@ -120,13 +120,13 @@ openssh-server openssh-server/password-authentication boolean false
 # %post cover: passwordless sudo for labape, and installing its SSH
 # public key (no native preseed question for either).
 d-i preseed/late_command string \
-    in-target sh -c 'echo "labape ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/labape'; \
+    in-target sh -c 'echo "${admin_user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/labape'; \
     in-target chmod 0440 /etc/sudoers.d/labape; \
-    in-target mkdir -p /home/labape/.ssh; \
-    in-target sh -c 'echo "${ssh_public_key}" > /home/labape/.ssh/authorized_keys'; \
-    in-target chown -R 1000:1000 /home/labape/.ssh; \
-    in-target chmod 700 /home/labape/.ssh; \
-    in-target chmod 600 /home/labape/.ssh/authorized_keys%{ if syslog_host != "" ~}
+    in-target mkdir -p /home/${admin_user}/.ssh; \
+    in-target sh -c 'echo "${ssh_public_key}" > /home/${admin_user}/.ssh/authorized_keys'; \
+    in-target chown -R 1000:1000 /home/${admin_user}/.ssh; \
+    in-target chmod 700 /home/${admin_user}/.ssh; \
+    in-target chmod 600 /home/${admin_user}/.ssh/authorized_keys%{ if syslog_host != "" ~}
 ; \
     in-target sh -c 'echo "*.* @${syslog_host}:1514" >> /etc/rsyslog.conf'; \
     in-target systemctl enable rsyslog

@@ -79,6 +79,20 @@ class MaintenanceWindowSettings(BaseModel):
     heads_up_hours: int = Field(default=24, ge=0, le=168)
 
 
+class VmAccountSettings(BaseModel):
+    """The admin account made on new Linux VMs (question 91): SSH key only,
+    passwordless sudo. Recorded per environment when it's created, so a
+    change applies to new environments only."""
+    linux_admin_user: str = Field(default="labape", pattern=r"^[a-z_][a-z0-9_-]{0,31}$")
+
+    @field_validator("linux_admin_user")
+    @classmethod
+    def _not_system(cls, v: str) -> str:
+        if v in ("root", "daemon", "bin", "sys", "nobody", "admin", "sudo", "wheel"):
+            raise ValueError("choose an account name the OS doesn't already use")
+        return v
+
+
 class BrandingSettings(BaseModel):
     """The app's name in the top bar, browser title and emails (question 68)."""
     app_name: str = Field(default="LABaPe", min_length=1, max_length=40, pattern=r"^[^<>]+$")
@@ -100,6 +114,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "branding": BrandingSettings,
     "downloads": DownloadSettings,
     "maintenance_window": MaintenanceWindowSettings,
+    "vm_accounts": VmAccountSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

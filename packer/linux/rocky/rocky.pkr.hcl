@@ -55,6 +55,7 @@ source "qemu" "rocky" {
   http_content = {
     "/ks.cfg" = templatefile("${var.repo_root}/iso/answer-files/rhel-family/ks-${var.os_key}.cfg.tpl", {
       hostname          = "template"
+      admin_user        = "labape"   # templates keep the build account; clones get the configured one
       ssh_public_key    = var.ssh_public_key
       addressing        = { mode = "dhcp", address = "", prefix_length = 0, gateway = "" }
       management_source = ""

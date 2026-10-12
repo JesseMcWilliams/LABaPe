@@ -102,6 +102,7 @@ module "vm" {
   template_vars = {
     management_source = var.management_source
     syslog_host        = var.syslog_host
+    linux_admin_user   = var.linux_admin_user
   }
 
   hyperv_host      = var.hyperv_host

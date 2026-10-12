@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import appsettings
 from ..db import get_db
 from ..catalog import CatalogError, expand, platforms
 from ..errors import FieldError
@@ -245,7 +246,8 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
     _check_templates(db, host.id, raw)
     _check_catalog(db, raw)
     groups = _check_networks(db, p, host.id, raw)
-    spec = {"host_groups": groups}
+    # The Linux admin account comes from Settings > VM accounts, fixed per environment.
+    spec = {"host_groups": groups, "linux_admin_user": appsettings.get(db, "vm_accounts").linux_admin_user}
     e = Environment(name=body.name, kvm_host_id=host.id, spec=spec, created_by=p.username)
     db.add(e)
     db.commit()
@@ -361,3 +363,72 @@ def credential_revealed(env_id: int, body: dict, request: Request, db: Session =
           detail={"section": str(body.get("section", ""))[:80], "label": str(body.get("label", ""))[:80]},
           source_ip=client_ip(request))
     return {"ok": True}
+
+
+# --- password rotation for the environment's accounts (design §24, R4) ------------------
+
+class RotationIn(BaseModel):
+    enabled: bool = True
+    interval_hours: int = Field(default=168, ge=24, le=24 * 365)
+
+
+def _rotation_policies(db: Session, e: Environment) -> list:
+    from ..engine.rotation import ENV_ACCOUNTS, ensure_env_policies, env_policy_name
+    from ..models import SecretPolicy
+    ensure_env_policies(db)
+    names = [env_policy_name(e.id, k) for k in ENV_ACCOUNTS]
+    return list(db.scalars(select(SecretPolicy).where(SecretPolicy.name.in_(names)).order_by(SecretPolicy.name)))
+
+
+def _rotation_out(pol) -> dict:
+    return {f: getattr(pol, f) for f in ("id", "kind", "label", "enabled", "interval_hours", "status",
+                                         "last_rotated_at", "next_due_at", "last_error", "notes")}
+
+
+def _owner_env(db: Session, env_id: int, p: Principal) -> Environment:
+    e = _get(db, env_id, p)
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail="Only the environment's owners and admins manage its passwords")
+    return e
+
+
+@router.get("/{env_id}/rotation")
+def get_rotation(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    e = _owner_env(db, env_id, p)
+    return {"policies": [_rotation_out(x) for x in _rotation_policies(db, e)]}
+
+
+@router.put("/{env_id}/rotation/{kind}")
+def set_rotation(env_id: int, kind: str, body: RotationIn, request: Request, db: Session = Depends(get_db),
+                 p: Principal = Depends(current_principal)):
+    e = _owner_env(db, env_id, p)
+    pol = next((x for x in _rotation_policies(db, e) if x.kind == kind), None)
+    if pol is None:
+        raise FieldError("kind", "This environment has no such account to rotate.", status_code=404)
+    pol.enabled, pol.interval_hours = body.enabled, body.interval_hours
+    if body.enabled and pol.last_rotated_at:
+        pol.next_due_at = pol.last_rotated_at + dt.timedelta(hours=body.interval_hours)
+    db.commit()
+    audit(db, p.username, "secret.policy", object_type="secret_policy", object_id=pol.id,
+          detail={"name": pol.name, **body.model_dump()}, source_ip=client_ip(request))
+    return _rotation_out(pol)
+
+
+@router.post("/{env_id}/rotation/{kind}/rotate")
+def rotate_env_now(env_id: int, kind: str, request: Request, db: Session = Depends(get_db),
+                   p: Principal = Depends(current_principal)):
+    e = _owner_env(db, env_id, p)
+    if e.status != "deployed":
+        raise FieldError("environment", "Deploy the environment first.", status_code=409)
+    pol = next((x for x in _rotation_policies(db, e) if x.kind == kind), None)
+    if pol is None:
+        raise FieldError("kind", "This environment has no such account to rotate.", status_code=404)
+    busy = db.scalar(select(Job).where(Job.type == "secret.rotate", Job.state.in_(("queued", "running"))))
+    if busy and (busy.params or {}).get("policy_id") == pol.id:
+        raise FieldError("kind", f"Job {busy.id} is already rotating it.", status_code=409)
+    job = Job(type="secret.rotate", params={"policy_id": pol.id}, requested_by=p.username, environment_id=e.id)
+    db.add(job)
+    db.commit()
+    audit(db, p.username, "secret.rotate.start", object_type="secret_policy", object_id=pol.id,
+          detail={"name": pol.name, "job": job.id}, source_ip=client_ip(request))
+    return {"job_id": job.id}

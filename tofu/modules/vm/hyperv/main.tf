@@ -33,6 +33,7 @@ resource "local_file" "kickstart" {
 
   content = templatefile(local.os_meta.kickstart_template, {
     hostname          = var.name
+    admin_user        = lookup(var.template_vars, "linux_admin_user", "labape")
     ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
     addressing        = var.addressing
     management_source = lookup(var.template_vars, "management_source", "")

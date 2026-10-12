@@ -30,13 +30,22 @@ locals {
   # an unknown trigger forces the VM to be reinstalled even though the
   # content didn't change. md5(content) is the same value content_md5 has.
   rendered_answer_file_md5 = try(coalesce(
-    try(md5(local.kickstart_content), null),
+    try(md5(local.ssh_key_now == "" ? local.kickstart_content : replace(local.kickstart_content, local.ssh_key_now, local.ssh_key_at_creation)), null),
     try(local.windows_answer_file_md5_masked, null),
-    try(md5(local.debian_user_data_content), null),
+    try(md5(local.ssh_key_now == "" ? local.debian_user_data_content : replace(local.debian_user_data_content, local.ssh_key_now, local.ssh_key_at_creation)), null),
   ), "")
+
+  # The reinstall triggers hash the Linux answer files and clone seeds with
+  # the SSH key the VM was created with, not today's: the web interface
+  # rotates the VM key daily (Planning_Web-Interface-Design.md §24.3) and
+  # pushes it to running VMs, which mustn't be reinstalled for it. New VMs
+  # still get the current key in their files.
+  ssh_key_now         = coalesce(var.admin_credential.ssh_public_key, "")
+  ssh_key_at_creation = terraform_data.creation_ssh_key.input
 
   kickstart_content = contains(["linux", "debian_preseed"], coalesce(local.os_family, "none")) ? templatefile(local.os_meta.answer_file_template, {
     hostname          = var.name
+    admin_user        = lookup(var.template_vars, "linux_admin_user", "labape")
     ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
     addressing        = local.addressing
     management_source = lookup(var.template_vars, "management_source", "")
@@ -50,6 +59,7 @@ locals {
 
   debian_user_data_content = local.os_family == "debian" ? templatefile(local.os_meta.answer_file_template, {
     hostname          = var.name
+    admin_user        = lookup(var.template_vars, "linux_admin_user", "labape")
     ssh_public_key    = coalesce(var.admin_credential.ssh_public_key, "")
     addressing        = local.addressing
     management_source = lookup(var.template_vars, "management_source", "")
@@ -171,6 +181,16 @@ resource "local_file" "debian_meta_data" {
   depends_on = [terraform_data.validate_os]
 }
 
+# The SSH key this VM was created with (see ssh_key_at_creation): kept
+# from the first apply, so later key rotations don't touch it.
+resource "terraform_data" "creation_ssh_key" {
+  input = coalesce(var.admin_credential.ssh_public_key, "")
+
+  lifecycle {
+    ignore_changes = [input]
+  }
+}
+
 resource "null_resource" "vm_iso_direct" {
   count = var.image_source == "iso_direct" ? 1 : 0
 
@@ -261,6 +281,7 @@ locals {
   clone_linux_files = local.is_template && !local.clone_is_windows && local.os_meta != null ? {
     "user-data" = templatefile("${path.module}/../../../../iso/answer-files/cloud-init/user-data-clone.yaml.tpl", {
       hostname       = var.name
+      admin_user     = lookup(var.template_vars, "linux_admin_user", "labape")
       ssh_public_key = coalesce(var.admin_credential.ssh_public_key, "")
       # Debian clones only (other families render exactly as before).
       static_resolv_conf = local.os_family == "debian_preseed" && local.addressing.mode == "static"
@@ -296,7 +317,8 @@ locals {
   clone_seed_md5 = !local.is_template ? "" : local.clone_is_windows ? md5(join("", [replace(templatefile(
     local.clone_windows_template,
     merge(local.clone_windows_vars, { windows_admin_password = "masked" }),
-  ), "/(?s)<!--.*?-->/", ""), local.clone_windows_firstboot])) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) : local.clone_linux_files[k]]))
+  ), "/(?s)<!--.*?-->/", ""), local.clone_windows_firstboot])) : md5(join("\n", [for k in sort(keys(local.clone_linux_files)) :
+    local.ssh_key_now == "" ? local.clone_linux_files[k] : replace(local.clone_linux_files[k], local.ssh_key_now, local.ssh_key_at_creation)]))
 }
 
 resource "terraform_data" "validate_template" {

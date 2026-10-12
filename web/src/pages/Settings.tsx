@@ -22,9 +22,10 @@ interface Smtp {
 interface Branding { app_name: string }
 interface Downloads { allow_http: boolean; proxy: string }
 interface MaintenanceWindow { enabled: boolean; weekday: number; time_of_day: string; duration_minutes: number; heads_up_hours: number }
+interface VmAccounts { linux_admin_user: string }
 interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; has_token: boolean }
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow;
+  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts;
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -170,7 +171,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -198,6 +199,13 @@ export default function Settings() {
           <Field label="Notice (hours)" type="number" value={s.maintenance_window.heads_up_hours} sx={{ width: 140 }}
             help="Banner before it starts" onChange={(e) => set("maintenance_window", { heads_up_hours: Number(e.target.value) })} />
         </Stack>
+      </Section>
+
+      <Section title="VM accounts" intro="The admin account LABaPe makes on new Linux VMs: SSH key only (the VM key on the Secrets page), passwordless sudo. Each environment keeps the name it was created with, so a change applies to new environments only. Templates keep their build account, labape."
+        onSave={async () => { await put("vm_accounts", s.vm_accounts); return "VM accounts saved."; }}>
+        <Field label="Linux admin user" value={s.vm_accounts.linux_admin_user} sx={{ maxWidth: 320 }}
+          help="Lower case letters, digits, _ and -; up to 32 characters"
+          onChange={(e) => set("vm_accounts", { linux_admin_user: e.target.value })} />
       </Section>
 
       <Section title="Branding" intro="The name in the top bar, the browser tab, the sign-in page and emails. A logo comes later."

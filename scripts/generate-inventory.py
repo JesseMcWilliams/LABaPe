@@ -105,9 +105,13 @@ def main() -> int:
             host_vars["ansible_user"] = "Administrator"
             if windows_admin_password:
                 host_vars["ansible_password"] = windows_admin_password
+            # A DC's Administrator became the domain Administrator at promotion; when
+            # the domain admin password rotates separately (web UI), use that one.
+            if "domain_controller" in roles and os.environ.get("LABAPE_DOMAIN_ADMIN_PASSWORD", "CHANGE_ME") != "CHANGE_ME":
+                host_vars["ansible_password"] = os.environ["LABAPE_DOMAIN_ADMIN_PASSWORD"]
         else:
             host_vars["ansible_connection"] = "ssh"
-            host_vars["ansible_user"] = "labape"  # Claude_Docs/Reference_Credentials.md §5
+            host_vars["ansible_user"] = env.get("linux_admin_user") or "labape"  # Reference_Credentials.md §5
             host_vars["ansible_ssh_private_key_file"] = ssh_key_path
 
         inventory["all"]["hosts"][name] = host_vars
@@ -142,17 +146,23 @@ def main() -> int:
             f"Password: {windows_admin_password}" if windows_admin_password
             else "Password: (not provided to generate-inventory.py — check the vault directly)"
         )
-        if has_domain_controller and netbios_name:
-            creds_lines.append(
-                f"Also valid as Domain Administrator ({netbios_name}\\Administrator) on "
-                "domain-joined hosts — same password until M5 adds dedicated named "
-                "accounts (Claude_Docs/Reference_Credentials.md §6)."
-            )
         creds_lines.append("")
+        if has_domain_controller and netbios_name:
+            # Its own section: the web UI rotates the two separately (design §24, R4)
+            # and rewrites the Password line of the matching section.
+            domain_password = os.environ.get("LABAPE_DOMAIN_ADMIN_PASSWORD", "CHANGE_ME")
+            if domain_password == "CHANGE_ME":
+                domain_password = windows_admin_password
+            creds_lines.append("## Domain administrator")
+            creds_lines.append(f"User: {netbios_name}\\Administrator")
+            creds_lines.append(f"Password: {domain_password}" if domain_password
+                               else "Password: (not provided — check the vault directly)")
+            creds_lines.append("")
     if linux_hosts:
+        admin_user = env.get("linux_admin_user") or "labape"
         creds_lines.append(f"## Linux ({', '.join(sorted(linux_hosts))})")
-        creds_lines.append("User: labape (SSH key auth, no password — Claude_Docs/Reference_Credentials.md §5)")
-        creds_lines.append(f"ssh -i {ssh_key_path} labape@<host-ip>")
+        creds_lines.append(f"User: {admin_user} (SSH key auth, no password — Claude_Docs/Reference_Credentials.md §5)")
+        creds_lines.append(f"ssh -i {ssh_key_path} {admin_user}@<host-ip>")
         creds_lines.append("sudo: passwordless (NOPASSWD, bootstrap-only)")
         creds_lines.append("")
 
