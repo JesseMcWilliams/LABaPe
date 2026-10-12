@@ -78,9 +78,10 @@ up (e.g. group policy disabling local accounts), not a v1 requirement.
 
 The account is `labape` by default. In the web interface it's
 Settings → VM accounts → Linux admin user, recorded per environment when
-it's created (Planning_Web-Interface-Design.md §24.3). The web stack's
-host agent rotates the key daily, adds it on running VMs and keeps the 7
-previous keys; the command line's `~/.ssh/labape_bootstrap` is kept in step.
+it's created (Planning_Web-Interface-Design.md §24.3). With the web
+stack, the key and its 7 previous keys live in the secret store
+(OpenBao, §26); the worker rotates it daily and adds it on running VMs,
+and the command line reads it from the store (`scripts/lib/store_get.py`).
 
 Kickstart/cloud-init/AutoYaST files bake in an **SSH public key**, not a
 password — standard practice, and it means there's no plaintext

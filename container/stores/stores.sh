@@ -227,6 +227,47 @@ configure_labape() {
   settings_json "$bao_file" "$conjur_file" | labape stores-configure 2>/dev/null | grep '^labape:' || true
 }
 
+# --- the engine secrets and the command line (phases S2, S3) ----------------------------------
+STORE_ENV="$HOME/.config/labape/store.env"
+REPO="$(dirname "$C")"
+# The command line's own vault: the one the update agent was told about, else this checkout's.
+CLI_VAULT="$(grep -m1 '^LABAPE_CLI_VAULT=' "$HOME/.config/labape/agent.env" 2>/dev/null | cut -d= -f2- || true)"
+CLI_VAULT="${CLI_VAULT:-$REPO/secrets.vault.yml}"
+CLI_PASS="$HOME/.labape-vault-pass"
+configure_cli() {   # the command line's read-only AppRole, in ~/.config/labape/store.env (0600)
+  local sid=""
+  policy labape-cli "$HERE/openbao/labape-cli.hcl"
+  role labape-cli labape-cli
+  if [ -f "$STORE_ENV" ]; then sid="$(grep -m1 '^LABAPE_STORE_SECRET_ID=' "$STORE_ENV" | cut -d= -f2- || true)"; fi
+  if [ -z "$sid" ] || ! python3 -c 'import json, sys; print(json.dumps({"role_id": sys.argv[1], "secret_id": sys.argv[2]}))' \
+       "$(role_id labape-cli)" "$sid" | bao_api POST auth/approle/login >/dev/null 2>&1; then
+    sid="$(new_secret_id labape-cli)"
+    say "OpenBao: issued the command line's login ($STORE_ENV)"
+  fi
+  (umask 077; mkdir -p "$(dirname "$STORE_ENV")"
+   printf '%s\n' "# The command line's login to the platform store (container/stores/stores.sh; design §26)" \
+     "LABAPE_STORE_URL=$BAO" "LABAPE_STORE_CA=$TLS/root.crt" "LABAPE_STORE_ROLE_ID=$(role_id labape-cli)" \
+     "LABAPE_STORE_SECRET_ID=$sid" > "$STORE_ENV.tmp")
+  chmod 600 "$STORE_ENV.tmp"; mv "$STORE_ENV.tmp" "$STORE_ENV"
+}
+ES_DIR() { local es; es="$(envget LABAPE_ENGINE_SECRETS_PATH)"; es="${es:-./engine-secrets}"
+           case "$es" in /*) echo "$es" ;; *) echo "$C/${es#./}" ;; esac; }
+import_engine() {   # the vault, its password and the VM key into the platform store, once
+  if [ -s "$(ES_DIR)/vault-pass" ]; then
+    labape engine-secrets import --store openbao 2>/dev/null | grep '^labape:' | tail -1 \
+      || die "importing the engine secrets failed (labape engine-secrets import)"
+  fi
+  labape engine-secrets check 2>/dev/null | grep '^labape:' || die "the engine secrets in the store don't check out"
+}
+check_cli() {   # the command line reads them; its own vault opens with the store's password (re-encrypted if not)
+  python3 "$REPO/scripts/lib/store_get.py" check || die "the command line's store login doesn't work"
+  [ -f "$CLI_VAULT" ] || { say "no command-line vault at $CLI_VAULT; skipped"; return 0; }
+  local d; d="$(mktemp -d)"
+  python3 "$REPO/scripts/lib/store_get.py" vault-pass --vault "$CLI_VAULT" --out "$d/pw" --try-file "$CLI_PASS" \
+    || { rm -rf "$d"; die "the command line's vault ($CLI_VAULT) doesn't open with the store's password"; }
+  rm -rf "$d"
+  say "the command line reads its vault password and VM key from the store; $CLI_VAULT opens with it"
+}
 # --- checks ------------------------------------------------------------------------------------
 smoke() {
   local tok value
@@ -316,4 +357,7 @@ configure_conjur
 configure_labape
 install_units
 smoke
+configure_cli
+import_engine
+check_cli
 say "ready: OpenBao $BAO and Conjur $CONJUR (on the host), labape-openbao:8200 and labape-conjur-tls:8443 in the stack"

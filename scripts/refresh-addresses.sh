@@ -44,6 +44,7 @@ else
 fi
 
 BACKEND_DIR="$ROOT_DIR/tofu/backends/$BACKEND"
+. "$ROOT_DIR/scripts/lib/cli-secrets.sh"; labape_cli_secrets "$ROOT_DIR"   # the store, design §26
 VAULT_PASS_FILE="${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}"
 VAULT_FILE="$ROOT_DIR/secrets.vault.yml"
 vault() { python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" "$1"; }

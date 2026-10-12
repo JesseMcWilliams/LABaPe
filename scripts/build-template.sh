@@ -52,6 +52,7 @@ case "$OS_KEY" in
   *) echo "labape: no Packer build for os \"$OS_KEY\" yet (packer/)." >&2; exit 1 ;;
 esac
 
+. "$ROOT_DIR/scripts/lib/cli-secrets.sh"; labape_cli_secrets "$ROOT_DIR"   # the store, design §26
 VAULT_PASS_FILE="${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}"
 vault() { python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$ROOT_DIR/secrets.vault.yml" "$VAULT_PASS_FILE" "$1"; }
 LIBVIRT_URI="$(vault libvirt_uri)"

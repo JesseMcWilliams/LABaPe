@@ -2,7 +2,7 @@
 
 Usage: rotate_agent.py <kind>
   kind: master_key | postgres_password | ca_password   (restart the stack, phase R3)
-        vault_password | bootstrap_ssh_key             (no restart, phase R2)
+        vault_password | bootstrap_ssh_key             (no restart; the worker once they are in the store, §26)
 Signs in again on every poll, because a master-key rotation ends all sessions.
 Afterwards it checks the secret store's self-test, directory search,
 maintenance mode and /api/health.

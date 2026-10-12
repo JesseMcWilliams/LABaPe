@@ -51,6 +51,7 @@ if $TEST_MODE; then
 fi
 
 BACKEND_DIR="$ROOT_DIR/tofu/backends/$BACKEND"
+. "$ROOT_DIR/scripts/lib/cli-secrets.sh"; labape_cli_secrets "$ROOT_DIR"   # the store, design §26
 VAULT_PASS_FILE="${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}"
 VAULT_FILE="$ROOT_DIR/secrets.vault.yml"
 PROFILE_FILE="$ROOT_DIR/tofu/environments/${PROFILE}.tfvars"

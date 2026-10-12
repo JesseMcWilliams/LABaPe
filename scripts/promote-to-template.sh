@@ -45,6 +45,7 @@ case "$TEMPLATE_NAME" in
 esac
 
 POOL=labape-templates
+. "$ROOT_DIR/scripts/lib/cli-secrets.sh"; labape_cli_secrets "$ROOT_DIR"   # the store, design §26
 VAULT_PASS_FILE="${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}"
 LIBVIRT_URI="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$ROOT_DIR/secrets.vault.yml" "$VAULT_PASS_FILE" libvirt_uri)"
 TEMPLATE_DIR="$(python3 -c 'import sys, yaml; e = yaml.safe_load(open(sys.argv[1])); print(e.get("template_storage_path") or e["vm_storage_path"].rstrip("/") + "/templates")' "$ENV_FILE")"

@@ -42,6 +42,8 @@ container/setup.sh --hostname labape.lab.lan     # writes .env and secrets/, mak
 
 ### Engine secrets (`container/engine-secrets/`, mounted read-only at `/run/labape-secrets`)
 
+Once `stores/stores.sh setup` has run, these live in the secret store instead (design §26): it imports them with `labape engine-secrets import` (`platform/engine/...` in OpenBao), jobs and the dashboard read them from there, and the worker rotates them. The files below are then only read by an install that hasn't moved yet; `labape engine-secrets status` says which. Back up and delete them after the move.
+
 | File | Notes |
 |---|---|
 | `secrets.vault.yml` | The Ansible vault the CLI uses |
@@ -49,7 +51,7 @@ container/setup.sh --hostname labape.lab.lan     # writes .env and secrets/, mak
 | `ssh/<key>` and `ssh/<key>.pub` | One key pair. The runner uses it in place of the vault's `ansible_ssh_private_key_path`, because that path belongs to the CLI host. |
 | `ssh/history/` | Previous VM keys, kept by the rotation (7) and still offered to VMs |
 
-The update agent rotates the vault password and the VM key here daily. For the command line on the same host it copies the key to the service user's `~/.ssh/labape_bootstrap`, and gives the command line's vault the same new password (`install.sh --cli-vault`; design §24.3).
+Before the move, the update agent rotates the vault password and the VM key here daily. For the command line on the same host it copies the key to the service user's `~/.ssh/labape_bootstrap`, and gives the command line's vault the same new password (`install.sh --cli-vault`; design §24.3).
 
 ### Generated secrets (`container/secrets/`)
 

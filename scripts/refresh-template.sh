@@ -88,6 +88,8 @@ host_groups = [
 ]
 EOF
 
+. "$ROOT_DIR/scripts/lib/cli-secrets.sh"; labape_cli_secrets "$ROOT_DIR"   # the store, design §26
+
 cleanup_hint() {
   echo "labape: refresh failed; the throwaway environment is left for inspection. Remove it with:" >&2
   echo "  scripts/destroy.sh libvirt $ENV_NAME $ENV_NAME --test ${ENV_ARGS[*]} && rm -f $TFVARS" >&2
