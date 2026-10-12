@@ -268,6 +268,54 @@ check_cli() {   # the command line reads them; its own vault opens with the stor
   rm -rf "$d"
   say "the command line reads its vault password and VM key from the store; $CLI_VAULT opens with it"
 }
+# --- the bootstrap secrets (phase S4) --------------------------------------------------------
+# container/secrets/ moves into OpenBao (labape-host/bootstrap/, the agent's mount). The
+# stack then reads a memory-only copy in LABAPE_SECRETS_DIR, which `unseal` refills at boot.
+hs() { python3 "$HERE/hostsecrets.py" "$@"; }
+runtime_secrets_dir() {
+  local d="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  [ -d "$d" ] && [ -w "$d" ] || die "no per-user runtime directory ($d): is lingering on for $(id -un)?"
+  echo "$d/labape-secrets"
+}
+healthy_within() {   # healthy_within <seconds>: labape health --deep passes
+  local deadline=$((SECONDS + $1))
+  while [ $SECONDS -lt $deadline ]; do
+    labape health --deep >/dev/null 2>&1 && return 0
+    sleep 10
+  done
+  return 1
+}
+move_bootstrap() {
+  local dir running
+  if [ -n "$(envget LABAPE_SECRETS_DIR)" ]; then
+    hs same "$(envget LABAPE_SECRETS_DIR)" || die "the stack's secrets differ from OpenBao's; not changing anything"
+    say "the bootstrap secrets are in OpenBao; the stack reads them from $(envget LABAPE_SECRETS_DIR)"
+    return 0
+  fi
+  running="$(labape maintenance status 2>/dev/null | tail -1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["running_jobs"])')"
+  [ "$running" = 0 ] || die "$running job(s) running; moving the bootstrap secrets restarts the API and worker: try again later"
+  dir="$(runtime_secrets_dir)"
+  hs push "$C/secrets"
+  hs pull "$dir"
+  hs same "$C/secrets" || die "OpenBao's copy differs from container/secrets/; nothing switched"
+  envput LABAPE_SECRETS_DIR "$dir"
+  say "restarting the stack on the copy from OpenBao ($dir)"
+  (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate postgres labape-ca labape-api labape-worker >/dev/null 2>&1) || true
+  if ! healthy_within 240; then
+    sed -i '/^LABAPE_SECRETS_DIR=/d' "$C/.env"
+    (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate postgres labape-ca labape-api labape-worker >/dev/null 2>&1) || true
+    die "the stack wasn't healthy on the copy from OpenBao; back on container/secrets/"
+  fi
+  say "the bootstrap secrets are in OpenBao; container/secrets/ is now an old copy (back it up and delete it)"
+}
+start_stack() {   # at boot: the memory-only copy from OpenBao, then everything up
+  local dir; dir="$(envget LABAPE_SECRETS_DIR)"
+  [ -n "$dir" ] || return 0
+  hs pull "$dir"
+  (cd "$C" && "${COMPOSE[@]}" up -d >/dev/null 2>&1) || die "starting the stack failed (docker compose up -d in $C)"
+  say "the stack started with its secrets from OpenBao"
+}
+
 # --- checks ------------------------------------------------------------------------------------
 smoke() {
   local tok value
@@ -327,7 +375,7 @@ UNIT
 # --- modes -------------------------------------------------------------------------------------
 case "$MODE" in
   unseal) dc up -d labape-openbao labape-conjur-db labape-conjur labape-conjur-tls >/dev/null 2>&1 || true
-          unseal; exit 0 ;;
+          unseal; start_stack; exit 0 ;;
   tls-renew) due || exit 0; sign; reload_tls; say "certificate renewed"; exit 0 ;;
   status)
     st="$(bao_status)"; say "OpenBao: ${st:-not answering}"
@@ -360,4 +408,5 @@ smoke
 configure_cli
 import_engine
 check_cli
+move_bootstrap
 say "ready: OpenBao $BAO and Conjur $CONJUR (on the host), labape-openbao:8200 and labape-conjur-tls:8443 in the stack"
