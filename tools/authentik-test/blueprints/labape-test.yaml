@@ -78,8 +78,10 @@ entries:
       description: LABaPe group search (read-only)
       key: !Env [LABAPE_TEST_DIRECTORY_TOKEN, ""]
 
+  # state: created: made once, never reset, so LABaPe's rotation of its client secret sticks.
   - model: authentik_providers_oauth2.oauth2provider
     id: provider
+    state: created
     identifiers: {name: labape}
     attrs:
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]

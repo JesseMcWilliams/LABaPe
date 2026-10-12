@@ -24,6 +24,9 @@ export function StatusChip({ p }: { p: SecretPolicy }) {
   if (p.managed_externally) return <Chip size="small" label="external store" />;
   if (!p.enabled) return <Chip size="small" label="off" />;
   if (!p.automatic) return <Chip size="small" label={p.secret_class === "external" ? "reminder" : "manual"} />;
+  if (p.needs_elevated && !p.elevated_ref)
+    return <Tooltip title="Rotates once an elevated account is chosen on its page; a reminder until then">
+      <Chip size="small" label="reminder" /></Tooltip>;
   const color = p.status === "ok" ? "success" : p.status === "failed" ? "error" : "default";
   return <Chip size="small" color={color} label={p.status} />;
 }

@@ -181,6 +181,49 @@ def rotate_directory_token(db: Session, policy: SecretPolicy, log) -> str:
     return f"token {ident} has a new key"
 
 
+@rotator(kind="oidc_client_secret", label="OIDC client secret (Authentik)", needs_elevated=True,
+         notes="Sets a new client secret on LABaPe's Authentik provider through the Authentik API, using an elevated "
+               "Authentik token that may change the provider, checks Authentik accepts it, then signs in with it from "
+               "the next sign-in on; no restart. The secret file the stack was installed with is kept as a fallback. "
+               "Without an elevated token it's a reminder.")
+def rotate_oidc_client_secret(db: Session, policy: SecretPolicy, log) -> str:
+    from ..api.directory import api_base
+    from ..auth import oidc
+    elevated = elevated_value(db, policy)
+    cfg = appsettings.get(db, "directory")
+    base, client_id = api_base(cfg), oidc.get_settings().oidc_client_id
+    if not base or not client_id:
+        raise RotationError("sign-in through OIDC isn't configured (no issuer or client ID)")
+    old = oidc.client_secret(db)
+    if not old:
+        raise RotationError("there's no current client secret to rotate")
+    auth = {"Authorization": f"Bearer {elevated}", "Accept": "application/json"}
+    r = httpx.get(f"{base}/api/v3/providers/oauth2/", params={"client_id": client_id}, headers=auth, timeout=15,
+                  verify=cfg.verify_tls)
+    found = [p for p in (r.json().get("results", []) if r.status_code == 200 else []) if p.get("client_id") == client_id]
+    if not found:
+        raise RotationError(f"the elevated token can't see the Authentik provider for client {client_id} "
+                            f"(HTTP {r.status_code})")
+    url = f"{base}/api/v3/providers/oauth2/{found[0]['pk']}/"
+
+    def set_secret(value: str) -> httpx.Response:
+        return httpx.patch(url, json={"client_secret": value}, headers=auth, timeout=15, verify=cfg.verify_tls)
+
+    new = _secrets.token_urlsafe(96)
+    r = set_secret(new)
+    if r.status_code >= 300:
+        raise RotationError(f"Authentik refused the new client secret (HTTP {r.status_code}); the old one stays")
+    _write(log, f"labape: Authentik provider {found[0].get('name', found[0]['pk'])} has a new client secret")
+    try:
+        oidc.check_client_secret(client_id, new)
+        oidc.store_client_secret(db, new)
+    except Exception as exc:  # noqa: BLE001
+        back = set_secret(old)
+        why = "the old one was put back" if back.status_code < 300 else             f"putting the old one back failed too (HTTP {back.status_code}): set it in Authentik by hand"
+        raise RotationError(f"the new client secret didn't work ({exc}); {why}") from exc
+    return f"provider {found[0].get('name', found[0]['pk'])} has a new client secret"
+
+
 # Inventory of the rest (design §24): listed so every internal secret has a
 # policy, rotated in later phases or reminded about when LABaPe can't change it.
 # Restart-needing secrets live in host files the containers only read; the
@@ -214,15 +257,9 @@ for kind, label, notes in (
 ):
     REGISTRY[kind] = Rotator(kind=kind, label=label, via_agent=True, notes=notes)
 
-for kind, label, cls, restart, notes in (
-    ("oidc_client_secret", "OIDC client secret (Authentik)", "privileged", False,
-     "Rotates with an elevated Authentik token (rotator coming); until then a reminder."),
-    ("smtp_password", "SMTP password", "external", False,
-     "LABaPe can't change it on the mail server: a reminder only."),
-):
-    REGISTRY[kind] = Rotator(kind=kind, label=label, secret_class=cls, needs_restart=restart, automatic=False,
-                             interval_hours=RESTART_INTERVAL_HOURS if restart else (24 if cls == "privileged" else 168),
-                             notes=notes)
+REGISTRY["smtp_password"] = Rotator(kind="smtp_password", label="SMTP password", secret_class="external",
+                                    automatic=False, interval_hours=168,
+                                    notes="LABaPe can't change it on the mail server: a reminder only.")
 
 # Lab environment accounts (phase R4, question 83): one policy per deployed
 # environment and account, weekly by default, changeable or off per environment.
@@ -341,6 +378,8 @@ def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
         if p.needs_restart and not (window and window["in_window"]):
             continue
         if p.kind in ENV_ACCOUNTS and not _env_deployed(db, p):
+            continue
+        if r.needs_elevated and not p.elevated_ref:      # a reminder until it has an elevated account
             continue
         out.append(p)
     return out

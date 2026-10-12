@@ -75,7 +75,12 @@ def test_schedule_rules(client):
         _policy(db, "worker_ssh_key").managed_externally = True
         db.commit()
         kinds = {p.kind for p in rotation.due(db, now)}
-        assert "builtin_data_key" in kinds and "directory_token" in kinds
+        assert "builtin_data_key" in kinds
+        assert "directory_token" not in kinds and "oidc_client_secret" not in kinds   # reminders: no elevated account
+        _policy(db, "directory_token").elevated_ref = "ak-admin"
+        db.commit()
+        kinds = {p.kind for p in rotation.due(db, now)}
+        assert "directory_token" in kinds
         assert "worker_ssh_key" not in kinds                    # its store rotates it
         assert "smtp_password" not in kinds                     # reminder only
         first = rotation.schedule(db, now)
@@ -129,3 +134,85 @@ def test_directory_token_rotation(client, monkeypatch):
     assert new != "old-token-value" and seen == [new]
     assert calls == [("https://ak.example.test/api/v3/core/tokens/labape-directory/set_key/", new,
                       "Bearer ThisIsMy_FAKE_Password6!")]
+
+
+def _oidc_setup(db, monkeypatch, file_secret="file-secret"):
+    from labape.auth import oidc
+    s = oidc.get_settings()
+    for k, v in {"oidc_issuer": "https://ak.example.test/application/o/labape/", "oidc_client_id": "labape",
+                 "oidc_client_secret": file_secret}.items():
+        monkeypatch.setattr(s, k, v)
+    put_secret(db, rotation.ELEVATED_PREFIX + "ak-admin", "ThisIsMy_FAKE_Password6!")
+    rotation.ensure_policies(db)
+    p = _policy(db, "oidc_client_secret")
+    p.elevated_ref = "ak-admin"
+    db.commit()
+    return oidc, p
+
+
+def _fake_authentik(monkeypatch, patch_status=200):
+    calls = []
+
+    def get(url, params, headers, timeout, verify):
+        calls.append(("GET", url, params))
+        return httpx.Response(200, json={"results": [{"pk": 7, "name": "labape", "client_id": "labape"}]},
+                              request=httpx.Request("GET", url))
+
+    def patch(url, json, headers, timeout, verify):
+        calls.append(("PATCH", url, json["client_secret"]))
+        return httpx.Response(patch_status, request=httpx.Request("PATCH", url))
+    monkeypatch.setattr(rotation.httpx, "get", get)
+    monkeypatch.setattr(rotation.httpx, "patch", patch)
+    return calls
+
+
+def test_oidc_client_secret_rotation(client, monkeypatch):
+    _admin_session(client)
+    calls = _fake_authentik(monkeypatch)
+    with session_factory()() as db:
+        oidc, p = _oidc_setup(db, monkeypatch)
+        assert p.status == "pending" and oidc.client_secret(db) == "file-secret"
+        checked = []
+        monkeypatch.setattr(oidc, "check_client_secret", lambda cid, secret: checked.append((cid, secret)))
+        assert "new client secret" in rotation.rotate_oidc_client_secret(db, p, None)
+        new = oidc.client_secret(db)
+    assert new != "file-secret" and checked == [("labape", new)]
+    assert calls == [("GET", "https://ak.example.test/api/v3/providers/oauth2/", {"client_id": "labape"}),
+                     ("PATCH", "https://ak.example.test/api/v3/providers/oauth2/7/", new)]
+    with session_factory()() as db:              # replacing the secret file by hand makes the file win again
+        monkeypatch.setattr(oidc.get_settings(), "oidc_client_secret", "pasted-later")
+        assert oidc.client_secret(db) == "pasted-later"
+
+
+def test_oidc_client_secret_failure_puts_old_back(client, monkeypatch):
+    _admin_session(client)
+    calls = _fake_authentik(monkeypatch)
+    with session_factory()() as db:
+        oidc, p = _oidc_setup(db, monkeypatch)
+
+        def refuse(cid, secret):
+            raise RuntimeError("the token endpoint answered HTTP 401 invalid_client")
+        monkeypatch.setattr(oidc, "check_client_secret", refuse)
+        try:
+            rotation.rotate_oidc_client_secret(db, p, None)
+            raise AssertionError("expected a RotationError")
+        except rotation.RotationError as exc:
+            assert "old one was put back" in str(exc)
+        assert oidc.client_secret(db) == "file-secret"
+    assert [c[2] for c in calls if c[0] == "PATCH"][-1] == "file-secret"
+
+
+def test_oidc_check_client_secret(monkeypatch):
+    from labape.auth import oidc
+    monkeypatch.setattr(oidc.get_settings(), "oidc_issuer", "https://ak.example.test/application/o/labape/")
+    answers = {"right": "invalid_grant", "wrong": "invalid_client"}
+    monkeypatch.setattr(oidc.httpx, "get", lambda url, timeout: httpx.Response(
+        200, json={"token_endpoint": "https://ak.example.test/application/o/token/"}))
+    monkeypatch.setattr(oidc.httpx, "post", lambda url, timeout, data: httpx.Response(
+        400, json={"error": answers[data["client_secret"]]}))
+    oidc.check_client_secret("labape", "right")
+    try:
+        oidc.check_client_secret("labape", "wrong")
+        raise AssertionError("expected a RuntimeError")
+    except RuntimeError as exc:
+        assert "invalid_client" in str(exc)

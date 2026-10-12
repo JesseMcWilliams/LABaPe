@@ -33,3 +33,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Updating LABaPe: Check now, releases vs pre-releases, what Continue does, rollback (one step in the app, labape-rollback.sh beyond), the release-signing list.
 - Environment page > Password rotation: Windows Administrator and domain Administrator every N days or off; DSRM never; what a failed rotation means and the rotation-candidate secret.
 - Settings > VM accounts: the Linux admin user for new environments (existing ones keep theirs).
+- Secrets: the OIDC client secret rotates daily once it has an elevated Authentik token (view and change on the LABaPe provider); until then it's a reminder, like the directory token. After a rotation the secret file is only a fallback; pasting a new secret into it takes over again.

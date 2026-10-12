@@ -23,6 +23,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Hosts and Networks read-only, limited to what they can use.
 
 ### Added
+- Secret rotation: the OIDC client secret rotates daily through the Authentik
+  API with an elevated Authentik token, is checked at the token endpoint
+  (put back if it fails), and takes effect at the next sign-in with no
+  restart. Secrets that need an elevated account (this one and the
+  directory token) are reminders until one is chosen, instead of failing
+  every hour.
 - Secret rotation (phase R2): the engine's Ansible vault password and the
   VM bootstrap SSH key rotate daily through the host agent, with no
   restart and no maintenance mode. The new key is added and checked on

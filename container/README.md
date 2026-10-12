@@ -55,7 +55,7 @@ The update agent rotates the vault password and the VM key here daily, and copie
 
 `setup.sh` creates `postgres_password`, `secret_key` (signs session cookies and encrypts stored credentials), `database_url` and `tofu_pg_conn`.
 
-- `oidc_client_secret` starts empty; paste the Authentik client secret into it.
+- `oidc_client_secret` starts empty; paste the Authentik client secret into it. Once LABaPe rotates the secret (Settings > Secrets), the rotated one lives in its built-in store; pasting a new value here later takes over again.
 - The directory is mode 0700. The files are 0644 because each container reads them as its own user (PostgreSQL reads as uid 70).
 - Never commit any of these. `.gitignore` already excludes them.
 
