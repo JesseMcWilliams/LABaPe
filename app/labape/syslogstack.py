@@ -70,8 +70,9 @@ _engine: Engine | None = None
 
 
 def present() -> bool:
-    """The collector's containers are part of this install (its socket volume is mounted)."""
-    return SOCKET.parent.is_dir()
+    """The collector's database is running here: its socket exists (the volume is mounted even when
+    the installer left the collector out, design §29.2)."""
+    return SOCKET.exists()
 
 
 def engine() -> Engine:

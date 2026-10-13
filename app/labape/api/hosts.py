@@ -5,12 +5,13 @@ container) or remote over SSH (qemu+ssh://user@host/system, design §22.4).
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 import subprocess
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -20,7 +21,7 @@ from ..engine import hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
 from ..engine import hostadmin
-from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost
+from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
 from ..security import Principal, audit, client_ip, current_principal, require_roles
@@ -340,18 +341,27 @@ class NetworkAnswer(BaseModel):
     Reserved: list[str] = []
 
 
+class NetworkChoice(BaseModel):
+    """A network from Admin → Networks for the new host (question 127): only what's specific to the host."""
+    network_id: int
+    Bridge: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,15}$")
+    Nic: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,15}$")
+    HostAddress: str = "dhcp"
+
+
 class InstallIn(BaseModel):
-    """The answers install-labape.py --profile kvm needs (deploy/README.md); no secrets."""
+    """The answers install-labape.py --profile kvm needs (deploy/README.md); no secrets. Networks come
+    from the catalog (NetworkChoices) or, for scripts, as full answers (Networks)."""
     ServiceUser: str = Field(default="labape", pattern=r"^[a-z_][a-z0-9_-]{0,31}$")
     KvmHostName: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,62}$")
     VmStoragePath: str = Field(default="/data/VMs/LABaPe", pattern=r"^/[A-Za-z0-9._/-]+$")
     TemplateStoragePath: str = Field(default="/data/VMs/LABaPe/templates", pattern=r"^/[A-Za-z0-9._/-]+$")
     IsoPath: str = Field(default="/data/OS_Images", pattern=r"^/[A-Za-z0-9._/-]+$")
-    Networks: list[NetworkAnswer] = Field(min_length=1, max_length=8)
-    DefaultNetwork: str
-    DomainName: str = "labape.test"
-    NetbiosName: str = "LABAPE"
-    InstallCli: bool = True
+    Networks: list[NetworkAnswer] = Field(default=[], max_length=8)
+    NetworkChoices: list[NetworkChoice] = Field(default=[], max_length=8)
+    DefaultNetwork: str = ""
+    InstallCli: bool = True              # OpenTofu and Packer: the host's jobs run them
+    CliCheckout: bool = False            # a command-line checkout there too (question 126)
     ForwardHostLogs: bool = True        # the host's logs to the stack's syslog collector (question 124)
 
 
@@ -362,14 +372,37 @@ def install_host(host_id: int, body: InstallIn, request: Request, db: Session = 
     h = _host(db, host_id)
     if h.access_status != "ready":
         raise FieldError("access", "Set up SSH access to this host first.")
-    if body.DefaultNetwork not in [n.Name for n in body.Networks]:
+    networks, ids = list(body.Networks), {}
+    for ch in body.NetworkChoices:
+        net = db.get(Network, ch.network_id)
+        if net is None or not net.enabled:
+            raise FieldError("NetworkChoices", f"Network {ch.network_id} isn't in Admin → Networks (or is turned off).")
+        cidr = ipaddress.IPv4Network(net.cidr, strict=False)
+        try:
+            networks.append(NetworkAnswer(
+                Name=net.name, Cidr=net.cidr, Gateway=net.gateway or str(cidr.network_address + 1),
+                DnsServers=net.dns_servers or [], Bridge=ch.Bridge, Nic=ch.Nic, HostAddress=ch.HostAddress or "dhcp",
+                Addressing=net.addressing or ["static"], StaticPools=net.static_pools or [],
+                DhcpRanges=net.dhcp_ranges or [], Reserved=net.reserved or []))
+        except ValidationError as exc:
+            raise FieldError("NetworkChoices", f"{net.name}: {exc.errors()[0]['msg']}") from exc
+        ids[net.name] = net.id
+    if not networks:
+        raise FieldError("NetworkChoices", "Choose at least one network the host carries.")
+    names = [n.Name for n in networks]
+    if len(set(names)) != len(names):
+        raise FieldError("NetworkChoices", "Each network once.")
+    default = body.DefaultNetwork or names[0]
+    if default not in names:
         raise FieldError("DefaultNetwork", "The default network must be one of the networks.")
     busy = db.scalar(select(Job).where(Job.kvm_host_id == h.id, Job.type == "host.install",
                                        Job.state.in_(("queued", "running"))))
     if busy:
         raise HTTPException(status_code=409, detail=f"Job {busy.id} is already preparing this host")
-    answers = body.model_dump()
-    answers["Networks"] = [n.model_dump() for n in body.Networks]
+    answers = body.model_dump(exclude={"NetworkChoices"})
+    answers["Networks"] = [n.model_dump() for n in networks]
+    answers["DefaultNetwork"] = default
+    answers["_NetworkIds"] = ids          # not an installer answer ("_"): the attachments made on success
     job = Job(type="host.install", params={"answers": answers}, kvm_host_id=h.id, requested_by=p.username)
     db.add(job)
     db.commit()

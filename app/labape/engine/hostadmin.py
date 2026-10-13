@@ -678,6 +678,25 @@ if os.path.isdir(root):
 INSTALL_ROOT = "/opt/labape-kvm"
 
 
+def attach_networks(db: Session, h: KvmHost, answers: dict) -> list[str]:
+    """After a successful Prepare, the catalog networks chosen in the form (question 127) are
+    attached to the host on the bridges the installer made; existing attachments keep their own
+    settings. Returns the names attached now."""
+    from ..models import HostNetwork
+    ids = answers.get("_NetworkIds") or {}
+    bridges = {n["Name"]: n["Bridge"] for n in answers.get("Networks") or []}
+    have = {hn.network_id for hn in db.scalars(select(HostNetwork).where(HostNetwork.kvm_host_id == h.id))}
+    done = []
+    for name, net_id in ids.items():
+        if net_id in have or name not in bridges:
+            continue
+        db.add(HostNetwork(kvm_host_id=h.id, network_id=net_id, bridge=bridges[name],
+                           is_default=name == answers.get("DefaultNetwork") and not have))
+        done.append(name)
+    db.commit()
+    return done
+
+
 def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     """The `host.install` job: copy the installer to the host and run
     `install-labape.py --profile kvm` there as root, unattended, from the answers in the job's
@@ -719,7 +738,7 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
         log(f"labape: copying failed: {r.stderr.decode(errors='replace').strip()[-400:]}\n")
         return 1
     put = ssh.run(f"sudo -n tee {root}/deploy/answers.web.json >/dev/null && sudo -n chmod 0600 {root}/deploy/answers.web.json",
-                  input=json.dumps(answers, indent=2).encode())
+                  input=json.dumps({k: v for k, v in answers.items() if k != "ForwardHostLogs"}, indent=2).encode())
     # The service user owns the repository copy, as on any LABaPe host: the installer runs
     # ansible-vault and the CLI checks as that user. Created here if it doesn't exist yet
     # (the same as the installer's Prereq.User).
@@ -751,6 +770,9 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     svc = answers.get("ServiceUser") or "labape"
     h.libvirt_uri = f"qemu+ssh://{svc}@{h.ssh_address}{'' if (h.ssh_port or 22) == 22 else ':' + str(h.ssh_port)}/system"
     db.commit()
+    attached = attach_networks(db, h, answers)
+    if attached:
+        log(f"labape: {h.name} now carries {', '.join(attached)} (Admin → Networks)\n")
     if answers.get("ForwardHostLogs", True):             # question 124: optional, default yes
         try:
             set_log_forwarding(db, h, True)

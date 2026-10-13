@@ -4,10 +4,10 @@
 import { Fragment, ReactNode, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Paper, Stack, Table,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
-import { api, fmtTime, KvmHost } from "../api";
+import { api, fmtTime, KvmHost, Network } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton } from "./Confirm";
 import { Facts } from "./PageParts";
@@ -383,9 +383,8 @@ export function VmsSection({ view }: { view: AdminView }) {
   );
 }
 
-const exampleNetwork = { Name: "lab-vlan", Cidr: "192.168.48.0/22", Gateway: "192.168.48.1", DnsServers: ["192.168.48.1"],
-  Bridge: "br1", Nic: "eno2", HostAddress: "dhcp", Addressing: ["static", "dhcp"], StaticPools: ["192.168.50.1-192.168.51.254"],
-  DhcpRanges: ["192.168.48.16-192.168.49.254"], Reserved: [] };
+// One catalog network the host will carry (question 127): only the host-specific parts.
+interface NetChoice { on: boolean; Bridge: string; Nic: string; HostAddress: string }
 
 export function AccessSection({ host, reload }: { host: KvmHost; reload: () => void }) {
   const navigate = useNavigate();
@@ -393,7 +392,15 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [msg, setMsg] = useState("");
   const [install, setInstall] = useState({ KvmHostName: host.name, ServiceUser: "labape", VmStoragePath: host.vm_storage_path, TemplateStoragePath: host.template_storage_path,
-    IsoPath: "/data/OS_Images", DefaultNetwork: "lab-vlan", Networks: JSON.stringify([exampleNetwork], null, 2), ForwardHostLogs: true });
+    IsoPath: "/data/OS_Images", DefaultNetwork: "", ForwardHostLogs: true, InstallCli: true, CliCheckout: false });
+  const [catalog, setCatalog] = useState<Network[]>([]);
+  const [choices, setChoices] = useState<Record<number, NetChoice>>({});
+  useEffect(() => {
+    api.get<Network[]>("/api/networks").then((nets) => setCatalog(nets.filter((n) => n.enabled)), () => setCatalog([]));
+  }, []);
+  const choice = (id: number): NetChoice => choices[id] ?? { on: false, Bridge: "", Nic: "", HostAddress: "dhcp" };
+  const setChoice = (id: number, patch: Partial<NetChoice>) => setChoices({ ...choices, [id]: { ...choice(id), ...patch } });
+  const chosen = catalog.filter((n) => choice(n.id).on);
   const [fwdBusy, setFwdBusy] = useState(false);
   const forward = async (enabled: boolean) => {
     setFwdBusy(true); setMsg("");
@@ -418,7 +425,10 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
   const prepare = async () => {
     setErrs({ summary: "", fields: {} });
     try {
-      const r = await api.post<{ job_id: number }>(`/api/hosts/${host.id}/install`, { ...install, Networks: JSON.parse(install.Networks) });
+      const NetworkChoices = chosen.map((n) => ({ network_id: n.id, Bridge: choice(n.id).Bridge, Nic: choice(n.id).Nic,
+        HostAddress: choice(n.id).HostAddress || "dhcp" }));
+      const r = await api.post<{ job_id: number }>(`/api/hosts/${host.id}/install`,
+        { ...install, DefaultNetwork: install.DefaultNetwork || chosen[0]?.name || "", NetworkChoices });
       navigate(`/jobs/${r.job_id}`);
     } catch (e) { setErrs(fromApiError(e)); }
   };
@@ -457,20 +467,47 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Prepare this host</Typography>
           <Typography variant="body2" color="text.secondary">
             Installs what a KVM host needs (libvirt and QEMU, bridges, storage folders, Ansible, OpenTofu, Packer) with the installer&apos;s kvm profile,
-            as a job, through the access account. The host must run Debian. Afterwards the host&apos;s libvirt URI points at it. Network answers are
-            described in deploy/README.md.
+            as a job, through the access account. The host must run Debian (Rocky and Alma follow). Afterwards the host&apos;s libvirt URI points at it
+            and it carries the networks chosen below. Jobs bring their own files, so the host needs no command-line setup unless you want one.
           </Typography>
           <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
-            {(["KvmHostName", "ServiceUser", "VmStoragePath", "TemplateStoragePath", "IsoPath", "DefaultNetwork"] as const).map((k) => (
+            {(["KvmHostName", "ServiceUser", "VmStoragePath", "TemplateStoragePath", "IsoPath"] as const).map((k) => (
               <Field key={k} label={k} value={install[k]} error={errs.fields[k]} onChange={(e) => setInstall({ ...install, [k]: e.target.value })} />
             ))}
             <FormControlLabel label="Send its logs to the syslog collector" title="Afterwards, forward the host's own logs to the stack's collector over TLS"
               control={<Checkbox checked={install.ForwardHostLogs} onChange={(e) => setInstall({ ...install, ForwardHostLogs: e.target.checked })} />} />
+            <FormControlLabel label="OpenTofu and Packer" title="The host's deploy and template jobs run them there"
+              control={<Checkbox checked={install.InstallCli} onChange={(e) => setInstall({ ...install, InstallCli: e.target.checked })} />} />
+            <FormControlLabel label="Command-line checkout too" title="Also set up the vault, environment.yml and manifests for running LABaPe's command line on this host"
+              control={<Checkbox checked={install.CliCheckout} onChange={(e) => setInstall({ ...install, CliCheckout: e.target.checked })} />} />
           </Stack>
-          <Field label="Networks (JSON)" value={install.Networks} multiline minRows={6} fullWidth error={errs.fields.Networks}
-            help="Bridge and Nic are on the new host; HostAddress is the bridge's address (dhcp or CIDR)" onChange={(e) => setInstall({ ...install, Networks: e.target.value })} />
+          <Typography variant="subtitle2">Networks it carries (from Admin → Networks)</Typography>
+          {errs.fields.NetworkChoices && <Alert severity="error">{errs.fields.NetworkChoices.message}</Alert>}
+          {catalog.length === 0 && <Typography variant="body2" color="text.secondary">No networks yet: add them in Admin → Networks first.</Typography>}
+          {catalog.map((n) => {
+            const c = choice(n.id);
+            return (
+              <Stack key={n.id} direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
+                <FormControlLabel sx={{ minWidth: 240 }} label={`${n.name} (${n.cidr})`}
+                  control={<Checkbox checked={c.on} onChange={(e) => setChoice(n.id, { on: e.target.checked })} />} />
+                {c.on && (
+                  <>
+                    <Field label="Bridge" value={c.Bridge} sx={{ width: 120 }} help="Created if missing" onChange={(e) => setChoice(n.id, { Bridge: e.target.value })} />
+                    <Field label="NIC" value={c.Nic} sx={{ width: 120 }} help="On the new host, e.g. eno2" onChange={(e) => setChoice(n.id, { Nic: e.target.value })} />
+                    <Field label="Host address" value={c.HostAddress} sx={{ width: 170 }} help="The bridge's: dhcp or a CIDR" onChange={(e) => setChoice(n.id, { HostAddress: e.target.value })} />
+                  </>
+                )}
+              </Stack>
+            );
+          })}
+          {chosen.length > 1 && (
+            <Field select label="Default network" value={install.DefaultNetwork || chosen[0].name} sx={{ width: 240 }}
+              help="For host groups that don't name one" onChange={(e) => setInstall({ ...install, DefaultNetwork: e.target.value })}>
+              {chosen.map((n) => <MenuItem key={n.id} value={n.name}>{n.name}</MenuItem>)}
+            </Field>
+          )}
           <Stack direction="row">
-            <ActionButton variant="outlined" disabled={host.access_status !== "ready"} onClick={prepare}
+            <ActionButton variant="outlined" disabled={host.access_status !== "ready" || chosen.length === 0 || chosen.some((n) => !choice(n.id).Bridge || !choice(n.id).Nic)} onClick={prepare}
               tip={host.access_status === "ready" ? "Run the installer on this host as a job" : "Set up SSH access first"}
               confirm={{ title: `Prepare ${host.name}?`, confirmLabel: "Prepare", danger: true,
                 body: "The installer runs as root on the host: it installs packages, creates bridges on the NICs you named (network connections may drop briefly), the service user and the storage folders. Finished steps are skipped on a re-run." }}>
