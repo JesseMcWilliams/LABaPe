@@ -83,7 +83,7 @@ Future item from 113: adding more local and domain accounts to an environment (P
 - **Catalog → Requests** (R8). A **New request** button on the Requests tab opens the existing
   request form, with a kind selector (service, application or package).
 
-### O2. Files: filters, descriptions, installer OS targets
+### O2. Files: filters, descriptions, installer OS targets (built 2026-10-13: Planning_Web-Interface-Design.md §28.2)
 
 - **Filters** (R5) on every Files tab: name (contains), size range, SHA-256 (prefix match),
   description (contains), and date added (range). Filtering runs in the browser for these list

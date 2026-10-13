@@ -1228,3 +1228,13 @@ The plan, options and decisions are in [Planning_Operations-And-Admin-UI.md](Pla
 | Audit, User errors | The same filter bar. User errors: user, where (path or page contains), message contains, source (server/browser), HTTP status, from/to, and **Export JSON** (`/api/admin/errors/export`, audited as `errors.export`), like the audit log. Audit gains the date range in the page (the API had it). |
 | Catalog requests | The Requests tab has a short description and a **New request** button (the request form with a kind selector). |
 | Verified | pytest 138 (filters, names, facets, visibility for a deployer without grants, error filters and export). Live on the lab stack: the UI builds (type-check); admin and `labape-dev` job lists and facets through `live/jobs.py` (the developer sees only their own jobs and `lab2`'s). |
+
+### 28.2 O2 as built: Files filters, tab descriptions, installer OS targets
+
+| Area | As built |
+|---|---|
+| Descriptions | Each Files tab (ISOs, Installers, Other files, Templates) starts with a sentence saying what its files are for. |
+| Filters | Every tab: name contains, size range (MB), SHA-256 prefix, description contains, date added (from/to); Installers also by target; Templates by name, OS, KVM host and description. Client-side (the lists are small), kept in the URL with the shared filter bar (§28.1). |
+| Targets (question 112) | `files.targets` (migration `0007`): a list mixing generic (`any`, `windows`, `linux`), families (`windows-server`, `windows-client`, `rhel-family`, `debian-family`) and exact OS keys (`rocky9`, `windows_server_2022`, …), defined in `app/labape/ostargets.py` and served by `GET /api/files/targets`. Uploads, URL downloads and the folder scan set a starting value from the extension (MSI/EXE → windows, DEB → debian-family, RPM → rhel-family, else any); existing installers got the same from the migration. An empty list matches nothing, so an unclassified installer is never used silently. The file page edits them with a grouped picker; the list shows them as chips. |
+| Enforcement | The catalog refuses an application whose local Windows (or Linux) installer targets no Windows (or Linux) OS. Deploy forms refuse an application on a host group whose OS its local installer doesn't target, naming the installer and its targets. |
+| Verified | pytest 141 (matching rules, API validation, catalog and deploy refusals, migration 0007). Live: migration applied on the lab stack, the UI builds, `live/files.py --targets` lists the vocabulary (the lab has no installers yet). |

@@ -22,6 +22,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- Files: every tab says what its files are for and has filters (name, size,
+  SHA-256, description, date added; Templates by name, OS, host). Installers
+  list the OSes they target, generic (Any, Windows, Linux), by family or
+  exact OS; the catalog and deploy forms refuse an installer on an OS it
+  doesn't target. Existing installers get targets from their extension
+  (migration 0007).
 - The maintainer's release signing key (Ed25519) in `deploy/allowed_signers`,
   so the update agent can accept signed release tags. `install.sh` now also
   replaces a host's comments-only signer list (the placeholder) with the

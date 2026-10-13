@@ -13,19 +13,33 @@ import { api, fmtTime, KvmHost, Template } from "../api";
 import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
+import { DateRangeFields, FilterBar, SelectFilter, useUrlFilters } from "../components/Filters";
+import { TargetChips, useTargetVocabulary } from "../components/Targets";
 
 // File manager (design §9, §21.3): ISOs, installers, other files, and the
 // template library. Admins and file managers upload; template editors
 // build, refresh and edit templates; everyone can browse.
 export interface StoredFile {
   id: number; category: string; name: string; path: string; size: number; mtime: string | null; sha256: string;
-  os_key: string; is_default: boolean; description: string; notes: string; uploaded_by: string;
+  os_key: string; is_default: boolean; targets: string[]; description: string; notes: string; uploaded_by: string;
   uploaded_at: string | null;
 }
 
 export const OS_KEYS = ["rocky9", "ubuntu_lts", "ubuntu_26", "debian_latest", "windows_server_2019", "windows_server_2022",
   "windows_server_2025", "windows_11", "windows_10"];
-const CATS = [{ key: "isos", label: "ISOs" }, { key: "installers", label: "Installers" }, { key: "files", label: "Other files" }];
+// Each tab says what its files are for (design §28.2).
+const CATS = [
+  { key: "isos", label: "ISOs",
+    help: "Operating system install media. Template builds and ISO host groups install from them; each ISO names the OS it installs, and one per OS is the default." },
+  { key: "installers", label: "Installers",
+    help: "MSI, EXE, DEB and RPM files that catalog applications install from (source: local). Each lists the OSes it targets, generic (Windows, Linux) or specific; deploys use it only on those." },
+  { key: "files", label: "Other files",
+    help: "Anything else to keep with the lab: scripts, license files, configuration and data that jobs or people copy onto hosts." },
+];
+const TEMPLATES_HELP = "Disk images new VMs are cloned from, one library per KVM host. Build one from an ISO, refresh it with the latest updates, or promote a configured VM from an environment.";
+
+const FILE_KEYS = ["name", "minmb", "maxmb", "sha", "desc", "target", "since", "until"];
+const contains = (hay: string, needle: string) => !needle || hay.toLowerCase().includes(needle.toLowerCase());
 
 export const size = (n: number) => n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${(n / 2 ** 20).toFixed(1)} MB`
   : `${Math.ceil(n / 1024)} KB`;
@@ -156,6 +170,20 @@ function DownloadButton({ category }: { category: string }) {
 function FileTable({ category, canManage }: { category: string; canManage: boolean }) {
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [error, setError] = useState("");
+  const flt = useUrlFilters(FILE_KEYS);
+  const vocab = useTargetVocabulary();
+  const a = flt.applied;
+  // Filtering runs in the browser: the lists are small (design §28.2).
+  const shown = files.filter((x) => {
+    const added = x.uploaded_at ?? x.mtime;
+    const mb = x.size / 2 ** 20;
+    return contains(x.name, a.name) && contains(x.description, a.desc)
+      && (!a.sha || x.sha256.toLowerCase().startsWith(a.sha.toLowerCase()))
+      && (!a.minmb || mb >= Number(a.minmb)) && (!a.maxmb || mb <= Number(a.maxmb))
+      && (!a.target || (x.targets ?? []).includes(a.target))
+      && (!a.since || (added !== null && new Date(added) >= new Date(a.since)))
+      && (!a.until || (added !== null && new Date(added) <= new Date(a.until)));
+  });
   const load = () => api.get<StoredFile[]>(`/api/files?category=${category}`).then(setFiles, (e) => setError(e.message));
   useEffect(() => { load(); }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
   const remove = async (f: StoredFile) => {
@@ -165,17 +193,35 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
     <Stack spacing={2}>
       {canManage && <Uploader category={category} onDone={load} />}
       {error && <Alert severity="error">{error}</Alert>}
+      <FilterBar onApply={() => flt.apply()} onClear={flt.clear} active={flt.active}>
+        <Field label="Name" value={flt.draft.name} sx={{ width: 180 }} help="Contains" onChange={(e) => flt.set("name", e.target.value)} />
+        <Field label="Min MB" value={flt.draft.minmb} sx={{ width: 100 }} help="Size at least"
+          onChange={(e) => flt.set("minmb", e.target.value.replace(/[^0-9.]/g, ""))} />
+        <Field label="Max MB" value={flt.draft.maxmb} sx={{ width: 100 }} help="Size at most"
+          onChange={(e) => flt.set("maxmb", e.target.value.replace(/[^0-9.]/g, ""))} />
+        <Field label="SHA-256" value={flt.draft.sha} sx={{ width: 150 }} help="Starts with" onChange={(e) => flt.set("sha", e.target.value.trim())} />
+        <Field label="Description" value={flt.draft.desc} sx={{ width: 170 }} help="Contains" onChange={(e) => flt.set("desc", e.target.value)} />
+        {category === "installers" && (
+          <SelectFilter label="Target" value={flt.draft.target} width={190} help="Lists this target"
+            options={vocab.map((t) => t.value)} onChange={(v) => flt.set("target", v)} />
+        )}
+        <DateRangeFields since={flt.draft.since} until={flt.draft.until} onChange={flt.set} />
+      </FilterBar>
+      <Typography variant="body2" color="text.secondary">
+        {flt.active ? `${shown.length} of ${files.length} files match` : `${files.length} file${files.length === 1 ? "" : "s"}`}
+      </Typography>
       <Table size="small">
         <TableHead>
           <TableRow>
             <TableCell>Name</TableCell>
             {category === "isos" && <TableCell>OS</TableCell>}
+            {category === "installers" && <TableCell>Targets</TableCell>}
             <TableCell>Size</TableCell><TableCell>SHA-256</TableCell><TableCell>Description</TableCell>
             <TableCell>Added</TableCell><TableCell />
           </TableRow>
         </TableHead>
         <TableBody>
-          {files.map((f) => (
+          {shown.map((f) => (
             <TableRow key={f.id}>
               <TableCell>
                 <Link component={RouterLink} to={`/files/${f.id}`}>{f.name}</Link>
@@ -184,6 +230,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
               {category === "isos" && (
                 <TableCell>{f.os_key || "—"}{f.is_default && <Chip size="small" label="default" color="primary" sx={{ ml: 1 }} />}</TableCell>
               )}
+              {category === "installers" && <TableCell><TargetChips targets={f.targets ?? []} vocab={vocab} /></TableCell>}
               <TableCell sx={{ whiteSpace: "nowrap" }}>{size(f.size)}</TableCell>
               <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>
                 {f.sha256 ? <Tooltip title={f.sha256}><span>{f.sha256.slice(0, 12)}…</span></Tooltip> : "computing…"}
@@ -201,7 +248,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
               </TableCell>
             </TableRow>
           ))}
-          {files.length === 0 && <TableRow><TableCell colSpan={7}>No files here yet.</TableCell></TableRow>}
+          {shown.length === 0 && <TableRow><TableCell colSpan={8}>{files.length ? "No files match these filters." : "No files here yet."}</TableCell></TableRow>}
         </TableBody>
       </Table>
     </Stack>
@@ -247,8 +294,19 @@ function Templates({ canEdit }: { canEdit: boolean }) {
     api.get<KvmHost[]>("/api/hosts").then((h) => { setHosts(h); if (h.length) setBuild((b) => ({ ...b, kvm_host_id: h[0].id })); });
   }, []);
   const hostName = (id: number) => hosts.find((h) => h.id === id)?.name ?? id;
+  const flt = useUrlFilters(["name", "os", "host", "desc"]);
+  const a = flt.applied;
+  const shown = templates.filter((t) => contains(t.name, a.name) && contains(t.description ?? "", a.desc)
+    && (!a.os || t.os_key === a.os) && (!a.host || String(hostName(t.kvm_host_id)) === a.host));
   return (
     <Stack spacing={2}>
+      <FilterBar onApply={() => flt.apply()} onClear={flt.clear} active={flt.active}>
+        <Field label="Name" value={flt.draft.name} sx={{ width: 200 }} help="Contains" onChange={(e) => flt.set("name", e.target.value)} />
+        <SelectFilter label="OS" value={flt.draft.os} options={OS_KEYS} width={200} onChange={(v) => flt.set("os", v)} />
+        <SelectFilter label="KVM host" value={flt.draft.host} options={hosts.map((h) => h.name)} width={160}
+          onChange={(v) => flt.set("host", v)} />
+        <Field label="Description" value={flt.draft.desc} sx={{ width: 200 }} help="Contains" onChange={(e) => flt.set("desc", e.target.value)} />
+      </FilterBar>
       {canEdit && (
         <Stack direction="row">
           <Box sx={{ flexGrow: 1 }} />
@@ -264,7 +322,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
           </TableRow>
         </TableHead>
         <TableBody>
-          {templates.map((t) => (
+          {shown.map((t) => (
             <TableRow key={t.id}>
               <TableCell>
                 <Link component={RouterLink} to={`/templates/${t.id}`}>{t.name}</Link>
@@ -343,6 +401,9 @@ export default function Files() {
         {CATS.map((c) => <Tab key={c.key} value={c.key} label={c.label} />)}
         <Tab value="templates" label="Templates" />
       </Tabs>
+      <Typography variant="body2" color="text.secondary">
+        {tab === "templates" ? TEMPLATES_HELP : CATS.find((c) => c.key === tab)?.help}
+      </Typography>
       {tab === "templates" ? <Templates canEdit={canEditTemplates} />
         : <FileTable key={tab} category={tab} canManage={canManage} />}
       {tab !== "templates" && !canManage && (

@@ -23,7 +23,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings
+from .. import appsettings, ostargets
 from ..db import session_factory
 from ..files import infer_os, roots
 from ..models import Job, StoredFile, utcnow
@@ -196,6 +196,7 @@ def run_download(db: Session, job: Job) -> int:
         f = StoredFile(category=p["category"], name=name, path=str(target), size=st.st_size,
                        mtime=dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc), sha256=sha256,
                        os_key=infer_os(name) if p["category"] == "isos" else "",
+                       targets=ostargets.infer(name) if p["category"] == "installers" else [],
                        description=p.get("description", ""), uploaded_by=job.requested_by, uploaded_at=utcnow())
         db.add(f)
         db.commit()

@@ -26,7 +26,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import CatalogItem
+from . import ostargets
+from .models import CatalogItem, StoredFile
 
 KINDS = ("service", "application", "package")
 PKG_MANAGERS = ("chocolatey", "apt", "dnf", "zypper")
@@ -79,6 +80,10 @@ def validate(db: Session, kind: str, definition: dict) -> None:
                     raise CatalogError(f"{plat}.path must name a file in the installers location.")
                 if plat == "windows" and inst.get("type") == "msi" and not inst.get("product_id"):
                     raise CatalogError("windows.product_id (the MSI's product code) is needed to tell if it's installed.")
+                f = local_installer(db, inst)
+                if f is not None and not ostargets.covers_platform(f.targets or [], plat):
+                    raise CatalogError(f"{plat}.path: {f.name} targets {ostargets.describe(f.targets or [])}, not "
+                                       f"{plat}. Change its targets on the Files tab, or choose another installer.")
     elif kind == "service":
         if not d or any(k not in ("windows", "linux") for k in d):
             raise CatalogError("A service defines windows and/or linux sections.")
@@ -109,6 +114,24 @@ def validate(db: Session, kind: str, definition: dict) -> None:
                                    "items")
     else:
         raise CatalogError("kind must be service, application or package.", "kind")
+
+
+def local_installer(db: Session, inst: dict) -> StoredFile | None:
+    """The Files-tab installer an application's local `path` names, if it's there."""
+    if (inst or {}).get("source") != "local" or not inst.get("path"):
+        return None
+    name = str(inst["path"]).replace("\\", "/").rsplit("/", 1)[-1]
+    return db.scalar(select(StoredFile).where(StoredFile.category == "installers", StoredFile.name == name,
+                                              StoredFile.present.is_(True)))
+
+
+def installer_mismatch(db: Session, definition: dict, os_key: str) -> str | None:
+    """Why an application's local installer can't be used on os_key, or None (question 112)."""
+    plat = "windows" if os_key.startswith("windows") else "linux"
+    f = local_installer(db, (definition or {}).get(plat) or {})
+    if f is None or ostargets.matches(f.targets or [], os_key):
+        return None
+    return f"its installer {f.name} targets {ostargets.describe(f.targets or [])}"
 
 
 def expand(db: Session, services: list[str], applications: list[str], packages: list[str]) -> dict:

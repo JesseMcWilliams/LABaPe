@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .. import appsettings
 from ..db import get_db
-from ..catalog import CatalogError, expand, platforms
+from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
 from ..engine.hoststats import assess, demand_of
 from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, Template, utcnow
@@ -159,6 +159,10 @@ def _check_catalog(db: Session, groups: list[dict]) -> None:
                 if family not in platforms(kind[:-1], definition):
                     raise FieldError(f"host_groups.{i}.{kind}", f"{kind[:-1].capitalize()} {name} has nothing to "
                                      f"install on {family}; remove it from this {g.get('os')} group.")
+                why = installer_mismatch(db, definition, g.get("os", "")) if kind == "applications" else None
+                if why:
+                    raise FieldError(f"host_groups.{i}.{kind}", f"Application {name} can't go on {g.get('os')}: "
+                                     f"{why}. Remove it from this group, or widen the installer's targets.")
 
 
 def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
