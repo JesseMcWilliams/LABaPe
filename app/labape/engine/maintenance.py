@@ -151,6 +151,11 @@ def purge_history(db: Session) -> dict[str, int]:
     db.commit()
     purge_backups(appsettings.get(db, "backup"))
     out["recordings"] = purge_recordings(appsettings.get(db, "remote").keep_recordings_days)
+    from .. import syslogstack
+    try:
+        out["syslog"] = syslogstack.purge(db)
+    except Exception as exc:  # noqa: BLE001 — the syslog database may be down; the rest still ran
+        out["syslog_error"] = str(exc)[:200]
     return out
 
 

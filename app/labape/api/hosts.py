@@ -45,7 +45,8 @@ class HostIn(BaseModel):
 def _out(h: KvmHost) -> dict:
     return {c: getattr(h, c) for c in ("id", "name", "libvirt_uri", "vm_storage_path", "template_storage_path",
                                        "bridge", "concurrency_limit", "enabled", "ssh_address", "ssh_port",
-                                       "ssh_user", "access_status", "access_error", "access_at")}
+                                       "ssh_user", "access_status", "access_error", "access_at", "log_forward",
+                                       "log_forward_until", "log_forward_error")}
 
 
 def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
@@ -305,6 +306,26 @@ def manage_accounts(host_id: int, body: ManageIn, request: Request, db: Session 
     return {"ok": True}
 
 
+class LogForwardIn(BaseModel):
+    enabled: bool
+
+
+@router.post("/{host_id}/log-forwarding")
+def log_forwarding(host_id: int, body: LogForwardIn, request: Request, db: Session = Depends(get_db),
+                   p: Principal = Depends(require_roles("admin"))):
+    """Send the host's own logs to the stack's syslog collector, or stop (design §29.1, question 124)."""
+    h = _host(db, host_id)
+    try:
+        hostadmin.set_log_forwarding(db, h, body.enabled)
+    except hostadmin.AdminError as exc:
+        audit(db, p.username, "host.log_forwarding", object_type="kvm_host", object_id=h.id, outcome="failed",
+              detail={"enabled": body.enabled, "error": str(exc)[:300]}, source_ip=client_ip(request))
+        raise FieldError("enabled", str(exc)) from exc
+    audit(db, p.username, "host.log_forwarding", object_type="kvm_host", object_id=h.id,
+          detail={"enabled": body.enabled}, source_ip=client_ip(request))
+    return _out(h)
+
+
 class NetworkAnswer(BaseModel):
     Name: str = Field(pattern=r"^[a-z][a-z0-9-]{0,62}$")
     Cidr: str
@@ -331,6 +352,7 @@ class InstallIn(BaseModel):
     DomainName: str = "labape.test"
     NetbiosName: str = "LABAPE"
     InstallCli: bool = True
+    ForwardHostLogs: bool = True        # the host's logs to the stack's syslog collector (question 124)
 
 
 @router.post("/{host_id}/install")

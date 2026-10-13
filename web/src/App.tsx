@@ -28,6 +28,7 @@ import AdminLayout, { ToAdmin } from "./pages/Admin";
 import RemoteSession from "./pages/RemoteSession";
 import Sessions from "./pages/Sessions";
 import VmDetail from "./pages/VmDetail";
+import Syslog from "./pages/Syslog";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -112,6 +113,11 @@ export default function App() {
               Catalog
             </Button>
             {(hasRole(me, "admin") || hasRole(me, "auditor")) && (
+              <Button color="inherit" component={RouterLink} to="/syslog" title="Messages the stack's syslog collector received (admins and auditors)">
+                Syslog
+              </Button>
+            )}
+            {(hasRole(me, "admin") || hasRole(me, "auditor")) && (
               <Button color="inherit" component={RouterLink} to="/admin" title="KVM hosts, networks, settings, secrets, audit log, remote sessions and user errors (admins; auditors see the logs)">
                 Admin
               </Button>
@@ -145,6 +151,7 @@ export default function App() {
           <Route path="/environments/:id" element={<EnvironmentDetail />} />
           <Route path="/environments/:id/vms/:vm" element={<VmDetail />} />
           <Route path="/jobs" element={<Jobs />} />
+          <Route path="/syslog" element={<Syslog />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route path="hosts" element={<Hosts />} />

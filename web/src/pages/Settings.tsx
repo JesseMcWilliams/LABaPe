@@ -13,8 +13,13 @@ interface Backup { enabled: boolean; time_of_day: string; retention_days: number
 interface Retention { job_logs_days: number; audit_days: number; errors_days: number }
 interface Syslog {
   enabled: boolean; host: string; port: number; protocol: "udp" | "tcp" | "tls"; facility: string; app_name: string;
-  verify_tls: boolean;
+  verify_tls: boolean; client_cert: boolean;
 }
+interface Forward {
+  name: string; enabled: boolean; host: string; port: number; transport: "udp" | "tcp" | "tls"; verify_tls: boolean;
+  client_cert: boolean; format: "rfc5424" | "rfc3164"; facilities: string[]; min_severity: string;
+}
+interface Collector { retention_days: number; require_client_cert: boolean; address: string; forwards: Forward[] }
 interface Smtp {
   enabled: boolean; host: string; port: number; security: "none" | "starttls" | "ssl"; username: string;
   from_address: string; notify_jobs: boolean; has_password: boolean;
@@ -32,6 +37,7 @@ interface AllSettings {
   backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
+  syslog_collector: Collector;
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -40,6 +46,9 @@ interface BackupList {
   last_job: { id: number; state: string; finished_at: string | null } | null;
 }
 
+const SEVERITIES = ["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"];
+const newForward = (): Forward => ({ name: "", enabled: true, host: "", port: 514, transport: "tcp", verify_tls: true,
+  client_cert: false, format: "rfc5424", facilities: [], min_severity: "debug" });
 const FACILITIES = ["local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7", "auth", "daemon", "user"];
 const row = { alignItems: "flex-start", flexWrap: "wrap" } as const;
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
@@ -179,7 +188,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -339,7 +348,7 @@ export default function Settings() {
         </Stack>
       </Section>
 
-      <Section title="Syslog" intro="Send every audit event to a syslog server (RFC 5424, JSON message body)."
+      <Section title="Syslog (audit trail)" intro="Send every audit event to a syslog server (RFC 5424, JSON message body). The stack's own collector is labape-syslog, port 6514, TLS, with LABaPe's client certificate."
         onSave={async () => { await put("syslog", s.syslog); return "Syslog settings saved."; }}
         extra={<TestButton label="Send test message" tip="Send one test event to the syslog server"
           confirmBody={`One test event goes to ${s.syslog.host || "the saved server"}:${s.syslog.port} over ${s.syslog.protocol.toUpperCase()}, using the saved settings (save first if you changed them).`} run={() =>
@@ -365,8 +374,15 @@ export default function Settings() {
             <FormControlLabel label="Verify certificate" control={<Checkbox checked={s.syslog.verify_tls}
               onChange={(e) => set("syslog", { verify_tls: e.target.checked })} />} />
           )}
+          {s.syslog.protocol === "tls" && (
+            <FormControlLabel label="Present LABaPe's client certificate" control={<Checkbox checked={s.syslog.client_cert}
+              onChange={(e) => set("syslog", { client_cert: e.target.checked })} />} />
+          )}
         </Stack>
       </Section>
+
+      <CollectorSection value={s.syslog_collector} onChange={(v) => set("syslog_collector", v)}
+        onSave={async () => { await put("syslog_collector", s.syslog_collector); return "Syslog collector settings saved; the collector restarts within a minute."; }} />
 
       <Section title="Email (SMTP)" intro="Used to email people when their jobs finish. The password is kept in the encrypted secrets store."
         onSave={async () => {
@@ -507,5 +523,66 @@ export default function Settings() {
       </Section>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
     </Stack>
+  );
+}
+
+
+/** The stack's syslog collector (design §29.1): retention, client certificates, and forward targets. */
+function CollectorSection({ value: c, onChange, onSave }: {
+  value: Collector; onChange: (v: Partial<Collector>) => void; onSave: () => Promise<string>;
+}) {
+  const setF = (i: number, patch: Partial<Forward>) =>
+    onChange({ forwards: c.forwards.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
+  return (
+    <Section title="Syslog collector" onSave={onSave}
+      intro="The stack's own collector receives on UDP and TCP 514 and TLS 6514, keeps messages in its database (the Syslog tab) and can forward a copy to a SIEM. Forwards queue on disk while their target is down.">
+      <Stack direction="row" spacing={2} useFlexGap sx={row}>
+        <Field label="Keep messages (days)" type="number" value={c.retention_days} sx={{ width: 190 }} help="1-3650; the worker purges daily"
+          onChange={(e) => onChange({ retention_days: Number(e.target.value) })} />
+        <Field label="Address hosts send to" value={c.address} sx={{ minWidth: 240 }}
+          help="Blank: the web interface's host name. Also in the collector's certificate"
+          onChange={(e) => onChange({ address: e.target.value })} />
+        <FormControlLabel label="TLS clients must present a certificate" control={<Checkbox checked={c.require_client_cert}
+          onChange={(e) => onChange({ require_client_cert: e.target.checked })} />} />
+      </Stack>
+      <Typography variant="subtitle2" sx={{ mt: 1 }}>Forward to</Typography>
+      {c.forwards.length === 0 && <Typography variant="body2" color="text.secondary">Nowhere: messages stay in the collector.</Typography>}
+      {c.forwards.map((f, i) => (
+        <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+          <Stack direction="row" spacing={2} useFlexGap sx={row}>
+            <FormControlLabel label="On" control={<Checkbox checked={f.enabled} onChange={(e) => setF(i, { enabled: e.target.checked })} />} />
+            <Field label="Name" value={f.name} sx={{ width: 150 }} onChange={(e) => setF(i, { name: e.target.value })} />
+            <Field label="Server" value={f.host} sx={{ minWidth: 200 }} help="Host name or address" onChange={(e) => setF(i, { host: e.target.value })} />
+            <Field label="Port" type="number" value={f.port} sx={{ width: 100 }} onChange={(e) => setF(i, { port: Number(e.target.value) })} />
+            <Field select label="Transport" value={f.transport} sx={{ width: 120 }}
+              onChange={(e) => setF(i, { transport: e.target.value as Forward["transport"] })}>
+              <MenuItem value="udp">UDP</MenuItem><MenuItem value="tcp">TCP</MenuItem><MenuItem value="tls">TLS</MenuItem>
+            </Field>
+            <Field select label="Format" value={f.format} sx={{ width: 140 }}
+              onChange={(e) => setF(i, { format: e.target.value as Forward["format"] })}>
+              <MenuItem value="rfc5424">RFC 5424</MenuItem><MenuItem value="rfc3164">RFC 3164</MenuItem>
+            </Field>
+            <Field label="Facilities" value={f.facilities.join(", ")} sx={{ width: 200 }} help="Blank: all; e.g. auth, local0"
+              onChange={(e) => setF(i, { facilities: e.target.value.split(/[\s,]+/).filter(Boolean) })} />
+            <Field select label="Minimum severity" value={f.min_severity} sx={{ width: 160 }}
+              onChange={(e) => setF(i, { min_severity: e.target.value })}>
+              {SEVERITIES.map((v) => <MenuItem key={v} value={v}>{v === "debug" ? "debug (all)" : v}</MenuItem>)}
+            </Field>
+            {f.transport === "tls" && (
+              <>
+                <FormControlLabel label="Verify certificate" control={<Checkbox checked={f.verify_tls} onChange={(e) => setF(i, { verify_tls: e.target.checked })} />} />
+                <FormControlLabel label="Client certificate" control={<Checkbox checked={f.client_cert} onChange={(e) => setF(i, { client_cert: e.target.checked })} />} />
+              </>
+            )}
+            <Button size="small" color="error" onClick={() => onChange({ forwards: c.forwards.filter((_, j) => j !== i) })}
+              title="Remove this target (takes effect when you save)">Remove</Button>
+          </Stack>
+        </Paper>
+      ))}
+      <Stack direction="row">
+        <Button size="small" onClick={() => onChange({ forwards: [...c.forwards, newForward()] })} disabled={c.forwards.length >= 10}
+          title="Add a forward target, e.g. a SIEM (up to 10)">Add target</Button>
+      </Stack>
+    </Section>
   );
 }

@@ -44,6 +44,53 @@ class SyslogSettings(BaseModel):
                       "daemon", "user"] = "local0"
     app_name: str = Field(default="labape", pattern=r"^[A-Za-z0-9_.-]{1,48}$")
     verify_tls: bool = True
+    # TLS only: present LABaPe's client certificate (from the platform CA), which the
+    # stack's own collector asks for by default (design §29.1, question 122).
+    client_cert: bool = False
+
+
+FACILITY_NAMES = ("kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news", "uucp", "cron", "authpriv",
+                  "ftp", "ntp", "security", "console", "clock", *(f"local{i}" for i in range(8)))
+SEVERITY_NAMES = ("emerg", "alert", "crit", "err", "warning", "notice", "info", "debug")
+
+
+class SyslogForward(BaseModel):
+    """One target the stack collector forwards to, e.g. a SIEM (questions 123, 139)."""
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,47}$")
+    enabled: bool = True
+    host: str = Field(pattern=r"^[A-Za-z0-9.:-]{1,253}$")
+    port: int = Field(default=514, ge=1, le=65535)
+    transport: Literal["udp", "tcp", "tls"] = "tcp"
+    verify_tls: bool = True                     # TLS: check the server's certificate and name
+    client_cert: bool = False                   # TLS: present LABaPe's client certificate
+    format: Literal["rfc5424", "rfc3164"] = "rfc5424"
+    facilities: list[str] = Field(default=[], max_length=24)   # empty: every facility
+    min_severity: Literal[SEVERITY_NAMES] = "debug"             # debug: every severity
+
+    @field_validator("facilities")
+    @classmethod
+    def _facilities(cls, v: list[str]) -> list[str]:
+        bad = [f for f in v if f not in FACILITY_NAMES]
+        if bad:
+            raise ValueError(f"unknown facilities: {', '.join(bad)}")
+        return v
+
+
+class SyslogCollectorSettings(BaseModel):
+    """The stack's syslog collector (design §29.1, questions 121-139)."""
+    retention_days: int = Field(default=90, ge=1, le=3650)
+    require_client_cert: bool = True            # TLS 6514 (question 122)
+    # The address KVM hosts and VMs send to; empty: the web interface's host name.
+    address: str = Field(default="", pattern=r"^[A-Za-z0-9.:-]{0,253}$")
+    forwards: list[SyslogForward] = Field(default=[], max_length=10)
+
+    @field_validator("forwards")
+    @classmethod
+    def _unique(cls, v: list[SyslogForward]) -> list[SyslogForward]:
+        names = [f.name for f in v]
+        if len(names) != len(set(names)):
+            raise ValueError("forward names must be unique")
+        return v
 
 
 class SmtpSettings(BaseModel):
@@ -141,6 +188,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "secret_stores": SecretStoreSettings,
     "templates": TemplateSettings,
     "remote": RemoteSettings,
+    "syslog_collector": SyslogCollectorSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

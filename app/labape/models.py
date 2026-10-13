@@ -60,6 +60,11 @@ class KvmHost(Base):
     access_status: Mapped[str] = mapped_column(String(16), default="none")   # none | ready | failed
     access_error: Mapped[str] = mapped_column(Text, default="")
     access_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The host's own logs go to the stack's syslog collector over TLS (design §29.1, question 124);
+    # `until` is its client certificate's expiry, renewed 10 days before.
+    log_forward: Mapped[bool] = mapped_column(Boolean, default=False)
+    log_forward_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    log_forward_error: Mapped[str] = mapped_column(Text, default="")
 
 
 class Network(Base):

@@ -4,7 +4,7 @@
 import { Fragment, ReactNode, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Paper, Stack, Table,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, fmtTime, KvmHost } from "../api";
@@ -393,7 +393,16 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [msg, setMsg] = useState("");
   const [install, setInstall] = useState({ KvmHostName: host.name, ServiceUser: "labape", VmStoragePath: host.vm_storage_path, TemplateStoragePath: host.template_storage_path,
-    IsoPath: "/data/OS_Images", DefaultNetwork: "lab-vlan", Networks: JSON.stringify([exampleNetwork], null, 2) });
+    IsoPath: "/data/OS_Images", DefaultNetwork: "lab-vlan", Networks: JSON.stringify([exampleNetwork], null, 2), ForwardHostLogs: true });
+  const [fwdBusy, setFwdBusy] = useState(false);
+  const forward = async (enabled: boolean) => {
+    setFwdBusy(true); setMsg("");
+    try {
+      await api.post(`/api/hosts/${host.id}/log-forwarding`, { enabled });
+      setMsg(enabled ? "The host's logs now go to the stack's syslog collector (see the Syslog tab)." : "Log forwarding removed.");
+      reload();
+    } catch (e) { setMsg((e as Error).message); reload(); } finally { setFwdBusy(false); }
+  };
   const setup = async () => {
     setErrs({ summary: "", fields: {} });
     try {
@@ -455,6 +464,8 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
             {(["KvmHostName", "ServiceUser", "VmStoragePath", "TemplateStoragePath", "IsoPath", "DefaultNetwork"] as const).map((k) => (
               <Field key={k} label={k} value={install[k]} error={errs.fields[k]} onChange={(e) => setInstall({ ...install, [k]: e.target.value })} />
             ))}
+            <FormControlLabel label="Send its logs to the syslog collector" title="Afterwards, forward the host's own logs to the stack's collector over TLS"
+              control={<Checkbox checked={install.ForwardHostLogs} onChange={(e) => setInstall({ ...install, ForwardHostLogs: e.target.checked })} />} />
           </Stack>
           <Field label="Networks (JSON)" value={install.Networks} multiline minRows={6} fullWidth error={errs.fields.Networks}
             help="Bridge and Nic are on the new host; HostAddress is the bridge's address (dhcp or CIDR)" onChange={(e) => setInstall({ ...install, Networks: e.target.value })} />
@@ -464,6 +475,25 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
               confirm={{ title: `Prepare ${host.name}?`, confirmLabel: "Prepare", danger: true,
                 body: "The installer runs as root on the host: it installs packages, creates bridges on the NICs you named (network connections may drop briefly), the service user and the storage folders. Finished steps are skipped on a re-run." }}>
               Prepare this host
+            </ActionButton>
+          </Stack>
+        </Stack>
+      </Paper>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1.5}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Logs to the syslog collector <Chip size="small" label={host.log_forward ? "on" : "off"} color={host.log_forward ? "success" : "default"} />
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Sends everything the host logs to the stack&apos;s collector (the Syslog tab) over TLS with its own client certificate from the platform CA,
+            renewed automatically. Installs rsyslog if needed, through the access account.
+            {host.log_forward && host.log_forward_until ? ` Certificate valid until ${fmtTime(host.log_forward_until)}.` : ""}
+          </Typography>
+          {host.log_forward_error && <Alert severity="warning">Last attempt failed: {host.log_forward_error}</Alert>}
+          <Stack direction="row">
+            <ActionButton variant="outlined" disabled={host.access_status !== "ready" || fwdBusy} onClick={() => forward(!host.log_forward)}
+              tip={host.access_status !== "ready" ? "Set up SSH access first" : host.log_forward ? "Stop sending this host's logs" : "Send this host's logs to the collector"}>
+              {fwdBusy ? "Working…" : host.log_forward ? "Stop sending logs" : "Send logs"}
             </ActionButton>
           </Stack>
         </Stack>

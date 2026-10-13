@@ -42,6 +42,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- A syslog collector in the stack: rsyslog on UDP/TCP 514 and TLS 6514
+  (client certificates from the platform CA required by default) with its
+  own PostgreSQL, a **Syslog** tab for admins and auditors (filters, paging,
+  live view), retention (90 days by default) and forwarding to SIEMs over
+  UDP, TCP or TLS with facility and severity filters (Admin → Settings →
+  Syslog collector). The audit trail goes there by default on new installs
+  and can present LABaPe's client certificate. KVM hosts can send their own
+  logs to it over TLS (Prepare does it by default; a switch on the host's
+  SSH access section).
 - A details page for each VM of an environment: Dashboard (state, size,
   24-hour load), Disks and volumes, NICs and OS from the QEMU guest agent
   (no login), Accounts and Groups read and changed live by the

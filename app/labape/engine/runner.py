@@ -40,7 +40,7 @@ from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import downloads, engine_secrets, hostadmin, hostio, maintenance, power, rotation, template_versions
-from .. import maintenance_mode, version
+from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
@@ -701,6 +701,8 @@ def serve(slots: int | None = None) -> None:
                 collect_host_stats(db)
             with session_factory()() as db:
                 hostadmin.collect_due(db)          # host facts and metrics over SSH (design §28.4)
+            with session_factory()() as db:
+                syslogstack.tick(db)               # the stack collector's schema, certificates, settings (§29.1)
             with session_factory()() as db:
                 scan_files(db)
             hash_in_background()

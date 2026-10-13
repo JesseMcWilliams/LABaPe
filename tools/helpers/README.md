@@ -46,8 +46,9 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/files.py` | lab (container) | List the Files tab (installers with their OS targets) |
 | `live/power.py` | lab (container) | VM power and start order for an environment |
 | `live/remote_session.py` | lab (container) | Open an SSH/RDP session or a VM console through the tunnel like the browser does; toggle recording; list sessions |
-| `live/hosts.py` | lab (container) | List KVM hosts; enable or disable one |
+| `live/hosts.py` | lab (container) | List KVM hosts; enable or disable one; turn its log forwarding on or off |
 | `live/dashboard_hosts.py` | lab (container) | The KVM hosts the dashboard shows |
+| `live/syslog_stack.py` | lab (container) | The stack's syslog collector: status, messages, test senders, forwarding test, settings |
 | `live/vm_details.py` | lab (container) | A VM's details page data; read its accounts and groups; an account round trip |
 | `live/host_access.py` | lab (container) | KVM host administration: register, set up access, show sections, manage accounts, install |
 | `live/host_access_vm.sh` | lab (host) | Test Set up access against a LABaPe VM with a throwaway password |
@@ -113,6 +114,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `stores_rotate.py` | `stores_rotate.py [openbao\|conjur ...]` | Rotate now on each store's login policy, waits for the job, prints its `labape:` lines, then runs Test connection. |
 | `stores_move.py` | `stores_move.py [environment]` | Needs `stores.py` first. Moves the directory token built-in → OpenBao → Conjur → built-in, running group search after each move, moves an environment's credentials sheet (default `lab2`) to OpenBao and back comparing the sheet's hash, and sets the default store to OpenBao and back. |
 | `remote_session.py` | `vm ENV VM ssh\|rdp\|serial\|vnc`, `host HOST ssh`, `record on\|off`, `sessions` | Reports the opcodes guacd sent (and any error); acknowledges frames; sends no keystrokes. `serial` and `vnc` are the VM's consoles through its KVM host. |
+| `syslog_stack.py` | `status`, `messages [filter=value ...]`, `send ADDRESS`, `forwardtest ADDRESS udp\|tcp\|tls`, `settings [...]` | `send` puts one tagged message over UDP, TCP and TLS without a client certificate (refused while certificates are required); `forwardtest` listens on ADDRESS:5514, adds a forward to it, sends a message and waits for the copy, then removes the forward. |
 | `vm_details.py` | `show ENV VM`, `accounts ENV VM`, `roundtrip ENV VM` | `roundtrip` adds a test account and group, adds the member, locks, unlocks, sets the password (the fake placeholder), deletes both, and checks a protected delete is refused and the password stays out of the audit log. Use a throwaway VM. |
 | `host_access.py` | see its docstring | `setup` and `install` read the password or answers on stdin. |
 | `host_access_vm.sh` | `host_access_vm.sh <vm address> <host id> <web URL>` | Sets a random password for the VM's `labape` user, feeds it to `host_access.py setup` on stdin, then locks it again. Never prints it. |

@@ -94,6 +94,10 @@ The stack runs its own CA, `labape-ca` (step-ca), initialized on first start fro
 
 For a throwaway Authentik already configured this way, see [tools/authentik-test/](../tools/authentik-test/README.md).
 
+## Syslog collector
+
+`labape-syslog` (rsyslog, built from `syslog/Dockerfile`) receives syslog on UDP and TCP 514 and TLS 6514, published on `LABAPE_SYSLOG_BIND` (default every address), and writes every message to `labape-syslog-db`, a PostgreSQL that listens only on a Unix socket in the `labape-syslog-run` volume (no TCP, so its roles need no passwords; only containers that mount the volume reach it). The worker creates the table, issues the collector's TLS certificate and LABaPe's client certificate from the platform CA into `labape-syslog-tls` (90 days, renewed 10 days before), and writes the settings LABaPe owns (forward targets, whether TLS clients need a certificate) into `labape-syslog-conf`; the collector restarts rsyslogd when either changes. Messages are in the **Syslog** tab; Admin → Settings → Syslog collector sets retention (90 days by default), client certificates (required by default) and forwarding to a SIEM. Forwards and the database each have a disk-assisted queue (`labape-syslog-spool`), so neither a SIEM nor the database being down loses messages. Design §29.1.
+
 ## Secret stores (OpenBao and Conjur)
 
 The stack includes OpenBao and Conjur Open Source (design §26), in the `stores` compose profile: `labape-openbao`, and `labape-conjur` with its database and an nginx TLS front (`labape-conjur-tls`). `stores/stores.sh setup` (the installer's `Stack.Stores` step) sets them up once the rest of the stack is running: a certificate from the platform CA for `labape-openbao`, `labape-conjur-tls`, this host's names and addresses; OpenBao initialized and unsealed, with KV v2 mounts `labape/` (the app) and `labape-host/` (the update agent) and an AppRole for each; the Conjur account `labape` with host `labape/app`; LABaPe's Settings → Secret stores filled in; `COMPOSE_PROFILES=stores` in `.env`. It's safe to re-run, and it never replaces a login LABaPe already has (LABaPe rotates them daily).

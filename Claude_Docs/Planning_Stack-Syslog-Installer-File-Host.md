@@ -1,6 +1,6 @@
 # Plan: syslog in the stack, the installer's answer file, and the primary file host
 
-> **Stage: Planning.** From the user's review of 2026-10-13. Questions 121-141 in
+> **Stage: Planning.** Y1 built 2026-10-13 (Planning_Web-Interface-Design.md §29.1). From the user's review of 2026-10-13. Questions 121-141 in
 > [Planning_Questions.md](Planning_Questions.md) are answered (§0). Building goes batch by batch,
 > Y1 first; each batch ships on its own and is recorded as built in
 > [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) (a new §29 subsection per batch).
@@ -35,7 +35,7 @@ Also decided: the web stack must be able to run apart from the primary (e.g. on 
 KVM on a larger machine); test that with a VM deployed as the separate stack host (Y3). kvm1 has
 nothing on 514/6514, so the collector binds there.
 
-## Y1. Syslog collector in the stack
+## Y1. Syslog collector in the stack (built: §29.1)
 
 - **Containers.** `labape-syslog` (rsyslog with `imudp`, `imtcp`, TLS through `ossl`, and `ompgsql`) and
   `labape-syslog-db` (`postgres:17-alpine`, its own volume and password secret). The collector's
