@@ -515,3 +515,10 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 1. **rsyslog refused `conninfo="host=... dbname=..."`:** "parameter 'conninfo' contains whitespace, which is not permitted" (rsyslog 8.2504). The libpq URI form has no spaces: `conninfo="postgresql:///syslog?host=/run/syslog-db&user=rsyslog_writer"`.
 2. **garagepc (Ubuntu 24.04) sent nothing:** "CA certificate could not be accessed ... Permission denied". Ubuntu runs rsyslogd as the `syslog` user and confines it with an enforced AppArmor profile that allows reads only under `/etc/rsyslog.d/`; the certificates were in a root-only `/etc/labape-syslog`. They now go to `/etc/rsyslog.d/labape-tls/` (0750, group `syslog` where it exists; the key 0640). Debian runs rsyslogd as root, so kvm1 had worked.
+
+## Installer services and answer file (Y2a, 2026-10-13)
+
+1. **`Stack.UpdateAgent` failed on a fresh install:** "Permission denied: container/update/agent.json". The folder didn't exist, so Docker created it as root for the API's bind mount on the stack's first start. `container/setup.sh` now makes it as the service user, and the step fixes the owner on installs that already have a root-owned one.
+2. **A fresh install's image was stamped `dev`:** `git describe` ran as root on the service user's checkout and git refused it ("dubious ownership"). `repo_version` passes `-c safe.directory=<repo>`.
+3. **Noise, not fixed yet:** every audit event sent over TLS makes the collector log "unexpected eof while reading", because the sender opens and closes one TLS connection per event. Nothing is lost. A persistent connection in the sender would remove it (backlog).
+

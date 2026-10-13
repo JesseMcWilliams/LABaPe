@@ -1,6 +1,6 @@
 # Plan: syslog in the stack, the installer's answer file, and the primary file host
 
-> **Stage: Planning.** Y1 built 2026-10-13 (Planning_Web-Interface-Design.md §29.1). From the user's review of 2026-10-13. Questions 121-141 in
+> **Stage: Planning.** Y1 and Y2a built 2026-10-13 (Planning_Web-Interface-Design.md §29.1, §29.2); Y2b (RHEL family) next. From the user's review of 2026-10-13. Questions 121-141 in
 > [Planning_Questions.md](Planning_Questions.md) are answered (§0). Building goes batch by batch,
 > Y1 first; each batch ships on its own and is recorded as built in
 > [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) (a new §29 subsection per batch).
@@ -64,7 +64,7 @@ nothing on 514/6514, so the collector binds there.
   platform CA (the existing certificate API).
 - **Installer:** a `Stack.Syslog` step (database, roles, certificates, settings).
 
-## Y2. The installer: questions first, a saved answer file, chosen services
+## Y2. The installer: questions first, a saved answer file, chosen services (Y2a built: §29.2; RHEL family is Y2b)
 
 - **First run** asks every question that applies (by profile and chosen services) before any step runs,
   shows a summary to confirm, and saves the answers to `deploy/state/answers.<instance>.json` (0600, no
@@ -72,7 +72,8 @@ nothing on 514/6514, so the collector binds there.
   added since (non-interactive runs take their defaults), appending them.
 - **Services** (question 140), each default yes: web interface, OpenBao, Conjur, syslog collector with its
   database, remote access (guacd), update agent, CLI toolchain, Authentik. At least one secret store is
-  required with the web interface (LABaPe's own secrets live there). Services not chosen are left out
+  required with the web interface (LABaPe's own secrets live there): as built, OpenBao is always installed and Conjur
+  is the optional one, since the update agent and the boot-time unseal depend on OpenBao. Services not chosen are left out
   through compose profiles.
 - **Sign-in** (question 130): Authentik chosen → the stack's Authentik is the sign-in provider; not
   chosen → an existing provider if one is given, otherwise a throwaway Authentik for the first sign-in.
