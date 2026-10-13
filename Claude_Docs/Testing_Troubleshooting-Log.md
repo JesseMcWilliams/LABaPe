@@ -533,3 +533,10 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 1. **A deploy on the Rocky host failed after cloning the VM:** `discover_dhcp_ips.py` stopped with "unsupported operand type(s) for |: 'type' and 'NoneType'". Jobs on a remote host run `scripts/` with that host's `python3`, 3.9 on RHEL 9, where `str | None` in a signature needs `from __future__ import annotations`. Added to the two scripts that use it; a test keeps `scripts/` parsing as 3.9 and checks the import.
 2. **A new bridge on rkvm1 came up without its port:** NetworkManager had made an automatic "Wired connection 1" on the new NIC, and `nmcli con up <bridge>` doesn't bring the port connection up (autoconnect-slaves is off). The installer's `Net.Bridges` now runs `nmcli con up <bridge>-port` too.
 
+## ARM stack host (Raspberry Pi 5, 2026-10-14)
+
+1. **A destroy on a prepared KVM host failed:** "sudo: a password is required" from `safe-undefine.sh`, which removed the VM's disk with `sudo -n rm`; hosts LABaPe prepares give the service user no sudo rule. The VM folder is the service user's, so a plain `rm` works: tried first now.
+2. **Raspberry Pi OS lets only `AllowSSH` members sign in over SSH** (`AllowGroups` in sshd); the user added `localadmin01` by hand. Set up access now joins the first `AllowGroups` group.
+3. **The Pi ran Debian 12, not 13, with Docker CE from Docker's repository:** Debian's `docker.io` would have conflicted (an existing `docker compose` is now used as is), and ansible-core 2.21 needs Python 3.12 (2.19 is installed on 3.11).
+4. **Uploads on the Pi's stack stayed on the Pi:** no primary file host existed (a fresh database starts at the latest schema, and bootstrap registered garagepc directly), so the Files page used local paths. The worker and bootstrap now make sure there's one.
+

@@ -27,6 +27,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Set up access.
 
 ### Fixed
+- Destroying a VM on a KVM host LABaPe prepared no longer fails on the
+  disk cleanup (it needed sudo the service user doesn't have).
+- A new install always has a primary file host (the Files page could
+  otherwise keep files on the stack host).
+- Set up access joins the account to sshd's `AllowGroups` group when there
+  is one (Raspberry Pi OS).
 - A download from a URL served compressed no longer shows its progress
   against the compressed size.
 - Redeploying an environment whose VMs were off (after a host reboot)
@@ -44,6 +50,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- The web stack runs on ARM (arm64, e.g. a Raspberry Pi 5): the image
+  builds there, Conjur is left out (no arm64 image), Debian 12 and an
+  existing Docker CE install are handled.
 - The web stack can run on a machine that isn't the primary file host:
   the Files page then keeps every file on the primary over SSH (uploads
   and downloads stream there; nothing is staged on the stack host), and
