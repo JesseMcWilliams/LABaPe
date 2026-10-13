@@ -6,7 +6,7 @@ import { Button } from "@mui/material";
 import { api } from "../api";
 
 export interface SessionTarget {
-  target_type: "vm" | "host"; protocol: "ssh" | "rdp" | "vnc"; environment_id?: number; vm?: string; kvm_host_id?: number;
+  target_type: "vm" | "host"; protocol: "ssh" | "rdp" | "vnc" | "serial"; environment_id?: number; vm?: string; kvm_host_id?: number;
 }
 
 export function ConnectButton({ target, label, onError }: { target: SessionTarget; label?: string; onError: (m: string) => void }) {
@@ -20,7 +20,7 @@ export function ConnectButton({ target, label, onError }: { target: SessionTarge
       navigate(`/remote/${r.id}`, { state: { ...r, back: location.pathname + location.search } });
     } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
   };
-  const proto = target.protocol.toUpperCase();
+  const proto = target.protocol === "serial" ? "serial console" : target.protocol.toUpperCase();
   return (
     <Button size="small" disabled={busy} onClick={go}
       title={`Open ${proto} to ${target.vm ?? "this host"} in the browser (owners and admins; audited, and recorded if the admins turned recording on)`}>

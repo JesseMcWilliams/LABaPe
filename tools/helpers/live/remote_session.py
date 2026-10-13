@@ -1,6 +1,6 @@
 """Open a browser-style remote session through the API and the tunnel (design §28.5).
 
-Usage: remote_session.py vm ENV_ID VM_NAME ssh|rdp [--seconds N]
+Usage: remote_session.py vm ENV_ID VM_NAME ssh|rdp|serial|vnc [--seconds N]
        remote_session.py host HOST_ID ssh [--seconds N]
        remote_session.py record on|off
        remote_session.py sessions

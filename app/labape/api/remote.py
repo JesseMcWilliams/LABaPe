@@ -28,7 +28,7 @@ RECORDINGS = Path("/var/lib/labape-recordings")           # guacd's recordings v
 
 class SessionIn(BaseModel):
     target_type: Literal["vm", "host"]
-    protocol: Literal["ssh", "rdp", "vnc"]
+    protocol: Literal["ssh", "rdp", "vnc", "serial"]
     environment_id: int | None = None
     vm: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,63}$")
     kvm_host_id: int | None = None
@@ -121,8 +121,11 @@ async def tunnel(ws: WebSocket, token: str = "", width: int = 1280, height: int 
     with session_factory()() as db:
         audit(db, uname, "remote.session.start", object_type="remote_session", object_id=sid,
               detail={"target": target["address"], "protocol": target["protocol"]}, source_ip=ip)
-    why = "ended"
+    why, forward = "ended", None
     try:
+        if target.get("forward"):                   # a VM's VNC console: through the API to its host
+            forward, port = await remote.start_forward(target["forward"])
+            target["params"].update({"hostname": remote.API_HOST, "port": str(port)})
         reader, writer, leftover = await remote.open_guacd(target, max(width, 320), max(height, 240), dpi)
         why = await remote.relay(ws, reader, writer, leftover, idle)
     except remote.RemoteError as exc:
@@ -134,6 +137,8 @@ async def tunnel(ws: WebSocket, token: str = "", width: int = 1280, height: int 
     except (WebSocketDisconnect, OSError, TimeoutError) as exc:
         why = f"ended: {type(exc).__name__}"
     finally:
+        if forward is not None:
+            forward.close()
         try:
             await ws.close()
         except Exception:  # noqa: BLE001

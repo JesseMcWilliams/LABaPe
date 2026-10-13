@@ -182,13 +182,13 @@ Recommendation: **b**, with **c** as an extra "Download .rdp" link for people on
 - Recording (question 117) is a Guacamole feature (`recording-path`): off by default, an admin
   setting.
 
-### O6. VM details page and console
+### O6. VM details page and console (built 2026-10-13: Planning_Web-Interface-Design.md §28.6)
 
 - **Details** (R13): like O4's page, with sections Dashboard, Disks and volumes, NICs, OS, Accounts,
   Groups and Console. Most of it comes from the QEMU guest agent through libvirt, with no login
   to the VM: `virsh guestinfo` (OS, hostname, users logged in, filesystems, disks, interfaces) and
   `domifaddr --source agent`. Accounts and groups need a login: SSH on Linux, WinRM on Windows,
-  read-only. Metrics come from `virsh domstats`, which the worker already reads.
+  read-only (question 120 changed this: owners and admins manage them). Metrics come from `virsh domstats`, which the worker already reads.
 - **Console** options (question 119):
 
 | Option | How | Notes |
@@ -199,7 +199,8 @@ Recommendation: **b**, with **c** as an extra "Download .rdp" link for people on
 | d. `virt-viewer` file | Download a `.vv` file with the SPICE/VNC address | Needs `virt-viewer` and network reach on the user's machine |
 
 - The VM's VNC display gets a password per VM, kept in the store, so a reached port alone isn't
-  enough.
+  enough. *(As built, §28.6: no password; the display stays on the host's loopback and is reached
+  only through `ssh -W` as the host's access account.)*
 
 ## 4. Security notes
 

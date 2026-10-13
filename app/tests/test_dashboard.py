@@ -72,7 +72,7 @@ def test_collect_rates_and_samples(client, monkeypatch, tmp_root):
     _admin_session(client)
     _host(client, vm_storage_path=str(tmp_root), template_storage_path=str(tmp_root))
     monkeypatch.setattr(hoststats, "_virsh", _fake_virsh)
-    monkeypatch.setattr(hoststats, "_guest", lambda uri, name: (True, {"total_gb": 40.0, "free_gb": 30.0}))
+    monkeypatch.setattr(hoststats, "_guest", lambda uri, name: (True, {"total_gb": 40.0, "free_gb": 30.0}, {"hostname": name}))
     with session_factory()() as db:
         host = db.get(KvmHost, 1)
         first = hoststats.collect(host)

@@ -84,7 +84,7 @@ export default function Sessions() {
     <Stack spacing={2}>
       <Typography variant="h5">Remote sessions</Typography>
       <Typography variant="body2" color="text.secondary">
-        Browser SSH and RDP sessions: who opened them, to what, and for how long. Sessions are recorded when Settings → Remote access says so;
+        Browser SSH, RDP and console sessions: who opened them, to what, and for how long. Sessions are recorded when Settings → Remote access says so;
         playing a recording is audited.
       </Typography>
       {error && <Alert severity="error">{error}</Alert>}
