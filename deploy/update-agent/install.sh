@@ -29,10 +29,13 @@ mkdir -p "$HOME/.local/libexec" "$HOME/.config/systemd/user" "$HOME/.config/laba
 install -m 0755 "$HERE/labape-update.sh" "$HOME/.local/libexec/labape-update.sh"
 
 # Who may sign releases: the repository's list unless one is given; an
-# existing list on this host is kept (it may hold keys added here).
+# existing list on this host is kept when it names a key (it may hold keys
+# added here). A list with only comments (the placeholder before a release
+# key existed) is replaced.
 dest="$HOME/.config/labape/allowed_signers"
+has_keys() { [ -f "$1" ] && grep -qvE '^[[:space:]]*(#|$)' "$1"; }
 if [ -n "$SIGNERS" ]; then install -m 0644 "$SIGNERS" "$dest"
-elif [ ! -s "$dest" ] && [ -s "$REPO/deploy/allowed_signers" ]; then install -m 0644 "$REPO/deploy/allowed_signers" "$dest"
+elif ! has_keys "$dest" && [ -s "$REPO/deploy/allowed_signers" ]; then install -m 0644 "$REPO/deploy/allowed_signers" "$dest"
 fi
 
 # Where the command line's vault is (for stores.sh). An existing setting is kept unless an option is given.

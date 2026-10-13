@@ -22,6 +22,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- The maintainer's release signing key (Ed25519) in `deploy/allowed_signers`,
+  so the update agent can accept signed release tags. `install.sh` now also
+  replaces a host's comments-only signer list (the placeholder) with the
+  repository's.
 - **Admin** area: KVM hosts, Networks, Settings, Secrets, Audit log and User
   errors in one place, listed on the left (admins only); old links redirect.
 - Jobs page filters (environment, type, state, requested by, dates), kept in
