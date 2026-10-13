@@ -518,7 +518,8 @@ def stack_auth(c: Ctx):
 def repo_version(repo: Path) -> str:
     """`git describe --tags` of the checkout (e.g. v0.2.0-3-gabc1234), or "dev"."""
     try:
-        out = subprocess.run(["git", "-C", str(repo), "describe", "--tags", "--always", "--dirty"],
+        # As root on the service user's checkout: git refuses it as "dubious ownership" otherwise.
+        out = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "describe", "--tags", "--always", "--dirty"],
                              capture_output=True, text=True, timeout=15, check=False)
     except OSError:
         return "dev"
@@ -571,6 +572,9 @@ def update_agent(c: Ctx):
     """The host-side update agent (design §23.2): a user-level systemd path
     unit for the service user, kept running by lingering."""
     c.r.run(["loginctl", "enable-linger", c.user])
+    # Docker makes a missing bind-mount folder as root on the stack's first start.
+    c.r.run(["install", "-d", "-m", "0755", str(c.repo / "container" / "update")])
+    c.r.run(["chown", f"{c.user}:{c.user}", str(c.repo / "container" / "update")])
     c.r.run(["bash", str(c.repo / "deploy" / "update-agent" / "install.sh"), "--repo", str(c.repo)], as_user=True,
             env={"XDG_RUNTIME_DIR": f"/run/user/{c.r.out(['id', '-u', c.user]) or '1000'}"})
     return DONE, "update agent watching container/update/request.json"

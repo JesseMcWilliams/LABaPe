@@ -284,7 +284,11 @@ def cmd_stores_configure(args) -> int:
         if args.check:
             from .stores import check
             bad = 0
+            from . import appsettings as _settings
             for name in stack.STACK_STORES:
+                if not _settings.get(db, f"store_{name}").enabled:
+                    print(f"labape: {name}: not set up here (not installed, or turned off)")
+                    continue
                 ok, msg = check(db, name)
                 bad += not ok
                 print(f"labape: {name} check {'ok' if ok else 'FAILED'}: {msg}")

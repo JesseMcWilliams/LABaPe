@@ -33,13 +33,14 @@ sudo deploy/install-labape.py --set InstallCli=false            # override one a
 | `--config-file` | Answer file (JSON). Start from `answers.sample.json`, and copy it to `answers.<name>.json` (git-ignored). |
 | `--set NAME=VALUE` | One answer, overriding every file. JSON values are allowed (`true`, `[...]`). |
 | `--instance` | Installation name; state is kept per name. Defaults to the only saved one, otherwise `labape`. |
-| `--step` / `--start-at` / `--resume` | Run a subset; these three are alternatives. They read the saved answers. |
+| `--step` / `--start-at` / `--resume` | Run a subset; these three are alternatives. |
 | `--list-steps` | Each step and its saved status. |
 | `--dry-run` | Print every change instead of making it. Read-only checks still run. |
 | `--force` | Redo work a step would otherwise skip: rewrite `environment.yml` or the vault, reinstall tools. |
 | `--non-interactive` | Never prompt. A missing answer is an error. |
+| `--fresh` | Ignore the saved answers and ask everything again. |
 
-Answers are resolved in this order: `--set`, then `--config-file`, then the saved answers (on `--resume`, `--step`, `--start-at` and `--list-steps`), then a prompt or the default. A plain run, without any of the three, starts a fresh progress record.
+Answers are resolved in this order: `--set`, then `--config-file`, then the saved answers, then a prompt or the default. **Every run reuses the saved answers** (`deploy/state/answers.<instance>.json`), so a re-run or an update asks only questions added since (question 141); `--fresh` asks again. All questions are asked before any step runs; when anything was asked, the run shows every answer (the new ones marked) and waits for a yes before it saves them and starts. A plain run, without `--resume`, `--step` or `--start-at`, starts a fresh progress record.
 
 ## State
 
@@ -71,14 +72,15 @@ Nothing secret is ever written to the answers file.
 | `Storage.TemplatePool` | libvirt pool `labape-templates` | |
 | `Tools.Ansible` | ansible-core, pywinrm and the four collections in `/opt/labape/venv`, linked into `/usr/local/bin`. Every install needs it, for the vault. | |
 | `Tools.OpenTofu`, `Tools.Packer` | Checksum-verified downloads into `/usr/local/bin`, plus the Packer plugins (`InstallCli`) | |
-| `Config.Secrets` | Vault, vault password, SSH key (see above). Kept if present. | |
-| `Config.Environment` | `tofu/environment.yml`: domain, the network catalog, storage paths, and ISOs found in `IsoPath` by pattern. Kept if present. | |
-| `Config.Manifests` | Software and directory manifests from the examples, if missing | |
+| `Config.Secrets` | Vault, vault password, SSH key (see above). Kept if present. Runs for the full and web profiles, and on a `kvm` host only with `CliCheckout` (jobs from the web interface bring their own). | |
+| `Config.Environment` | `tofu/environment.yml`: domain, the network catalog, storage paths, and ISOs found in `IsoPath` by pattern. Kept if present. Same condition. | |
+| `Config.Manifests` | Software and directory manifests from the examples, if missing. Same condition. | |
 | `Stack.Runtime` | Docker (or Podman) with compose; service user in `docker` (`InstallWebUi`) | apt |
 | `Stack.Setup` | `container/setup.sh`, then copies the config and engine secrets into `container/` | |
-| `Stack.Auth` | Existing OIDC provider (issuer, client ID, prompted secret), a throwaway Authentik (`tools/authentik-test`), or none (break-glass only) | |
+| `Stack.Services` | The optional services not chosen go into `container/compose.override.yaml` under a profile nobody enables (Compose reads the file by itself, so every `compose up`, the update agent's included, honours it); `LABAPE_CONJUR` and `LABAPE_SYSLOG_BIND` in `container/.env`. Without the file every service runs (installs from before this step). | |
+| `Stack.Auth` | Authentik installed with LABaPe (`InstallAuthentik`), or else an existing OIDC provider (issuer, client ID, prompted secret), a throwaway Authentik for the first sign-in (`tools/authentik-test`), or none (break-glass only) | |
 | `Stack.Build`, `Stack.Up` | Builds the image and starts the stack; waits for `/api/health` | |
-| `Stack.Stores` | `container/stores/stores.sh setup` as the service user: OpenBao and Conjur in the stack with certificates from the platform CA, initialized and unsealed, LABaPe's logins set in its store settings, and user units that unseal OpenBao at boot and renew the certificate daily. Re-run it on an existing install to add the stores. | loginctl |
+| `Stack.Stores` | `container/stores/stores.sh setup` as the service user: OpenBao (always) and Conjur (`InstallConjur`) in the stack with certificates from the platform CA, initialized and unsealed, LABaPe's logins set in its store settings, and user units that unseal OpenBao at boot and renew the certificate daily. Re-run it on an existing install to add the stores. | loginctl |
 | `Stack.Bootstrap` | `labape bootstrap`: registers this KVM host, the network catalog, the host's network attachments (the default network marked) and admin role bindings. Idempotent. | |
 | `Templates.Build` | `scripts/build-template.sh` for each `TemplatesToBuild` entry (`os-key:name`, or `os-key:name:core`). Skips existing templates. | |
 | `Smoke.Cli` | As the service user: libvirt, tofu, ansible, and `environment.yml` rendering | |
@@ -93,7 +95,11 @@ Nothing secret is ever written to the answers file.
 | `InstanceName` | Name for this installation's state files | `labape` |
 | `ServiceUser` | Owns the checkout, vault and SSH key; runs the CLI | the `sudo` user |
 | `Profile` | `full`, `kvm` or `web` (see `--profile`) | `full` |
-| `InstallCli` / `InstallWebUi` | Which halves to install; follow the profile unless set | per profile |
+| `InstallCli` | OpenTofu and Packer on this host (a KVM host's jobs run them) | yes, except the web profile |
+| `CliCheckout` | `kvm` profile: also set up a usable command-line checkout (vault, `environment.yml`, manifests) and ask its questions | no on `kvm`, always on full and web |
+| `InstallWebUi` | The web stack; follows the profile | per profile |
+| `InstallConjur`, `InstallSyslog`, `InstallRemoteAccess`, `InstallUpdateAgent`, `InstallAuthentik` | Optional services of the web stack (question 140); OpenBao is always installed | yes (`InstallAuthentik`: no when an older answer file named another `AuthMode`) |
+| `SyslogBind` | The address the syslog collector publishes 514 and 6514 on (`0.0.0.0`: every address) | this host's IP |
 | `WorkerPublicKey` | `kvm` profile: the web interface's worker key (`labape worker-key`, or the host's page) to add to the service user's `authorized_keys` | empty (skip) |
 | `RemoteKvmUri` | `web` profile: the KVM host to register, `qemu+ssh://user@host/system` | prompted |
 | `KvmHostName` | This host's name in the web interface | short hostname |
@@ -104,11 +110,11 @@ Nothing secret is ever written to the answers file.
 | `DefaultNetwork` | For host groups that don't name one | the first network |
 | `WebHostname`, `Tls` | Web interface address; `internal` or an ACME email | this host's IP, `internal` |
 | `ContainerRuntime` | `docker` or `podman` | `docker` |
-| `PlatformStore` | Which store holds LABaPe's own secrets: `openbao` or `conjur` (both are installed). Written to `LABAPE_PLATFORM_STORE` in `container/.env`; change it there and re-run `container/stores/stores.sh setup` to move them. | `openbao` |
-| `AuthMode` | `existing`, `test-authentik` or `none` | `existing` |
+| `PlatformStore` | Which store holds LABaPe's own secrets: `openbao` or `conjur` (asked only when Conjur is installed). Written to `LABAPE_PLATFORM_STORE` in `container/.env`; change it there and re-run `container/stores/stores.sh setup` to move them. | `openbao` |
+| `AuthMode` | Only when Authentik isn't installed with LABaPe: `existing`, `test-authentik` (a throwaway for the first sign-in) or `none` | `test-authentik` |
 | `OidcIssuer`, `OidcClientId` | For `AuthMode=existing` | (prompted), `labape` |
 | `AdminGroups` | Extra groups mapped to admin | none |
-| `TemplatesToBuild` | e.g. `["rocky9:rocky9-base-2026.10", "windows_server_2022:win2022-core-2026.10:core"]` | none |
+| `TemplatesToBuild` | Answer file only (templates are built from the web interface), e.g. `["rocky9:rocky9-base-2026.10", "windows_server_2022:win2022-core-2026.10:core"]` | none |
 | `TofuVersion`, `PackerVersion`, `AnsibleCoreVersion` | Toolchain versions (match `container/Dockerfile`) | pinned |
 
 ## Profiles
@@ -121,7 +127,7 @@ Remote hosts work the way design §22.4 describes: jobs for a `qemu+ssh` host ru
 
 ## Updates
 
-`Stack.UpdateAgent` sets up the host-side update agent for the service user (lingering, a user systemd path unit). The web interface's Check now then offers signed releases and a one-step rollback (design §23.2). Release signers are listed in `deploy/allowed_signers`, copied to `~/.config/labape/allowed_signers`. Until a key is listed there, every update is refused. To go back more than one version: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
+Re-running the installer is how a host's own setup is updated: it reads the saved answers and asks only new questions. `Stack.UpdateAgent` (`InstallUpdateAgent`) sets up the host-side update agent for the service user (lingering, a user systemd path unit). The web interface's Check now then offers signed releases and a one-step rollback (design §23.2). Release signers are listed in `deploy/allowed_signers`, copied to `~/.config/labape/allowed_signers`. Until a key is listed there, every update is refused. To go back more than one version: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
 
 ## Not done by the installer
 
