@@ -196,6 +196,8 @@ class StoredFile(Base):
     sha256: Mapped[str] = mapped_column(String(64), default="", index=True)
     os_key: Mapped[str] = mapped_column(String(64), default="")       # ISOs: which OS installs from it
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)  # ISOs: the one used for its os_key
+    # Installers: the OSes they may be used on, generic and/or fine-grained (ostargets.py, question 112).
+    targets: Mapped[list] = mapped_column(JSON, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     uploaded_by: Mapped[str] = mapped_column(String(255), default="")  # empty: found by the scan

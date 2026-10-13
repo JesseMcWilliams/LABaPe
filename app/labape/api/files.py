@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings
+from .. import appsettings, ostargets
 from ..db import get_db
 from ..engine.downloads import HASH_LENGTHS, DownloadError, check_url, filename_from, parse_expected
 from ..errors import FieldError
@@ -32,8 +32,8 @@ from ..security import Principal, audit, client_ip, current_principal, require_r
 router = APIRouter(prefix="/api/files", tags=["files"])
 TUS = {"Tus-Resumable": "1.0.0"}
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ ()+-]{0,200}$")
-FIELDS = ("id", "category", "name", "path", "size", "mtime", "sha256", "os_key", "is_default", "description",
-          "notes", "uploaded_by", "uploaded_at", "present")
+FIELDS = ("id", "category", "name", "path", "size", "mtime", "sha256", "os_key", "is_default", "targets",
+          "description", "notes", "uploaded_by", "uploaded_at", "present")
 
 
 def _out(f: StoredFile) -> dict:
@@ -156,6 +156,7 @@ def _finish(db: Session, up: Upload, request: Request, p: Principal) -> None:
     f = StoredFile(category=up.category, name=up.filename, path=str(target), size=st.st_size,
                    mtime=dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc), sha256=digest,
                    os_key=infer_os(up.filename) if up.category == "isos" else "",
+                   targets=ostargets.infer(up.filename) if up.category == "installers" else [],
                    description=up.meta.get("description", ""), uploaded_by=p.username, uploaded_at=utcnow())
     db.add(f)
     db.delete(up)
@@ -259,6 +260,12 @@ def put_roots(body: RootsIn, request: Request, db: Session = Depends(get_db),
 
 # --- files --------------------------------------------------------------------
 
+@router.get("/targets")
+def target_vocabulary(_: Principal = Depends(current_principal)):
+    """The OS targets an installer can name: generic, families and specific OSes (question 112)."""
+    return ostargets.vocabulary()
+
+
 @router.get("")
 def list_files(category: str | None = None, db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
     q = select(StoredFile).where(StoredFile.present.is_(True)).order_by(StoredFile.category, StoredFile.name)
@@ -272,6 +279,7 @@ class FileIn(BaseModel):
     notes: str = Field(default="", max_length=8000)
     os_key: str = Field(default="", pattern=r"^[a-z0-9_]*$")
     is_default: bool = False
+    targets: list[str] | None = None        # installers only; None keeps the current value
 
 
 @router.put("/{file_id}")
@@ -282,11 +290,22 @@ def update_file(file_id: int, body: FileIn, request: Request, db: Session = Depe
         raise FieldError("file", "No such file.", status_code=404)
     if body.is_default and not body.os_key:
         raise FieldError("is_default", "Choose the OS this ISO installs before making it the default.")
+    if body.targets is not None:
+        if f.category != "installers":
+            body.targets = []
+        elif not body.targets:
+            raise FieldError("targets", "Choose at least one OS this installer is for (Any OS if it doesn't matter).")
+        elif bad := ostargets.invalid(body.targets):
+            raise FieldError("targets", f"Unknown targets: {', '.join(bad)}.")
+        else:
+            body.targets = list(dict.fromkeys(body.targets))     # keep the order, drop repeats
     if body.is_default:  # one default ISO per OS
         for other in db.scalars(select(StoredFile).where(StoredFile.category == f.category,
                                                          StoredFile.os_key == body.os_key, StoredFile.id != f.id)):
             other.is_default = False
     for k, v in body.model_dump().items():
+        if k == "targets" and v is None:
+            continue
         setattr(f, k, v)
     db.commit()
     audit(db, p.username, "file.update", object_type="file", object_id=f.id, detail=body.model_dump(),

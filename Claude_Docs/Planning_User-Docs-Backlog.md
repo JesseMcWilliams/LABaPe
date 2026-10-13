@@ -13,3 +13,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Applications marked `requires_gui` (Firefox) are skipped on Windows Server Core hosts instead of failing the deploy.
 - Catalog → Services: the **Syslog collector** service (ports, TLS and mutual TLS, `/var/log/remote/` layout, getting a client certificate with `labape ca-sign`), and the `linux.role` field.
 - The Admin area (left-hand list; Hosts and Networks are admin pages now), the filters on Jobs, Audit log and User errors (kept in the URL), the User errors export, and Catalog → Requests → New request.
+- Files: tab descriptions and filters; installer targets (generic, family, specific OS), how they're inferred, and the catalog/deploy refusals.

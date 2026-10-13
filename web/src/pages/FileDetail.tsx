@@ -7,6 +7,7 @@ import { DetailHeader, Facts } from "../components/PageParts";
 import { ActionButton } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { OS_KEYS, size, StoredFile } from "./Files";
+import { TargetChips, TargetPicker, useTargetVocabulary } from "../components/Targets";
 
 // One file in the file manager (design §21.3, §22.2): admins and file
 // managers edit its OS, description and notes or delete it; others read it.
@@ -16,14 +17,16 @@ export default function FileDetail() {
   const { me } = useAuth();
   const canManage = hasRole(me, "file_manager");
   const [file, setFile] = useState<StoredFile | null>(null);
-  const [form, setForm] = useState({ description: "", notes: "", os_key: "", is_default: false });
+  const [form, setForm] = useState({ description: "", notes: "", os_key: "", is_default: false, targets: [] as string[] });
+  const vocab = useTargetVocabulary();
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     api.get<StoredFile>(`/api/files/${id}`).then((f) => {
       setFile(f);
-      setForm({ description: f.description, notes: f.notes, os_key: f.os_key, is_default: f.is_default });
+      setForm({ description: f.description, notes: f.notes, os_key: f.os_key, is_default: f.is_default,
+        targets: f.targets ?? [] });
     }, (e) => setErrs({ summary: e.message, fields: {} }));
   }, [id]);
 
@@ -31,7 +34,7 @@ export default function FileDetail() {
   const save = async () => {
     setSaved(false);
     try {
-      await api.put(`/api/files/${id}`, form);
+      await api.put(`/api/files/${id}`, file?.category === "installers" ? form : { ...form, targets: null });
       setErrs({ summary: "", fields: {} });
       setSaved(true);
     } catch (e) { setErrs(fromApiError(e)); }
@@ -61,6 +64,7 @@ export default function FileDetail() {
       {!canManage && errs.summary && <Alert severity="error">{errs.summary}</Alert>}
       {file && <Facts rows={canManage ? facts : [
         ...facts, ["Installs OS", file.os_key ? `${file.os_key}${file.is_default ? " (default)" : ""}` : ""],
+        ...(file.category === "installers" ? [["Targets", <TargetChips targets={file.targets ?? []} vocab={vocab} />] as [string, React.ReactNode]] : []),
         ["Description", file.description], ["Notes", <Box sx={{ whiteSpace: "pre-wrap" }}>{file.notes}</Box>],
       ]} />}
       {canManage && file && (
@@ -78,13 +82,19 @@ export default function FileDetail() {
                   onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />} />
               </Stack>
             )}
+            {file.category === "installers" && (
+              <TargetPicker value={form.targets} onChange={(targets) => setForm({ ...form, targets })}
+                error={errs.fields.targets?.message} />
+            )}
             <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
             <Field label="Notes" value={form.notes} fullWidth multiline minRows={3} help="Quirks, after-tasks, licensing"
               onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             <Stack direction="row" spacing={2}>
               <ActionButton variant="contained" onClick={save} tip="Save the file's details"
                 confirm={{ title: `Save ${file.name}?`, confirmLabel: "Save",
-                  body: file.category === "isos" ? "The OS it installs and whether it's the default for that OS change for new builds and ISO installs." : "The description and notes are updated." }}>
+                  body: file.category === "isos" ? "The OS it installs and whether it's the default for that OS change for new builds and ISO installs."
+                    : file.category === "installers" ? "Its targets, description and notes are updated. New deploys use the installer only on the OSes it targets."
+                    : "The description and notes are updated." }}>
                 Save
               </ActionButton>
               <Button component={RouterLink} to={back} title="Back to the file list without saving">Back</Button>

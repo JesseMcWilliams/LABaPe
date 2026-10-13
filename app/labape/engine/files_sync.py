@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import ostargets
 from ..db import session_factory
 from ..files import CATEGORIES, infer_os, roots, sha256_of
 from ..models import StoredFile
@@ -37,7 +38,8 @@ def scan(db: Session) -> None:
             f = known.get(str(path))
             if f is None:
                 f = StoredFile(category=cat, name=path.name, path=str(path),
-                               os_key=infer_os(path.name) if cat == "isos" else "")
+                               os_key=infer_os(path.name) if cat == "isos" else "",
+                               targets=ostargets.infer(path.name) if cat == "installers" else [])
                 db.add(f)
             if f.size != st.st_size or (f.mtime and abs((f.mtime.replace(tzinfo=f.mtime.tzinfo or dt.timezone.utc)
                                                          - mtime).total_seconds()) > 1):
