@@ -22,6 +22,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- **Admin** area: KVM hosts, Networks, Settings, Secrets, Audit log and User
+  errors in one place, listed on the left (admins only); old links redirect.
+- Jobs page filters (environment, type, state, requested by, dates), kept in
+  the URL; environments are shown by name. Users still see only their own
+  jobs and those of environments they can access.
+- User errors get the audit log's kind of filters (user, where, message,
+  source, status, dates) and a JSON export; the audit log gets a date range.
+- Catalog → Requests has a **New request** button.
 - `container/stores/set-secret.sh NAME`: sets one of the stack's bootstrap
   secrets where the stack reads it (and in the platform store once they've
   moved there). The installer and the test Authentik use it for the OIDC

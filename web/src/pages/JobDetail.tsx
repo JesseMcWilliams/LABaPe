@@ -93,7 +93,7 @@ export default function JobDetail() {
         <Typography variant="body2" color="text.secondary">
           {job.type}
           {job.environment_id && (
-            <> for <Link component={RouterLink} to={`/environments/${job.environment_id}`}>environment #{job.environment_id}</Link></>
+            <> for <Link component={RouterLink} to={`/environments/${job.environment_id}`}>environment {job.environment_name ?? `#${job.environment_id}`}</Link></>
           )}
           {" "}· {job.requested_by} · started {fmtTime(job.started_at)}
           {job.finished_at && ` · finished ${fmtTime(job.finished_at)}`}

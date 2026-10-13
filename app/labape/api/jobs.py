@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db, session_factory
-from ..models import Job
+from ..models import Environment, Job
 from ..permissions import can_see, is_owner, visible_ids
 from ..security import Principal, audit, client_ip, current_principal
 
@@ -20,10 +21,14 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 FINISHED = ("succeeded", "failed", "cancelled")
 
 
-def _out(j: Job) -> dict:
-    return {c: getattr(j, c) for c in ("id", "type", "params", "state", "kvm_host_id", "environment_id",
-                                       "requested_by", "cancel_requested", "retry_of", "exit_code",
-                                       "created_at", "started_at", "finished_at")}
+def _out(j: Job, env: Environment | None = None) -> dict:
+    out = {c: getattr(j, c) for c in ("id", "type", "params", "state", "kvm_host_id", "environment_id",
+                                      "requested_by", "cancel_requested", "retry_of", "exit_code",
+                                      "created_at", "started_at", "finished_at")}
+    # Environments are shown by name (design §28, O1); a destroyed one keeps its row and name.
+    out["environment_name"] = env.name if env else None
+    out["environment_status"] = env.status if env else None
+    return out
 
 
 def _visible(db: Session, j: Job, p: Principal) -> bool:
@@ -39,18 +44,55 @@ def _get(db: Session, job_id: int, p: Principal) -> Job:
     return j
 
 
-@router.get("")
-def list_jobs(limit: int = 100, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
-    q = select(Job).order_by(Job.id.desc()).limit(min(limit, 500))
+def _visible_query(db: Session, p: Principal):
+    """Jobs this user may see: all for admins; otherwise their own and those of the
+    environments they can see."""
+    q = select(Job, Environment).outerjoin(Environment, Job.environment_id == Environment.id)
     ids = visible_ids(db, p, "environment")
     if ids is not None:
         q = q.where(or_(Job.requested_by == p.username, Job.environment_id.in_(ids or {-1})))
-    return [_out(j) for j in db.scalars(q)]
+    return q
+
+
+@router.get("")
+def list_jobs(limit: int = 100, environment: str | None = None, type: str | None = None,
+              state: str | None = None, requested_by: str | None = None, since: dt.datetime | None = None,
+              until: dt.datetime | None = None, db: Session = Depends(get_db),
+              p: Principal = Depends(current_principal)):
+    """Filters (O1): environment name (contains, case-insensitive), type (prefix), state,
+    requested_by (exact), created since/until. Visibility is applied first, so a filter
+    can never reveal another user's jobs."""
+    q = _visible_query(db, p)
+    if environment:
+        q = q.where(Environment.name.ilike(f"%{environment}%"))
+    if type:
+        q = q.where(Job.type.startswith(type))
+    if state:
+        q = q.where(Job.state == state)
+    if requested_by:
+        q = q.where(Job.requested_by == requested_by)
+    if since:
+        q = q.where(Job.created_at >= since)
+    if until:
+        q = q.where(Job.created_at <= until)
+    q = q.order_by(Job.id.desc()).limit(min(max(limit, 1), 1000))
+    return [_out(j, env) for j, env in db.execute(q)]
+
+
+@router.get("/facets")
+def job_facets(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """Values for the Jobs page's filter lists, from the jobs this user can see."""
+    rows = db.execute(_visible_query(db, p).order_by(Job.id.desc()).limit(5000)).all()
+    return {"types": sorted({j.type for j, _ in rows}),
+            "states": sorted({j.state for j, _ in rows}),
+            "requested_by": sorted({j.requested_by for j, _ in rows if j.requested_by}),
+            "environments": sorted({e.name for _, e in rows if e is not None})}
 
 
 @router.get("/{job_id}")
 def get_job(job_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
-    return _out(_get(db, job_id, p))
+    j = _get(db, job_id, p)
+    return _out(j, db.get(Environment, j.environment_id) if j.environment_id else None)
 
 
 def _may_control(db: Session, j: Job, p: Principal) -> bool:
@@ -71,7 +113,7 @@ def cancel(job_id: int, request: Request, db: Session = Depends(get_db), p: Prin
     j.cancel_requested = True
     db.commit()
     audit(db, p.username, "job.cancel", object_type="job", object_id=j.id, source_ip=client_ip(request))
-    return _out(j)
+    return _out(j, db.get(Environment, j.environment_id) if j.environment_id else None)
 
 
 @router.post("/{job_id}/retry")
@@ -90,7 +132,7 @@ def retry(job_id: int, request: Request, db: Session = Depends(get_db), p: Princ
     db.commit()
     audit(db, p.username, "job.retry", object_type="job", object_id=new.id, detail={"retry_of": j.id},
           source_ip=client_ip(request))
-    return _out(new)
+    return _out(new, db.get(Environment, new.environment_id) if new.environment_id else None)
 
 
 @router.get("/{job_id}/log")

@@ -24,6 +24,7 @@ import FileDetail from "./pages/FileDetail";
 import TemplateDetail from "./pages/TemplateDetail";
 import Secrets from "./pages/Secrets";
 import SecretDetail from "./pages/SecretDetail";
+import AdminLayout, { ToAdmin } from "./pages/Admin";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -107,27 +108,10 @@ export default function App() {
             <Button color="inherit" component={RouterLink} to="/catalog" title="Services, applications and packages to add to host groups">
               Catalog
             </Button>
-            <Button color="inherit" component={RouterLink} to="/hosts" title="KVM hosts and their load">
-              Hosts
-            </Button>
-            <Button color="inherit" component={RouterLink} to="/networks" title="The networks VMs may use">
-              Networks
-            </Button>
             {hasRole(me, "admin") && (
-              <>
-                <Button color="inherit" component={RouterLink} to="/audit" title="Who did what, when (admins)">
-                  Audit
-                </Button>
-                <Button color="inherit" component={RouterLink} to="/errors" title="Requests the app refused and forms the browser blocked (admins)">
-                  Errors
-                </Button>
-                <Button color="inherit" component={RouterLink} to="/settings" title="Branding, files, backups, history, syslog, email, directory (admins)">
-                  Settings
-                </Button>
-                <Button color="inherit" component={RouterLink} to="/secrets" title="Internal secrets and their rotation (admins)">
-                  Secrets
-                </Button>
-              </>
+              <Button color="inherit" component={RouterLink} to="/admin" title="KVM hosts, networks, settings, secrets, audit log and user errors (admins)">
+                Admin
+              </Button>
             )}
             <Box sx={{ flexGrow: 1 }} />
             <UserMenu me={me} onLogout={logout} />
@@ -158,15 +142,20 @@ export default function App() {
           <Route path="/environments/:id" element={<EnvironmentDetail />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
-          <Route path="/hosts" element={<Hosts />} />
-          <Route path="/hosts/:id" element={<HostDetail />} />
-          <Route path="/networks" element={<Networks />} />
-          <Route path="/networks/:id" element={<NetworkDetail />} />
-          <Route path="/audit" element={<Audit />} />
-          <Route path="/errors" element={<Errors />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/secrets" element={<Secrets />} />
-          <Route path="/secrets/:id" element={<SecretDetail />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route path="hosts" element={<Hosts />} />
+            <Route path="hosts/:id" element={<HostDetail />} />
+            <Route path="networks" element={<Networks />} />
+            <Route path="networks/:id" element={<NetworkDetail />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="secrets" element={<Secrets />} />
+            <Route path="secrets/:id" element={<SecretDetail />} />
+            <Route path="audit" element={<Audit />} />
+            <Route path="errors" element={<Errors />} />
+          </Route>
+          {["/hosts", "/networks", "/settings", "/secrets", "/audit", "/errors"].map((p) => (
+            <Route key={p} path={`${p}/*`} element={<ToAdmin />} />
+          ))}
           <Route path="/files" element={<Files />} />
           <Route path="/files/:id" element={<FileDetail />} />
           <Route path="/templates/:id" element={<TemplateDetail />} />

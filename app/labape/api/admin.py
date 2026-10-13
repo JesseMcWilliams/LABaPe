@@ -67,15 +67,55 @@ def error_retention_days(db: Session) -> int:
     return appsettings.get(db, "retention").errors_days  # Settings page, History retention
 
 
-@router.get("/errors")
-def user_errors(limit: int = 200, username: str | None = None, db: Session = Depends(get_db),
-                _: Principal = Depends(require_roles("admin"))):
-    q = select(UserError).order_by(UserError.id.desc()).limit(min(limit, 2000))
+ERROR_FIELDS = ("id", "at", "username", "method", "path", "status", "message", "fields", "origin")
+
+
+def _errors_query(username: str | None, path: str | None, message: str | None, origin: str | None,
+                  status: int | None, since: dt.datetime | None, until: dt.datetime | None):
+    """The Errors page's filters (design §28, O1), like the audit log's: user (exact), path and
+    message (contains, case-insensitive), where it came from, HTTP status, date range."""
+    q = select(UserError).order_by(UserError.id.desc())
     if username:
         q = q.where(UserError.username == username)
-    rows = [{c: getattr(r, c) for c in ("id", "at", "username", "method", "path", "status", "message", "fields",
-                                        "origin")} for r in db.scalars(q)]
+    if path:
+        q = q.where(UserError.path.ilike(f"%{path}%"))
+    if message:
+        q = q.where(UserError.message.ilike(f"%{message}%"))
+    if origin:
+        q = q.where(UserError.origin == origin)
+    if status:
+        q = q.where(UserError.status == status)
+    if since:
+        q = q.where(UserError.at >= since)
+    if until:
+        q = q.where(UserError.at <= until)
+    return q
+
+
+@router.get("/errors")
+def user_errors(limit: int = 200, username: str | None = None, path: str | None = None, message: str | None = None,
+                origin: str | None = None, status: int | None = None, since: dt.datetime | None = None,
+                until: dt.datetime | None = None, db: Session = Depends(get_db),
+                _: Principal = Depends(require_roles("admin"))):
+    q = _errors_query(username, path, message, origin, status, since, until).limit(min(limit, 2000))
+    rows = [{c: getattr(r, c) for c in ERROR_FIELDS} for r in db.scalars(q)]
     return {"retention_days": error_retention_days(db), "errors": rows}
+
+
+@router.get("/errors/export")
+def user_errors_export(request: Request, username: str | None = None, path: str | None = None,
+                       message: str | None = None, origin: str | None = None, status: int | None = None,
+                       since: dt.datetime | None = None, until: dt.datetime | None = None,
+                       db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """Download the (filtered) user errors as JSON, like the audit export."""
+    rows = [{c: getattr(r, c) for c in ERROR_FIELDS}
+            for r in db.scalars(_errors_query(username, path, message, origin, status, since, until).limit(100000))]
+    audit(db, p.username, "errors.export", detail={"rows": len(rows), "username": username, "path": path},
+          source_ip=client_ip(request))
+    body = json.dumps(rows, default=str, indent=2)
+    name = f"labape-errors-{dt.datetime.now(dt.timezone.utc):%Y%m%d-%H%M%S}.json"
+    return Response(body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 class RetentionIn(BaseModel):

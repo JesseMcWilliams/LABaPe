@@ -1,10 +1,31 @@
 # Plan: VM operations, admin area, filters, host details and remote access
 
 > **Stage: Planning.** The user's feature list of 2026-10-12, turned into batches with options and
-> recommendations. Nothing here is built yet. Decisions go to questions 107-120 in
-> [Planning_Questions.md](Planning_Questions.md). Once a batch ships, record what was built in
+> recommendations. Questions 107-120 in [Planning_Questions.md](Planning_Questions.md) are answered
+> (§0); building goes batch by batch, O1 first. Once a batch ships, record what was built in
 > [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) (a new section per batch),
 > as for earlier rounds.
+
+## 0. Decisions (questions 107-120, answered 2026-10-12)
+
+| Q | Decision | Changes the plan |
+|---|---|---|
+| 107 | Audit, Errors and Secrets move under Admin too; Hosts and Networks are admin pages | O1 |
+| 108 | Clean shutdown by default; Force off offered as an option | O3 |
+| 109 | Start order: anything that provides a service to others (a DC) starts before its clients | O3 |
+| 110 | Wait for the guest agent plus an optional delay; staggering also spares the KVM host | O3 |
+| 111 | Owners and admins may start, stop and restart | O3 |
+| 112 | Installer targets both generic (Windows, Linux, Any) and fine-grained (OS family, distribution, specific OS keys) | O2: `targets` is a list, not one value |
+| 113 | The KVM host account LABaPe uses is separate from the tool's own service account, e.g. `localadmin01` | O4 |
+| 114 | An admin types credentials in once; they're used only to create that access account (key-based), which LABaPe uses from then on | O4 |
+| 115 | Metrics every 5 minutes, kept 7 days; SMART daily | O4 |
+| 116 | guacd with LABaPe in front: RDP/VNC for hosts with a GUI, SSH for everything that supports it, plus Download .rdp | O5 |
+| 117 | Recording optional (admin setting, off by default) | O5 |
+| 118 | Owners and admins open sessions; a new **auditor** role sees session logs and recordings | O5: new role |
+| 119 | Guacamole VNC console for GUI, a serial console for everything that supports it, virt-viewer file optional | O6 |
+| 120 | Environment owners and admins manage accounts and groups on VMs; admins on KVM hosts | O4, O6: not read-only |
+
+Future item from 113: adding more local and domain accounts to an environment (Planning_Backlog.md).
 
 ## 1. The request, item by item
 
@@ -46,7 +67,7 @@
 
 ## 3. Batches (recommended order)
 
-### O1. Admin area, Jobs, Errors, Catalog requests (small, no new infrastructure)
+### O1. Admin area, Jobs, Errors, Catalog requests (built 2026-10-12: Planning_Web-Interface-Design.md §28.1)
 
 - **Admin tab** (R3). One **Admin** button in the top bar opens `/admin/*`, with a vertical list on
   the left (MUI `List` in a side panel) and the page on the right: Hosts, Networks, Settings,

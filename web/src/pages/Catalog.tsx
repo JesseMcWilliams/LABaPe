@@ -46,7 +46,7 @@ function RequestDialog({ kind, onClose }: { kind: string; onClose: (sent: boolea
   };
   return (
     <Dialog open onClose={() => onClose(false)} maxWidth="sm" fullWidth>
-      <DialogTitle>Request a new {kind}</DialogTitle>
+      <DialogTitle>Request a new {form.kind}</DialogTitle>
       <DialogContent>
         <Stack spacing={1} sx={{ mt: 1 }}>
           <ErrorSummary summary={errs.summary} fields={errs.fields} />
@@ -147,6 +147,8 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
 
 function Requests({ isAdmin }: { isAdmin: boolean }) {
   const [rows, setRows] = useState<CatalogRequest[]>([]);
+  const [requesting, setRequesting] = useState(false);
+  const [sent, setSent] = useState(false);
   const [answering, setAnswering] = useState<CatalogRequest | null>(null);
   const [answer, setAnswer] = useState({ status: "accepted", response: "" });
   const load = () => api.get<CatalogRequest[]>("/api/catalog/requests").then(setRows);
@@ -159,6 +161,17 @@ function Requests({ isAdmin }: { isAdmin: boolean }) {
   };
   return (
     <Stack spacing={2}>
+      <Typography variant="body2" color="text.secondary">
+        Ask the admins for a service, application or package that isn't in the catalog yet. You see the answer here.
+      </Typography>
+      <Stack direction="row">
+        <Box sx={{ flexGrow: 1 }} />
+        <Button variant="contained" onClick={() => setRequesting(true)}
+          title="Ask the admins to add a service, application or package (opens a form)">
+          New request
+        </Button>
+      </Stack>
+      {sent && <Alert severity="success" onClose={() => setSent(false)}>Request sent; an admin will follow up.</Alert>}
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -180,6 +193,7 @@ function Requests({ isAdmin }: { isAdmin: boolean }) {
           {rows.length === 0 && <TableRow><TableCell colSpan={6}>No requests.</TableCell></TableRow>}
         </TableBody>
       </Table>
+      {requesting && <RequestDialog kind="application" onClose={(ok) => { setRequesting(false); if (ok) { setSent(true); load(); } }} />}
       {answering && (
         <Dialog open onClose={() => setAnswering(null)} maxWidth="sm" fullWidth>
           <DialogTitle>{answering.title}</DialogTitle>

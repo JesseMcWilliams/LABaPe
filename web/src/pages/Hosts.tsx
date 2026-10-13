@@ -19,7 +19,7 @@ export default function Hosts() {
   }, []);
   return (
     <Stack spacing={2}>
-      <ListHeader title="KVM hosts" canAdd={isAdmin} addTo="/hosts/new" addLabel="Register host"
+      <ListHeader title="KVM hosts" canAdd={isAdmin} addTo="/admin/hosts/new" addLabel="Register host"
         intro={isAdmin ? undefined : "The KVM hosts you can deploy to."} />
       {error && <Alert severity="error">{error}</Alert>}
       <Table size="small">
@@ -35,7 +35,7 @@ export default function Hosts() {
             const s = h.resources?.stats;
             return (
               <TableRow key={h.id} hover sx={{ opacity: h.enabled ? 1 : 0.5 }}>
-                <TableCell><Link component={RouterLink} to={`/hosts/${h.id}`}>{h.name}</Link></TableCell>
+                <TableCell><Link component={RouterLink} to={`/admin/hosts/${h.id}`}>{h.name}</Link></TableCell>
                 <TableCell>{h.libvirt_uri}</TableCell>
                 <TableCell>{s ? `${s.vms_running} of ${s.vms_defined}` : "–"}</TableCell>
                 <TableCell>{s ? pct(s.memory_committed_mb, s.memory_total_mb) : "–"}</TableCell>

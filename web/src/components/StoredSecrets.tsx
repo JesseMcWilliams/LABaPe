@@ -98,7 +98,7 @@ export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
               <TableCell>{label(s.store)}</TableCell>
               <TableCell>
                 {s.rotation
-                  ? <Link component={RouterLink} to={`/secrets/${s.rotation.policy_id}`}>
+                  ? <Link component={RouterLink} to={`/admin/secrets/${s.rotation.policy_id}`}>
                       {s.rotation.enabled ? `every ${every(s.rotation.interval_hours)}` : "off"} ({s.rotation.status})
                     </Link>
                   : "—"}
