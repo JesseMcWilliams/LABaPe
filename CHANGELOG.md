@@ -45,7 +45,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - A syslog collector in the stack: rsyslog on UDP/TCP 514 and TLS 6514
   (client certificates from the platform CA required by default) with its
   own PostgreSQL, a **Syslog** tab for admins and auditors (filters, paging,
-  live view), retention (90 days by default) and forwarding to SIEMs over
+  live view), retention (30 days by default) and forwarding to SIEMs over
   UDP, TCP or TLS with facility and severity filters (Admin → Settings →
   Syslog collector). The audit trail goes there by default on new installs
   and can present LABaPe's client certificate. KVM hosts can send their own

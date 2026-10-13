@@ -11,7 +11,7 @@
 |---|---|---|
 | 121 | A syslog collector container in the stack, with its own PostgreSQL container as the backend; LABaPe's audit trail goes there from the first start. The catalog service stays for collectors inside an environment | Y1 |
 | 122 | Listeners UDP 514, TCP 514, TLS 6514; client certificates optional but **required by default** | Y1 |
-| 123 | Optional forwarding to a SIEM; messages kept 90 days by default, a setting | Y1 |
+| 123 | Optional forwarding to a SIEM; messages kept 30 days by default (changed from 90 on 2026-10-13), a setting | Y1 |
 | 124 | KVM-only hosts send their own logs to the stack collector: optional, default yes | Y1, Y2 |
 | 125 | `syslog1` (environment 11) stays for testing; the user deletes it later | — |
 | 126 | Web-driven KVM installs skip the CLI configuration steps and their questions | Y2 |
@@ -26,7 +26,7 @@
 | 135 | Jobs needing files wait for the primary, up to a configurable time, then fail; a host that already has the file (same checksum) doesn't wait | Y3 |
 | 136 | The syslog database is its own container | Y1 |
 | 137 | A log viewer: a **Syslog** tab | Y1 |
-| 138 | 90 days by default, configurable; no plain log files for syslog messages | Y1 |
+| 138 | 30 days by default (changed from 90 on 2026-10-13), configurable; no plain log files for syslog messages | Y1 |
 | 139 | Forwarding supports every transport (UDP, TCP, TLS, mTLS; RFC 5424 and 3164), configured in the Admin area | Y1 |
 | 140 | The installer offers each service, default yes | Y2 |
 | 141 | The answer file never holds secrets; an update reuses it and asks only new questions | Y2 |
@@ -47,7 +47,7 @@ nothing on 514/6514, so the collector binds there.
   reaches the collector on the stack network.
 - **Storage.** One table (`syslog_messages`: received and reported time, sender address, host name,
   facility, severity, app name, proc id, msg id, structured data, message), indexed for the viewer's
-  filters. Retention (question 138): a daily purge in the worker, 90 days by default, a setting.
+  filters. Retention (question 138): a daily purge in the worker, 30 days by default, a setting.
 - **Forwarding** (questions 123 and 139): Admin → Settings → Syslog lists forward targets, each with host,
   port, transport (UDP, TCP, TLS, TLS with a client certificate), format (RFC 5424 or 3164) and a filter
   (everything, chosen facilities, or a minimum severity). LABaPe writes the rsyslog forwarding file to a

@@ -78,7 +78,7 @@ class SyslogForward(BaseModel):
 
 class SyslogCollectorSettings(BaseModel):
     """The stack's syslog collector (design §29.1, questions 121-139)."""
-    retention_days: int = Field(default=90, ge=1, le=3650)
+    retention_days: int = Field(default=30, ge=1, le=3650)       # 30 days (user, 2026-10-13; was 90)
     require_client_cert: bool = True            # TLS 6514 (question 122)
     # The address KVM hosts and VMs send to; empty: the web interface's host name.
     address: str = Field(default="", pattern=r"^[A-Za-z0-9.:-]{0,253}$")

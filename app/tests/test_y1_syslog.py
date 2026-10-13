@@ -102,7 +102,7 @@ def test_collector_settings_validation(client):
 def test_syslog_api_roles_and_absent_collector(client):
     _admin_session(client)
     st = client.get("/api/syslog/status").json()
-    assert st["present"] is False and st["retention_days"] == 90 and "local0" in st["facilities"]
+    assert st["present"] is False and st["retention_days"] == 30 and "local0" in st["facilities"]
     assert client.get("/api/syslog/messages").status_code == 404
     for roles, code in (({"viewer"}, 403), ({"auditor"}, 200)):
         client.app.dependency_overrides[current_principal] = lambda roles=roles: Principal(

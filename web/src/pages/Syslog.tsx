@@ -69,7 +69,7 @@ export default function Syslog() {
       <Typography variant="body2" color="text.secondary">
         Messages the stack's collector received from KVM hosts, VMs, LABaPe's audit trail and anything else that sends
         to {status?.address || "this host"} (UDP or TCP 514, TLS 6514{status?.require_client_cert ? " with a client certificate" : ""}).
-        Kept {status?.retention_days ?? 90} days; forwarding and retention are in Admin → Settings.
+        Kept {status?.retention_days ?? 30} days; forwarding and retention are in Admin → Settings.
       </Typography>
       {status && !status.present && <Alert severity="info">This install has no syslog collector.</Alert>}
       {status?.error && <Alert severity="warning">{status.error}</Alert>}
