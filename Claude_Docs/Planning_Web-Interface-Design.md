@@ -1213,3 +1213,18 @@ A Linux-only catalog service, **Syslog collector** (`syslog_collector`), gives a
 | Host setup | SELinux: TCP 514 becomes `syslogd_port_t` (it's `shell_port_t` by default) and 6515 `syslog_tls_port_t` (`community.general.seport`). The ports are opened in firewalld or ufw when either is running. `rsyslogd -N1` checks the configuration before every restart. |
 | LABaPe's own audit trail | Settings → Syslog sends to the collector over TLS with verification on: the sender trusts the platform root as well as the system roots, requires TLS 1.2 or later, and ends each connection with close_notify (before, a reset could drop the message). The lab sends its audit trail to `syslog1:6514` (`live/syslog_settings.py`). |
 | Verified | Live on the lab host (environment `syslog1`, Rocky 9, SELinux enforcing): the deploy passed (55 tasks) and a redeploy changed only the edited configuration. All four listeners were up on IPv4 and IPv6, `rsyslogd -N1` was clean, and firewalld had the ports open. LogaPe (5.1 and 7, from the development machine) sent over UDP (RFC 5424 and 3164), TCP (octet-counted and LF), TLS (pinned, skip-check) and mutual TLS with a client certificate from `labape ca-sign`, and each line showed the right facility, severity, app, PID, MSGID and structured data. TLS without a trusted root, and mutual TLS without a certificate, were refused. Reverse DNS is off by default (`syslog_collector_dns_lookup`): it held TCP messages back by seconds (Testing_Troubleshooting-Log.md). pytest: 135. |
+
+## 28. VM operations, admin area, host details and remote access (planned 2026-10-12)
+
+The plan, options and decisions are in [Planning_Operations-And-Admin-UI.md](Planning_Operations-And-Admin-UI.md) (batches O1-O6, questions 107-120). This section records each batch as built.
+
+### 28.1 O1 as built: Admin area, Jobs and Errors filters, Catalog requests
+
+| Area | As built |
+|---|---|
+| Admin area | One **Admin** button in the top bar (admins only) opens `/admin`, with a list on the left: KVM hosts, Networks, Settings, Secrets, Audit log, User errors (question 107). `web/src/pages/Admin.tsx` (`AdminLayout`) wraps them; non-admins get "for admins". The old URLs (`/hosts/3`, `/settings?tab=x`, …) redirect to the same page under `/admin`. The APIs are unchanged: the deploy form still reads hosts and networks for non-admins. |
+| Filters | `web/src/components/Filters.tsx`: filter values live in the URL (bookmarkable, back button works), applied with **Filter** or Enter, **Clear** resets; date ranges are browser-local and sent as UTC. |
+| Jobs | Filters: environment (name contains), type, state, requested by, created from/to. Environments show by name, with "(destroyed)". `GET /api/jobs` takes the same filters after the visibility rule (own jobs plus those of visible environments), so a filter can't reveal other jobs; `GET /api/jobs/facets` gives the filter values from the jobs the user can see. |
+| Audit, User errors | The same filter bar. User errors: user, where (path or page contains), message contains, source (server/browser), HTTP status, from/to, and **Export JSON** (`/api/admin/errors/export`, audited as `errors.export`), like the audit log. Audit gains the date range in the page (the API had it). |
+| Catalog requests | The Requests tab has a short description and a **New request** button (the request form with a kind selector). |
+| Verified | pytest 138 (filters, names, facets, visibility for a deployer without grants, error filters and export). Live on the lab stack: the UI builds (type-check); admin and `labape-dev` job lists and facets through `live/jobs.py` (the developer sees only their own jobs and `lab2`'s). |

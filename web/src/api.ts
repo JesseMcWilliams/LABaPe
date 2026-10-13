@@ -189,6 +189,8 @@ export interface Job {
   type: string;
   state: string;
   environment_id: number | null;
+  environment_name?: string | null;
+  environment_status?: string | null;
   kvm_host_id: number | null;
   requested_by: string;
   cancel_requested: boolean;

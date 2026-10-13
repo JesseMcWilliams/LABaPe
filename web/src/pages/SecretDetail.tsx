@@ -44,7 +44,7 @@ export default function SecretDetail() {
   const canRotate = p.automatic && !p.managed_externally && p.enabled;
   return (
     <Stack spacing={2}>
-      <DetailHeader back="/secrets" backLabel="Secrets" title={<>{p.label} <StatusChip p={p} /></>}
+      <DetailHeader back="/admin/secrets" backLabel="Secrets" title={<>{p.label} <StatusChip p={p} /></>}
         actions={
           <ActionButton variant="outlined" disabled={!canRotate} onClick={rotate}
             tip={canRotate ? "Rotate this secret now, as a job" : "LABaPe doesn't rotate this secret (see the notes)"}

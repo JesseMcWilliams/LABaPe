@@ -71,7 +71,7 @@ export default function NetworkDetail() {
     const problems = validate(body);
     setErrors(toFieldErrors(problems));
     if (problems.length) {
-      reportBlocked("/networks", problems);
+      reportBlocked("/admin/networks", problems);
       return;
     }
     if (!(await confirm({
@@ -83,7 +83,7 @@ export default function NetworkDetail() {
     try {
       if (editing) await api.put(`/api/networks/${editing}`, body);
       else await api.post("/api/networks", body);
-      navigate("/networks");
+      navigate("/admin/networks");
     } catch (err) {
       const { summary: s, fields } = fromApiError(err);
       setSummary(s);
@@ -94,7 +94,7 @@ export default function NetworkDetail() {
   const remove = async (n: Network) => {
     try {
       await api.del(`/api/networks/${n.id}`);
-      navigate("/networks");
+      navigate("/admin/networks");
     } catch (err) {
       setSummary((err as Error).message);
     }
@@ -108,7 +108,7 @@ export default function NetworkDetail() {
   const row = { alignItems: "flex-start", flexWrap: "wrap" } as const;
 
   const header = (
-    <DetailHeader back="/networks" backLabel="Networks"
+    <DetailHeader back="/admin/networks" backLabel="Networks"
       title={isNew ? "Add a network" : net ? `${net.name}${net.vlan ? ` (VLAN ${net.vlan})` : ""}` : "Network"}
       actions={isAdmin && net && (
         <ActionButton color="error" onClick={() => remove(net)} disabled={net.allocated > 0}
@@ -190,7 +190,7 @@ export default function NetworkDetail() {
               tip={editing ? "Save the changes (asks to confirm)" : "Add this network to the catalog (asks to confirm)"}>
               {editing ? "Save" : "Add"}
             </ActionButton>
-            <ActionButton tip="Leave without saving" onClick={() => navigate("/networks")}>Cancel</ActionButton>
+            <ActionButton tip="Leave without saving" onClick={() => navigate("/admin/networks")}>Cancel</ActionButton>
           </Stack>
         </Stack>
       </Paper>

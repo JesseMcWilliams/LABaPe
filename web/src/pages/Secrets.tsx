@@ -102,7 +102,7 @@ export default function Secrets() {
           {data?.policies.map((p) => (
             <TableRow key={p.id} hover sx={{ opacity: p.enabled ? 1 : 0.5 }}>
               <TableCell>
-                <Link component={RouterLink} to={`/secrets/${p.id}`}>{p.label}</Link>
+                <Link component={RouterLink} to={`/admin/secrets/${p.id}`}>{p.label}</Link>
                 {p.needs_restart && <Tooltip title="Restarts a service: rotates in the maintenance window"><Chip size="small" label="restart" sx={{ ml: 1 }} /></Tooltip>}
               </TableCell>
               <TableCell>{p.secret_class.replace("_", "-")}</TableCell>

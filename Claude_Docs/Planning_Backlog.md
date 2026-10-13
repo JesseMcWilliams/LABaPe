@@ -15,3 +15,6 @@
 - **Release v0.3.0**: later; it also needs the user's release signing key in
   `deploy/allowed_signers`.
 - **User-docs backlog**: later (its own list, above).
+- **More accounts per environment** (question 113): add local and domain accounts to an
+  environment beyond the built-in admin ones (created at deploy, listed on the credentials
+  sheet, rotatable).

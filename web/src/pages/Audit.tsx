@@ -3,46 +3,48 @@ import { Alert, Button, Stack, Table, TableBody, TableCell, TableHead, TableRow,
 import DownloadIcon from "@mui/icons-material/Download";
 import { api, AuditEntry, fmtTime } from "../api";
 import { Field } from "../forms";
+import { DateRangeFields, FilterBar, toQuery, useUrlFilters } from "../components/Filters";
 
+const KEYS = ["actor", "action", "since", "until"];
+
+// Who did what, when. Filters are kept in the URL (design §28, O1).
 export default function Audit() {
   const [rows, setRows] = useState<AuditEntry[]>([]);
   const [error, setError] = useState("");
-  const [actor, setActor] = useState("");
-  const [action, setAction] = useState("");
+  const f = useUrlFilters(KEYS);
+  const query = toQuery(f.applied).toString();
 
-  const query = () => {
-    const q = new URLSearchParams();
-    if (actor.trim()) q.set("actor", actor.trim());
-    if (action.trim()) q.set("action", action.trim());
-    return q;
-  };
-  const load = () => {
-    const q = query();
-    q.set("limit", "500");
-    api.get<AuditEntry[]>(`/api/admin/audit?${q}`).then(setRows, (e) => setError(e.message));
-  };
   useEffect(() => {
-    load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    api.get<AuditEntry[]>(`/api/admin/audit?limit=500&${query}`).then((r) => { setRows(r); setError(""); },
+      (e) => setError(e.message));
+  }, [query]);
 
   return (
     <Stack spacing={2}>
       <Typography variant="h5">Audit log</Typography>
       {error && <Alert severity="error">{error}</Alert>}
-      <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Field label="Actor" value={actor} onChange={(e) => setActor(e.target.value)} help="Exact user name" />
-        <Field label="Action" value={action} onChange={(e) => setAction(e.target.value)}
-          help="Starts with, e.g. environment. or auth." />
-        <Button variant="outlined" onClick={load} sx={{ mt: 0.25 }} title="Show only entries matching the actor and action">Filter</Button>
-        <Button variant="contained" startIcon={<DownloadIcon />} sx={{ mt: 0.25 }}
-          title="Download the matching entries as a JSON file (the export is itself audited)"
-          href={`/api/admin/audit/export?format=json&${query()}`}>
-          Export JSON
-        </Button>
-        <Tooltip title="CSV export is planned">
-          <span><Button disabled sx={{ mt: 0.25 }}>Export CSV</Button></span>
-        </Tooltip>
-      </Stack>
+      <FilterBar onApply={() => f.apply()} onClear={f.clear} active={f.active}
+        extra={
+          <>
+            <Button variant="contained" startIcon={<DownloadIcon />} sx={{ mt: 0.25 }}
+              title="Download the matching entries as a JSON file (the export is itself audited)"
+              href={`/api/admin/audit/export?format=json&${query}`}>
+              Export JSON
+            </Button>
+            <Tooltip title="CSV export is planned">
+              <span><Button disabled sx={{ mt: 0.25 }}>Export CSV</Button></span>
+            </Tooltip>
+          </>
+        }>
+        <Field label="Actor" value={f.draft.actor} sx={{ width: 170 }} help="Exact user name"
+          onChange={(e) => f.set("actor", e.target.value)} />
+        <Field label="Action" value={f.draft.action} sx={{ width: 200 }} help="Starts with, e.g. environment. or auth."
+          onChange={(e) => f.set("action", e.target.value)} />
+        <DateRangeFields since={f.draft.since} until={f.draft.until} onChange={f.set} />
+      </FilterBar>
+      <Typography variant="body2" color="text.secondary">
+        {rows.length} entr{rows.length === 1 ? "y" : "ies"}{f.active ? " match" : ""}{rows.length === 500 ? " (newest 500 shown)" : ""}
+      </Typography>
       <Table size="small">
         <TableHead>
           <TableRow>

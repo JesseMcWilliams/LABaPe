@@ -18,7 +18,7 @@ export default function Networks() {
   }, []);
   return (
     <Stack spacing={2}>
-      <ListHeader title="Networks" canAdd={isAdmin} addTo="/networks/new" addLabel="Add network"
+      <ListHeader title="Networks" canAdd={isAdmin} addTo="/admin/networks/new" addLabel="Add network"
         intro={isAdmin
           ? "The networks VMs may use. Attach them to KVM hosts on each host's page. Static addresses are handed out from the static pools automatically; DHCP addresses are found after boot."
           : "The networks you may deploy on."} />
@@ -35,7 +35,7 @@ export default function Networks() {
           {nets.map((n) => (
             <TableRow key={n.id} hover sx={{ opacity: n.enabled ? 1 : 0.5 }}>
               <TableCell>
-                <Link component={RouterLink} to={`/networks/${n.id}`}>{n.name}</Link>{n.vlan ? ` (VLAN ${n.vlan})` : ""}
+                <Link component={RouterLink} to={`/admin/networks/${n.id}`}>{n.name}</Link>{n.vlan ? ` (VLAN ${n.vlan})` : ""}
               </TableCell>
               <TableCell>{n.cidr} via {n.gateway || "(.1)"}; DNS {fromList(n.dns_servers) || "gateway"}</TableCell>
               <TableCell>{n.addressing.map((a) => <Chip key={a} size="small" label={a === "dhcp" ? "DHCP" : "Static"} sx={{ mr: 0.5 }} />)}</TableCell>

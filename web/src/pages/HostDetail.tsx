@@ -101,10 +101,10 @@ export default function HostDetail() {
     try {
       if (isNew) {
         const created = await api.post<KvmHost>("/api/hosts", form);
-        navigate(`/hosts/${created.id}`);
+        navigate(`/admin/hosts/${created.id}`);
       } else {
         await api.put(`/api/hosts/${id}`, form);
-        navigate("/hosts");
+        navigate("/admin/hosts");
       }
     } catch (err) {
       setErrs(fromApiError(err));
@@ -117,7 +117,7 @@ export default function HostDetail() {
   );
 
   const header = (
-    <DetailHeader back="/hosts" backLabel="KVM hosts" title={isNew ? "Register a KVM host" : host?.name ?? "KVM host"} />
+    <DetailHeader back="/admin/hosts" backLabel="KVM hosts" title={isNew ? "Register a KVM host" : host?.name ?? "KVM host"} />
   );
 
   return (
@@ -142,7 +142,7 @@ export default function HostDetail() {
                 tip={isNew ? "Register this KVM host (asks to confirm)" : "Save the changes (asks to confirm)"}>
                 {isNew ? "Register" : "Save"}
               </ActionButton>
-              <Button component={RouterLink} to="/hosts" title="Leave without saving">Cancel</Button>
+              <Button component={RouterLink} to="/admin/hosts" title="Leave without saving">Cancel</Button>
             </Stack>
           </Stack>
         </Paper>
@@ -181,7 +181,7 @@ export default function HostDetail() {
               {nets.map((n) => (
                 <TableRow key={n.id}>
                   <TableCell>
-                    <Link component={RouterLink} to={`/networks/${n.id}`}>{n.name}</Link>{n.is_default ? " (default)" : ""}
+                    <Link component={RouterLink} to={`/admin/networks/${n.id}`}>{n.name}</Link>{n.is_default ? " (default)" : ""}
                   </TableCell>
                   <TableCell>{n.cidr}</TableCell>
                   <TableCell>{n.addressing.join(", ")}</TableCell>
