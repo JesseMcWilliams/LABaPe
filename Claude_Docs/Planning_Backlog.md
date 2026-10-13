@@ -12,8 +12,8 @@
   ownership guard. Decide physical host vs the nested `hvhost1` VM when it starts.
 - **Published `.docx` guides** (question 24): later. The Markdown guides in `User_Docs/` are the
   source.
-- **Release v0.3.0**: later; it also needs the user's release signing key in
-  `deploy/allowed_signers`.
+- **Release v0.3.0**: later, when the user says so. The release key is in place
+  (`deploy/allowed_signers`, 2026-10-12): tags are signed with it.
 - **User-docs backlog**: later (its own list, above).
 - **More accounts per environment** (question 113): add local and domain accounts to an
   environment beyond the built-in admin ones (created at deploy, listed on the credentials
