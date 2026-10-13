@@ -18,7 +18,7 @@ const blank: Form = {
   name: "", description: "", cidr: "", gateway: "", dns_servers: [], vlan: null, addressing: ["static"],
   static_pools: [], dhcp_ranges: [], reserved: [], allowed_roles: [], allowed_groups: [], enabled: true,
 };
-const ROLES = ["admin", "template_editor", "deployer", "file_manager", "viewer"];
+const ROLES = ["admin", "template_editor", "deployer", "file_manager", "viewer", "auditor"];
 
 const toList = (t: string) => t.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
 export const fromList = (l: string[]) => l.join(", ");

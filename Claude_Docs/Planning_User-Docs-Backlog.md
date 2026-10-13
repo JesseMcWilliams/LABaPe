@@ -16,3 +16,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Files: tab descriptions and filters; installer targets (generic, family, specific OS), how they're inferred, and the catalog/deploy refusals.
 - Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
 - Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.
+- Remote access: RDP/SSH buttons and .rdp files, the session page (keys, idle close, the recorded marker), Settings → Remote access, Admin → Remote sessions, the auditor role (labape-auditors), and that Windows hosts now allow Remote Desktop (redeploy older environments).

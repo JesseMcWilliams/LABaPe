@@ -12,6 +12,7 @@ import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton } from "./Confirm";
 import { Facts } from "./PageParts";
 import Sparkline from "./Sparkline";
+import { ConnectButton } from "./Connect";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
@@ -458,9 +459,16 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
 }
 
 export function SectionHeader({ view, onRefresh, title }: { view: AdminView | null; onRefresh: () => Promise<void>; title: string }) {
+  const [err, setErr] = useState("");
   return (
     <Stack spacing={0.5}>
-      <Typography variant="h6">{title}</Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+        <Typography variant="h6">{title}</Typography>
+        {view?.host.access_status === "ready" && (
+          <ConnectButton target={{ target_type: "host", protocol: "ssh", kvm_host_id: view.host.id }} label="Open SSH" onError={setErr} />
+        )}
+      </Stack>
+      {err && <Alert severity="error" onClose={() => setErr("")}>{err}</Alert>}
       {view && view.host.access_status === "ready" && <Collected view={view} onRefresh={onRefresh} />}
       {view && view.host.access_status !== "ready" && <NeedsAccess host={view.host} />}
     </Stack>

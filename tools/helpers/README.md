@@ -45,6 +45,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/jobs.py` | lab (container) | List jobs with the Jobs page's filters, as any test user |
 | `live/files.py` | lab (container) | List the Files tab (installers with their OS targets) |
 | `live/power.py` | lab (container) | VM power and start order for an environment |
+| `live/remote_session.py` | lab (container) | Open an SSH/RDP session through the tunnel like the browser does; toggle recording; list sessions |
 | `live/host_access.py` | lab (container) | KVM host administration: register, set up access, show sections, manage accounts, install |
 | `live/host_access_vm.sh` | lab (host) | Test Set up access against a LABaPe VM with a throwaway password |
 | `live/templates.py` | lab (container) | Show Settings → Templates; delete a template and wait for the job |
@@ -108,6 +109,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `stores.py` | `stores.py` | Runs Test connection for each enabled store (the stack's OpenBao and Conjur, design §26) and prints the dashboard's store checks. Never sees a login: LABaPe owns and rotates them. |
 | `stores_rotate.py` | `stores_rotate.py [openbao\|conjur ...]` | Rotate now on each store's login policy, waits for the job, prints its `labape:` lines, then runs Test connection. |
 | `stores_move.py` | `stores_move.py [environment]` | Needs `stores.py` first. Moves the directory token built-in → OpenBao → Conjur → built-in, running group search after each move, moves an environment's credentials sheet (default `lab2`) to OpenBao and back comparing the sheet's hash, and sets the default store to OpenBao and back. |
+| `remote_session.py` | `vm ENV VM ssh\|rdp`, `host HOST ssh`, `record on\|off`, `sessions` | Reports the opcodes guacd sent (and any error); acknowledges frames; sends no keystrokes. |
 | `host_access.py` | see its docstring | `setup` and `install` read the password or answers on stdin. |
 | `host_access_vm.sh` | `host_access_vm.sh <vm address> <host id> <web URL>` | Sets a random password for the VM's `labape` user, feeds it to `host_access.py setup` on stdin, then locks it again. Never prints it. |
 | `power.py` | `power.py <env id> vms`, `<env id> <start\|shutdown\|restart\|force_off> [--vm NAME ...] [--force-after] [--timeout S]` or `<env id> order GROUP=ORDER[:agent\|none[:DELAY]] ...` | Waits for the job and prints its `labape:` lines. **Shut down and force off stop VMs.** |

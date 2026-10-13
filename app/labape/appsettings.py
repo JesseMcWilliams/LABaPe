@@ -120,6 +120,13 @@ class SecretStoreSettings(BaseModel):
     default_environment_store: str = Field(default="builtin", pattern=r"^[a-z][a-z0-9_]{0,63}$")
 
 
+class RemoteSettings(BaseModel):
+    """Browser remote access (design §28.5, questions 116-117)."""
+    record_sessions: bool = False                                 # guacd records every session
+    idle_minutes: int = Field(default=30, ge=5, le=480)           # close a session with no keyboard/mouse input
+    keep_recordings_days: int = Field(default=90, ge=1, le=3650)
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "retention": RetentionSettings,
@@ -133,6 +140,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "vm_accounts": VmAccountSettings,
     "secret_stores": SecretStoreSettings,
     "templates": TemplateSettings,
+    "remote": RemoteSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

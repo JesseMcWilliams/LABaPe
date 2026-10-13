@@ -96,6 +96,17 @@ services:
       - labape-ca:/var/lib/labape-ca:ro
       # Requests to, and status from, the host's update agent (design §23.2).
       - ./update:/var/lib/labape-update
+      # Remote session recordings that guacd writes (design §28.5), for auditors.
+      - labape-recordings:/var/lib/labape-recordings:ro
+
+  # Browser SSH/RDP/VNC (design §28.5, question 116): guacd behind the API's own
+  # tunnel. Never published: only the API talks to it, with the credentials it
+  # fills in server-side. Recordings go to its home folder (a volume it owns).
+  labape-guacd:
+    image: docker.io/guacamole/guacd:1.6.0
+    restart: unless-stopped
+    volumes:
+      - labape-recordings:/home/guacd
 
   labape-worker:
     <<: *labape
@@ -111,6 +122,8 @@ services:
       - ${LABAPE_DATA_ROOT:-/data}:${LABAPE_DATA_ROOT:-/data}
       - labape-ca:/var/lib/labape-ca:ro
       - ./update:/var/lib/labape-update
+      # Deletes recordings past Settings → Remote access's retention.
+      - labape-recordings:/var/lib/labape-recordings
     devices:
       - /dev/kvm:/dev/kvm
     cap_add: [NET_RAW]
@@ -219,6 +232,7 @@ secrets:
     file: ${LABAPE_SECRETS_DIR:-./secrets}/ca_password
 
 volumes:
+  labape-recordings:
   postgres-data:
   labape-data:
   labape-ca:

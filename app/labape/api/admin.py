@@ -39,7 +39,7 @@ def _audit_query(actor: str | None, action: str | None, since: dt.datetime | Non
 @router.get("/audit")
 def audit_log(limit: int = 200, actor: str | None = None, action: str | None = None,
               since: dt.datetime | None = None, until: dt.datetime | None = None,
-              db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
+              db: Session = Depends(get_db), _: Principal = Depends(require_roles("auditor"))):
     rows = db.scalars(_audit_query(actor, action, since, until).limit(min(limit, 1000)))
     return [{c: getattr(r, c) for c in AUDIT_FIELDS} for r in rows]
 
@@ -47,7 +47,7 @@ def audit_log(limit: int = 200, actor: str | None = None, action: str | None = N
 @router.get("/audit/export")
 def audit_export(request: Request, format: str = "json", actor: str | None = None, action: str | None = None,
                  since: dt.datetime | None = None, until: dt.datetime | None = None,
-                 db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+                 db: Session = Depends(get_db), p: Principal = Depends(require_roles("auditor"))):
     """Download the (filtered) audit log. JSON now; CSV is planned."""
     if format != "json":
         raise FieldError("format", "Only JSON export is available so far; CSV is planned.")

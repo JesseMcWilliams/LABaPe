@@ -26,6 +26,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- SSH and RDP in the browser through guacd (in the stack, behind LABaPe's own
+  tunnel; credentials never reach the browser): RDP to Windows VMs, SSH to
+  Linux VMs (owners and admins) and to KVM hosts (admins), plus a .rdp file
+  for native clients. Optional session recording, idle timeout, a session
+  log, and a new **auditor** role that reads the audit log and the session
+  log and plays recordings.
+- Windows hosts get Remote Desktop on (Network Level Authentication
+  required, firewall rules on) through the new `windows_rdp` role.
 - KVM host administration over SSH: a dedicated access account (default
   `localadmin01`, key-only, passwordless sudo) set up once from an admin
   login typed in and never stored; a details page with Dashboard (warnings,
