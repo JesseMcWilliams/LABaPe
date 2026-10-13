@@ -506,3 +506,7 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 4. **No metrics on a disabled host:** the collector filtered on `enabled`, which is about deploys. It now watches every host with access.
 5. **Installer: missing `secrets.vault.example.yml`, then "Destination not writable":** the image lacked the repo-root example, and `Config.Secrets` runs ansible-vault as the service user, who must own the repository copy. The image now carries the file; the job installs to a stable `/opt/labape-kvm` owned by the service user (a per-job folder also lost the installer's progress and the host's vault between runs).
 6. **Installer bug, older than this work:** `Storage.Dirs` created the VM and template folders as root without giving them to the service user, so **Check** reported them not writable on a fresh host. Fixed in the installer; it showed only on a host that didn't have the folders already.
+
+## Redeploy with VMs off (2026-10-13)
+
+1. **lab2's redeploy waited 45 minutes and failed:** "no DHCP address found for l2lin1, l2win1". All three lab2 VMs had been shut off since the host reboot on 2026-10-12 (libvirt autostart isn't set). `tofu apply` only replaced l2lin1's cloud-init seed file, so nothing started the VMs, and DHCP discovery waited for leases that couldn't come. `scripts/deploy.sh` now runs `scripts/lib/start_stopped_vms.py` after the apply: it starts every one of the environment's VMs that is shut off or crashed (domain controllers first) and logs each, before DHCP discovery and Ansible.

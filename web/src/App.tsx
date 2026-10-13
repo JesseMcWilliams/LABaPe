@@ -135,7 +135,7 @@ export default function App() {
             : "Authentik needs you to sign in again before your rights can be reloaded. Sign out and sign back in."}
         </Alert>
       )}
-      <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Container maxWidth={false} sx={{ py: 3 }}>
         <Routes>
           <Route path="/login" element={me ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/breakglass" element={<Breakglass />} />

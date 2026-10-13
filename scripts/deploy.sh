@@ -139,6 +139,8 @@ tofu apply -input=false -parallelism=1 tfplan.bin
 rm -f tfplan.bin tfplan.json
 
 tofu output -json hosts > hosts.json
+# A redeploy leaves untouched VMs as they were: start any that are off (host reboot).
+python3 "$ROOT_DIR/scripts/lib/start_stopped_vms.py" hosts.json
 # DHCP-addressed VMs: find their leases by MAC (a no-op when every VM is static).
 python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" hosts.json "$ENV_FILE"
 

@@ -117,6 +117,16 @@ chmod 0440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp" >/dev/null
 mv "$SUDOERS.tmp" "$SUDOERS"
 getent group libvirt >/dev/null && usermod -aG libvirt "$ACCOUNT" || true
+# Disk health (SMART) for the Drives section; best effort, the account works without it.
+if ! command -v smartctl >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y -qq smartmontools >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq smartmontools >/dev/null 2>&1; } || true
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y -q smartmontools >/dev/null 2>&1 || true
+  fi
+  command -v smartctl >/dev/null 2>&1 && echo "labape-setup: installed smartmontools" || echo "labape-setup: couldn't install smartmontools (install it for disk health)"
+fi
 echo "labape-setup: $ACCOUNT ready"
 '''
 
@@ -520,7 +530,35 @@ def manage_over(ssh, protected: set[str], op: str, name: str, **kw) -> str:
 
 # --- preparing a new KVM host (design §28.4, question 114) -----------------------------------
 
-INSTALL_DIRS = ("deploy", "scripts", "tofu", "ansible", "packer", "iso", "secrets.vault.example.yml")
+# What the kvm profile reads on the host; nothing else is copied. Jobs bring their own
+# workspace (tofu, ansible, packer, scripts) to ~/.labape/jobs/<id>, so the host needs only the
+# installer and the examples its Config and Smoke steps start from.
+INSTALL_FILES = ("deploy", "secrets.vault.example.yml", "tofu/environment.example.yml",
+                 "ansible/software-manifest.example.yml", "ansible/directory-manifest.example.yml", "scripts/lib")
+INSTALL_EXCLUDE = ("__pycache__", "deploy/state", "deploy/answers.*.json", "deploy/update-agent",
+                   "deploy/labape-rollback.sh", "deploy/allowed_signers")
+# What a re-run keeps from an earlier install: the installer's progress and the configuration it
+# generated. Everything else is removed first (the copy brings back what's needed), so files from
+# older, fuller copies don't linger.
+INSTALL_KEEP = ("deploy/state", "deploy/answers.web.json", "secrets.vault.yml", "tofu/environment.yml",
+                "ansible/software-manifest.yml", "ansible/directory-manifest.yml")
+PRUNE = r'''
+import os, shutil, sys
+root, keep = sys.argv[1], set(sys.argv[2:])
+def walk(rel):
+    for name in sorted(os.listdir(os.path.join(root, rel) if rel else root)):
+        path = f"{rel}/{name}" if rel else name
+        if path in keep:
+            continue
+        if any(k.startswith(path + "/") for k in keep) and os.path.isdir(os.path.join(root, path)):
+            walk(path)
+            continue
+        full = os.path.join(root, path)
+        shutil.rmtree(full) if os.path.isdir(full) and not os.path.islink(full) else os.remove(full)
+        print("removed", path)
+if os.path.isdir(root):
+    walk("")
+'''
 # One stable place on the host: the installer keeps its progress (deploy/state) and the host's
 # vault and environment.yml there, and a re-run updates the code in place.
 INSTALL_ROOT = "/opt/labape-kvm"
@@ -544,12 +582,20 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
         log(f"labape: {exc}\n")
         return 1
     answers = {**(job.params or {}).get("answers", {}), "Profile": "kvm", "InstallWebUi": False,
-               "WorkerPublicKey": hostio.ensure_key()}
+               "WorkerPublicKey": hostio.ensure_key(), "TemplatesToBuild": []}     # templates: web jobs
     root = INSTALL_ROOT
     engine = get_settings().engine_dir
+    pruned = ssh.run(f"sudo -n python3 - {root} {' '.join(INSTALL_KEEP)}", input=PRUNE.encode(), timeout=120)
+    if pruned.returncode != 0:
+        log(f"labape: tidying {root} failed: {pruned.stderr.decode(errors='replace').strip()[-300:]}\n")
+        return 1
+    gone = pruned.stdout.decode(errors="replace").split("\n")
+    if any(gone):
+        log(f"labape: removed what older installs left in {root}: "
+            f"{', '.join(g.removeprefix('removed ') for g in gone if g)}\n")
     log(f"labape: copying the installer to {h.ssh_user}@{h.ssh_address}:{root}\n")
-    tar = popen(["tar", "-C", str(engine), "-czf", "-", *[d for d in INSTALL_DIRS if (engine / d).exists()]],
-                stdout=subprocess.PIPE)
+    tar = popen(["tar", "-C", str(engine), *[f"--exclude={x}" for x in INSTALL_EXCLUDE], "-czf", "-",
+                 *[d for d in INSTALL_FILES if (engine / d).exists()]], stdout=subprocess.PIPE)
     r = subprocess.run([*ssh.base(), f"sudo -n mkdir -p {root} && sudo -n tar -xzf - -C {root}"],
                        stdin=tar.stdout, capture_output=True, timeout=900, env=hostio.tool_env(), check=False)
     tar.stdout.close()
