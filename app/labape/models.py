@@ -280,6 +280,31 @@ class HostStats(Base):
     error: Mapped[str] = mapped_column(Text, default="")
 
 
+class RemoteSession(Base):
+    """A browser SSH/RDP/VNC session through guacd (design §28.5, questions 116-118): who,
+    to what, when, and its recording. The one-time token that opens the tunnel is stored
+    hashed and cleared once used."""
+
+    __tablename__ = "remote_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    username: Mapped[str] = mapped_column(String(255))
+    target_type: Mapped[str] = mapped_column(String(16))               # vm | host
+    environment_id: Mapped[int | None] = mapped_column(ForeignKey("environments.id"), nullable=True)
+    kvm_host_id: Mapped[int | None] = mapped_column(ForeignKey("kvm_hosts.id"), nullable=True)
+    target: Mapped[str] = mapped_column(String(255))                   # VM or host name
+    address: Mapped[str] = mapped_column(String(255), default="")
+    protocol: Mapped[str] = mapped_column(String(8))                   # ssh | rdp | vnc
+    state: Mapped[str] = mapped_column(String(16), default="pending")  # pending | open | closed | failed
+    recorded: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str] = mapped_column(Text, default="")
+    client_ip: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class HostFacts(Base):
     """What an administrator wants to know about a KVM host, read over SSH (design §28.4):
     disks and SMART, volumes, NICs, sensors, OS, accounts, groups. One row per host,

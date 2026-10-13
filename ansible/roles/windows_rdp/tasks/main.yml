@@ -1,0 +1,28 @@
+---
+# Remote Desktop: allowed, Network Level Authentication required (the client proves who it
+# is before a session starts), and the built-in "Remote Desktop" firewall rules on. The rule
+# group is named by its resource string, so it works on every display language.
+- name: Allow Remote Desktop connections
+  ansible.windows.win_regedit:
+    path: HKLM:\System\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+  when: windows_rdp_enabled | bool
+
+- name: Require Network Level Authentication
+  ansible.windows.win_regedit:
+    path: HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: UserAuthentication
+    data: 1
+    type: dword
+  when: windows_rdp_enabled | bool
+
+- name: Open Remote Desktop in the Windows Firewall
+  ansible.windows.win_shell: |
+    $rules = Get-NetFirewallRule -Group '@FirewallAPI.dll,-28752' -ErrorAction SilentlyContinue
+    $off = @($rules | Where-Object { $_.Enabled -ne 'True' })
+    if ($off.Count -gt 0) { $off | Enable-NetFirewallRule; 'changed' }
+  register: windows_rdp_firewall
+  changed_when: "'changed' in windows_rdp_firewall.stdout"
+  when: windows_rdp_enabled | bool

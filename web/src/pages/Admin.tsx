@@ -8,6 +8,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import KeyIcon from "@mui/icons-material/Key";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
+import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import { hasRole, useAuth } from "../App";
 
 export const ADMIN_PAGES = [
@@ -17,22 +18,27 @@ export const ADMIN_PAGES = [
   { path: "secrets", label: "Secrets", icon: <KeyIcon />, help: "Internal secrets, stored secrets and their rotation" },
   { path: "audit", label: "Audit log", icon: <FactCheckIcon />, help: "Who did what, when" },
   { path: "errors", label: "User errors", icon: <ReportProblemIcon />, help: "Requests the app refused and forms the browser blocked" },
+  { path: "sessions", label: "Remote sessions", icon: <ScreenShareIcon />, help: "Browser SSH/RDP sessions and their recordings" },
 ] as const;
+// Auditors (question 118) see the logs only.
+const AUDITOR_PAGES = ["audit", "sessions"];
 
 export default function AdminLayout() {
   const { me } = useAuth();
   const location = useLocation();
-  if (!hasRole(me, "admin")) {
-    return <Alert severity="warning">The Admin pages are for admins.</Alert>;
+  const isAdmin = hasRole(me, "admin");
+  if (!isAdmin && !hasRole(me, "auditor")) {
+    return <Alert severity="warning">The Admin pages are for admins and auditors.</Alert>;
   }
+  const pages = ADMIN_PAGES.filter((p) => isAdmin || AUDITOR_PAGES.includes(p.path));
   const current = location.pathname.split("/")[2] ?? "";
-  if (!current) return <Navigate to="/admin/hosts" replace />;
+  if (!current || !pages.some((p) => p.path === current)) return <Navigate to={`/admin/${pages[0].path}`} replace />;
   return (
     <Box sx={{ display: "flex", gap: 3, alignItems: "flex-start" }}>
       <Paper variant="outlined" sx={{ width: 220, flexShrink: 0, position: "sticky", top: 16 }}>
         <Typography variant="overline" sx={{ px: 2, pt: 1, display: "block", color: "text.secondary" }}>Admin</Typography>
         <List dense disablePadding>
-          {ADMIN_PAGES.map((p) => (
+          {pages.map((p) => (
             <ListItemButton key={p.path} component={RouterLink} to={`/admin/${p.path}`} selected={current === p.path}
               title={p.help}>
               <ListItemIcon sx={{ minWidth: 36 }}>{p.icon}</ListItemIcon>

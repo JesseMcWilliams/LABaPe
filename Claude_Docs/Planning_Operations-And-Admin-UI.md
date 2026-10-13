@@ -161,7 +161,7 @@ Future item from 113: adding more local and domain accounts to an environment (P
 
   Accounts and Groups are read-only (question 120).
 
-### O5. SSH and RDP from the browser
+### O5. SSH and RDP from the browser (built 2026-10-13: Planning_Web-Interface-Design.md §28.5)
 
 Options (question 116):
 

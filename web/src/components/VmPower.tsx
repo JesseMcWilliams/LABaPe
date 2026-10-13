@@ -10,6 +10,7 @@ import {
 import { api, fmtTime, HostGroup } from "../api";
 import { Field } from "../forms";
 import { ActionButton } from "./Confirm";
+import { ConnectButton, RdpFileLink } from "./Connect";
 
 interface VmRow {
   name: string; group: string; os: string; start_order: number; state: string; online: boolean;
@@ -113,6 +114,12 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
                 <TableCell>{!v.online ? "—" : v.responding === true ? "answers" : v.responding === false ? "not answering" : "none"}</TableCell>
                 {canOperate && (
                   <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {v.state === "running" && (v.os.startsWith("windows") ? (
+                      <>
+                        <ConnectButton target={{ target_type: "vm", protocol: "rdp", environment_id: Number(envId), vm: v.name }} label="RDP" onError={setError} />
+                        <RdpFileLink envId={Number(envId)} vm={v.name} />
+                      </>
+                    ) : <ConnectButton target={{ target_type: "vm", protocol: "ssh", environment_id: Number(envId), vm: v.name }} label="SSH" onError={setError} />)}
                     {(v.state === "running" ? ["shutdown", "restart", "force_off"] as Action[] : ["start"] as Action[]).map((a) => (
                       <ActionButton key={a} size="small" color={a === "force_off" ? "error" : "primary"} onClick={() => run(a, [v.name])}
                         tip={`${LABEL[a]} ${v.name}`} confirm={confirmFor(a, v.name)}>

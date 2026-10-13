@@ -145,6 +145,15 @@
     - labape_services
   tags: [software, directory_objects]
 
+- name: Remote Desktop on Windows hosts (Claude_Docs/Planning_Web-Interface-Design.md §28.5)
+  # Every Windows host, domain controllers included (they don't get windows_common).
+  # No become: WinRM as the local Administrator, as above.
+  hosts: windows_server:windows_workstation:domain_controller
+  gather_facts: false
+  roles:
+    - windows_rdp
+  tags: [remote_access]
+
 # --- Platform certificates (Claude_Docs/Planning_Web-Interface-Design.md §22.5) ---
 # Web-interface deploys only: every host trusts the platform root and gets
 # a certificate signed by the platform CA, renewed on the host. No-op from

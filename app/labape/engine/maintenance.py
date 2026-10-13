@@ -150,7 +150,27 @@ def purge_history(db: Session) -> dict[str, int]:
         UserError.at < now - dt.timedelta(days=cfg.errors_days))).rowcount or 0
     db.commit()
     purge_backups(appsettings.get(db, "backup"))
+    out["recordings"] = purge_recordings(appsettings.get(db, "remote").keep_recordings_days)
     return out
+
+
+RECORDINGS = Path("/var/lib/labape-recordings")
+
+
+def purge_recordings(days: int, root: Path = RECORDINGS) -> int:
+    """Delete remote session recordings older than `days` (design §28.5)."""
+    if not root.is_dir():
+        return 0
+    cutoff = dt.datetime.now().timestamp() - days * 86400
+    n = 0
+    for f in root.glob("session-*"):
+        try:
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink()
+                n += 1
+        except OSError:
+            pass
+    return n
 
 
 # --- job emails ----------------------------------------------------------------

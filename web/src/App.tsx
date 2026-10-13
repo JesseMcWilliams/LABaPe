@@ -25,6 +25,8 @@ import TemplateDetail from "./pages/TemplateDetail";
 import Secrets from "./pages/Secrets";
 import SecretDetail from "./pages/SecretDetail";
 import AdminLayout, { ToAdmin } from "./pages/Admin";
+import RemoteSession from "./pages/RemoteSession";
+import Sessions from "./pages/Sessions";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -108,8 +110,8 @@ export default function App() {
             <Button color="inherit" component={RouterLink} to="/catalog" title="Services, applications and packages to add to host groups">
               Catalog
             </Button>
-            {hasRole(me, "admin") && (
-              <Button color="inherit" component={RouterLink} to="/admin" title="KVM hosts, networks, settings, secrets, audit log and user errors (admins)">
+            {(hasRole(me, "admin") || hasRole(me, "auditor")) && (
+              <Button color="inherit" component={RouterLink} to="/admin" title="KVM hosts, networks, settings, secrets, audit log, remote sessions and user errors (admins; auditors see the logs)">
                 Admin
               </Button>
             )}
@@ -152,7 +154,9 @@ export default function App() {
             <Route path="secrets/:id" element={<SecretDetail />} />
             <Route path="audit" element={<Audit />} />
             <Route path="errors" element={<Errors />} />
+            <Route path="sessions" element={<Sessions />} />
           </Route>
+          <Route path="/remote/:id" element={<RemoteSession />} />
           {["/hosts", "/networks", "/settings", "/secrets", "/audit", "/errors"].map((p) => (
             <Route key={p} path={`${p}/*`} element={<ToAdmin />} />
           ))}

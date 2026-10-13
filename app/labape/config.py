@@ -21,9 +21,11 @@ DEFAULT_ROLE_MAP = {
     "labape-deployers": "deployer",
     "labape-file-managers": "file_manager",
     "labape-viewers": "viewer",
+    "labape-auditors": "auditor",
 }
 
-ROLES = ("admin", "template_editor", "deployer", "file_manager", "viewer")
+# auditor (question 118): reads the audit log, the remote session log and session recordings.
+ROLES = ("admin", "template_editor", "deployer", "file_manager", "viewer", "auditor")
 
 
 def _read_file_var(name: str) -> str | None:

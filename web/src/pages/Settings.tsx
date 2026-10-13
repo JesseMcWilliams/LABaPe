@@ -31,6 +31,7 @@ interface Conjur extends StoreBase { account: string; login: string; authenticat
 interface AllSettings {
   backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
+  remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -178,7 +179,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -225,6 +226,18 @@ export default function Settings() {
         <Field label="Linux admin user" value={s.vm_accounts.linux_admin_user} sx={{ maxWidth: 320 }}
           help="Lower case letters, digits, _ and -; up to 32 characters"
           onChange={(e) => set("vm_accounts", { linux_admin_user: e.target.value })} />
+      </Section>
+
+      <Section title="Remote access" intro="Browser SSH and RDP sessions to VMs (owners and admins) and KVM hosts (admins), through guacd. Each session is in Admin → Remote sessions. Recording saves the screen for the auditors (not keystrokes); it's announced on the session page."
+        onSave={async () => { await put("remote", s.remote); return "Remote access settings saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Record every session" control={<Checkbox checked={s.remote.record_sessions}
+            onChange={(e) => set("remote", { record_sessions: e.target.checked })} />} />
+          <Field label="Close after idle (minutes)" type="number" value={s.remote.idle_minutes} sx={{ width: 200 }} help="5-480; no keyboard or mouse input"
+            onChange={(e) => set("remote", { idle_minutes: Number(e.target.value) })} />
+          <Field label="Keep recordings (days)" type="number" value={s.remote.keep_recordings_days} sx={{ width: 200 }} help="1-3650"
+            onChange={(e) => set("remote", { keep_recordings_days: Number(e.target.value) })} />
+        </Stack>
       </Section>
 
       <Section title="Templates" intro="Templates named <name>-YYYY.MM are dated versions. Once a month the worker refreshes each template's newest version into this month's (every OS update applied), and versions beyond the newest few are deleted once no environment or VM uses them. Times are UTC."

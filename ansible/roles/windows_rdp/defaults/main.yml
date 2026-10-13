@@ -1,0 +1,5 @@
+---
+# Remote Desktop on every Windows host (design §28.5, question 116), for browser RDP
+# through LABaPe and for native clients. Set windows_rdp_enabled: false in inventory to
+# leave a host's Remote Desktop as the template has it.
+windows_rdp_enabled: true
