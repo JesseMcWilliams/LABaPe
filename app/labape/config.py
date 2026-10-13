@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     internal_api_url: str = "http://labape-api:8000"   # the API as the worker's jobs reach it
     update_dir: Path = Path("/var/lib/labape-update")  # shared with the host's update agent (design §23.2)
 
+    # --- stack syslog collector (design §29.1) ---
+    syslog_db_url: str = "postgresql+psycopg://labape_syslog@/syslog?host=/run/syslog-db"   # socket, no password
+    syslog_conf_dir: Path = Path("/var/lib/labape-syslog/conf")    # rendered for rsyslog
+    syslog_tls_dir: Path = Path("/var/lib/labape-syslog/tls")      # its certificates and LABaPe's client one
+
     @property
     def ca_renew_url(self) -> str:
         if self.ca_public_url:

@@ -510,3 +510,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 ## Redeploy with VMs off (2026-10-13)
 
 1. **lab2's redeploy waited 45 minutes and failed:** "no DHCP address found for l2lin1, l2win1". All three lab2 VMs had been shut off since the host reboot on 2026-10-12 (libvirt autostart isn't set). `tofu apply` only replaced l2lin1's cloud-init seed file, so nothing started the VMs, and DHCP discovery waited for leases that couldn't come. `scripts/deploy.sh` now runs `scripts/lib/start_stopped_vms.py` after the apply: it starts every one of the environment's VMs that is shut off or crashed (domain controllers first) and logs each, before DHCP discovery and Ansible.
+
+## Stack syslog collector (Y1, 2026-10-13)
+
+1. **rsyslog refused `conninfo="host=... dbname=..."`:** "parameter 'conninfo' contains whitespace, which is not permitted" (rsyslog 8.2504). The libpq URI form has no spaces: `conninfo="postgresql:///syslog?host=/run/syslog-db&user=rsyslog_writer"`.
+2. **garagepc (Ubuntu 24.04) sent nothing:** "CA certificate could not be accessed ... Permission denied". Ubuntu runs rsyslogd as the `syslog` user and confines it with an enforced AppArmor profile that allows reads only under `/etc/rsyslog.d/`; the certificates were in a root-only `/etc/labape-syslog`. They now go to `/etc/rsyslog.d/labape-tls/` (0750, group `syslog` where it exists; the key 0640). Debian runs rsyslogd as root, so kvm1 had worked.

@@ -30,5 +30,11 @@ git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; R=$L
   else
     echo "build=FAILED (full log: /tmp/labape-build.log on the lab host)"; grep -E "error TS|ERROR" /tmp/labape-build.log | head -20; exit 1
   fi
-  cd container && docker compose up -d --force-recreate labape-api labape-worker >/dev/null 2>&1
+  cd container
+  # The stack syslog collector (design §29.1) has its own image; start it and its database too.
+  if ! docker compose build labape-syslog >> /tmp/labape-build.log 2>&1; then
+    echo "syslog image build=FAILED (full log: /tmp/labape-build.log on the lab host)"; tail -20 /tmp/labape-build.log; exit 1
+  fi
+  docker compose up -d labape-syslog-db labape-syslog >/dev/null 2>&1
+  docker compose up -d --force-recreate labape-api labape-worker >/dev/null 2>&1
   sleep 15; curl -sk "$U/api/health"; echo'

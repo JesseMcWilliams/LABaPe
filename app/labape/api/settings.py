@@ -69,6 +69,9 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
     appsettings.put(db, section, model)
     if section.startswith("store_"):
         stores.forget(section.removeprefix("store_"))
+    if section == "syslog_collector":
+        from .. import syslogstack
+        syslogstack.render(model)          # the collector picks it up within seconds; certificates follow in the worker
     if secret and (value or clear):
         put_secret(db, secret, "" if clear else value)
     detail = model.model_dump()

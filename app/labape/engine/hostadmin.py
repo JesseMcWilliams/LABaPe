@@ -396,6 +396,9 @@ def collect_due(db: Session) -> None:
                     f = s.get(HostFacts, h.id)
                     if f is None or f.collected_at is None or now - _aware(f.collected_at) >= FACTS_EVERY:
                         collect_facts(s, h)
+                    if h.log_forward and (h.log_forward_until is None
+                                          or _aware(h.log_forward_until) - now < LOG_FORWARD_RENEW):
+                        set_log_forwarding(s, h, True)     # renew the client certificate
                 s.execute(delete(HostMetric).where(HostMetric.at < now - KEEP_METRICS))
                 s.commit()
         finally:
@@ -528,6 +531,117 @@ def manage_over(ssh, protected: set[str], op: str, name: str, **kw) -> str:
     return (r.stdout or b"").decode(errors="replace").strip()
 
 
+# --- the host's own logs to the stack's syslog collector (design §29.1, question 124) ----------
+
+LOG_FORWARD_RENEW = dt.timedelta(days=10)
+FORWARD = r'''
+import grp, json, os, shutil, subprocess
+A = ARGS
+# Under /etc/rsyslog.d: Ubuntu's AppArmor profile lets rsyslogd read only there, and it runs as
+# the syslog user (group-readable files); Debian runs it as root. Not *.conf, so not included.
+d, conf, legacy = "/etc/rsyslog.d/labape-tls", "/etc/rsyslog.d/90-labape-forward.conf", "/etc/labape-syslog"
+def sh(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True)
+if not A["enable"]:
+    for f in (conf,):
+        if os.path.exists(f):
+            os.remove(f)
+    shutil.rmtree(d, ignore_errors=True)
+    shutil.rmtree(legacy, ignore_errors=True)
+    if shutil.which("rsyslogd"):
+        sh("systemctl", "restart", "rsyslog")
+    print(json.dumps({"ok": True, "note": "forwarding removed"}))
+    raise SystemExit(0)
+# rsyslog with its OpenSSL driver (Debian: rsyslog-openssl; RHEL family: rsyslog-openssl).
+have_ossl = any(os.path.exists(p) for p in ("/usr/lib/x86_64-linux-gnu/rsyslog/lmnsd_ossl.so",
+                                            "/usr/lib64/rsyslog/lmnsd_ossl.so", "/usr/lib/rsyslog/lmnsd_ossl.so"))
+if not shutil.which("rsyslogd") or not have_ossl:
+    if shutil.which("apt-get"):
+        env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+        r = subprocess.run(["apt-get", "install", "-y", "-qq", "rsyslog", "rsyslog-openssl"], capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            subprocess.run(["apt-get", "update", "-qq"], capture_output=True, env=env)
+            r = subprocess.run(["apt-get", "install", "-y", "-qq", "rsyslog", "rsyslog-openssl"], capture_output=True, text=True, env=env)
+    elif shutil.which("dnf"):
+        r = subprocess.run(["dnf", "install", "-y", "-q", "rsyslog", "rsyslog-openssl"], capture_output=True, text=True)
+    else:
+        raise SystemExit("no apt-get or dnf to install rsyslog")
+    if r.returncode != 0:
+        raise SystemExit("installing rsyslog failed: " + (r.stderr or r.stdout)[-300:])
+try:
+    gid = grp.getgrnam("syslog").gr_gid
+except KeyError:
+    gid = 0
+shutil.rmtree(legacy, ignore_errors=True)
+os.makedirs(d, exist_ok=True)
+os.chown(d, 0, gid)
+os.chmod(d, 0o750)
+for name, text, mode in (("root.crt", A["root"], 0o644), ("client.crt", A["cert"], 0o644), ("client.key", A["key"], 0o640)):
+    path = os.path.join(d, name)
+    with open(path + ".tmp", "w") as fh:
+        fh.write(text)
+    os.chown(path + ".tmp", 0, gid)
+    os.chmod(path + ".tmp", mode)
+    os.replace(path + ".tmp", path)
+with open(conf + ".tmp", "w") as fh:
+    fh.write(A["conf"])
+os.replace(conf + ".tmp", conf)
+r = sh("rsyslogd", "-N1")
+if r.returncode != 0:
+    os.remove(conf)
+    raise SystemExit("rsyslog rejected the forwarding settings: " + (r.stderr or r.stdout)[-400:])
+sh("systemctl", "enable", "rsyslog")
+r = sh("systemctl", "restart", "rsyslog")
+if r.returncode != 0:
+    raise SystemExit("restarting rsyslog failed: " + (r.stderr or r.stdout)[-300:])
+print(json.dumps({"ok": True}))
+'''
+
+
+def forward_conf(address: str, host_name: str) -> str:
+    """rsyslog settings that send everything to the stack collector over TLS with a client certificate."""
+    import ipaddress
+    try:
+        ipaddress.ip_address(address)
+        auth = 'StreamDriverAuthMode="x509/certvalid"'
+    except ValueError:
+        auth = f'StreamDriverAuthMode="x509/name" StreamDriverPermittedPeers="{address}"'
+    return (f"# LABaPe (design §29.1): send {host_name}'s logs to the stack's syslog collector. Managed by LABaPe.\n"
+            f'action(type="omfwd" target="{address}" port="6514" protocol="tcp" '
+            'template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted" '
+            f'StreamDriver="ossl" StreamDriverMode="1" {auth} '
+            'StreamDriver.CAFile="/etc/rsyslog.d/labape-tls/root.crt" StreamDriver.CertFile="/etc/rsyslog.d/labape-tls/client.crt" '
+            'StreamDriver.KeyFile="/etc/rsyslog.d/labape-tls/client.key" '
+            'queue.type="LinkedList" queue.filename="labape_forward" queue.maxDiskSpace="256m" '
+            'queue.saveOnShutdown="on" action.resumeRetryCount="-1" action.resumeInterval="30")\n')
+
+
+def set_log_forwarding(db: Session, h: KvmHost, enable: bool) -> None:
+    """Turn the host's log forwarding on (install rsyslog if needed, a client certificate from the
+    platform CA, the forwarding file) or off. Errors are kept on the host and raised."""
+    from .. import appsettings, ca, syslogstack
+    try:
+        ssh = for_host(h)
+        args: dict = {"enable": enable}
+        if enable:
+            cfg = appsettings.get(db, "syslog_collector")
+            address = syslogstack.collector_address(cfg)
+            if not address:
+                raise AdminError("the collector has no address: set one in Settings → Syslog collector")
+            names = [h.name] + ([h.ssh_address] if h.ssh_address and h.ssh_address != h.name else [])
+            key, csr = syslogstack.make_csr(h.name, names)
+            chain = ca.sign(csr, hours=syslogstack.CERT_HOURS)
+            args.update(root=ca.root_pem(), cert=chain, key=key.decode(), conf=forward_conf(address, h.name))
+        ssh.python(FORWARD, args, timeout=300)
+    except (AdminError, ca.CaError, subprocess.SubprocessError, OSError) as exc:
+        h.log_forward_error = str(exc)[:1000]
+        db.commit()
+        raise AdminError(str(exc)) from exc
+    h.log_forward, h.log_forward_error = enable, ""
+    h.log_forward_until = utcnow() + dt.timedelta(hours=syslogstack.CERT_HOURS) if enable else None
+    db.commit()
+
+
 # --- preparing a new KVM host (design §28.4, question 114) -----------------------------------
 
 # What the kvm profile reads on the host; nothing else is copied. Jobs bring their own
@@ -637,5 +751,12 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     svc = answers.get("ServiceUser") or "labape"
     h.libvirt_uri = f"qemu+ssh://{svc}@{h.ssh_address}{'' if (h.ssh_port or 22) == 22 else ':' + str(h.ssh_port)}/system"
     db.commit()
+    if answers.get("ForwardHostLogs", True):             # question 124: optional, default yes
+        try:
+            set_log_forwarding(db, h, True)
+            log("labape: the host's logs now go to the stack's syslog collector (TLS, client certificate)\n")
+        except AdminError as exc:
+            log(f"labape: warning: forwarding the host's logs failed (turn it on later on the host's SSH access "
+                f"section): {exc}\n")
     log(f"labape: done; libvirt URI set to {h.libvirt_uri}. Run Check on the host's Settings to confirm.\n")
     return 0

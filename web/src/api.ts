@@ -100,6 +100,10 @@ export interface KvmHost {
   access_status?: "none" | "ready" | "failed";
   access_error?: string;
   access_at?: string | null;
+  // The host's own logs to the stack's syslog collector (design §29.1)
+  log_forward?: boolean;
+  log_forward_until?: string | null;
+  log_forward_error?: string;
 }
 
 export interface Network {

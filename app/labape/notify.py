@@ -58,6 +58,9 @@ def send_syslog(cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
                     ctx.load_verify_locations(cadata=ca.root_pem())
                 except (ca.CaError, OSError, ssl.SSLError):
                     pass  # no platform CA here: the system roots only
+            if cfg.client_cert:
+                d = get_settings().syslog_tls_dir
+                ctx.load_cert_chain(str(d / "client.crt"), str(d / "client.key"))
             sock = ctx.wrap_socket(raw, server_hostname=cfg.host)
         # RFC 6587 octet counting framing for stream transports.
         sock.sendall(f"{len(data)} ".encode() + data)

@@ -98,6 +98,11 @@ services:
       - ./update:/var/lib/labape-update
       # Remote session recordings that guacd writes (design §28.5), for auditors.
       - labape-recordings:/var/lib/labape-recordings:ro
+      # The stack syslog collector (design §29.1): its database socket, the settings
+      # LABaPe renders for it, and its certificates (the worker issues them).
+      - labape-syslog-run:/run/syslog-db
+      - labape-syslog-conf:/var/lib/labape-syslog/conf
+      - labape-syslog-tls:/var/lib/labape-syslog/tls
 
   # Browser SSH/RDP/VNC (design §28.5, question 116): guacd behind the API's own
   # tunnel. Never published: only the API talks to it, with the credentials it
@@ -107,6 +112,45 @@ services:
     restart: unless-stopped
     volumes:
       - labape-recordings:/home/guacd
+
+  # Syslog collector (design §29.1, questions 121-139): rsyslog on UDP/TCP 514 and
+  # TLS 6514, published on the host, writing to its own PostgreSQL over a socket.
+  labape-syslog-db:
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "listen_addresses="]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - labape-syslog-db:/var/lib/postgresql/data
+      - labape-syslog-run:/var/run/postgresql
+      - ./syslog/db-init.sh:/docker-entrypoint-initdb.d/10-labape-syslog.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h /var/run/postgresql -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  labape-syslog:
+    image: ${LABAPE_SYSLOG_IMAGE:-labape-syslog:local}
+    build:
+      context: ..
+      dockerfile: container/syslog/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      labape-syslog-db:
+        condition: service_healthy
+    ports:
+      - "${LABAPE_SYSLOG_BIND:-0.0.0.0}:514:514/udp"
+      - "${LABAPE_SYSLOG_BIND:-0.0.0.0}:514:514/tcp"
+      - "${LABAPE_SYSLOG_BIND:-0.0.0.0}:6514:6514/tcp"
+    volumes:
+      - labape-syslog-run:/run/syslog-db
+      - labape-syslog-conf:/etc/rsyslog-labape:ro
+      - labape-syslog-tls:/tls:ro
+      - labape-syslog-spool:/var/spool/rsyslog
 
   labape-worker:
     <<: *labape
@@ -124,6 +168,11 @@ services:
       - ./update:/var/lib/labape-update
       # Deletes recordings past Settings → Remote access's retention.
       - labape-recordings:/var/lib/labape-recordings
+      # The stack syslog collector (design §29.1): its database socket, the settings
+      # LABaPe renders for it, and its certificates (the worker issues them).
+      - labape-syslog-run:/run/syslog-db
+      - labape-syslog-conf:/var/lib/labape-syslog/conf
+      - labape-syslog-tls:/var/lib/labape-syslog/tls
     devices:
       - /dev/kvm:/dev/kvm
     cap_add: [NET_RAW]
@@ -233,6 +282,11 @@ secrets:
 
 volumes:
   labape-recordings:
+  labape-syslog-db:
+  labape-syslog-run:
+  labape-syslog-conf:
+  labape-syslog-tls:
+  labape-syslog-spool:
   postgres-data:
   labape-data:
   labape-ca:
