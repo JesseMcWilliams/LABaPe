@@ -21,7 +21,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - The dashboard leaves out disabled KVM hosts.
 - Preparing a KVM host copies only the installer and the few examples its
   steps read (jobs bring their own files), and a re-run removes what older,
-  fuller copies left in `/opt/labape-kvm`.
+  fuller copies left in `/opt/labape-kvm` (its state, logs and generated
+  configuration stay).
 - KVM hosts get `smartmontools` (disk health) from the installer and from
   Set up access.
 

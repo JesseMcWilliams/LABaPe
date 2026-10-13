@@ -540,7 +540,7 @@ INSTALL_EXCLUDE = ("__pycache__", "deploy/state", "deploy/answers.*.json", "depl
 # What a re-run keeps from an earlier install: the installer's progress and the configuration it
 # generated. Everything else is removed first (the copy brings back what's needed), so files from
 # older, fuller copies don't linger.
-INSTALL_KEEP = ("deploy/state", "deploy/answers.web.json", "secrets.vault.yml", "tofu/environment.yml",
+INSTALL_KEEP = ("deploy/state", "deploy/logs", "deploy/answers.web.json", "secrets.vault.yml", "tofu/environment.yml",
                 "ansible/software-manifest.yml", "ansible/directory-manifest.yml")
 PRUNE = r'''
 import os, shutil, sys
@@ -589,10 +589,11 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     if pruned.returncode != 0:
         log(f"labape: tidying {root} failed: {pruned.stderr.decode(errors='replace').strip()[-300:]}\n")
         return 1
-    gone = pruned.stdout.decode(errors="replace").split("\n")
-    if any(gone):
-        log(f"labape: removed what older installs left in {root}: "
-            f"{', '.join(g.removeprefix('removed ') for g in gone if g)}\n")
+    # Only what this copy doesn't bring back is worth reporting.
+    gone = [g.removeprefix("removed ") for g in pruned.stdout.decode(errors="replace").split("\n") if g]
+    gone = [g for g in gone if not any(g == f or g.startswith(f + "/") or f.startswith(g + "/") for f in INSTALL_FILES)]
+    if gone:
+        log(f"labape: removed what older installs left in {root}: {', '.join(gone)}\n")
     log(f"labape: copying the installer to {h.ssh_user}@{h.ssh_address}:{root}\n")
     tar = popen(["tar", "-C", str(engine), *[f"--exclude={x}" for x in INSTALL_EXCLUDE], "-czf", "-",
                  *[d for d in INSTALL_FILES if (engine / d).exists()]], stdout=subprocess.PIPE)

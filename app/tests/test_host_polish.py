@@ -13,7 +13,8 @@ from test_api import _admin_session, _host
 
 def test_prune_keeps_state_and_config_only(tmp_path):
     root = tmp_path / "labape-kvm"
-    for rel in ("deploy/state/progress.json", "deploy/answers.web.json", "deploy/install-labape.py",
+    for rel in ("deploy/state/progress.json", "deploy/logs/install-1.log", "deploy/answers.web.json",
+                "deploy/install-labape.py",
                 "deploy/update-agent/install.sh", "secrets.vault.yml", "tofu/environment.yml",
                 "tofu/modules/vm/main.tf", "ansible/software-manifest.yml", "ansible/roles/x/tasks/main.yml",
                 "packer/rocky9.pkr.hcl", "iso/make.sh"):
@@ -22,7 +23,8 @@ def test_prune_keeps_state_and_config_only(tmp_path):
     r = subprocess.run([sys.executable, "-", str(root), *hostadmin.INSTALL_KEEP], input=hostadmin.PRUNE,
                        capture_output=True, text=True, check=True)
     left = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
-    assert left == ["ansible/software-manifest.yml", "deploy/answers.web.json", "deploy/state/progress.json",
+    assert left == ["ansible/software-manifest.yml", "deploy/answers.web.json", "deploy/logs/install-1.log",
+                    "deploy/state/progress.json",
                     "secrets.vault.yml", "tofu/environment.yml"]
     assert "removed packer" in r.stdout and "removed tofu/modules" in r.stdout
     # A host that was never installed: nothing to do.
@@ -39,7 +41,8 @@ def test_install_copies_only_the_installer_and_examples(client, tmp_path, monkey
 
         def run(self, command, input=None, timeout=60):
             seen.setdefault("runs", []).append(command)
-            return subprocess.CompletedProcess(command, 0, b"removed packer\n", b"")
+            return subprocess.CompletedProcess(command, 0, b"removed packer\nremoved deploy/install-labape.py\n"
+                                                         b"removed tofu/environment.example.yml\n", b"")
 
     class FakeTar:
         stdout = SimpleNamespace(close=lambda: None)
@@ -78,7 +81,7 @@ def test_install_copies_only_the_installer_and_examples(client, tmp_path, monkey
     assert members and set(members) <= set(hostadmin.INSTALL_FILES)
     assert "--exclude=deploy/update-agent" in tar and not {"packer", "iso", "tofu", "ansible"} & set(members)
     assert seen["runs"][0].startswith("sudo -n python3 - /opt/labape-kvm deploy/state")
-    assert "removed what older installs left in /opt/labape-kvm: packer" in log.read_text()
+    assert "removed what older installs left in /opt/labape-kvm: packer\n" in log.read_text()   # not the copy's own files
 
 
 def test_dashboard_leaves_out_disabled_hosts(client):
