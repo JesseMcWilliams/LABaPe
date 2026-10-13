@@ -76,6 +76,11 @@ class SyslogForward(BaseModel):
         return v
 
 
+class FileDistributionSettings(BaseModel):
+    """Copies from the primary file host (design §29.4, question 135)."""
+    wait_minutes: int = Field(default=30, ge=0, le=1440)    # how long a job waits for an unreachable primary
+
+
 class SyslogCollectorSettings(BaseModel):
     """The stack's syslog collector (design §29.1, questions 121-139)."""
     retention_days: int = Field(default=30, ge=1, le=3650)       # 30 days (user, 2026-10-13; was 90)
@@ -189,6 +194,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "templates": TemplateSettings,
     "remote": RemoteSettings,
     "syslog_collector": SyslogCollectorSettings,
+    "file_distribution": FileDistributionSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

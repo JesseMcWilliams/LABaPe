@@ -177,6 +177,12 @@ def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
     host's template library has been synced)."""
     known = {t.name: t for t in db.scalars(select(Template).where(Template.kvm_host_id == kvm_host_id,
                                                                   Template.present.is_(True)))}
+    # The primary file host's templates too: the deploy copies them over (design §29.4).
+    from ..engine.filedist import primary
+    p = primary(db)
+    if p is not None and p.id != kvm_host_id:
+        for t in db.scalars(select(Template).where(Template.kvm_host_id == p.id, Template.present.is_(True))):
+            known.setdefault(t.name, t)
     if not known:
         return
     for i, g in enumerate(groups):

@@ -41,13 +41,17 @@ class HostIn(BaseModel):
     ssh_address: str = Field(default="", pattern=r"^[A-Za-z0-9.:-]*$", max_length=255)
     ssh_port: int = Field(default=22, ge=1, le=65535)
     ssh_user: str = Field(default="localadmin01", pattern=r"^[a-z_][a-z0-9_-]{0,31}$")
+    # Files (design §29.4): the primary holds them all; a host with a share sees them at the same paths.
+    is_primary: bool = False
+    files_from_share: bool = False
 
 
 def _out(h: KvmHost) -> dict:
     return {c: getattr(h, c) for c in ("id", "name", "libvirt_uri", "vm_storage_path", "template_storage_path",
                                        "bridge", "concurrency_limit", "enabled", "ssh_address", "ssh_port",
                                        "ssh_user", "access_status", "access_error", "access_at", "log_forward",
-                                       "log_forward_until", "log_forward_error")}
+                                       "log_forward_until", "log_forward_error", "is_primary",
+                                       "files_from_share")}
 
 
 def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
@@ -111,6 +115,13 @@ def create_host(body: HostIn, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail=f"At most {limit} KVM hosts (LABAPE_MAX_KVM_HOSTS)")
     _check_uri(body.libvirt_uri)
     h = KvmHost(**body.model_dump())
+    # There's always one primary file host (design §29.4): the first host, or one named so.
+    current = db.scalars(select(KvmHost).where(KvmHost.is_primary.is_(True))).all()
+    if not current:
+        h.is_primary, h.files_from_share = True, False
+    elif h.is_primary:
+        for other in current:
+            other.is_primary = False
     db.add(h)
     db.commit()
     audit(db, p.username, "host.create", object_type="kvm_host", object_id=h.id, detail=body.model_dump(),
@@ -126,9 +137,16 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
         raise HTTPException(status_code=404, detail="No such host")
     _check_uri(body.libvirt_uri)
     data = body.model_dump()
-    for k in ("ssh_address", "ssh_port", "ssh_user"):      # kept unless the form sends them
+    for k in ("ssh_address", "ssh_port", "ssh_user", "is_primary", "files_from_share"):   # kept unless sent
         if k not in body.model_fields_set:
             data.pop(k)
+    if data.get("is_primary") is False and h.is_primary:
+        raise FieldError("is_primary", "Make another host the primary instead: there's always one.")
+    if data.get("is_primary"):
+        if data.get("files_from_share", h.files_from_share):
+            raise FieldError("is_primary", "The primary holds the files itself; it doesn't read them from a share.")
+        for other in db.scalars(select(KvmHost).where(KvmHost.is_primary.is_(True), KvmHost.id != h.id)):
+            other.is_primary = False                    # one primary (question 135)
     for k, v in data.items():
         setattr(h, k, v)
     db.commit()

@@ -238,7 +238,8 @@ export default function EnvironmentNew() {
                     {templatesFor(g).map((tp) => (
                       <MenuItem key={tp.id} value={tp.name}>
                         <ListItemText primary={tp.name}
-                          secondary={[tp.edition, tp.disk_gb ? `${tp.disk_gb} GB` : "", tp.description]
+                          secondary={[tp.from_primary ? "copied from the primary file host at deploy" : "", tp.edition,
+                            tp.disk_gb ? `${tp.disk_gb} GB` : "", tp.description]
                             .filter(Boolean).join(" · ")} />
                       </MenuItem>
                     ))}

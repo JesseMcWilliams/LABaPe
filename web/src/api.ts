@@ -57,6 +57,7 @@ export interface Me {
 
 export interface Template {
   id: number;
+  from_primary?: boolean;     // on the primary file host only: a deploy copies it here
   kvm_host_id: number;
   name: string;
   os_key: string;
@@ -104,6 +105,9 @@ export interface KvmHost {
   log_forward?: boolean;
   log_forward_until?: string | null;
   log_forward_error?: string;
+  // Files (design §29.4): the primary holds them all; a host with a share sees them at the same paths
+  is_primary?: boolean;
+  files_from_share?: boolean;
 }
 
 export interface Network {
