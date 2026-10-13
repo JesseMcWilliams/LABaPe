@@ -8,6 +8,11 @@ syslog_collector_tls_port: 6514       # RFC 5425, server certificate only
 syslog_collector_mtls_port: 6515      # RFC 5425, client certificate required
 syslog_collector_log_dir: /var/log/remote
 syslog_collector_keep_days: 14
+# Reverse DNS lookup of each sender (rsyslog net.enableDNS). Off by default:
+# the logs record the sender's address anyway, and a slow resolver held new
+# TCP connections' messages back by seconds (Testing_Troubleshooting-Log.md).
+# Set to true in inventory (group_vars/host_vars) to resolve sender names.
+syslog_collector_dns_lookup: false
 # TLS 1.2 and 1.3 only (RFC 9662); GnuTLS picks forward-secret AEAD suites.
 syslog_collector_tls_priority: "NORMAL:-VERS-ALL:+VERS-TLS1.3:+VERS-TLS1.2"
 # The platform certificate from the labape_cert role. Without it (a CLI
