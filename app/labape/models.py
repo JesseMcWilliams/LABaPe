@@ -51,6 +51,15 @@ class KvmHost(Base):
     bridge: Mapped[str] = mapped_column(String(64), default="br0")
     concurrency_limit: Mapped[int] = mapped_column(Integer, default=2)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Administration over SSH (design §28.4, questions 113-114): a dedicated account
+    # (default localadmin01), separate from the service user, reached with the worker's
+    # host-admin key. Set up once from credentials an admin types in (never stored).
+    ssh_address: Mapped[str] = mapped_column(String(255), default="")
+    ssh_port: Mapped[int] = mapped_column(Integer, default=22)
+    ssh_user: Mapped[str] = mapped_column(String(32), default="localadmin01")
+    access_status: Mapped[str] = mapped_column(String(16), default="none")   # none | ready | failed
+    access_error: Mapped[str] = mapped_column(Text, default="")
+    access_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Network(Base):
@@ -269,6 +278,33 @@ class HostStats(Base):
     collected_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     stats: Mapped[dict] = mapped_column(JSON, default=dict)
     error: Mapped[str] = mapped_column(Text, default="")
+
+
+class HostFacts(Base):
+    """What an administrator wants to know about a KVM host, read over SSH (design §28.4):
+    disks and SMART, volumes, NICs, sensors, OS, accounts, groups. One row per host,
+    overwritten hourly (SMART daily) or on demand."""
+
+    __tablename__ = "host_facts"
+
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), primary_key=True)
+    collected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    facts: Mapped[dict] = mapped_column(JSON, default=dict)
+    smart_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    smart: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+
+class HostMetric(Base):
+    """A KVM host's metrics over SSH every 5 minutes, kept 7 days (question 115): CPU,
+    memory, filesystems, temperatures, NIC counters."""
+
+    __tablename__ = "host_metrics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), index=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class MetricSample(Base):

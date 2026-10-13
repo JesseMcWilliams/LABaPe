@@ -93,6 +93,13 @@ export interface KvmHost {
   concurrency_limit: number;
   enabled: boolean;
   resources?: HostResources;
+  // SSH administration (design §28.4)
+  ssh_address?: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  access_status?: "none" | "ready" | "failed";
+  access_error?: string;
+  access_at?: string | null;
 }
 
 export interface Network {

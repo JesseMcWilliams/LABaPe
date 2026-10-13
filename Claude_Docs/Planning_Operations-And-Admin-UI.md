@@ -116,7 +116,7 @@ Future item from 113: adding more local and domain accounts to an environment (P
 - **State**: the environment page shows each VM's power state from `virsh domstate` (cached ~15 s,
   like host load).
 
-### O4. KVM host registration over SSH, host details and metrics
+### O4. KVM host registration over SSH, host details and metrics (built 2026-10-13: Planning_Web-Interface-Design.md §28.4)
 
 - **Register** (R9): the host form gets an **SSH** section: host name or address, port, user, and
   how to authenticate (question 113). **Test** checks SSH, `sudo -n` for the allowed commands, and

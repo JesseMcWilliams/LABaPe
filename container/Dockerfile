@@ -91,6 +91,9 @@ COPY tofu /opt/labape/engine/tofu
 COPY ansible /opt/labape/engine/ansible
 COPY packer /opt/labape/engine/packer
 COPY iso /opt/labape/engine/iso
+# The installer, for preparing a new KVM host from the web interface (design §28.4).
+COPY deploy /opt/labape/engine/deploy
+COPY secrets.vault.example.yml /opt/labape/engine/secrets.vault.example.yml
 
 # OpenTofu providers and Packer plugins baked in, so jobs don't depend on
 # the public registries being reachable (decision: central repository
