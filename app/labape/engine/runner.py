@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, engine_secrets, hostio, maintenance, rotation, template_versions
+from . import downloads, engine_secrets, hostio, maintenance, power, rotation, template_versions
 from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -153,6 +153,8 @@ def network_catalog(db: Session, host: KvmHost) -> tuple[dict, str] | None:
 
 
 CATALOG_KEYS = ("services", "applications", "packages")
+# Start order is the power job's business (design §28.3), not OpenTofu's either.
+NOT_FOR_TOFU = CATALOG_KEYS + ("start_order", "start_wait", "start_delay_seconds")
 
 
 def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
@@ -195,7 +197,7 @@ def profile_host_groups(db: Session, env: Environment) -> list[dict]:
                                                        .where(IpAllocation.environment_id == env.id))}
     groups = []
     for g in (env.spec or {}).get("host_groups", []):
-        g = {k: v for k, v in g.items() if k not in CATALOG_KEYS}  # Ansible's business, not OpenTofu's
+        g = {k: v for k, v in g.items() if k not in NOT_FOR_TOFU}  # Ansible's and the power job's, not OpenTofu's
         if g.get("addressing", "static") == "static":
             names = instance_names(g)
             if all(n in allocs for n in names):
@@ -432,7 +434,8 @@ def run(job_id: int, worker: str) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         # Jobs the worker runs itself, with no KVM host or engine scripts.
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
-                  "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete}
+                  "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
+                  "environment.power": power.run_job}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)

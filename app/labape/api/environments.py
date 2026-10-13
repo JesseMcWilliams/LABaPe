@@ -51,6 +51,12 @@ class HostGroup(BaseModel):
     services: list[str] = Field(default=[], max_length=50)
     applications: list[str] = Field(default=[], max_length=100)
     packages: list[str] = Field(default=[], max_length=50)
+    # Start order (design §28.3, questions 109-110): lower starts first; None = the default
+    # (domain controllers 1, everything else 2). The next order waits for this group's guest
+    # agents ("agent") or not ("none"), then start_delay_seconds.
+    start_order: int | None = Field(default=None, ge=1, le=99)
+    start_wait: Literal["agent", "none"] = "agent"
+    start_delay_seconds: int = Field(default=0, ge=0, le=3600)
 
     @field_validator("names")
     @classmethod
@@ -437,3 +443,99 @@ def rotate_env_now(env_id: int, kind: str, request: Request, db: Session = Depen
     audit(db, p.username, "secret.rotate.start", object_type="secret_policy", object_id=pol.id,
           detail={"name": pol.name, "job": job.id}, source_ip=client_ip(request))
     return {"job_id": job.id}
+
+
+# --- VM power and start order (design §28.3, questions 108-111) --------------------------------
+
+class PowerIn(BaseModel):
+    action: Literal["start", "shutdown", "restart", "force_off"]
+    vms: list[str] | None = Field(default=None, max_length=200)      # None: the whole environment
+    force_after_timeout: bool = False                                  # shutdown/restart only (question 108)
+    timeout_seconds: int = Field(default=300, ge=30, le=3600)
+
+
+def _owner_or_403(db: Session, p: Principal, e: Environment, what: str) -> None:
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail=f"Only the environment's owners and admins can {what}")
+
+
+@router.get("/{env_id}/vms")
+def env_vms(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """Each VM's power state (from the host's latest stats, refreshed every few minutes), its
+    group and start order."""
+    from ..engine.power import default_order
+    e = _get(db, env_id, p)
+    row = db.scalar(select(HostStats).where(HostStats.kvm_host_id == e.kvm_host_id))
+    stats = {v["name"]: v for v in ((row.stats if row else None) or {}).get("vms", [])}
+    out = []
+    for g in (e.spec or {}).get("host_groups", []):
+        for n in instance_names(g):
+            v = stats.get(n)
+            out.append({"name": n, "group": g["name"], "os": g.get("os"),
+                        "start_order": g.get("start_order") or default_order(g),
+                        "state": v["state"] if v else "missing", "online": bool(v and v["online"]),
+                        "responding": v.get("responding") if v else None})
+    return {"collected_at": row.collected_at if row else None, "vms": out,
+            "can_operate": is_owner(db, p, "environment", e.id) and e.status == "deployed"}
+
+
+@router.post("/{env_id}/power")
+def power(env_id: int, body: PowerIn, request: Request, db: Session = Depends(get_db),
+          p: Principal = Depends(current_principal)):
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "start, stop or restart its VMs")
+    if e.status != "deployed":
+        raise HTTPException(status_code=409, detail="Only a deployed environment's VMs can be started or stopped")
+    names = [n for g in (e.spec or {}).get("host_groups", []) for n in instance_names(g)]
+    if body.vms is not None:
+        unknown = [n for n in body.vms if n not in names]
+        if unknown or not body.vms:
+            raise FieldError("vms", f"Not VMs of this environment: {', '.join(unknown)}." if unknown
+                             else "Choose at least one VM.")
+    busy = db.scalar(select(Job).where(Job.environment_id == e.id, Job.state.in_(("queued", "running"))))
+    if busy:
+        raise HTTPException(status_code=409, detail=f"Job {busy.id} is already {busy.state} for this environment")
+    params = {"environment_id": e.id, **body.model_dump()}
+    job = Job(type="environment.power", params=params, kvm_host_id=e.kvm_host_id, environment_id=e.id,
+              requested_by=p.username)
+    db.add(job)
+    db.commit()
+    audit(db, p.username, f"environment.power.{body.action}", object_type="environment", object_id=e.id,
+          detail={"job": job.id, "vms": body.vms or "all", "force_after_timeout": body.force_after_timeout},
+          source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
+class StartOrderGroup(BaseModel):
+    name: str
+    start_order: int = Field(ge=1, le=99)
+    start_wait: Literal["agent", "none"] = "agent"
+    start_delay_seconds: int = Field(default=0, ge=0, le=3600)
+
+
+class StartOrderIn(BaseModel):
+    groups: list[StartOrderGroup] = Field(min_length=1, max_length=20)
+
+
+@router.put("/{env_id}/start-order")
+def set_start_order(env_id: int, body: StartOrderIn, request: Request, db: Session = Depends(get_db),
+                    p: Principal = Depends(current_principal)):
+    """Change the host groups' start order, wait rule and delay (no redeploy needed)."""
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "change its start order")
+    spec = dict(e.spec or {})
+    groups = [dict(g) for g in spec.get("host_groups", [])]
+    by_name = {g["name"]: g for g in groups}
+    for i, item in enumerate(body.groups):
+        g = by_name.get(item.name)
+        if g is None:
+            raise FieldError(f"groups.{i}.name", f"There's no host group {item.name} in this environment.")
+        g.update(start_order=item.start_order, start_wait=item.start_wait,
+                 start_delay_seconds=item.start_delay_seconds)
+    spec["host_groups"] = groups
+    e.spec = spec
+    db.commit()
+    audit(db, p.username, "environment.start_order", object_type="environment", object_id=e.id,
+          detail={"groups": [g.model_dump() for g in body.groups]}, source_ip=client_ip(request))
+    return {"host_groups": [{k: g.get(k) for k in ("name", "start_order", "start_wait", "start_delay_seconds")}
+                            for g in groups]}

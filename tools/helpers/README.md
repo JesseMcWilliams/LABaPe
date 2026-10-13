@@ -44,6 +44,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/syslog_settings.py` | lab (container) | Point Settings → Syslog at a collector and send the test message |
 | `live/jobs.py` | lab (container) | List jobs with the Jobs page's filters, as any test user |
 | `live/files.py` | lab (container) | List the Files tab (installers with their OS targets) |
+| `live/power.py` | lab (container) | VM power and start order for an environment |
 | `live/templates.py` | lab (container) | Show Settings → Templates; delete a template and wait for the job |
 | `live/maintenance.py` | lab (container) | Turn maintenance mode on, check it, turn it off |
 | `live/update_api.py` | lab (container) | Show the update API's view; offer it a tag |
@@ -105,6 +106,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `stores.py` | `stores.py` | Runs Test connection for each enabled store (the stack's OpenBao and Conjur, design §26) and prints the dashboard's store checks. Never sees a login: LABaPe owns and rotates them. |
 | `stores_rotate.py` | `stores_rotate.py [openbao\|conjur ...]` | Rotate now on each store's login policy, waits for the job, prints its `labape:` lines, then runs Test connection. |
 | `stores_move.py` | `stores_move.py [environment]` | Needs `stores.py` first. Moves the directory token built-in → OpenBao → Conjur → built-in, running group search after each move, moves an environment's credentials sheet (default `lab2`) to OpenBao and back comparing the sheet's hash, and sets the default store to OpenBao and back. |
+| `power.py` | `power.py <env id> vms`, `<env id> <start\|shutdown\|restart\|force_off> [--vm NAME ...] [--force-after] [--timeout S]` or `<env id> order GROUP=ORDER[:agent\|none[:DELAY]] ...` | Waits for the job and prints its `labape:` lines. **Shut down and force off stop VMs.** |
 | `files.py` | `files.py [isos\|installers\|files] [--targets]` | Name, size, SHA-256 prefix; installers with their targets, ISOs with their OS. `--targets` prints the vocabulary. |
 | `jobs.py` | `jobs.py [--as USER] [--facets] [filter=value ...]` | Filters: `environment` (name contains), `type` (prefix), `state`, `requested_by`, `since`, `until`. Shows how visibility and filters combine for that user. |
 | `syslog_settings.py` | `syslog_settings.py show` or `<host> [--port N] [--protocol udp\|tcp\|tls] [--facility F] [--no-verify] [--off]` | Saves Settings → Syslog (enabled, TLS with verification by default), then runs Send test message. Check the collector's `/var/log/remote/all.log` for it. |

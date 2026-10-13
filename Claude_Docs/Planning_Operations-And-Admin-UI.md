@@ -97,7 +97,7 @@ Future item from 113: adding more local and domain accounts to an environment (P
   existing installers from their extension (`.msi`/`.exe` → windows, `.deb`/`.rpm` → linux,
   otherwise `any`).
 
-### O3. VM power and boot order
+### O3. VM power and boot order (built 2026-10-13: Planning_Web-Interface-Design.md §28.3)
 
 - **Operations** (R1): start, shut down, restart and force off, for one VM (environment page, per
   VM) or the whole environment. Each is a job (`vm.power`), so it's audited, shows a log, and
