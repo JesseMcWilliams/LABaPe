@@ -32,15 +32,15 @@ Claude_Docs/Design_Base-Images.md (templates).
 10. ~~Who may see an environment's credentials in the web UI: anyone who can see the environment, or only its owner/admins?~~ **Answered (2026-10-10):** Owners and admins only (decision 9). (Claude_Docs/Planning_Web-Interface-Options.md)
 ## KVM vs Hyper-V parity
 
-11. Is Hyper-V still a target backend? If not, it could be marked
-    "maintained as-is, RHEL family only" and the gaps left open.
-12. If yes, where does closing the gaps rank against M7 (NAT mode),
-    M8 (CI/lint), M9 (certificate authority) and M10 (web UI)?
-13. If yes, is the suggested order right (interface parity and
+11. ~~Is Hyper-V still a target backend? If not, it could be marked
+    "maintained as-is, RHEL family only" and the gaps left open.~~ **Answered (2026-10-12):** Yes, it stays a target, but closing the gaps moves to the backlog (Planning_Backlog.md).
+12. ~~If yes, where does closing the gaps rank against M7 (NAT mode),
+    M8 (CI/lint), M9 (certificate authority) and M10 (web UI)?~~ **Answered (2026-10-12):** Backlog; not ranked yet.
+13. ~~If yes, is the suggested order right (interface parity and
     `deploy.sh` support first, then the boot-order fix, Windows, Debian
-    family, templates, ownership guard), or is something more urgent?
-14. Is there a physical Hyper-V host for this, or should development keep
-    using the nested `hvhost1` VM on the libvirt host?
+    family, templates, ownership guard), or is something more urgent?~~ **Answered (2026-10-12):** Backlog; the suggested order is kept there for when it's picked up.
+14. ~~Is there a physical Hyper-V host for this, or should development keep
+    using the nested `hvhost1` VM on the libvirt host?~~ **Answered (2026-10-12):** Backlog; decide when the work starts.
 
 ## Templates
 
@@ -60,7 +60,7 @@ Claude_Docs/Design_Base-Images.md (templates).
 22. ~~Is DHCP-mode addressing needed for anything yet (§17.4 defers it
     until there's a real need)?~~ **Superseded (2026-10-10):** DHCP addressing was built for libvirt, CLI and web UI (Planning_Web-Interface-Design.md §20.5).
 23. ~~Firefox can't install on Server 2019 Core: drop it from the example software manifest for `windows_server`, or leave it and accept the failure on 2019 Core hosts?~~ **Answered (2026-10-12):** Firefox needs a GUI, and Server Core has none, so it's skipped on Core hosts of any Windows version rather than dropped from the manifest.
-24. Should `Published_Docs/` end-user `.docx` guides start now? (Update 2026-10-12: the Markdown user guides now cover the whole backlog: `User_Docs/Web-Interface-Guide.md`, `Web-Interface-Admin.md` and `Command-Line.md`. They could be the source for the `.docx` versions.)
+24. ~~Should `Published_Docs/` end-user `.docx` guides start now? (Update 2026-10-12: the Markdown user guides now cover the whole backlog: `User_Docs/Web-Interface-Guide.md`, `Web-Interface-Admin.md` and `Command-Line.md`. They could be the source for the `.docx` versions.)~~ **Answered (2026-10-12):** Later; in the backlog (Planning_Backlog.md).
 
 ## Web interface: follow-up questions (added 2026-10-10)
 
@@ -189,3 +189,22 @@ Handoff next step 3 (question 95's "eventually"). Design notes: `Claude_Docs/Pla
 104. ~~Which store holds LABaPe's own secrets (the bootstrap and engine secrets)? Both stores are installed; one has to be the platform store. Going ahead with **OpenBao** (an installer answer, `PlatformStore`, can pick Conjur); Conjur is installed beside it for catalog secrets. Change it?~~ **Answered (2026-10-12):** OpenBao by default, chosen by configuration: `LABAPE_PLATFORM_STORE` in `container/.env` (installer answer `PlatformStore`); re-running `stores.sh setup` moves everything (§26.4).
 105. ~~**Unattended start.** OpenBao starts sealed. Going ahead with its unseal key in a host file readable only by the service user (`container/stores/secrets/`, like today's secret files), so the stack comes back on its own after a reboot. The alternative is unsealing by hand after every reboot. Change it?~~ **Answered (2026-10-12):** Yes, the unseal key on the host; the stack starts unattended (checked with a real reboot).
 106. ~~Once the stack's own stores work, retire the test stores in `/opt/labape-secrets-test` (you'd run `sudo /opt/labape-secrets-test/deploy.sh --down --purge`)?~~ **Answered (2026-10-12):** Yes; the user ran `--down --purge` and removed `/opt/labape-secrets-test`.
+
+## VM operations, admin area, host details and remote access (added 2026-10-12)
+
+The user's feature list of 2026-10-12. Plan, options and recommendations: `Claude_Docs/Planning_Operations-And-Admin-UI.md` (batches O1-O6).
+
+107. **Admin area contents.** Hosts, Networks and Settings move under **Admin**, with a vertical list on the left. Should Audit, Errors and Secrets move there too? Recommended: yes, so the top bar keeps only everyday pages. Today non-admins can open Hosts and Networks read-only; under Admin they'd see host load on the Dashboard and network names in the deploy form instead. OK, or keep a read-only Hosts page for them?
+108. **Shutting a VM down.** A guest shutdown (ACPI or the guest agent) with a 5-minute timeout, after which the job fails and offers **Force off** (recommended), or force off automatically after the timeout?
+109. **"Boot order" means** the order in which an environment's VMs start (recommended reading, e.g. domain controllers first), the firmware boot device order inside each VM (disk, CD-ROM, network), or both?
+110. **Start-order wait rule.** Before starting the next group, wait until the previous group's VMs answer through the guest agent, plus an optional delay per group (recommended); or a fixed delay only; or a port check (e.g. a DC's DNS and LDAP)? Default start order: domain controllers 1, everything else 2?
+111. **Who may start, stop and restart VMs:** environment owners and admins (recommended), or anyone who can see the environment?
+112. **Installer OS targets:** Windows, Linux or Any (recommended), or finer (Debian family, RHEL family, macOS)?
+113. **KVM host SSH account.** A dedicated account (e.g. `labape`) using the worker's SSH key, with a sudoers drop-in limited to the read-only commands (`smartctl`, `sensors`, …) (recommended); or root; or a password kept in the store?
+114. **"Initiate the install"** = run `install-labape.py --profile kvm` on the new host as a job over SSH. It needs root once: give a one-time sudo password in the form, used for that job only and never stored (recommended), or require key-based root SSH?
+115. **Host metrics:** every 5 minutes, kept 7 days, SMART daily (recommended)? Different interval or retention?
+116. **Browser SSH/RDP gateway:** (a) full Guacamole web app, (b) `guacd` with LABaPe as the tunnel (recommended), (c) native-client links only, (d) in-house SSH only. Also offer a "Download .rdp" link (c) next to (b)?
+117. **Session recording:** off by default with an admin setting to turn it on (recommended), always on, or never?
+118. **Who may open SSH/RDP/console sessions:** the people who may see the environment's credentials, i.e. owners and admins (recommended), or anyone who can see the environment?
+119. **VM console:** Guacamole VNC to the VM's libvirt display (recommended with 116 b), noVNC, a serial console for Linux, or a `virt-viewer` file? Should template-build VMs get a console too (useful when an unattended install hangs)?
+120. **Host and VM Accounts/Groups pages:** read-only (recommended), or also manage accounts and group members from LABaPe?

@@ -1,0 +1,17 @@
+# Backlog
+
+> **Stage: Planning.** Work that's agreed but deferred, so it isn't lost. Each line says where the
+> detail is. Move a line into a plan (and out of here) when the work is picked up. User-visible
+> changes waiting for user docs have their own list: [Planning_User-Docs-Backlog.md](Planning_User-Docs-Backlog.md).
+
+## Deferred by the user (2026-10-12)
+
+- **Hyper-V parity** (questions 11-14): Hyper-V stays a target backend. Closing the gaps is
+  deferred and not ranked yet. The suggested order, from Reference_Backend-Parity.md: interface
+  parity and `deploy.sh` support, the boot-order fix, Windows, the Debian family, templates, the
+  ownership guard. Decide physical host vs the nested `hvhost1` VM when it starts.
+- **Published `.docx` guides** (question 24): later. The Markdown guides in `User_Docs/` are the
+  source.
+- **Release v0.3.0**: later; it also needs the user's release signing key in
+  `deploy/allowed_signers`.
+- **User-docs backlog**: later (its own list, above).

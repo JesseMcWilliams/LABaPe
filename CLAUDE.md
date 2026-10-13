@@ -54,6 +54,8 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Reference_Secrets-Backend-Requirements.md`: what a secret store and its LABaPe provider must offer (interface, paths, TLS, least privilege, rotation, failures, tests).
   - `Planning_Certificate-Authority.md`, `Planning_Environment-Templates.md`: proposals for the `certificate_authority` role and environment templates, not built yet (Design_System-Overview.md §19/§20). The web stack's own platform CA is built (Planning_Web-Interface-Design.md §22.5).
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
+  - `Planning_Backlog.md`: agreed but deferred work (Hyper-V parity, `.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
+  - `Planning_Operations-And-Admin-UI.md`: plan for VM power and boot order, the Admin area, filters, KVM host and VM details pages, browser SSH/RDP and consoles (batches O1-O6, questions 107-120).
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.
   - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number).
   - `Planning_Web-Interface-Design.md`: M10 design and as-built record (components, data model, permissions, job runner, deployment, build phases 10a-10h; §19-§24 cover what's built, through secret rotation).
