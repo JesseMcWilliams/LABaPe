@@ -1,0 +1,19 @@
+---
+# Syslog collector (catalog service "syslog_collector", design §27): rsyslog
+# receiving from other hosts. Remote messages go to their own files, never
+# into this host's own logs.
+syslog_collector_udp_port: 514        # RFC 5426
+syslog_collector_tcp_port: 514        # RFC 6587, octet-counted or LF framing
+syslog_collector_tls_port: 6514       # RFC 5425, server certificate only
+syslog_collector_mtls_port: 6515      # RFC 5425, client certificate required
+syslog_collector_log_dir: /var/log/remote
+syslog_collector_keep_days: 14
+# TLS 1.2 and 1.3 only (RFC 9662); GnuTLS picks forward-secret AEAD suites.
+syslog_collector_tls_priority: "NORMAL:-VERS-ALL:+VERS-TLS1.3:+VERS-TLS1.2"
+# The platform certificate from the labape_cert role. Without it (a CLI
+# deploy) the TLS listeners are left out.
+syslog_collector_platform_tls_dir: /etc/labape/tls
+# rsyslog's own copies: the key readable by rsyslog's group, and a CA
+# bundle (root + intermediate) to verify client certificates that arrive
+# without their intermediate.
+syslog_collector_tls_dir: /etc/labape/syslog-collector

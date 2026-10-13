@@ -11,3 +11,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Settings → Templates: versions to keep, the monthly refresh (on/off, day, time); how dated names (`<name>-YYYY.MM`) form versions.
 - Template page: Delete (refused while an environment or VM uses the template).
 - Applications marked `requires_gui` (Firefox) are skipped on Windows Server Core hosts instead of failing the deploy.
+- Catalog → Services: the **Syslog collector** service (ports, TLS and mutual TLS, `/var/log/remote/` layout, getting a client certificate with `labape ca-sign`), and the `linux.role` field.

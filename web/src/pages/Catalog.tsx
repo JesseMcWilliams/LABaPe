@@ -25,7 +25,7 @@ interface CatalogRequest {
 }
 
 const KINDS = [
-  { key: "service", label: "Services", help: "Roles and features added on top of the template: Windows features or Linux packages and systemd units." },
+  { key: "service", label: "Services", help: "Roles and features added on top of the template: Windows features, or Linux packages, systemd units and an optional configuration role (e.g. syslog_collector)." },
   { key: "application", label: "Applications", help: "Software to install: package-manager names (Chocolatey, apt, dnf) or installers from the Files tab." },
   { key: "package", label: "Packages", help: "Named groups of services, applications and other packages (one level deep)." },
 ] as const;

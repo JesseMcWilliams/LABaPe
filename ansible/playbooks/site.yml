@@ -164,3 +164,27 @@
   roles:
     - labape_cert
   tags: [certificates]
+
+# --- Service roles (Claude_Docs/Planning_Web-Interface-Design.md §27) ---
+# A service chosen in the web UI may name an Ansible role (`linux.role`) for
+# configuration that packages and units can't express, e.g. the syslog
+# collector's listeners. Runs after the platform certificates so the role can
+# use them. Only roles on this list run; it matches the catalog's allow-list
+# (app/labape/catalog.py SERVICE_ROLES). No-op from the CLI (no services).
+
+- name: Roles for the selected services (Linux)
+  hosts: linux_server:linux_workstation
+  become: true
+  gather_facts: true
+  vars:
+    labape_service_roles_allowed: [syslog_collector]
+    labape_service_roles: >-
+      {{ (labape_services | default({})).values() | selectattr('linux', 'defined')
+         | map(attribute='linux') | selectattr('role', 'defined') | map(attribute='role')
+         | select('in', labape_service_roles_allowed) | unique | list }}
+  tasks:
+    - name: Run each service's role
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop: "{{ labape_service_roles }}"
+  tags: [software]

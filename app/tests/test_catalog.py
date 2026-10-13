@@ -100,3 +100,36 @@ def test_host_group_choices_and_runner_inputs(client, tmp_root):
     assert "firefox" in cat and cat["tool"] == {"apt": "tool", "dnf": "tool"}
     gv = yaml.safe_load((work / "ansible/inventory/group_vars/all/labape.yml").read_text())
     assert gv["software_store_path"] == "/data/installers"
+
+
+def test_syslog_collector_service(client, tmp_root):
+    """Design §27: the seeded Linux-only collector, and linux.role validation."""
+    _admin_session(client)
+    items = {(i["kind"], i["name"]): i for i in client.get("/api/catalog").json()}
+    collector = items[("service", "syslog_collector")]
+    assert collector["status"] == "published" and collector["platforms"] == ["linux"]
+    assert collector["definition"]["linux"]["role"] == "syslog_collector"
+    bad = [
+        ({"linux": {"role": "domain_controller"}}, "linux.role must be one of"),
+        ({"linux": {"units": ["x"], "playbook": "x.yml"}}, "linux takes packages, units and role"),
+        ({"linux": {}}, "and/or a role"),
+    ]
+    for definition, text in bad:
+        r = client.post("/api/catalog", json={"kind": "service", "name": "bad-role", "display_name": "x",
+                                              "definition": definition})
+        assert r.status_code == 422 and text in r.json()["errors"][0]["message"], r.text
+    # Refused on a Windows host group: it has nothing for Windows.
+    _host(client)
+    g = {"name": "logs", "os": "rocky9", "roles": ["linux_server"], "image_source": "packer_template",
+         "template": "rocky9-base", "services": ["syslog_collector"]}
+    r = client.post("/api/environments", json={"name": "syslogwin", "kvm_host_id": 1, "host_groups": [
+        {**g, "os": "windows_server_2022", "roles": ["windows_server"]}]})
+    assert r.status_code == 422 and "nothing to install on windows" in r.json()["errors"][0]["message"]
+    r = client.post("/api/environments", json={"name": "syslogenv", "kvm_host_id": 1, "host_groups": [g]})
+    assert r.status_code == 201, r.text
+    work = tmp_root / "syslogwork"
+    (work / "ansible").mkdir(parents=True, exist_ok=True)
+    with session_factory()() as db:
+        write_catalog_inputs(db, db.get(Environment, r.json()["environment"]["id"]), work)
+    hv = yaml.safe_load((work / "ansible/inventory/host_vars/logs1.yml").read_text())
+    assert hv["labape_services"]["syslog_collector"]["linux"]["role"] == "syslog_collector"

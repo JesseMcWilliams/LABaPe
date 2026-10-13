@@ -12,7 +12,9 @@ One table, `catalog_items`, holds three kinds:
   (question 23).
 - service: what to enable on top of the template: {windows: {features:
   [...], services: [...]}, linux: {packages: {apt: [...], dnf: [...]},
-  units: [...]}}.
+  units: [...], role: name}}. `linux.role` (design §27) runs one of the
+  repository's Ansible roles listed in SERVICE_ROLES, after the platform
+  certificates, for configuration packages and units can't express.
 - package: a named group: {items: [{kind, name}]}, where a package may
   include packages one level deep (question 53).
 
@@ -29,6 +31,9 @@ from .models import CatalogItem
 KINDS = ("service", "application", "package")
 PKG_MANAGERS = ("chocolatey", "apt", "dnf", "zypper")
 INSTALLER_TYPES = {"windows": ("msi", "exe"), "linux": ("deb", "rpm")}
+# Ansible roles a Linux service may run (`linux.role`, design §27). Kept to
+# vetted roles in ansible/roles; site.yml's service-roles play has the same list.
+SERVICE_ROLES = ("syslog_collector",)
 
 
 class CatalogError(ValueError):
@@ -80,8 +85,12 @@ def validate(db: Session, kind: str, definition: dict) -> None:
         w, lx = d.get("windows") or {}, d.get("linux") or {}
         if "windows" in d and not (w.get("features") or w.get("services")):
             raise CatalogError("windows needs features (Windows feature names) and/or services.")
-        if "linux" in d and not (lx.get("packages") or lx.get("units")):
-            raise CatalogError("linux needs packages (per package manager) and/or units (systemd).")
+        if "linux" in d and not (lx.get("packages") or lx.get("units") or lx.get("role")):
+            raise CatalogError("linux needs packages (per package manager), units (systemd) and/or a role.")
+        if any(k not in ("packages", "units", "role") for k in lx):
+            raise CatalogError("linux takes packages, units and role.")
+        if "role" in lx and lx["role"] not in SERVICE_ROLES:
+            raise CatalogError(f"linux.role must be one of: {', '.join(SERVICE_ROLES)}.")
         if lx.get("packages") and any(k not in PKG_MANAGERS for k in lx["packages"]):
             raise CatalogError(f"linux.packages keys must be package managers: {', '.join(PKG_MANAGERS[1:])}.")
     elif kind == "package":
@@ -128,6 +137,17 @@ def expand(db: Session, services: list[str], applications: list[str], packages: 
     return out
 
 
+# Linux only. rsyslog receiving UDP/TCP 514, TLS 6514 and mutual TLS 6515 with
+# the host's platform certificate (design §27). Also added to existing
+# catalogs by migration 0006.
+SYSLOG_COLLECTOR = (
+    "service", "syslog_collector", "Syslog collector",
+    "rsyslog receiving syslog from other hosts: UDP and TCP on 514, TLS on 6514 and mutual TLS on 6515 "
+    "(platform certificate, TLS 1.2/1.3). Messages go to /var/log/remote/all.log and "
+    "/var/log/remote/<host>/<app>.log.",
+    {"linux": {"packages": {"dnf": ["rsyslog", "rsyslog-gnutls"], "apt": ["rsyslog", "rsyslog-gnutls"]},
+               "units": ["rsyslog"], "role": "syslog_collector"}})
+
 # Starter catalog, published on first start (only when the catalog is empty).
 SEED = [
     ("service", "iis", "IIS web server", "Internet Information Services with the management console.",
@@ -144,6 +164,7 @@ SEED = [
      {"linux": {"packages": {"dnf": ["podman"], "apt": ["podman"]}}}),
     ("service", "cockpit", "Cockpit web console", "Browser-based server management on port 9090.",
      {"linux": {"packages": {"dnf": ["cockpit"], "apt": ["cockpit"]}, "units": ["cockpit.socket"]}}),
+    SYSLOG_COLLECTOR,
 ]
 
 

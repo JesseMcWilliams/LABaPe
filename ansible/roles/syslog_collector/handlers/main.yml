@@ -1,0 +1,11 @@
+---
+- name: Check the rsyslog configuration
+  ansible.builtin.command: rsyslogd -N1
+  changed_when: false
+  listen: restart rsyslog
+
+- name: Restart rsyslog
+  ansible.builtin.systemd_service:
+    name: rsyslog
+    state: restarted
+  listen: restart rsyslog

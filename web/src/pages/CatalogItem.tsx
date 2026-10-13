@@ -117,7 +117,7 @@ export default function CatalogItemPage() {
           <Field label="Definition (JSON)" value={form.definition} fullWidth multiline minRows={10} error={errs.fields.definition ?? errs.fields.items}
             slotProps={{ input: { sx: { fontFamily: "monospace", fontSize: 13 } } }}
             help={kind === "application" ? "chocolatey/apt/dnf/zypper names, or windows/linux installers {type, source: url|local, url|path, arguments, product_id}"
-              : kind === "service" ? "windows: {features, services}; linux: {packages: {dnf, apt}, units}" : "items: [{kind, name}]"}
+              : kind === "service" ? "windows: {features, services}; linux: {packages: {dnf, apt}, units, role}" : "items: [{kind, name}]"}
             onChange={(e) => setForm({ ...form, definition: e.target.value })} />
           <Stack direction="row" spacing={2}>
             <ActionButton variant="contained" onClick={save} tip="Save the item; its status doesn't change"

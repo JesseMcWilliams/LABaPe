@@ -1,0 +1,162 @@
+---
+# Syslog collector (design §27). Runs from site.yml's service-roles play,
+# after labape_services installed rsyslog and rsyslog-gnutls and after
+# labape_cert issued the host's platform certificate.
+
+- name: Is the platform certificate here? (only web deploys have one)
+  ansible.builtin.stat:
+    path: "{{ syslog_collector_platform_tls_dir }}/host.crt"
+  register: syslog_collector_cert
+
+- name: Group rsyslog runs as (Ubuntu drops to syslog after start)
+  ansible.builtin.shell: |
+    set -o pipefail
+    sed -n 's/^\$PrivDropToGroup[[:space:]]\+//p' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null | tail -n 1
+  args:
+    executable: /bin/bash
+  register: syslog_collector_dropgroup
+  changed_when: false
+  failed_when: false
+
+- name: Settings for this host
+  ansible.builtin.set_fact:
+    syslog_collector_tls: "{{ syslog_collector_cert.stat.exists }}"
+    syslog_collector_group: "{{ syslog_collector_dropgroup.stdout | trim | default('root', true) }}"
+
+- name: SELinux tools (RHEL family)
+  ansible.builtin.package:
+    name: policycoreutils-python-utils
+    state: present
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_facts.selinux.status | default('disabled') == 'enabled'
+
+- name: Let rsyslog listen on its ports under SELinux
+  # TCP 514 is shell_port_t by default (rsh), and 6515 isn't a syslog port.
+  community.general.seport:
+    ports: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    setype: "{{ item.type }}"
+    state: present
+  loop:
+    - { port: "{{ syslog_collector_udp_port }}", proto: udp, type: syslogd_port_t }
+    - { port: "{{ syslog_collector_tcp_port }}", proto: tcp, type: syslogd_port_t }
+    - { port: "{{ syslog_collector_tls_port }}", proto: tcp, type: syslog_tls_port_t }
+    - { port: "{{ syslog_collector_mtls_port }}", proto: tcp, type: syslog_tls_port_t }
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }}"
+  when: ansible_facts.selinux.status | default('disabled') == 'enabled'
+
+- name: Remote log folder
+  ansible.builtin.file:
+    path: "{{ syslog_collector_log_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Certificate copy script
+  ansible.builtin.template:
+    src: labape-syslog-collector-certs.sh.j2
+    dest: /usr/local/sbin/labape-syslog-collector-certs
+    mode: "0755"
+
+- name: Copy the platform certificate for rsyslog
+  ansible.builtin.command: /usr/local/sbin/labape-syslog-collector-certs --no-restart
+  when: syslog_collector_tls
+  changed_when: false
+
+- name: Restart rsyslog when the platform certificate is renewed
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: labape-syslog-collector-certs.path
+      content: |
+        [Unit]
+        Description=Watch the LABaPe platform certificate for the syslog collector
+        [Path]
+        PathChanged={{ syslog_collector_platform_tls_dir }}/host.crt
+        [Install]
+        WantedBy=multi-user.target
+    - name: labape-syslog-collector-certs.service
+      content: |
+        [Unit]
+        Description=Give rsyslog the renewed LABaPe platform certificate
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/labape-syslog-collector-certs
+  loop_control:
+    label: "{{ item.name }}"
+  when: syslog_collector_tls
+
+- name: Enable the certificate watch
+  ansible.builtin.systemd_service:
+    name: labape-syslog-collector-certs.path
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: syslog_collector_tls
+
+- name: Collector configuration
+  ansible.builtin.template:
+    src: labape-syslog-collector.conf.j2
+    dest: /etc/rsyslog.d/40-labape-syslog-collector.conf
+    mode: "0644"
+  notify: restart rsyslog
+
+- name: Rotate the remote logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/labape-syslog-collector
+    mode: "0644"
+    content: |
+      # Written by LABaPe (syslog_collector role).
+      {{ syslog_collector_log_dir }}/*.log {{ syslog_collector_log_dir }}/*/*.log {
+          daily
+          rotate {{ syslog_collector_keep_days }}
+          compress
+          delaycompress
+          missingok
+          notifempty
+          sharedscripts
+          postrotate
+              systemctl kill -s HUP rsyslog.service >/dev/null 2>&1 || true
+          endscript
+      }
+
+- name: Which firewall is running?
+  ansible.builtin.service_facts:
+
+- name: Open the collector ports (firewalld)
+  ansible.builtin.command: >-
+    firewall-cmd --permanent
+    --add-port={{ syslog_collector_udp_port }}/udp
+    --add-port={{ syslog_collector_tcp_port }}/tcp
+    --add-port={{ syslog_collector_tls_port }}/tcp
+    --add-port={{ syslog_collector_mtls_port }}/tcp
+  register: syslog_collector_fw
+  # One ALREADY_ENABLED warning per port that was open already.
+  changed_when: syslog_collector_fw.stderr.count('ALREADY_ENABLED') < 4
+  when: ansible_facts.services['firewalld.service'].state | default('') == 'running'
+
+- name: Load the firewalld rules
+  ansible.builtin.command: firewall-cmd --reload
+  when: syslog_collector_fw is changed
+
+- name: Open the collector ports (ufw)
+  ansible.builtin.command: "ufw allow {{ item }}"
+  loop:
+    - "{{ syslog_collector_udp_port }}/udp"
+    - "{{ syslog_collector_tcp_port }}/tcp"
+    - "{{ syslog_collector_tls_port }}/tcp"
+    - "{{ syslog_collector_mtls_port }}/tcp"
+  changed_when: false
+  when: ansible_facts.services['ufw.service'].state | default('') == 'running'
+
+- name: Apply a changed configuration now
+  ansible.builtin.meta: flush_handlers
+
+- name: rsyslog is running
+  ansible.builtin.systemd_service:
+    name: rsyslog
+    enabled: true
+    state: started
