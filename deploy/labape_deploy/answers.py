@@ -11,6 +11,7 @@ from __future__ import annotations
 import getpass
 import ipaddress
 import os
+import platform
 import socket
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -92,8 +93,9 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("ContainerRuntime", "Container runtime", kind="choice", choices=("docker", "podman"), default="docker"),
     # Services the web interface's stack runs (question 140): each defaults to yes. OpenBao is
     # always installed (the update agent's login and the boot-time unseal use it).
+    # Conjur's image is amd64 only: off by default on ARM (a Raspberry Pi; design §29.6).
     Answer("InstallConjur", "Install CyberArk Conjur as a second secret store (OpenBao is always installed)?",
-           kind="bool", default=True),
+           kind="bool", default=lambda a: platform.machine().lower() not in ("aarch64", "arm64")),
     Answer("InstallSyslog", "Install the syslog collector (UDP/TCP 514, TLS 6514) with its database and the Syslog tab?",
            kind="bool", default=True),
     Answer("SyslogBind", "Address the syslog collector listens on (0.0.0.0: every address)",

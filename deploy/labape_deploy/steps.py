@@ -7,6 +7,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import platform
 import secrets
 import shutil
 import string
@@ -62,6 +63,12 @@ def os_family(info: dict | None = None) -> str:
     if ids & {"rhel", "centos", "fedora", "rocky", "almalinux"}:
         return "rhel"
     return ""
+
+
+def cpu_arch() -> str:
+    """amd64 or arm64, as release downloads name them (a Raspberry Pi is arm64; design §29.6)."""
+    m = platform.machine().lower()
+    return {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(m, m)
 
 
 def rpm_packages(info: dict | None = None) -> list[str]:
@@ -294,13 +301,13 @@ def _install_zip_binary(c: Ctx, name: str, version: str, base: str, zip_name: st
 def tools_opentofu(c: Ctx):
     v = c.a.need("TofuVersion")
     return _install_zip_binary(c, "tofu", v, f"https://github.com/opentofu/opentofu/releases/download/v{v}",
-                               f"tofu_{v}_linux_amd64.zip", f"tofu_{v}_SHA256SUMS")
+                               f"tofu_{v}_linux_{cpu_arch()}.zip", f"tofu_{v}_SHA256SUMS")
 
 
 def tools_packer(c: Ctx):
     v = c.a.need("PackerVersion")
     status = _install_zip_binary(c, "packer", v, f"https://releases.hashicorp.com/packer/{v}",
-                                 f"packer_{v}_linux_amd64.zip", f"packer_{v}_SHA256SUMS")
+                                 f"packer_{v}_linux_{cpu_arch()}.zip", f"packer_{v}_SHA256SUMS")
     for plugin in ("github.com/hashicorp/qemu", "github.com/hashicorp/ansible"):
         c.r.run(["packer", "plugins", "install", plugin], as_user=True, check=False)
     return status
@@ -308,15 +315,20 @@ def tools_packer(c: Ctx):
 
 def tools_ansible(c: Ctx):
     v = c.a.need("AnsibleCoreVersion")
+    spec, want = f"ansible-core=={v}", f"core {v}"
+    py = shutil.which("python3.12") if os_family() == "rhel" and shutil.which("python3.12") else "python3"
+    if c.r.out([py, "-c", "import sys; print(int(sys.version_info >= (3, 12)))"]) == "0":
+        # ansible-core 2.20+ needs Python 3.12; Debian 12 (bookworm, e.g. a Raspberry Pi web stack host)
+        # has 3.11. Here it's only for the vault (jobs run Ansible on the KVM hosts or in the image).
+        spec, want = "ansible-core>=2.19,<2.20", "core 2.19"
     have = c.r.out([str(VENV / "bin" / "ansible"), "--version"])
-    if f"core {v}" not in have or c.force:
+    if want not in have or c.force:
         if not (VENV / "bin" / "pip").exists():
             # A venv made without python3-venv has python but no pip: start over.
             c.r.run(["rm", "-rf", str(VENV)])
             # ansible-core needs Python 3.12 or later: RHEL 9's own python3 is 3.9, so use python3.12 there.
-            py = shutil.which("python3.12") if os_family() == "rhel" and shutil.which("python3.12") else "python3"
             c.r.run([py, "-m", "venv", "--system-site-packages", str(VENV)])
-        c.r.run([str(VENV / "bin" / "pip"), "install", "--quiet", f"ansible-core=={v}", "pywinrm", "pyyaml"])
+        c.r.run([str(VENV / "bin" / "pip"), "install", "--quiet", spec, "pywinrm", "pyyaml"])
     for tool in ("ansible", "ansible-playbook", "ansible-vault", "ansible-galaxy", "ansible-inventory", "ansible-config"):
         link = Path("/usr/local/bin") / tool
         if not link.exists():
@@ -328,7 +340,7 @@ def tools_ansible(c: Ctx):
         if res.returncode == 0:
             break
         time.sleep(attempt * 15)
-    return DONE, f"ansible-core {v} + collections in {VENV}"
+    return DONE, f"{spec.replace('==', ' ')} + collections in {VENV}"
 
 
 # --- engine configuration --------------------------------------------------------
@@ -467,6 +479,10 @@ def stack_runtime(c: Ctx):
     # ${VAR:-default} values unexpanded in the shared settings block.
     pkgs = ["docker.io", "docker-compose", "docker-buildx"] if rt == "docker" else ["podman", "docker-compose"]
     missing = [p for p in pkgs if not _installed(c, p)]
+    if rt == "docker" and missing and "version" in c.r.out(["docker", "compose", "version"]).lower():
+        # Docker installed some other way (Docker's own docker-ce packages, e.g. on a Raspberry Pi):
+        # Debian's docker.io would conflict with it, and compose v2 is all the stack needs.
+        missing = []
     if missing:
         c.r.run(["apt-get", "install", "-y", *missing], env={"DEBIAN_FRONTEND": "noninteractive"})
     if rt == "docker":
@@ -533,20 +549,27 @@ OPTIONAL_SERVICES = {
 OVERRIDE_HEADER = "# Written by deploy/install-labape.py (Stack.Services). Don't edit: re-run the installer.\n"
 
 
-def services_override(answers: dict) -> str | None:
+def services_override(answers: dict, kvm_device: bool = True) -> str | None:
     """compose.override.yaml parking the services not chosen in a profile nobody enables (Compose
-    merges the file by itself, so the update agent and every `compose up` honour it). None: all on."""
+    merges the file by itself, so the update agent and every `compose up` honour it), and, on a
+    host without /dev/kvm (a web stack on a Raspberry Pi), the worker without that device: Docker
+    won't start a container whose device is missing. None: nothing to override."""
     off = [svc for key, svcs in OPTIONAL_SERVICES.items() if not answers.get(key, True) for svc in svcs]
-    if not off:
+    if not off and kvm_device:
         return None
     body = "".join(f"  {svc}:\n    profiles: [\"off\"]\n" for svc in off)
-    return f"{OVERRIDE_HEADER}# Services not installed: {', '.join(off)}\nservices:\n{body}"
+    if not kvm_device:
+        body += "  labape-worker:\n    devices: !reset []     # no /dev/kvm here: template builds run on the KVM hosts\n"
+    note = f"# Services not installed: {', '.join(off)}\n" if off else ""
+    return f"{OVERRIDE_HEADER}{note}services:\n{body}"
 
 
 def stack_services(c: Ctx):
     cdir = c.repo / "container"
     override = cdir / "compose.override.yaml"
-    text = services_override(c.a.answers)
+    if c.a.need("InstallConjur") and cpu_arch() == "arm64":
+        raise StepError("Conjur has no arm64 image: answer InstallConjur=false on this machine (OpenBao is installed)")
+    text = services_override(c.a.answers, kvm_device=Path("/dev/kvm").exists())
     if text is None:
         if override.is_file() and override.read_text(encoding="utf-8").startswith(OVERRIDE_HEADER):
             c.r.run(["rm", "-f", str(override)])

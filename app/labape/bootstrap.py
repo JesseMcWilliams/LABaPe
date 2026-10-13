@@ -112,6 +112,9 @@ def apply(db: Session, data: dict) -> list[str]:
             current.add(key)
             changes.append(f"role binding {key[0]} {key[1]} -> {key[2]}: added")
     db.commit()
+    from .engine.filedist import primary, ensure_primary
+    if primary(db) is None and (p := ensure_primary(db)) is not None:
+        changes.append(f"host {p.name}: the primary file host")
     return changes
 
 

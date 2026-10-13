@@ -46,6 +46,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/files.py` | lab (container) | List the Files tab (installers with their OS targets) |
 | `live/power.py` | lab (container) | VM power and start order for an environment |
 | `live/remote_session.py` | lab (container) | Open an SSH/RDP session or a VM console through the tunnel like the browser does; toggle recording; list sessions |
+| `live/host_exec.sh` | lab host | Run a command on a registered host as its LABaPe access account (sudo) |
 | `live/vm_exec.sh` | lab host | Run a command on an environment's Linux VM as its admin user (the VM key stays in the worker) |
 | `live/hosts.py` | lab (container) | List KVM hosts; enable, disable, rename one or attach a network; turn its log forwarding on or off |
 | `live/dashboard_hosts.py` | lab (container) | The KVM hosts the dashboard shows |

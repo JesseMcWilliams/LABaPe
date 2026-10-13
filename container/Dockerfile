@@ -43,25 +43,30 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # The step CLI: the API has the platform CA sign VMs' CSRs (design §22.5).
+# Built for amd64 and arm64 (a web stack on a Raspberry Pi, design §29.6): the downloads
+# follow the build machine's architecture, each checksum pinned.
 ARG STEP_VERSION=0.30.2
-ARG STEP_SHA256=abf5ffe9a39c01c7b4e777d50a96f30f33f5bd8eeafa2dfeef22b8a4abeee14a
-RUN set -eux; cd /tmp; \
-    curl -fsSLO "https://github.com/smallstep/cli/releases/download/v${STEP_VERSION}/step_linux_${STEP_VERSION}_amd64.tar.gz"; \
-    echo "${STEP_SHA256}  step_linux_${STEP_VERSION}_amd64.tar.gz" | sha256sum -c -; \
-    tar -xzf "step_linux_${STEP_VERSION}_amd64.tar.gz"; \
+ARG STEP_SHA256_AMD64=abf5ffe9a39c01c7b4e777d50a96f30f33f5bd8eeafa2dfeef22b8a4abeee14a
+ARG STEP_SHA256_ARM64=7d66fa62949d64142b053db1c86ee29037088919cd329ac7966b15b09e914230
+RUN set -eux; cd /tmp; arch="$(dpkg --print-architecture)"; \
+    case "$arch" in amd64) sum="$STEP_SHA256_AMD64";; arm64) sum="$STEP_SHA256_ARM64";; \
+      *) echo "unsupported architecture $arch" >&2; exit 1;; esac; \
+    curl -fsSLO "https://github.com/smallstep/cli/releases/download/v${STEP_VERSION}/step_linux_${STEP_VERSION}_${arch}.tar.gz"; \
+    echo "${sum}  step_linux_${STEP_VERSION}_${arch}.tar.gz" | sha256sum -c -; \
+    tar -xzf "step_linux_${STEP_VERSION}_${arch}.tar.gz"; \
     install -m 0755 "step_${STEP_VERSION}/bin/step" /usr/local/bin/step; \
     rm -rf /tmp/step_*; step version
 
-# OpenTofu and Packer, checksum-verified.
-RUN set -eux; cd /tmp; \
-    curl -fsSLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"; \
+# OpenTofu and Packer, checksum-verified, for this machine's architecture.
+RUN set -eux; cd /tmp; arch="$(dpkg --print-architecture)"; \
+    curl -fsSLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${arch}.zip"; \
     curl -fsSLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS"; \
-    grep " tofu_${TOFU_VERSION}_linux_amd64.zip\$" "tofu_${TOFU_VERSION}_SHA256SUMS" | sha256sum -c -; \
-    unzip -o "tofu_${TOFU_VERSION}_linux_amd64.zip" tofu -d /usr/local/bin; \
-    curl -fsSLO "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip"; \
+    grep " tofu_${TOFU_VERSION}_linux_${arch}.zip\$" "tofu_${TOFU_VERSION}_SHA256SUMS" | sha256sum -c -; \
+    unzip -o "tofu_${TOFU_VERSION}_linux_${arch}.zip" tofu -d /usr/local/bin; \
+    curl -fsSLO "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_${arch}.zip"; \
     curl -fsSLO "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_SHA256SUMS"; \
-    grep " packer_${PACKER_VERSION}_linux_amd64.zip\$" "packer_${PACKER_VERSION}_SHA256SUMS" | sha256sum -c -; \
-    unzip -o "packer_${PACKER_VERSION}_linux_amd64.zip" packer -d /usr/local/bin; \
+    grep " packer_${PACKER_VERSION}_linux_${arch}.zip\$" "packer_${PACKER_VERSION}_SHA256SUMS" | sha256sum -c -; \
+    unzip -o "packer_${PACKER_VERSION}_linux_${arch}.zip" packer -d /usr/local/bin; \
     rm -f /tmp/*.zip /tmp/*SHA256SUMS; \
     tofu version; packer version
 

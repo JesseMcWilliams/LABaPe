@@ -117,6 +117,23 @@ chmod 0440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp" >/dev/null
 mv "$SUDOERS.tmp" "$SUDOERS"
 getent group libvirt >/dev/null && usermod -aG libvirt "$ACCOUNT" || true
+# sshd may only let some groups in (e.g. Raspberry Pi OS images: AllowGroups AllowSSH): join the first
+# one, or the account couldn't sign in. An AllowUsers list is the admin's to change, so it's reported.
+SSHD="$(sshd -T 2>/dev/null || true)"
+ALLOWED="$(printf '%%s\n' "$SSHD" | awk '$1=="allowgroups"{for(i=2;i<=NF;i++) print $i}')"
+if [ -n "$ALLOWED" ]; then
+  MEMBER=no
+  for g in $ALLOWED; do id -nG "$ACCOUNT" | tr ' ' '\n' | grep -qx "$g" && MEMBER=yes; done
+  G="$(printf '%%s\n' $ALLOWED | head -1)"
+  if [ "$MEMBER" = no ] && getent group "$G" >/dev/null; then
+    usermod -aG "$G" "$ACCOUNT"
+    echo "labape-setup: added $ACCOUNT to $G (sshd AllowGroups)"
+  fi
+fi
+USERS="$(printf '%%s\n' "$SSHD" | awk '$1=="allowusers"{for(i=2;i<=NF;i++) print $i}')"
+if [ -n "$USERS" ] && ! printf '%%s\n' $USERS | grep -qx "$ACCOUNT"; then
+  echo "labape-setup: warning: sshd's AllowUsers doesn't list $ACCOUNT; add it there, or it can't sign in" >&2
+fi
 # Disk health (SMART) for the Drives section; best effort, the account works without it.
 if ! command -v smartctl >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then

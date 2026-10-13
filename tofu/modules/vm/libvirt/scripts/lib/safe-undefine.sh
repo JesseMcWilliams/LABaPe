@@ -42,9 +42,13 @@ safe_undefine() {
   # file). sudo is scoped to exactly this command, not a blanket
   # escalation. The web UI's job runner is already root in its container
   # (no sudo there), so it removes them directly.
-  local rm_cmd=(sudo -n /usr/bin/rm -f)
-  [ "$(id -u)" -eq 0 ] && rm_cmd=(rm -f)
+  # On a KVM host LABaPe prepared, the VM folder belongs to the service user, so a plain rm
+  # works and there's no sudo rule for it: try that first, sudo only if the file is still there.
   while IFS= read -r p; do
-    [ -n "$p" ] && [ -f "$p" ] && "${rm_cmd[@]}" "$p"
+    [ -n "$p" ] && [ -f "$p" ] || continue
+    rm -f "$p" 2>/dev/null || true
+    if [ -f "$p" ]; then
+      if [ "$(id -u)" -eq 0 ]; then rm -f "$p"; else sudo -n /usr/bin/rm -f "$p"; fi
+    fi
   done <<<"$disk_paths"
 }

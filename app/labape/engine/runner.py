@@ -767,6 +767,8 @@ def serve(slots: int | None = None) -> None:
             with session_factory()() as db:
                 syslogstack.tick(db)               # the stack collector's schema, certificates, settings (§29.1)
             with session_factory()() as db:
+                filedist.ensure_primary(db)        # always one primary file host (§29.4)
+            with session_factory()() as db:
                 scan_files(db)
             hash_in_background()
             with session_factory()() as db:

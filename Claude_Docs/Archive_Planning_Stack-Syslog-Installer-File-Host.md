@@ -1,6 +1,6 @@
 # Plan: syslog in the stack, the installer's answer file, and the primary file host
 
-> **Stage: Built** (2026-10-13): Y1, Y2a, Y2b, Y3a and Y3b, recorded in Planning_Web-Interface-Design.md §29.1-§29.5. Still open: ARM stack hosts (open issue 1). Rename to `Archive_Planning_...` once that's decided. From the user's review of 2026-10-13. Questions 121-141 in
+> **Stage: Built** (2026-10-13/14): Y1, Y2a, Y2b, Y3a, Y3b and ARM stack hosts, recorded in Planning_Web-Interface-Design.md §29.1-§29.6. From the user's review of 2026-10-13. Questions 121-141 in
 > [Planning_Questions.md](Planning_Questions.md) are answered (§0). Building goes batch by batch,
 > Y1 first; each batch ships on its own and is recorded as built in
 > [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) (a new §29 subsection per batch).
