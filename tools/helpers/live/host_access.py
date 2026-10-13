@@ -7,6 +7,7 @@ Usage: host_access.py register NAME ADDRESS [SERVICE_USER]   (a disabled host re
        host_access.py check HOST_ID                              (libvirt Check, then the SSH access check)
        host_access.py manage HOST_ID OP NAME [key=value ...]   (OP: user.add, group.member_add, ...)
        host_access.py install HOST_ID                           (the answers JSON on stdin; waits for the job)
+       host_access.py reinstall HOST_ID                         (Prepare again with its last successful install's answers)
 """
 import json
 import sys
@@ -62,8 +63,16 @@ elif what == "manage":
         extra["groups"] = extra["groups"].split(",")
     r = c.post(f"{LABAPE}/api/hosts/{host}/accounts", json={"op": op, "name": name, **extra})
     print(op, name, r.status_code, r.text[:300] if r.status_code != 200 else "ok")
-elif what == "install":
-    answers = json.loads(sys.stdin.read())
+elif what in ("install", "reinstall"):
+    if what == "install":
+        answers = json.loads(sys.stdin.read())
+    else:
+        done = [j for j in c.get(f"{LABAPE}/api/jobs?type=host.install&state=succeeded&limit=200").json()
+                if j.get("kvm_host_id") == int(args[0])]
+        if not done:
+            raise SystemExit(f"host {args[0]} has no successful install to reuse")
+        answers = c.get(f"{LABAPE}/api/jobs/{done[0]['id']}").json()["params"]["answers"]
+        print(f"reusing the answers of job {done[0]['id']}")
     r = c.post(f"{LABAPE}/api/hosts/{args[0]}/install", json=answers)
     if r.status_code != 200:
         raise SystemExit(f"refused: {r.status_code} {r.text[:400]}")
