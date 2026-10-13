@@ -18,3 +18,4 @@
 - **More accounts per environment** (question 113): add local and domain accounts to an
   environment beyond the built-in admin ones (created at deploy, listed on the credentials
   sheet, rotatable).
+- Audit syslog sender: keep one TLS connection open to the collector instead of one per event (the collector logs "unexpected eof" for each; Testing_Troubleshooting-Log.md, Y2a item 3).

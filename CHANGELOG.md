@@ -42,6 +42,18 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- The installer reuses its saved answers on every run (an update asks only
+  new questions; `--fresh` asks again), shows every answer for a yes before
+  it starts when anything was asked, and offers each optional service:
+  Conjur (OpenBao is always installed), the syslog collector, remote access,
+  the update agent and Authentik. Not chosen means parked in
+  `container/compose.override.yaml`. With Authentik installed it's the
+  sign-in provider; otherwise a throwaway Authentik for the first sign-in
+  is the default.
+- Preparing a KVM host from the web interface takes its networks from
+  Admin → Networks (bridge, NIC and address per network) and attaches them
+  to the host afterwards; the host gets no command-line setup unless asked
+  (jobs bring their own files), and templates aren't asked.
 - A syslog collector in the stack: rsyslog on UDP/TCP 514 and TLS 6514
   (client certificates from the platform CA required by default) with its
   own PostgreSQL, a **Syslog** tab for admins and auditors (filters, paging,

@@ -7,7 +7,8 @@ Usage: host_access.py register NAME ADDRESS [SERVICE_USER]   (a disabled host re
        host_access.py check HOST_ID                              (libvirt Check, then the SSH access check)
        host_access.py manage HOST_ID OP NAME [key=value ...]   (OP: user.add, group.member_add, ...)
        host_access.py install HOST_ID                           (the answers JSON on stdin; waits for the job)
-       host_access.py reinstall HOST_ID                         (Prepare again with its last successful install's answers)
+       host_access.py reinstall HOST_ID [--catalog [--rename=OLD:NEW]]           (Prepare again with its last successful install's answers;
+                                                                 --catalog sends the networks as Admin → Networks choices)
 """
 import json
 import sys
@@ -73,6 +74,22 @@ elif what in ("install", "reinstall"):
             raise SystemExit(f"host {args[0]} has no successful install to reuse")
         answers = c.get(f"{LABAPE}/api/jobs/{done[0]['id']}").json()["params"]["answers"]
         print(f"reusing the answers of job {done[0]['id']}")
+        answers = {k: v for k, v in answers.items() if not k.startswith("_") and k not in ("DomainName", "NetbiosName")}
+        if "--catalog" in args:
+            ids = {n["name"]: n["id"] for n in c.get(f"{LABAPE}/api/networks").json()}
+            for a in args:                                   # --rename OLD=NEW: an answer's name -> a catalog name
+                if a.startswith("--rename="):
+                    old, new = a.split("=", 1)[1].split(":", 1)
+                    for n in answers["Networks"]:
+                        n["Name"] = new if n["Name"] == old else n["Name"]
+                    if answers.get("DefaultNetwork") == old:
+                        answers["DefaultNetwork"] = new
+            missing = [n["Name"] for n in answers["Networks"] if n["Name"] not in ids]
+            if missing:
+                raise SystemExit(f"not in Admin → Networks: {', '.join(missing)}")
+            answers["NetworkChoices"] = [{"network_id": ids[n["Name"]], "Bridge": n["Bridge"], "Nic": n["Nic"],
+                                          "HostAddress": n.get("HostAddress", "dhcp")} for n in answers.pop("Networks")]
+            print("networks from the catalog:", [(n["network_id"], n["Bridge"], n["Nic"]) for n in answers["NetworkChoices"]])
     r = c.post(f"{LABAPE}/api/hosts/{args[0]}/install", json=answers)
     if r.status_code != 200:
         raise SystemExit(f"refused: {r.status_code} {r.text[:400]}")

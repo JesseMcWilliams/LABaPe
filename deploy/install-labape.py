@@ -57,6 +57,16 @@ def web(a: Resolver) -> bool:
     return a.need("Profile") != "kvm" and bool(a.need("InstallWebUi"))
 
 
+def cli_config(a: Resolver) -> bool:
+    """The vault, environment.yml and manifests: the web stack copies them; a KVM host the web
+    interface drives needs them only for a usable command line there (question 126)."""
+    return a.need("Profile") != "kvm" or bool(a.need("CliCheckout"))
+
+
+def agent(a: Resolver) -> bool:
+    return web(a) and bool(a.need("InstallUpdateAgent"))
+
+
 # name, function, answers it needs, condition (or None), description
 STEPS = [
     ("Prereq.Os", S.prereq_os, ["Profile"], None, "Root, Debian, /dev/kvm (KVM profiles)"),
@@ -75,25 +85,27 @@ STEPS = [
     ("Tools.OpenTofu", S.tools_opentofu, ["TofuVersion", "InstallCli"], cli, "OpenTofu (checksum-verified)"),
     ("Tools.Packer", S.tools_packer, ["PackerVersion", "InstallCli", "ServiceUser"], cli,
      "Packer and its QEMU/Ansible plugins"),
-    ("Config.Secrets", S.config_secrets, ["ServiceUser"], None,
+    ("Config.Secrets", S.config_secrets, ["ServiceUser"], cli_config,
      "Vault password, SSH key pair, secrets.vault.yml with generated passwords"),
     ("Config.Environment", S.config_environment,
      ["DomainName", "NetbiosName", "ManagementSource", "Networks", "DefaultNetwork", "VmStoragePath",
-      "TemplateStoragePath", "IsoPath", "ServiceUser"], None, "tofu/environment.yml with the network catalog"),
-    ("Config.Manifests", S.config_manifests, ["ServiceUser"], None, "Software and directory manifests from the examples"),
+      "TemplateStoragePath", "IsoPath", "ServiceUser"], cli_config, "tofu/environment.yml with the network catalog"),
+    ("Config.Manifests", S.config_manifests, ["ServiceUser"], cli_config, "Software and directory manifests from the examples"),
     ("Remote.AuthorizeWorker", S.remote_authorize_worker, ["WorkerPublicKey", "ServiceUser"], kvm_only,
      "Authorize the web interface's worker key for SSH (kvm profile)"),
     ("Stack.Runtime", S.stack_runtime, ["InstallWebUi", "ContainerRuntime", "ServiceUser"], web,
      "Docker (or Podman) and compose"),
     ("Stack.Setup", S.stack_setup, ["InstallWebUi", "WebHostname", "Tls", "VmStoragePath", "ServiceUser"], web,
      "container/.env, generated secrets, config and engine secrets"),
-    ("Stack.Auth", S.stack_auth, ["InstallWebUi", "AuthMode", "WebHostname"], web,
-     "Sign-in: existing OIDC provider, throwaway Authentik, or none"),
+    ("Stack.Services", S.stack_services, ["InstallWebUi", "InstallConjur", "InstallSyslog", "InstallRemoteAccess"], web,
+     "Which optional services run (compose.override.yaml) and where the syslog collector listens"),
+    ("Stack.Auth", S.stack_auth, ["InstallWebUi", "InstallAuthentik", "WebHostname"], web,
+     "Sign-in: Authentik installed with LABaPe, an existing OIDC provider, a throwaway Authentik, or none"),
     ("Stack.Build", S.stack_build, ["InstallWebUi", "ContainerRuntime"], web, "Build the LABaPe image"),
     ("Stack.Up", S.stack_up, ["InstallWebUi", "ContainerRuntime", "WebHostname"], web, "Start the stack"),
-    ("Stack.Stores", S.stack_stores, ["InstallWebUi", "ContainerRuntime", "ServiceUser", "PlatformStore"], web,
-     "OpenBao and Conjur in the stack: initialize, unseal at boot, connect LABaPe (design §26)"),
-    ("Stack.UpdateAgent", S.update_agent, ["InstallWebUi", "ServiceUser"], web,
+    ("Stack.Stores", S.stack_stores, ["InstallWebUi", "ContainerRuntime", "ServiceUser", "InstallConjur"], web,
+     "OpenBao (and Conjur if chosen) in the stack: initialize, unseal at boot, connect LABaPe (design §26)"),
+    ("Stack.UpdateAgent", S.update_agent, ["InstallWebUi", "ServiceUser", "InstallUpdateAgent"], agent,
      "Host-side update agent (user systemd unit, lingering) for updates from the web interface"),
     ("Stack.Bootstrap", S.stack_bootstrap,
      ["InstallWebUi", "KvmHostName", "Networks", "DefaultNetwork", "VmStoragePath", "TemplateStoragePath",
@@ -108,7 +120,10 @@ STEP_NAMES = [s[0] for s in STEPS]
 
 # Extra answers a step needs only when another answer has a given value.
 CONDITIONAL_NEEDS = {
-    "Stack.Auth": lambda a: ["OidcIssuer", "OidcClientId"] if a.need("AuthMode") == "existing" else [],
+    "Stack.Services": lambda a: ["SyslogBind"] if a.need("InstallSyslog") else [],
+    "Stack.Stores": lambda a: ["PlatformStore"] if a.need("InstallConjur") else [],
+    "Stack.Auth": lambda a: [] if a.need("InstallAuthentik") else (
+        ["AuthMode"] + (["OidcIssuer", "OidcClientId"] if a.need("AuthMode") == "existing" else [])),
     "Stack.Bootstrap": lambda a: ["RemoteKvmUri"] if a.need("Profile") == "web" else [],
 }
 
@@ -129,6 +144,7 @@ def parse_args(argv):
     ap.add_argument("--dry-run", action="store_true", help="show what would be done without changing anything")
     ap.add_argument("--force", action="store_true", help="redo work a step would skip (rewrite environment.yml, reinstall tools)")
     ap.add_argument("--non-interactive", action="store_true", help="never prompt; fail if an answer is missing")
+    ap.add_argument("--fresh", action="store_true", help="ignore the saved answers file and ask again")
     return ap.parse_args(argv)
 
 
@@ -173,6 +189,19 @@ class Tee:
             s.flush()
 
 
+def summary(a: Resolver) -> str:
+    """Every answer this run uses (none is a secret), the new ones marked."""
+    lines = ["Answers (* new this run):"]
+    width = max((len(n) for n in a.answers), default=0)
+    for n in ANSWERS:
+        if n in a.answers and ANSWERS[n].ask:
+            v = a.answers[n]
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                v = ", ".join(x.get("Name", "?") for x in v)
+            lines.append(f"  {'*' if n in a.prompted else ' '} {n:<{width}}  {v}")
+    return "\n".join(lines)
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     a = Resolver(interactive=sys.stdin.isatty() and not args.non_interactive)
@@ -187,9 +216,10 @@ def main(argv=None) -> int:
     a.add({"InstanceName": instance})
     answers_path = state.state_path(DEPLOY_ROOT, instance, "answers")
     progress_path = state.state_path(DEPLOY_ROOT, instance, "progress")
-    partial = bool(args.resume or args.step or args.start_at)
-    if (partial or args.list_steps) and answers_path.is_file():
-        print(f"Using saved answers from {answers_path}")
+    # Every run reuses the saved answers (question 141): an update or a re-run asks only the
+    # questions added since. --fresh asks everything again.
+    if answers_path.is_file() and not args.fresh:
+        print(f"Using saved answers from {answers_path} (--fresh to answer again)")
         a.add(state.read_answer_file(answers_path))
     progress = state.read_progress(progress_path)
 
@@ -246,6 +276,11 @@ def main(argv=None) -> int:
     for n in ANSWERS:  # defaults that are never prompted are saved too, so the file is complete
         if not ANSWERS[n].ask:
             a.need(n)
+    if a.prompted and a.interactive and not args.dry_run:
+        print("\n" + summary(a))
+        if input("\nInstall with these answers? (Y/n) ").strip().lower() not in ("", "y", "yes"):
+            print("Nothing changed. Run again to change the answers (the saved ones are kept only after a confirmed run).")
+            return 1
     state.save_answer_file(answers_path, a.answers, args.dry_run)
     print(f"Answers saved to {answers_path} (reuse with --config-file, or --resume after a failure).")
 

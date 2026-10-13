@@ -39,6 +39,9 @@ fi
 
 umask 077
 mkdir -p secrets config engine-secrets/ssh
+# The update agent's request folder (mounted into the API): made here, as this user, or Docker
+# makes it as root on the first start and the agent can't write to it.
+(umask 022; mkdir -p update)
 gen() { python3 -c 'import secrets; print(secrets.token_urlsafe(32))'; }
 [ -f secrets/postgres_password ] || gen > secrets/postgres_password
 [ -f secrets/secret_key ] || gen > secrets/secret_key

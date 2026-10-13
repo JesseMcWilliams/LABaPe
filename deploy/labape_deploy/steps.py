@@ -444,17 +444,58 @@ def stack_setup(c: Ctx):
     return DONE, f"container/.env and secrets in place; {copied} config/secret files copied"
 
 
-def stack_auth(c: Ctx):
-    mode = c.a.need("AuthMode")
+# Optional services (question 140): answer -> the compose services it adds. OpenBao is always there.
+OPTIONAL_SERVICES = {
+    "InstallConjur": ("labape-conjur-db", "labape-conjur", "labape-conjur-tls"),
+    "InstallSyslog": ("labape-syslog-db", "labape-syslog"),
+    "InstallRemoteAccess": ("labape-guacd",),
+}
+OVERRIDE_HEADER = "# Written by deploy/install-labape.py (Stack.Services). Don't edit: re-run the installer.\n"
+
+
+def services_override(answers: dict) -> str | None:
+    """compose.override.yaml parking the services not chosen in a profile nobody enables (Compose
+    merges the file by itself, so the update agent and every `compose up` honour it). None: all on."""
+    off = [svc for key, svcs in OPTIONAL_SERVICES.items() if not answers.get(key, True) for svc in svcs]
+    if not off:
+        return None
+    body = "".join(f"  {svc}:\n    profiles: [\"off\"]\n" for svc in off)
+    return f"{OVERRIDE_HEADER}# Services not installed: {', '.join(off)}\nservices:\n{body}"
+
+
+def stack_services(c: Ctx):
     cdir = c.repo / "container"
+    override = cdir / "compose.override.yaml"
+    text = services_override(c.a.answers)
+    if text is None:
+        if override.is_file() and override.read_text(encoding="utf-8").startswith(OVERRIDE_HEADER):
+            c.r.run(["rm", "-f", str(override)])
+    else:
+        if override.is_file() and not override.read_text(encoding="utf-8").startswith(OVERRIDE_HEADER):
+            raise StepError(f"{override} exists and wasn't written by the installer; merge it by hand")
+        c.r.write(override, text, mode=0o644, owner=c.user)
+    env = {"LABAPE_CONJUR": "yes" if c.a.need("InstallConjur") else "no"}
+    if c.a.need("InstallSyslog"):
+        env["LABAPE_SYSLOG_BIND"] = c.a.need("SyslogBind")
+    _set_env(c, cdir / ".env", env)
+    chosen = [k.removeprefix("Install") for k in OPTIONAL_SERVICES if c.a.answers.get(k, True)]
+    return DONE, f"optional services: {', '.join(chosen) or 'none'}" + ("" if text is None else " (others parked)")
+
+
+def stack_auth(c: Ctx):
+    cdir = c.repo / "container"
+    # Authentik installed with LABaPe is its sign-in provider; otherwise the chosen mode, by
+    # default a throwaway Authentik for the first sign-in (question 130).
+    mode = "authentik" if c.a.need("InstallAuthentik") else c.a.need("AuthMode")
     if mode == "none":
         return NA, "no sign-in provider; use `labape breakglass enable` for admin access"
-    if mode == "test-authentik":
+    if mode in ("authentik", "test-authentik"):
         # As root: Podman runs rootful here, like the LABaPe stack.
         c.r.run(["bash", str(c.repo / "tools" / "authentik-test" / "deploy.sh"), "--labape-hostname",
                  c.a.need("WebHostname"), "--public-host", c.a.need("WebHostname"), "--configure-labape"],
                 env={"COMPOSE": " ".join(c.compose)})
-        return DONE, "throwaway Authentik deployed and wired in (tools/authentik-test)"
+        return DONE, ("Authentik installed with LABaPe and wired in (tools/authentik-test)" if mode == "authentik"
+                      else "throwaway Authentik deployed and wired in for the first sign-in (tools/authentik-test)")
     _set_env(c, cdir / ".env", {"LABAPE_OIDC_ISSUER": c.a.need("OidcIssuer"),
                                 "LABAPE_OIDC_CLIENT_ID": c.a.need("OidcClientId")})
     # Once the bootstrap secrets are in the platform store (design §26.3), the stack reads
@@ -477,7 +518,8 @@ def stack_auth(c: Ctx):
 def repo_version(repo: Path) -> str:
     """`git describe --tags` of the checkout (e.g. v0.2.0-3-gabc1234), or "dev"."""
     try:
-        out = subprocess.run(["git", "-C", str(repo), "describe", "--tags", "--always", "--dirty"],
+        # As root on the service user's checkout: git refuses it as "dubious ownership" otherwise.
+        out = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "describe", "--tags", "--always", "--dirty"],
                              capture_output=True, text=True, timeout=15, check=False)
     except OSError:
         return "dev"
@@ -516,17 +558,23 @@ def stack_stores(c: Ctx):
     settings, and the user units that unseal OpenBao at boot. Safe to re-run,
     including on an install from before the stores existed."""
     uid = c.r.out(["id", "-u", c.user]) or "1000"
-    _set_env(c, c.repo / "container" / ".env", {"LABAPE_PLATFORM_STORE": c.a.need("PlatformStore")})
+    conjur = bool(c.a.need("InstallConjur"))
+    platform = c.a.need("PlatformStore") if conjur else "openbao"
+    _set_env(c, c.repo / "container" / ".env", {"LABAPE_PLATFORM_STORE": platform,
+                                                "LABAPE_CONJUR": "yes" if conjur else "no"})
     c.r.run(["loginctl", "enable-linger", c.user])     # the unseal unit is a user unit
     c.r.run(["bash", str(c.repo / "container" / "stores" / "stores.sh"), "setup"], as_user=True,
             cwd=c.repo / "container", env={"XDG_RUNTIME_DIR": f"/run/user/{uid}"})
-    return DONE, "OpenBao and Conjur running in the stack, unsealed and connected to LABaPe"
+    return DONE, ("OpenBao and Conjur" if conjur else "OpenBao") + " running in the stack, unsealed and connected to LABaPe"
 
 
 def update_agent(c: Ctx):
     """The host-side update agent (design §23.2): a user-level systemd path
     unit for the service user, kept running by lingering."""
     c.r.run(["loginctl", "enable-linger", c.user])
+    # Docker makes a missing bind-mount folder as root on the stack's first start.
+    c.r.run(["install", "-d", "-m", "0755", str(c.repo / "container" / "update")])
+    c.r.run(["chown", f"{c.user}:{c.user}", str(c.repo / "container" / "update")])
     c.r.run(["bash", str(c.repo / "deploy" / "update-agent" / "install.sh"), "--repo", str(c.repo)], as_user=True,
             env={"XDG_RUNTIME_DIR": f"/run/user/{c.r.out(['id', '-u', c.user]) or '1000'}"})
     return DONE, "update agent watching container/update/request.json"
@@ -598,20 +646,22 @@ def templates_build(c: Ctx):
 def smoke_cli(c: Ctx):
     if c.r.dry_run:
         return DONE, "skipped in a dry run (nothing was installed)"
-    checks = {
-        "libvirt": ["virsh", "--connect", "qemu:///system", "list", "--all"],
-        "tofu": ["tofu", "version"],
-        "ansible": ["ansible", "--version"],
-    }
+    checks = {"libvirt": ["virsh", "--connect", "qemu:///system", "list", "--all"],
+              "ansible": ["ansible", "--version"]}
+    if c.a.answers.get("InstallCli", True):
+        checks["tofu"] = ["tofu", "version"]
     for label, cmd in checks.items():
         if not c.r.out(cmd, as_user=True):
             raise StepError(f"{label} check failed as {c.user}: {' '.join(cmd)} "
                             "(a new group membership needs a fresh login)")
+    env_yml = c.repo / "tofu" / "environment.yml"
+    if not env_yml.is_file():                # a web-driven KVM host: its jobs bring their own (question 126)
+        return DONE, f"{', '.join(checks)} OK (no command-line configuration on this host)"
     with tempfile.TemporaryDirectory() as tmp:
         shutil.chown(tmp, c.user, c.user)  # the render below runs as the service user
         c.r.run(["python3", str(c.repo / "scripts" / "lib" / "render_environment_tfvars.py"),
-                 str(c.repo / "tofu" / "environment.yml"), tmp], as_user=True, capture=True, mutating=False)
-    return DONE, "libvirt, tofu, ansible and environment.yml OK"
+                 str(env_yml), tmp], as_user=True, capture=True, mutating=False)
+    return DONE, f"{', '.join(checks)} and environment.yml OK"
 
 
 def smoke_web(c: Ctx):

@@ -38,6 +38,14 @@ def _primary_ip() -> str:
         return ""
 
 
+def _is_ip(v) -> bool:
+    try:
+        ipaddress.IPv4Address(str(v))
+    except ValueError:
+        return False
+    return True
+
+
 def _cidr(v):
     try:
         ipaddress.IPv4Network(str(v), strict=False)
@@ -53,8 +61,12 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("Profile", "What to install here: full (KVM host + web interface), kvm (KVM host only) or web "
            "(web interface only, driving a remote KVM host over SSH)", kind="choice", choices=("full", "kvm", "web"),
            default="full"),
-    Answer("InstallCli", "Install the CLI toolchain on this host (OpenTofu, Packer)?", kind="bool",
-           default=lambda a: a.get("Profile", "full") != "web", ask=False),
+    Answer("InstallCli", "Install the CLI toolchain on this host (OpenTofu, Packer; jobs on a KVM host need them)?",
+           kind="bool", default=lambda a: a.get("Profile", "full") != "web"),
+    # The CLI's own configuration (vault, environment.yml, manifests). A KVM host the web interface
+    # drives doesn't need it: every job brings its own (question 126).
+    Answer("CliCheckout", "Also set up a usable command-line checkout here (vault, environment.yml, manifests)?",
+           kind="bool", default=lambda a: a.get("Profile", "full") != "kvm"),
     Answer("InstallWebUi", "Install the web interface (container stack)?", kind="bool",
            default=lambda a: a.get("Profile", "full") != "kvm", ask=False),
     Answer("WorkerPublicKey", "SSH public key of the web interface's worker to authorize for the service user "
@@ -78,15 +90,34 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("WebHostname", "Hostname (or IP) browsers use for the web interface", default=lambda a: _primary_ip()),
     Answer("Tls", "HTTPS certificate: 'internal' (Caddy's own CA) or an email address for ACME", default="internal"),
     Answer("ContainerRuntime", "Container runtime", kind="choice", choices=("docker", "podman"), default="docker"),
-    Answer("PlatformStore", "Secret store for LABaPe's own secrets (both are installed)", kind="choice",
+    # Services the web interface's stack runs (question 140): each defaults to yes. OpenBao is
+    # always installed (the update agent's login and the boot-time unseal use it).
+    Answer("InstallConjur", "Install CyberArk Conjur as a second secret store (OpenBao is always installed)?",
+           kind="bool", default=True),
+    Answer("InstallSyslog", "Install the syslog collector (UDP/TCP 514, TLS 6514) with its database and the Syslog tab?",
+           kind="bool", default=True),
+    Answer("SyslogBind", "Address the syslog collector listens on (0.0.0.0: every address)",
+           default=lambda a: _primary_ip() or "0.0.0.0",
+           validate=lambda v: None if _is_ip(v) else "give an IPv4 address, or 0.0.0.0 for every address"),
+    Answer("InstallRemoteAccess", "Install browser remote access (guacd: SSH, RDP and VM consoles)?", kind="bool",
+           default=True),
+    Answer("InstallUpdateAgent", "Install the update agent (updates and secret rotation from the web interface)?",
+           kind="bool", default=True),
+    # An answer file from before this question that named an existing provider (or none) keeps it.
+    Answer("InstallAuthentik", "Install Authentik with LABaPe as its sign-in provider?", kind="bool",
+           default=lambda a: a.get("AuthMode") in (None, "test-authentik")),
+    Answer("PlatformStore", "Secret store for LABaPe's own secrets", kind="choice",
            choices=("openbao", "conjur"), default="openbao"),
-    Answer("AuthMode", "Sign-in: an existing OIDC provider (Authentik), a throwaway test Authentik, or none (break-glass only)",
-           kind="choice", choices=("existing", "test-authentik", "none"), default="existing"),
+    # Only asked when Authentik isn't installed with LABaPe (question 130): then a throwaway Authentik
+    # gives the first sign-in unless an existing provider is named.
+    Answer("AuthMode", "Sign-in: an existing OIDC provider, a throwaway test Authentik for the first sign-in, or none "
+           "(break-glass only)", kind="choice", choices=("existing", "test-authentik", "none"), default="test-authentik"),
     Answer("OidcIssuer", "OIDC issuer URL (e.g. https://authentik.example/application/o/labape/)"),
     Answer("OidcClientId", "OIDC client ID", default="labape"),
     Answer("AdminGroups", "Authentik groups that get the admin role, besides labape-admins", kind="list", default=lambda a: []),
+    # Templates are built from the web interface (question 129); an answer file may still list some.
     Answer("TemplatesToBuild", "Templates to build now, as os-key:name (e.g. rocky9:rocky9-base-2026.10); empty for none",
-           kind="list", default=lambda a: []),
+           kind="list", default=lambda a: [], ask=False),
     Answer("TofuVersion", "OpenTofu version", default="1.12.6", ask=False),
     Answer("PackerVersion", "Packer version", default="1.16.1", ask=False),
     Answer("AnsibleCoreVersion", "ansible-core version", default="2.21.4", ask=False),
@@ -103,6 +134,7 @@ class Resolver:
     answers: dict = field(default_factory=dict)
     answered: set = field(default_factory=set)
     interactive: bool = True
+    prompted: list = field(default_factory=list)       # names asked this run, in order
 
     def add(self, source: dict, overwrite: bool = False) -> None:
         for k, v in source.items():
@@ -126,6 +158,7 @@ class Resolver:
             value = default
         else:
             value = self._prompt(a, default)
+            self.prompted.append(name)
         self.answers[name] = value
         self.answered.add(name)
         return value

@@ -46,6 +46,14 @@ BPORT="$(envget LABAPE_OPENBAO_PORT)"; BPORT="${BPORT:-8200}"
 # Which store holds LABaPe's own secrets (question 104): LABAPE_PLATFORM_STORE in .env.
 PLATFORM="$(envget LABAPE_PLATFORM_STORE)"; PLATFORM="${PLATFORM:-openbao}"
 case "$PLATFORM" in openbao|conjur) ;; *) die "LABAPE_PLATFORM_STORE must be openbao or conjur, not $PLATFORM" ;; esac
+# Conjur is optional (question 140; LABAPE_CONJUR=no in .env); OpenBao always runs.
+CONJUR_ON="$(envget LABAPE_CONJUR)"; CONJUR_ON="${CONJUR_ON:-yes}"
+if [ "$CONJUR_ON" = no ]; then
+  [ "$PLATFORM" = openbao ] || die "LABAPE_PLATFORM_STORE=conjur needs Conjur (LABAPE_CONJUR=no in .env)"
+  STORE_SERVICES=(labape-openbao)
+else
+  STORE_SERVICES=(labape-openbao labape-conjur-db labape-conjur labape-conjur-tls)
+fi
 CPORT="$(envget LABAPE_CONJUR_PORT)"; CPORT="${CPORT:-8444}"
 BAO="https://127.0.0.1:$BPORT" CONJUR="https://127.0.0.1:$CPORT"
 
@@ -207,23 +215,20 @@ conjur_rotate_app_key() { conjur_rotate_key app; }
 # --- LABaPe's settings -----------------------------------------------------------------------
 labape() { (cd "$C" && "${COMPOSE[@]}" exec -T labape-api labape "$@"); }
 settings_json() {   # the store settings LABaPe should have, plus any logins given as files
-  python3 - "$TLS/root.crt" "$(role_id labape)" "${1:-}" "${2:-}" <<'PY'
+  python3 - "$TLS/root.crt" "$(role_id labape)" "${1:-}" "${2:-}" "$CONJUR_ON" <<'PY'
 import json, sys
 root = open(sys.argv[1]).read()
 creds = {}
 for name, path in (("openbao", sys.argv[3]), ("conjur", sys.argv[4])):
     if path:
         creds[name] = open(path).read().strip()
-print(json.dumps({
-    "stores": {
-        "openbao": {"url": "https://labape-openbao:8200", "mount": "labape", "path_prefix": "",
-                    "auth_mount": "approle", "role_name": "labape", "role_id": sys.argv[2],
-                    "verify_tls": True, "ca_bundle": root},
-        "conjur": {"url": "https://labape-conjur-tls:8443", "account": "labape", "login": "host/labape/app",
-                   "authenticator": "authn", "branch": "labape/secrets", "verify_tls": True, "ca_bundle": root},
-    },
-    "credentials": creds,
-}))
+stores = {"openbao": {"url": "https://labape-openbao:8200", "mount": "labape", "path_prefix": "",
+                      "auth_mount": "approle", "role_name": "labape", "role_id": sys.argv[2],
+                      "verify_tls": True, "ca_bundle": root}}
+if sys.argv[5] != "no":
+    stores["conjur"] = {"url": "https://labape-conjur-tls:8443", "account": "labape", "login": "host/labape/app",
+                        "authenticator": "authn", "branch": "labape/secrets", "verify_tls": True, "ca_bundle": root}
+print(json.dumps({"stores": stores, "credentials": creds}))
 PY
 }
 configure_labape() {
@@ -235,7 +240,7 @@ configure_labape() {
   if [ "$(echo "$needs" | json openbao)" = True ]; then
     new_secret_id labape > "$tmp/openbao"; bao_file="$tmp/openbao"
   fi
-  if [ "$(echo "$needs" | json conjur)" = True ]; then
+  if [ "$CONJUR_ON" != no ] && [ "$(echo "$needs" | json conjur)" = True ]; then
     if [ -n "$CONJUR_HOST_KEY" ]; then printf '%s' "$CONJUR_HOST_KEY" > "$tmp/conjur"
     else conjur_rotate_app_key > "$tmp/conjur"; fi
     conjur_file="$tmp/conjur"
@@ -434,7 +439,7 @@ UNIT
 
 # --- modes -------------------------------------------------------------------------------------
 case "$MODE" in
-  unseal) dc up -d labape-openbao labape-conjur-db labape-conjur labape-conjur-tls >/dev/null 2>&1 || true
+  unseal) dc up -d "${STORE_SERVICES[@]}" >/dev/null 2>&1 || true
           unseal; start_stack; exit 0 ;;
   tls-renew) due || exit 0; sign; reload_tls; say "certificate renewed"; exit 0 ;;
   status)
@@ -453,15 +458,15 @@ if [ ! -s "$TLS/server.crt" ] || due; then sign; say "certificate from the platf
 envput COMPOSE_PROFILES stores
 say "starting the stores"
 for try in 1 2 3; do   # a registry timeout shouldn't end the run
-  dc pull -q labape-openbao labape-conjur-db labape-conjur labape-conjur-tls >/dev/null 2>&1 && break
+  dc pull -q "${STORE_SERVICES[@]}" >/dev/null 2>&1 && break
   [ "$try" = 3 ] && die "pulling the images failed three times"
   say "pulling the images failed; trying again in 15 seconds"; sleep 15
 done
-dc up -d labape-openbao labape-conjur-db labape-conjur labape-conjur-tls >/dev/null
+dc up -d "${STORE_SERVICES[@]}" >/dev/null
 reload_tls
 unseal
 configure_bao
-configure_conjur
+[ "$CONJUR_ON" = no ] || configure_conjur
 configure_labape
 install_units
 smoke
@@ -469,4 +474,8 @@ configure_cli
 import_engine
 check_cli
 move_bootstrap
-say "ready: OpenBao $BAO and Conjur $CONJUR (on the host), labape-openbao:8200 and labape-conjur-tls:8443 in the stack"
+if [ "$CONJUR_ON" = no ]; then
+  say "ready: OpenBao $BAO (on the host), labape-openbao:8200 in the stack (Conjur not installed)"
+else
+  say "ready: OpenBao $BAO and Conjur $CONJUR (on the host), labape-openbao:8200 and labape-conjur-tls:8443 in the stack"
+fi

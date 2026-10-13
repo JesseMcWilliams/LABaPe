@@ -3,6 +3,7 @@
   "InstanceName": "labape",
   "ServiceUser": "labape",
   "InstallCli": true,
+  "CliCheckout": true,
   "InstallWebUi": true,
   "KvmHostName": "kvm1",
   "VmStoragePath": "/data/VMs/LABaPe",
@@ -16,14 +17,25 @@
       "Name": "lab-vlan",
       "Cidr": "192.168.48.0/22",
       "Gateway": "192.168.48.1",
-      "DnsServers": ["192.168.48.1"],
+      "DnsServers": [
+        "192.168.48.1"
+      ],
       "Bridge": "br1",
       "Nic": "enp14s0f1",
       "HostAddress": "dhcp",
-      "Addressing": ["static", "dhcp"],
-      "StaticPools": ["192.168.50.1-192.168.51.254"],
-      "DhcpRanges": ["192.168.48.16-192.168.49.254"],
-      "Reserved": ["192.168.48.2-192.168.48.15"],
+      "Addressing": [
+        "static",
+        "dhcp"
+      ],
+      "StaticPools": [
+        "192.168.50.1-192.168.51.254"
+      ],
+      "DhcpRanges": [
+        "192.168.48.16-192.168.49.254"
+      ],
+      "Reserved": [
+        "192.168.48.2-192.168.48.15"
+      ],
       "AllowedGroups": []
     }
   ],
@@ -31,6 +43,12 @@
   "WebHostname": "labape.lab.lan",
   "Tls": "internal",
   "ContainerRuntime": "docker",
+  "InstallConjur": true,
+  "InstallSyslog": true,
+  "SyslogBind": "192.168.1.50",
+  "InstallRemoteAccess": true,
+  "InstallUpdateAgent": true,
+  "InstallAuthentik": false,
   "PlatformStore": "openbao",
   "AuthMode": "existing",
   "OidcIssuer": "https://authentik.lab.lan/application/o/labape/",
