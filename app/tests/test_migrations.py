@@ -59,3 +59,28 @@ def test_0003_fixes_seeded_firefox_only(tmp_root):
     assert fixed["chocolatey"] == "firefox"
     other = json.loads(rows["firefox-custom"]) if isinstance(rows["firefox-custom"], str) else rows["firefox-custom"]
     assert other["apt"] == "firefox"
+
+
+def test_0006_adds_the_syslog_collector_to_a_seeded_catalog(tmp_root):
+    import json
+    eng = _engine(tmp_root, "mig-syslog")
+    with eng.begin() as conn:
+        Base.metadata.create_all(conn)
+        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
+        conn.execute(text("INSERT INTO alembic_version VALUES ('0005_templates_round')"))
+        conn.execute(text("INSERT INTO catalog_items (kind, name, display_name, description, definition, platforms,"
+                          " status, created_by, updated_by, notes, updated_at) VALUES ('service', 'nginx', 'nginx',"
+                          " '', '{}', '[\"linux\"]', 'published', 'seed', 'seed', '', CURRENT_TIMESTAMP)"))
+        migrate.upgrade(conn)
+        row = conn.execute(text("SELECT status, definition, platforms FROM catalog_items"
+                                " WHERE kind = 'service' AND name = 'syslog_collector'")).one()
+    definition = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+    assert row[0] == "published" and definition["linux"]["role"] == "syslog_collector"
+    assert (json.loads(row[2]) if isinstance(row[2], str) else row[2]) == ["linux"]
+
+
+def test_0006_leaves_an_empty_catalog_to_the_seed(tmp_root):
+    eng = _engine(tmp_root, "mig-syslog-empty")
+    with eng.begin() as conn:
+        migrate.upgrade(conn)
+        assert conn.execute(text("SELECT COUNT(*) FROM catalog_items")).scalar() == 0

@@ -3,7 +3,7 @@
 Usage: env_create.py list
        env_create.py <name> <os key> <template> [--vm NAME] [--cpu N] [--mem MB] [--disk GB]
                      [--network NAME] [--addressing static|dhcp] [--host ID] [--as USER]
-                     [--apps NAME,NAME]
+                     [--apps NAME,NAME] [--services NAME,NAME]
 `list` prints the KVM hosts, the templates and networks of each, and the
 environments. Otherwise it creates the environment (a deploy job starts at
 once), waits, and prints the result, the VM's address and the job's
@@ -40,6 +40,7 @@ ap.add_argument("--addressing", default="static")
 ap.add_argument("--host", type=int, default=None)
 ap.add_argument("--as", dest="user", default="labape-admin")
 ap.add_argument("--apps", default="", help="catalog applications, comma-separated")
+ap.add_argument("--services", default="", help="catalog services, comma-separated")
 o = ap.parse_args()
 
 c = login(o.user)
@@ -48,7 +49,7 @@ role = "windows_server" if o.os.startswith("windows") else "linux_server"
 group = {"name": "".join(ch for ch in o.name if ch.isalnum())[:12] or "vm", "count": 1, "os": o.os, "roles": [role],
          "image_source": "packer_template", "template": o.template, "cpu_count": o.cpu, "memory_mb": o.mem,
          "disk_gb": o.disk, "windows_core": False, "addressing": o.addressing, "names": [o.vm],
-         "services": [], "applications": [a for a in o.apps.split(",") if a], "packages": []}
+         "services": [s for s in o.services.split(",") if s], "applications": [a for a in o.apps.split(",") if a], "packages": []}
 if o.network:
     group["network"] = o.network
 r = c.post(f"{LABAPE}/api/environments", json={"name": o.name, "kvm_host_id": host, "host_groups": [group]})

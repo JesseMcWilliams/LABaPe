@@ -88,7 +88,7 @@ Admins create, edit, publish and retire **services**, **applications** and **pac
 - **Export** downloads the selected items, or everything, as `labape_catalog` YAML, including what packages need. **Import** reads such a file as drafts or published, skipping or overwriting existing names.
 - **Requests**: users ask for new items here. Accept, decline or close each one with a note; the requester sees it.
 
-The definitions use the shapes in [Planning_Web-Interface-Design.md §21.4](../Claude_Docs/Planning_Web-Interface-Design.md#214-batch-d-built-services-applications-and-packages): an application is a Chocolatey, apt or dnf name and/or an installer from the Installers location; a service is Windows features and services and/or Linux packages and systemd units.
+The definitions use the shapes in [Planning_Web-Interface-Design.md §21.4](../Claude_Docs/Planning_Web-Interface-Design.md#214-batch-d-built-services-applications-and-packages): an application is a Chocolatey, apt or dnf name and/or an installer from the Installers location; a service is Windows features and services and/or Linux packages, systemd units and an optional vetted configuration role (`linux.role`, see [§27](../Claude_Docs/Planning_Web-Interface-Design.md#27-syslog-collector-service-service-roles-built-2026-10-12)). The starter catalog includes a Linux **Syslog collector** service.
 
 ## 6. Settings
 

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Copy the platform certificate for rsyslog (syslog_collector role, design
+# §27) and restart rsyslog so it uses the new one. Run by Ansible and by
+# labape-syslog-collector-certs.path when labape-cert-renew replaces the
+# certificate. Written by Ansible.
+set -euo pipefail
+SRC={{ syslog_collector_platform_tls_dir }}
+DST={{ syslog_collector_tls_dir }}
+GROUP={{ syslog_collector_group }}
+[ -s "$SRC/host.crt" ] && [ -s "$SRC/host.key" ] && [ -s "$SRC/root.crt" ] || exit 0
+install -d -m 0750 -o root -g "$GROUP" "$DST"
+install -m 0640 -o root -g "$GROUP" "$SRC/host.key" "$DST/host.key"
+install -m 0644 -o root -g root "$SRC/host.crt" "$DST/host.crt"
+# Trust anchors for client certificates: the root plus every CA certificate
+# in the host chain (everything after the leaf).
+awk 'BEGIN{n=0} /BEGIN CERTIFICATE/{n++} n>1' "$SRC/host.crt" | cat "$SRC/root.crt" - > "$DST/ca.pem.new"
+chmod 0644 "$DST/ca.pem.new"
+mv "$DST/ca.pem.new" "$DST/ca.pem"
+if [ "${1:-}" != "--no-restart" ] && systemctl is-active --quiet rsyslog; then
+  systemctl restart rsyslog
+fi

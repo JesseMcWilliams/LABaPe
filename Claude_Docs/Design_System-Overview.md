@@ -428,6 +428,8 @@ in [`Claude_Docs/Design_Software-Manifest.md`](./Design_Software-Manifest.md). S
   §7); `debconf_selections` pre-seeds a `.deb`'s configuration prompts
   before install (`Claude_Docs/Design_Software-Manifest.md` §9).
 
+**Services with a role (web interface).** A catalog service can name a vetted Ansible role (`linux.role`) for configuration that packages and units can't express; the first is the syslog collector. See Planning_Web-Interface-Design.md §27.
+
 ## 12. Proposed Repository Layout
 
 ```

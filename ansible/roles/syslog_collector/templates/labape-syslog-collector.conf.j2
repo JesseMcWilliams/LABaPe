@@ -1,0 +1,56 @@
+# Syslog collector, written by LABaPe (ansible/roles/syslog_collector,
+# design §27). Changes here are overwritten on the next deploy.
+#
+# Remote messages go through the labape_remote ruleset only, so they never
+# mix with this host's own logs:
+#   {{ syslog_collector_log_dir }}/all.log                  every remote message
+#   {{ syslog_collector_log_dir }}/<HOSTNAME>/<APP-NAME>.log   per sending host and app
+# Each line shows the parsed header, so a sender's format can be checked:
+#   <received> from=<ip> host= pri=<facility>.<severity> app= procid= msgid= sd= msg=
+
+# No reverse DNS for senders: the lines record the sender's address (from=), and
+# a slow PTR lookup held each new TCP connection's messages back by seconds.
+global(net.enableDNS="off")
+
+template(name="labape_remote_file" type="string"
+         string="{{ syslog_collector_log_dir }}/%HOSTNAME:::secpath-replace%/%APP-NAME:::secpath-replace%.log")
+template(name="labape_remote_line" type="string"
+         string="%timegenerated:::date-rfc3339% from=%fromhost-ip% host=%HOSTNAME% pri=%syslogfacility-text%.%syslogseverity-text% app=%APP-NAME% procid=%PROCID% msgid=%MSGID% sd=%STRUCTURED-DATA% msg=%msg%\n")
+
+ruleset(name="labape_remote") {
+    action(type="omfile" file="{{ syslog_collector_log_dir }}/all.log" template="labape_remote_line"
+           fileCreateMode="0640")
+    action(type="omfile" dynaFile="labape_remote_file" template="labape_remote_line"
+           dirCreateMode="0750" fileCreateMode="0640")
+    stop
+}
+
+# UDP (RFC 5426)
+module(load="imudp")
+input(type="imudp" port="{{ syslog_collector_udp_port }}" ruleset="labape_remote")
+
+# Plain TCP (RFC 6587): octet-counted and LF-framed messages both work.
+module(load="imptcp")
+input(type="imptcp" port="{{ syslog_collector_tcp_port }}" ruleset="labape_remote")
+{% if syslog_collector_tls %}
+
+# TLS (RFC 5425 as updated by RFC 9662): TLS 1.2/1.3 with the platform
+# certificate. {{ syslog_collector_tls_port }} authenticates the server only;
+# {{ syslog_collector_mtls_port }} also requires a client certificate signed
+# by the platform CA.
+module(load="imtcp"
+       streamDriver.name="gtls"
+       streamDriver.mode="1"
+       streamDriver.authMode="anon"
+       gnutlsPriorityString="{{ syslog_collector_tls_priority }}")
+input(type="imtcp" port="{{ syslog_collector_tls_port }}" ruleset="labape_remote"
+      streamDriver.authMode="anon"
+      streamDriver.CAFile="{{ syslog_collector_tls_dir }}/ca.pem"
+      streamDriver.CertFile="{{ syslog_collector_tls_dir }}/host.crt"
+      streamDriver.KeyFile="{{ syslog_collector_tls_dir }}/host.key")
+input(type="imtcp" port="{{ syslog_collector_mtls_port }}" ruleset="labape_remote"
+      streamDriver.authMode="x509/certvalid"
+      streamDriver.CAFile="{{ syslog_collector_tls_dir }}/ca.pem"
+      streamDriver.CertFile="{{ syslog_collector_tls_dir }}/host.crt"
+      streamDriver.KeyFile="{{ syslog_collector_tls_dir }}/host.key")
+{% endif %}

@@ -7,6 +7,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- **Syslog collector** catalog service (Linux only): rsyslog receiving UDP and
+  TCP on 514, TLS on 6514 and mutual TLS on 6515 with the host's platform
+  certificate (TLS 1.2/1.3). Remote messages go to `/var/log/remote/`. Existing
+  catalogs get it through migration 0006.
+- Catalog services can name a vetted Ansible role (`linux.role`) for
+  configuration that packages and units can't express; it runs after the
+  platform certificates.
+
 ### Changed
 - Template refreshes install every available Windows update (all
   categories), not only security, critical and rollup updates.
