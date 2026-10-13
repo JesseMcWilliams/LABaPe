@@ -490,6 +490,19 @@ def run(job_id: int, worker: str) -> None:
             run_env["ANSIBLE_SSH_COMMON_ARGS"] = " ".join(f"-i {k}" for k in history_keys())
         run_env.update(_cert_env(job_id, job.type, remote is not None))
         cert_token = run_env.get("LABAPE_CERT_TOKEN", "")
+        if remote is None:
+            # The stack's own host, when it isn't the primary file host (design §29.5): copies too.
+            with Session_() as fdb:
+                here = fdb.get(KvmHost, host.id)
+                p = filedist.primary(fdb)
+                if p is not None and p.id != here.id:
+                    try:
+                        _distribute(fdb, work, here, job_id, iso_keys, _TextLog(logf))
+                    except Exception as exc:  # noqa: BLE001
+                        logf.write(f"labape: could not get the files from the primary: {exc}\n".encode())
+                        job = fdb.get(Job, job_id)
+                        _finish(fdb, job, fdb.get(Environment, job.environment_id) if job.environment_id else None, None)
+                        return
         if remote is not None:
             try:
                 logf.write(f"labape: running on {remote.host.target} over SSH in {remote.root}\n".encode())
@@ -547,10 +560,28 @@ def run(job_id: int, worker: str) -> None:
     with Session_() as db:
         job = db.get(Job, job_id)
         env = db.get(Environment, job.environment_id) if job.environment_id else None
+        if rc == 0 and job.type in ("template.build", "template.refresh"):
+            # The primary holds every file (design §29.5): a template built elsewhere goes there too.
+            name = (job.params or {}).get("new_name") or (job.params or {}).get("name") or ""
+            try:
+                if name:
+                    filedist.to_primary(db, db.get(KvmHost, job.kvm_host_id), name, _PathLog(log_path))
+            except Exception as exc:  # noqa: BLE001 — the template is built; only the copy failed
+                _append_path(log_path, f"labape: warning: copying {name} to the primary file host failed: {exc}\n")
         if cert_token:
             from ..api.ca import token_name
             put_secret(db, token_name(job_id), "")      # the token dies with the job
         _finish(db, job, env, rc, work=work)
+
+
+class _PathLog:
+    """A log.write() that appends to a job's log file."""
+
+    def __init__(self, path: Path):
+        self.path = path
+
+    def write(self, msg: str) -> None:
+        _append_path(self.path, msg)
 
 
 def _cert_env(job_id: int, job_type: str, remote: bool) -> dict[str, str]:

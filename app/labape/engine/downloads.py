@@ -10,7 +10,6 @@ be SHA-256, SHA-1, SHA-512 or MD5, and a mismatch deletes the file.
 """
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import ipaddress
 import re
@@ -87,9 +86,9 @@ def filename_from(url: str) -> str:
     return unquote(Path(urlsplit(url).path).name)
 
 
-def _partial(root: Path, url: str, name: str) -> Path:
+def _partial(root: str, url: str, name: str) -> str:
     # Keyed by URL and name, so a retried job resumes the same partial file.
-    return root / ".downloads" / f"{hashlib.sha1(url.encode()).hexdigest()[:12]}-{name}.part"
+    return f"{root.rstrip('/')}/.downloads/{hashlib.sha1(url.encode()).hexdigest()[:12]}-{name}.part"
 
 
 def _beat(job_id: int) -> bool:
@@ -113,23 +112,27 @@ def _human(n: float) -> str:
 def run_download(db: Session, job: Job) -> int:
     p = job.params or {}
     cfg = appsettings.get(db, "downloads")
-    root = Path(roots(db)[p["category"]])
+    from .. import filestore
+    store = filestore.current(db)             # on the primary file host (design §29.5)
+    root = roots(db)[p["category"]].rstrip("/")
     name = p["filename"]
-    target = root / name
+    target = f"{root}/{name}"
     log = open(job.log_path, "a", encoding="utf-8", buffering=1)
     try:
-        if target.exists():
+        if store.exists(target):
             log.write(f"labape: {target} already exists; delete it first.\n")
             return 1
+        if store.remote:
+            log.write(f"labape: saving on the primary file host, {store.where}\n")
         part = _partial(root, p["url"], name)
-        part.parent.mkdir(parents=True, exist_ok=True)
+        store.makedirs(f"{root}/.downloads")
         url = p["url"]
         with httpx.Client(timeout=httpx.Timeout(30, read=120), proxy=cfg.proxy or None, follow_redirects=False) as c:
             for _ in range(10):                       # follow redirects ourselves, checking each hop
                 check_url(url, cfg.allow_http)
                 if not cfg.proxy:
                     check_resolves(urlsplit(url).hostname)
-                have = part.stat().st_size if part.exists() else 0
+                have = max(store.size(part), 0)
                 headers = {"Range": f"bytes={have}-"} if have else {}
                 with c.stream("GET", url, headers=headers) as r:
                     if r.is_redirect:
@@ -149,7 +152,7 @@ def run_download(db: Session, job: Job) -> int:
                                   f"{f' ({_human(total)})' if total else ''}"
                                   f"{f', resuming at {_human(have)}' if resumed else ''}\n")
                         done, started, last = (have if resumed else 0), time.monotonic(), 0.0
-                        with open(part, "ab" if resumed else "wb") as fh:
+                        with store.open_write(part, append=resumed) as fh:
                             for chunk in r.iter_bytes(CHUNK):
                                 fh.write(chunk)
                                 done += len(chunk)
@@ -169,32 +172,25 @@ def run_download(db: Session, job: Job) -> int:
                 return 1
 
         log.write("labape: download complete; checking hashes\n")
-        algos = {"sha256", p.get("hash_type") or "sha256"}
-        hashers = {a: hashlib.new(a) for a in algos}
-        with open(part, "rb") as fh:
-            while block := fh.read(8 * CHUNK):
-                for h in hashers.values():
-                    h.update(block)
-        sha256 = hashers["sha256"].hexdigest()
+        sums = store.hashes(part, {"sha256", p.get("hash_type") or "sha256"})
+        sha256 = sums["sha256"]
         expected = p.get("expected_hash")
         if expected:
-            got = hashers[p["hash_type"]].hexdigest()
+            got = sums[p["hash_type"]]
             if got != expected:
-                part.unlink(missing_ok=True)
+                store.remove(part)
                 log.write(f"labape: {p['hash_type'].upper()} mismatch: expected {expected}, got {got}. "
                           "The file was deleted.\n")
                 return 1
             log.write(f"labape: {p['hash_type'].upper()} matches the expected value.\n")
         dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == sha256, StoredFile.present.is_(True)))
         if dup is not None:
-            part.unlink(missing_ok=True)
+            store.remove(part)
             log.write(f"labape: the same content is already stored as {dup.name} ({dup.category}); not kept.\n")
             return 1
-        part.replace(target)
-        target.chmod(0o644)
-        st = target.stat()
-        f = StoredFile(category=p["category"], name=name, path=str(target), size=st.st_size,
-                       mtime=dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc), sha256=sha256,
+        store.replace(part, target)
+        size, mtime = store.stat(target)
+        f = StoredFile(category=p["category"], name=name, path=target, size=size, mtime=mtime, sha256=sha256,
                        os_key=infer_os(name) if p["category"] == "isos" else "",
                        targets=ostargets.infer(name) if p["category"] == "installers" else [],
                        description=p.get("description", ""), uploaded_by=job.requested_by, uploaded_at=utcnow())
@@ -203,7 +199,8 @@ def run_download(db: Session, job: Job) -> int:
         audit(db, job.requested_by, "file.download", object_type="file", object_id=f.id,
               detail={"url": p["url"], "category": f.category, "name": name, "size": f.size, "sha256": sha256,
                       "verified": p.get("hash_type") if expected else ""})
-        log.write(f"labape: saved {target} ({_human(st.st_size)}), SHA-256 {sha256}\n")
+        log.write(f"labape: saved {target} ({_human(size)}){f' on {store.where}' if store.remote else ''}, "
+                  f"SHA-256 {sha256}\n")
         return 0
     except (DownloadError, httpx.HTTPError, OSError) as exc:
         log.write(f"labape: download failed: {exc}\n")

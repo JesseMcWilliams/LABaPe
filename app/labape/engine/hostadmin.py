@@ -680,6 +680,30 @@ if os.path.isdir(root):
 INSTALL_ROOT = "/opt/labape-kvm"
 
 
+def service_user(h: KvmHost) -> str:
+    """The user in a qemu+ssh libvirt URI: the one jobs and file operations run as."""
+    from urllib.parse import urlsplit
+    return urlsplit(h.libvirt_uri).username or ""
+
+
+def ensure_file_roots(db: Session, h: KvmHost) -> list[str]:
+    """The Files page's locations on a remote host, owned by its service user, so the stack can
+    keep files there when this host is the primary (design §29.5). Through the access account
+    (sudo); existing folders keep their contents. Returns the folders handled."""
+    from ..files import roots
+    user = service_user(h)
+    if not user or h.access_status != "ready":
+        return []
+    q = shlex.quote
+    paths = sorted(set(roots(db).values()))
+    cmd = " && ".join(f"sudo -n install -d -m 0775 -o {q(user)} -g {q(user)} {q(p)} "
+                      f"&& sudo -n chown {q(user)}:{q(user)} {q(p)}" for p in paths)
+    r = for_host(h).run(cmd, timeout=120)
+    if r.returncode != 0:
+        raise AdminError(f"creating the file locations failed: {r.stderr.decode(errors='replace').strip()[-300:]}")
+    return paths
+
+
 def attach_networks(db: Session, h: KvmHost, answers: dict) -> list[str]:
     """After a successful Prepare, the catalog networks chosen in the form (question 127) are
     attached to the host on the bridges the installer made; existing attachments keep their own
@@ -782,6 +806,12 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     attached = attach_networks(db, h, answers)
     if attached:
         log(f"labape: {h.name} now carries {', '.join(attached)} (Admin → Networks)\n")
+    try:
+        made = ensure_file_roots(db, h)
+        if made:
+            log(f"labape: file locations ready for {service_user(h)}: {', '.join(made)}\n")
+    except AdminError as exc:
+        log(f"labape: warning: {exc}\n")
     if answers.get("ForwardHostLogs", True):             # question 124: optional, default yes
         try:
             set_log_forwarding(db, h, True)

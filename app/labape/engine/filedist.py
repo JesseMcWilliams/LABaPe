@@ -166,6 +166,29 @@ def known(db: Session, path: str) -> tuple[int, str]:
     return (f.size or -1, f.sha256 or "") if f is not None else (-1, "")
 
 
+def to_primary(db: Session, source: KvmHost, name: str, log) -> bool:
+    """A template built on `source` copied into the primary's library (its template sync then
+    registers it). False when `source` is the primary or the primary already has it."""
+    p = primary(db)
+    if p is None or source is None or p.id == source.id:
+        return False
+    src, dst = endpoint(source), endpoint(p)
+    src_dir, dst_dir = source.template_storage_path.rstrip("/"), p.template_storage_path.rstrip("/")
+    image = f"{src_dir}/{name}.qcow2"
+    want = size_of(src, image)
+    if want < 0:
+        raise Missing(f"{image} isn't on {source.name}")
+    if size_of(dst, f"{dst_dir}/{name}.qcow2") == want:
+        return False
+    for suffix in (".json", ".qcow2"):
+        path = f"{src_dir}/{name}{suffix}"
+        if size_of(src, path) < 0:
+            continue
+        log.write(f"labape: copying {name}{suffix} to the primary file host, {p.name}\n")
+        copy(src, path, dst, f"{dst_dir}/{name}{suffix}", log)
+    return True
+
+
 def ensure_template(db: Session, target: KvmHost, name: str, log) -> bool:
     """A template from the primary's library on `target` (image and metadata, then registered).
     False when the target already has it."""

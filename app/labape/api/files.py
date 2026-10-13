@@ -10,8 +10,6 @@ edit and delete; everyone signed in can list.
 from __future__ import annotations
 
 import base64
-import datetime as dt
-import hashlib
 import re
 import secrets
 from pathlib import Path
@@ -21,11 +19,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, ostargets
+from .. import appsettings, filestore, ostargets
 from ..db import get_db
 from ..engine.downloads import HASH_LENGTHS, DownloadError, check_url, filename_from, parse_expected
 from ..errors import FieldError
-from ..files import CATEGORIES, infer_os, roots, set_roots, sha256_of
+from ..files import CATEGORIES, infer_os, roots, set_roots
 from ..models import Job, StoredFile, Upload, utcnow
 from ..security import Principal, audit, client_ip, current_principal, require_roles
 
@@ -71,10 +69,14 @@ def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = D
     if not NAME_RE.match(name):
         raise FieldError("file", "File names may use letters, digits, spaces and . _ ( ) + -, starting with a "
                                  "letter or digit (up to 200 characters).")
-    root = Path(roots(db)[category])
-    if (root / name).exists():
-        raise FieldError("file", f"{name} already exists in {root}. Delete it first, or rename the file.",
-                         status_code=409)
+    root = roots(db)[category].rstrip("/")
+    store = filestore.current(db)                 # on the primary file host (design §29.5)
+    try:
+        if store.exists(f"{root}/{name}"):
+            raise FieldError("file", f"{name} already exists in {root}. Delete it first, or rename the file.",
+                             status_code=409)
+    except filestore.StoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     hash_type = meta.get("hash_type") or "sha256"
     expected = ""
     if meta.get("expected_hash"):
@@ -82,12 +84,15 @@ def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = D
             expected = parse_expected(meta["expected_hash"], hash_type)
         except DownloadError as exc:
             raise FieldError("expected_hash", str(exc)) from None
-    (root / ".uploads").mkdir(parents=True, exist_ok=True)
     up = Upload(id=secrets.token_hex(16), category=category, filename=name, length=length,
-                partial_path=str(root / ".uploads" / f"{secrets.token_hex(8)}.part"),
+                partial_path=f"{root}/.uploads/{secrets.token_hex(8)}.part",
                 meta={"description": meta.get("description", ""), "hash_type": hash_type, "expected_hash": expected},
                 created_by=p.username)
-    Path(up.partial_path).touch()
+    try:
+        store.makedirs(f"{root}/.uploads")
+        store.touch(up.partial_path)
+    except (filestore.StoreError, OSError) as exc:
+        raise HTTPException(status_code=503, detail=f"The upload can't start: {exc}") from exc
     db.add(up)
     db.commit()
     return Response(status_code=201, headers={**TUS, "Location": f"/api/files/tus/{up.id}"})
@@ -117,7 +122,8 @@ async def tus_patch(upload_id: str, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=409, detail=f"Offset mismatch; the server has {up.offset} bytes",
                             headers=TUS)
     written = 0
-    with open(up.partial_path, "ab") as fh:
+    # Each chunk goes straight to the primary's .part file (design §29.5): never staged here.
+    with filestore.current(db).open_write(up.partial_path, append=True) as fh:
         async for chunk in request.stream():
             if up.offset + written + len(chunk) > up.length:
                 raise HTTPException(status_code=413, detail="More data than the declared length", headers=TUS)
@@ -131,30 +137,29 @@ async def tus_patch(upload_id: str, request: Request, db: Session = Depends(get_
 
 
 def _finish(db: Session, up: Upload, request: Request, p: Principal) -> None:
-    partial = Path(up.partial_path)
-    digest = sha256_of(partial)
+    store, partial = filestore.current(db), up.partial_path
     expected, hash_type = up.meta.get("expected_hash"), up.meta.get("hash_type") or "sha256"
+    sums = store.hashes(partial, {"sha256", hash_type})
+    digest = sums["sha256"]
     if expected:
-        got = digest if hash_type == "sha256" else _hash(partial, hash_type)
+        got = sums[hash_type]
         if got != expected:
-            partial.unlink(missing_ok=True)
+            store.remove(partial)
             db.delete(up)
             db.commit()
             raise FieldError("expected_hash", f"The file's {hash_type.upper()} is {got}, not the expected {expected}. "
                                               "It wasn't kept; check the value or upload the file again.")
     dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == digest, StoredFile.present.is_(True)))
     if dup is not None:
-        partial.unlink(missing_ok=True)
+        store.remove(partial)
         db.delete(up)
         db.commit()
         raise FieldError("file", f"This file has the same content as {dup.name} ({dup.category}); it wasn't kept.",
                          status_code=409)
-    target = Path(roots(db)[up.category]) / up.filename
-    partial.replace(target)
-    target.chmod(0o644)
-    st = target.stat()
-    f = StoredFile(category=up.category, name=up.filename, path=str(target), size=st.st_size,
-                   mtime=dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc), sha256=digest,
+    target = f"{roots(db)[up.category].rstrip('/')}/{up.filename}"
+    store.replace(partial, target)
+    size, mtime = store.stat(target)
+    f = StoredFile(category=up.category, name=up.filename, path=target, size=size, mtime=mtime, sha256=digest,
                    os_key=infer_os(up.filename) if up.category == "isos" else "",
                    targets=ostargets.infer(up.filename) if up.category == "installers" else [],
                    description=up.meta.get("description", ""), uploaded_by=p.username, uploaded_at=utcnow())
@@ -166,18 +171,10 @@ def _finish(db: Session, up: Upload, request: Request, p: Principal) -> None:
           source_ip=client_ip(request))
 
 
-def _hash(path: Path, algo: str) -> str:
-    h = hashlib.new(algo)
-    with open(path, "rb") as fh:
-        while block := fh.read(8 * 2**20):
-            h.update(block)
-    return h.hexdigest()
-
-
 @router.delete("/tus/{upload_id}")
 def tus_delete(upload_id: str, db: Session = Depends(get_db), p: Principal = Depends(require_roles("file_manager"))):
     up = _upload(db, upload_id, p)
-    Path(up.partial_path).unlink(missing_ok=True)
+    filestore.current(db).remove(up.partial_path)
     db.delete(up)
     db.commit()
     return Response(status_code=204, headers=TUS)
@@ -216,9 +213,9 @@ def start_download(body: DownloadIn, request: Request, db: Session = Depends(get
             expected = parse_expected(body.expected_hash, body.hash_type)
         except DownloadError as exc:
             raise FieldError("expected_hash", str(exc)) from None
-    target = Path(roots(db)[body.category]) / name
-    if target.exists():
-        raise FieldError("filename", f"{name} already exists in {target.parent}. Delete it first, or choose another "
+    root = roots(db)[body.category].rstrip("/")
+    if filestore.current(db).exists(f"{root}/{name}"):
+        raise FieldError("filename", f"{name} already exists in {root}. Delete it first, or choose another "
                                      "name.", status_code=409)
     for j in db.scalars(select(Job).where(Job.type == "files.download", Job.state.in_(("queued", "running")))):
         if (j.params or {}).get("category") == body.category and (j.params or {}).get("filename") == name:
@@ -319,7 +316,10 @@ def delete_file(file_id: int, request: Request, db: Session = Depends(get_db),
     f = db.get(StoredFile, file_id)
     if f is None:
         raise FieldError("file", "No such file.", status_code=404)
-    Path(f.path).unlink(missing_ok=True)
+    try:
+        filestore.current(db).remove(f.path)
+    except filestore.StoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     f.present = False
     db.commit()
     audit(db, p.username, "file.delete", object_type="file", object_id=f.id, detail={"path": f.path},

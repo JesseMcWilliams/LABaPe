@@ -147,9 +147,16 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
             raise FieldError("is_primary", "The primary holds the files itself; it doesn't read them from a share.")
         for other in db.scalars(select(KvmHost).where(KvmHost.is_primary.is_(True), KvmHost.id != h.id)):
             other.is_primary = False                    # one primary (question 135)
+    became_primary = bool(data.get("is_primary")) and not h.is_primary
     for k, v in data.items():
         setattr(h, k, v)
     db.commit()
+    if became_primary and hostio.is_remote(h.libvirt_uri):
+        try:                                  # the Files page will keep files there (design §29.5)
+            hostadmin.ensure_file_roots(db, h)
+        except hostadmin.AdminError as exc:
+            raise FieldError("is_primary", f"{h.name} is the primary now, but its file locations couldn't be "
+                                           f"prepared: {exc}") from exc
     audit(db, p.username, "host.update", object_type="kvm_host", object_id=h.id, detail=body.model_dump(),
           source_ip=client_ip(request))
     return _out(h)

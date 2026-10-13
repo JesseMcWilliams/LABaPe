@@ -143,3 +143,143 @@ def test_scripts_jobs_run_on_hosts_work_with_python_3_9():
         ast.parse(src, feature_version=(3, 9))
         if re.search(r"(->|:)\s*[\w\[\], ]+\s*\|\s*[\w\[\]]+", src):
             assert "from __future__ import annotations" in src, f"{p.name}: X | Y annotations need it on 3.9"
+
+
+# --- Y3b: the stack apart from the primary (design §29.5) ---------------------------------
+
+def test_remote_store_lists_and_hashes_through_the_host(tmp_path):
+    import hashlib
+    from types import SimpleNamespace
+    from labape import filestore
+    (tmp_path / "a.iso").write_bytes(b"abc")
+    (tmp_path / ".hidden").write_bytes(b"x")
+    (tmp_path / "sub").mkdir()
+    store = filestore.RemoteStore(SimpleNamespace(libvirt_uri="qemu:///system", name="kvm9"))   # runs locally here
+    files = store.files(str(tmp_path))
+    assert [(p.endswith("a.iso"), s) for p, s, _ in files] == [(True, 3)]
+    sums = store.hashes(str(tmp_path / "a.iso"), {"sha256", "md5"})
+    assert sums == {"sha256": hashlib.sha256(b"abc").hexdigest(), "md5": hashlib.md5(b"abc").hexdigest()}
+    assert store.files(str(tmp_path / "missing")) == []
+
+
+def test_store_follows_the_primary(client):
+    from labape import filestore
+    _admin_session(client)
+    _host(client)
+    with session_factory()() as db:
+        assert isinstance(filestore.current(db), filestore.LocalStore)          # the stack runs on the primary
+        p, r = _hosts(db)
+        p.is_primary, r.is_primary = False, True
+        db.commit()
+        s = filestore.current(db)
+        assert isinstance(s, filestore.RemoteStore) and s.where == "kvm2"
+
+
+class FakeStore:
+    """A remote primary in memory: path -> bytes."""
+    remote, where = True, "kvm2"
+
+    def __init__(self):
+        self.files, self.dirs = {}, set()
+
+    def exists(self, path):
+        return path in self.files
+
+    def makedirs(self, path):
+        self.dirs.add(path)
+
+    def touch(self, path):
+        self.files[path] = b""
+
+    def size(self, path):
+        return len(self.files.get(path, b"")) if path in self.files else -1
+
+    def open_write(self, path, append=False):
+        store = self
+
+        class W:
+            def __enter__(self):
+                if not append:
+                    store.files[path] = b""
+                return self
+
+            def write(self, data):
+                store.files[path] = store.files.get(path, b"") + data
+
+            def __exit__(self, *a):
+                pass
+        return W()
+
+    def replace(self, src, dst):
+        self.files[dst] = self.files.pop(src)
+
+    def remove(self, path):
+        self.files.pop(path, None)
+
+    def stat(self, path):
+        import datetime as dt
+        return len(self.files[path]), dt.datetime(2026, 10, 13, tzinfo=dt.timezone.utc)
+
+    def hashes(self, path, algos):
+        import hashlib
+        return {a: hashlib.new(a, self.files[path]).hexdigest() for a in algos}
+
+    def files_in(self, root):
+        return []
+
+
+def test_uploads_go_to_the_primary(client, monkeypatch):
+    import base64
+    from labape import filestore
+    from labape.models import StoredFile
+    _admin_session(client)
+    store = FakeStore()
+    monkeypatch.setattr(filestore, "current", lambda db: store)
+    meta = ",".join(f"{k} {base64.b64encode(v.encode()).decode()}" for k, v in
+                    {"filename": "debian-13-netinst.iso", "category": "isos"}.items())
+    r = client.post("/api/files/tus", headers={"Tus-Resumable": "1.0.0", "Upload-Length": "10", "Upload-Metadata": meta})
+    assert r.status_code == 201, r.text
+    loc = r.headers["Location"]
+    for off, part in ((0, b"hello"), (5, b"world")):
+        r = client.patch(loc, content=part, headers={"Tus-Resumable": "1.0.0", "Upload-Offset": str(off),
+                                                      "Content-Type": "application/offset+octet-stream"})
+        assert r.status_code == 204, r.text
+    root = client.get("/api/files/roots").json()["isos"].rstrip("/")
+    assert store.files[f"{root}/debian-13-netinst.iso"] == b"helloworld"            # on the primary, complete
+    assert not any(k.endswith(".part") for k in store.files)
+    with session_factory()() as db:
+        f = db.query(StoredFile).filter_by(name="debian-13-netinst.iso").one()
+        assert f.size == 10 and f.os_key == "debian_latest" and f.path == f"{root}/debian-13-netinst.iso"
+        fid = f.id
+    assert client.delete(f"/api/files/{fid}").status_code == 200
+    assert f"{root}/debian-13-netinst.iso" not in store.files
+
+
+def test_file_roots_and_templates_back_to_the_primary(client, monkeypatch):
+    import subprocess
+    from labape.engine import hostadmin
+    _admin_session(client)
+    _host(client)
+    cmds = []
+
+    class Ssh:
+        def run(self, cmd, input=None, timeout=60):
+            cmds.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(hostadmin, "for_host", lambda h: Ssh())
+    log = io.StringIO()
+    with session_factory()() as db:
+        p, r = _hosts(db)
+        r.access_status = "ready"
+        db.commit()
+        assert hostadmin.service_user(r) == "svc"
+        made = hostadmin.ensure_file_roots(db, r)
+        assert "/data/isos" in made and "install -d -m 0775 -o svc -g svc /data/isos" in cmds[0]
+        # A template built on kvm2 goes to the primary (kvm1) too.
+        f = Fake(monkeypatch, {("kvm2", "/vm/templates/new.qcow2"): 5, ("kvm2", "/vm/templates/new.json"): 1})
+        assert filedist.to_primary(db, r, "new", log) is True
+        p_dir = p.template_storage_path.rstrip("/")
+        assert [c[2] for c in f.copies] == [f"{p_dir}/new.json", f"{p_dir}/new.qcow2"]
+        assert filedist.to_primary(db, r, "new", log) is False                          # already there
+        assert filedist.to_primary(db, p, "new", log) is False                          # built on the primary
