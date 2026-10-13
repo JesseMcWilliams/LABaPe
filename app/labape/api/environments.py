@@ -6,6 +6,7 @@ environment-template editor replaces this in phase 10c.
 from __future__ import annotations
 
 import datetime as dt
+import subprocess
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -18,7 +19,7 @@ from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
 from ..engine.hoststats import assess, demand_of
-from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, Template, utcnow
+from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, MetricSample, Template, utcnow
 from ..naming import HOSTNAME_RE, instance_names
 from ..netpolicy import PolicyError, allocate, resolve
 from ..permissions import add_owner, can_see, is_owner, visible_ids
@@ -504,6 +505,121 @@ def power(env_id: int, body: PowerIn, request: Request, db: Session = Depends(ge
           detail={"job": job.id, "vms": body.vms or "all", "force_after_timeout": body.force_after_timeout},
           source_ip=client_ip(request))
     return {"job_id": job.id}
+
+
+# --- one VM's details, accounts and groups (design §28.6, questions 119-120) -------------------
+
+def _vm_group(e: Environment, vm: str) -> dict:
+    for g in (e.spec or {}).get("host_groups", []):
+        if vm in instance_names(g):
+            return g
+    raise HTTPException(status_code=404, detail=f"{vm} isn't a VM of this environment")
+
+
+def vm_series(db: Session, kvm_host_id: int, vm: str, hours: int = 24) -> dict:
+    rows = db.scalars(select(MetricSample).where(MetricSample.kvm_host_id == kvm_host_id, MetricSample.vm == vm,
+                                                 MetricSample.at >= utcnow() - dt.timedelta(hours=hours))
+                      .order_by(MetricSample.at))
+    keys = ("cpu_pct", "memory_used_mb", "disk_read_bps", "disk_write_bps", "disk_free_gb")
+    out: dict = {"t": [], **{k: [] for k in keys}}
+    for r in rows:
+        out["t"].append(r.at.isoformat())
+        for k in keys:
+            out[k].append((r.data or {}).get(k))
+    return out
+
+
+def consoles(e: Environment, g: dict) -> dict:
+    """Which consoles a VM offers (question 119): VNC for the ones with a desktop, the serial
+    console for Linux; both go through the KVM host's LABaPe access account."""
+    os_ = str(g.get("os", ""))
+    # Windows always has a graphical console (Server Core's is sconfig); Linux only as a workstation.
+    gui = os_.startswith("windows") or "linux_workstation" in (g.get("roles") or [])
+    h = e.kvm_host
+    ready = bool(h and h.access_status == "ready")
+    return {"vnc": gui, "serial": not os_.startswith("windows"), "host_ready": ready,
+            "host_id": h.id if h else None,
+            "virt_viewer": f"virt-viewer --connect qemu+ssh://{h.ssh_user}@{h.ssh_address}/system" if ready else ""}
+
+
+@router.get("/{env_id}/vms/{vm}")
+def vm_details(env_id: int, vm: str, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """What the guest agent reports, the VM's state and size, 24 hours of load, and its
+    connection options."""
+    from ..engine.power import default_order
+    from ..engine.vmaccess import _hosts, _inventory
+    e = _get(db, env_id, p)
+    g = _vm_group(e, vm)
+    row = db.scalar(select(HostStats).where(HostStats.kvm_host_id == e.kvm_host_id))
+    v = next((x for x in ((row.stats if row else None) or {}).get("vms", []) if x["name"] == vm), None)
+    owner = is_owner(db, p, "environment", e.id)
+    host = _hosts(_inventory(db, e)).get(vm) or {} if owner else {}
+    c = consoles(e, g)
+    if c["virt_viewer"]:
+        c["virt_viewer"] += f" {vm}"
+    return {
+        "name": vm, "environment": e.name, "environment_id": e.id, "group": g["name"], "os": g.get("os"),
+        "roles": g.get("roles") or [], "start_order": g.get("start_order") or default_order(g),
+        "address": str(host.get("ansible_host") or ""), "user": str(host.get("ansible_user") or "") if owner else "",
+        "collected_at": row.collected_at if row else None,
+        "state": v["state"] if v else "missing", "online": bool(v and v["online"]),
+        "responding": v.get("responding") if v else None,
+        "size": {k: v.get(k) for k in ("vcpus", "memory_mb", "memory_used_mb", "cpu_pct", "disk_capacity_gb",
+                                       "disk_allocated_gb", "disk_read_bps", "disk_write_bps")} if v else {},
+        "guest": (v or {}).get("guest_info") or {}, "guest_disk": (v or {}).get("guest_disk") or {},
+        "series": vm_series(db, e.kvm_host_id, vm),
+        "can_operate": owner and e.status == "deployed", "consoles": c,
+    }
+
+
+@router.get("/{env_id}/vms/{vm}/accounts")
+def vm_accounts(env_id: int, vm: str, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """Local accounts and groups, read live (owners and admins, question 120)."""
+    from ..engine import vmadmin
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "see its VMs' accounts")
+    _vm_group(e, vm)
+    if e.status != "deployed":
+        raise HTTPException(status_code=409, detail="The environment isn't deployed")
+    try:
+        return vmadmin.read_accounts(db, e, vm)
+    except (vmadmin.VmAdminError, subprocess.TimeoutExpired, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't read {vm}'s accounts: {exc}") from exc
+
+
+class VmManageIn(BaseModel):
+    op: str = Field(pattern=r"^(user\.(add|delete|lock|unlock|groups|password)|group\.(add|delete|member_add|member_remove))$")
+    name: str = Field(pattern=r"^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,63}$")
+    comment: str = Field(default="", max_length=120, pattern=r"^[^:\n]*$")
+    groups: list[str] = Field(default=[], max_length=50)
+    member: str = Field(default="", max_length=64)
+    ssh_key: str = Field(default="", max_length=2000)
+    password: str = Field(default="", max_length=512, repr=False)
+
+
+@router.post("/{env_id}/vms/{vm}/accounts")
+def vm_manage_accounts(env_id: int, vm: str, body: VmManageIn, request: Request, db: Session = Depends(get_db),
+                       p: Principal = Depends(current_principal)):
+    """Change one local account or group on the VM (owners and admins, question 120)."""
+    from ..engine import vmadmin
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "change its VMs' accounts")
+    _vm_group(e, vm)
+    if e.status != "deployed":
+        raise HTTPException(status_code=409, detail="The environment isn't deployed")
+    detail = {"vm": vm, "name": body.name, "groups": body.groups, "member": body.member,
+              "ssh_key_set": bool(body.ssh_key), "password_set": bool(body.password)}
+    try:
+        vmadmin.manage(db, e, vm, body.op, body.name, comment=body.comment, groups=body.groups, member=body.member,
+                       ssh_key=body.ssh_key, password=body.password)
+    except (vmadmin.VmAdminError, subprocess.TimeoutExpired, RuntimeError) as exc:
+        msg = str(exc).replace(body.password, "***") if body.password else str(exc)
+        audit(db, p.username, f"vm.{body.op}", object_type="environment", object_id=e.id, outcome="failed",
+              detail={**detail, "error": msg[:300]}, source_ip=client_ip(request))
+        raise FieldError("name", msg) from exc
+    audit(db, p.username, f"vm.{body.op}", object_type="environment", object_id=e.id, detail=detail,
+          source_ip=client_ip(request))
+    return {"ok": True}
 
 
 class StartOrderGroup(BaseModel):

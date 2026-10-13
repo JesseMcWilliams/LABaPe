@@ -90,17 +90,48 @@ def parse_guestinfo(text: str) -> dict:
     return {"total_gb": round(total / 2**30, 1), "free_gb": round((total - used) / 2**30, 1)} if total else {}
 
 
-def _guest(uri: str, name: str) -> tuple[bool | None, dict]:
-    """(responding, filesystem). responding is None when the VM has no
-    guest-agent channel, False when the agent doesn't answer."""
+def parse_guest_full(text: str) -> dict:
+    """All of `virsh guestinfo` (design §28.6): OS, host name, time zone, logged-in users,
+    filesystems, disks and interfaces with their addresses, as lists of dicts."""
+    kv = dict(re.findall(r"^([\w.-]+)[ \t]*:[ \t]*(.*)$", text, re.M))     # [ \t]: an empty value keeps its own line
+
+    def items(prefix: str) -> list[dict]:
+        n = int(kv.get(f"{prefix}.count", "0") or 0)
+        out = []
+        for i in range(n):
+            head = f"{prefix}.{i}."
+            out.append({k[len(head):]: v for k, v in kv.items() if k.startswith(head)})
+        return out
+
+    ifaces = []
+    for i, iface in enumerate(items("if")):
+        n = int(iface.get("addr.count", "0") or 0)
+        ifaces.append({"name": iface.get("name"), "hwaddr": iface.get("hwaddr"),
+                       "addresses": [f"{iface.get(f'addr.{j}.addr')}/{iface.get(f'addr.{j}.prefix')}" for j in range(n)]})
+    return {
+        "os": {k[3:]: v for k, v in kv.items() if k.startswith("os.")},
+        "hostname": kv.get("hostname", ""), "timezone": kv.get("timezone.name", ""),
+        "users": [{"name": u.get("name"), "domain": u.get("domain", ""), "login_time": u.get("login-time")} for u in items("user")],
+        "filesystems": [{"mount": f.get("mountpoint"), "name": f.get("name"), "type": f.get("fstype"),
+                         "total": int(f["total-bytes"]) if f.get("total-bytes", "").isdigit() else None,
+                         "used": int(f["used-bytes"]) if f.get("used-bytes", "").isdigit() else None} for f in items("fs")],
+        "disks": [{"name": d.get("name"), "partition": d.get("partition"), "alias": d.get("alias"),
+                   "guest_alias": d.get("guest_alias")} for d in items("disk")],
+        "interfaces": ifaces,
+    }
+
+
+def _guest(uri: str, name: str) -> tuple[bool | None, dict, dict]:
+    """(responding, filesystem totals, everything the agent reports). responding is None when
+    the VM has no guest-agent channel, False when the agent doesn't answer."""
     try:
-        r = subprocess.run(["virsh", "--connect", hostio.effective_uri(uri), "guestinfo", name, "--filesystem"],
-                           capture_output=True, text=True, timeout=8, check=False, env=hostio.tool_env())
+        r = subprocess.run(["virsh", "--connect", hostio.effective_uri(uri), "guestinfo", name],
+                           capture_output=True, text=True, timeout=10, check=False, env=hostio.tool_env())
     except subprocess.TimeoutExpired:
-        return False, {}
+        return False, {}, {}
     if r.returncode == 0:
-        return True, parse_guestinfo(r.stdout)
-    return (None if "not configured" in r.stderr else False), {}
+        return True, parse_guestinfo(r.stdout), parse_guest_full(r.stdout)
+    return (None if "not configured" in r.stderr else False), {}, {}
 
 
 def _proc_cpu() -> tuple[int, int] | None:
@@ -163,7 +194,7 @@ def collect(host: KvmHost, prev: dict | None = None) -> dict:
         before = prev_c.get("vms", {}).get(name, {})
         vm_counters[name] = {"cpu": cpu_ns, "rd": rd, "wr": wr}
         cpu_rate = _rate(cpu_ns, before.get("cpu"), elapsed)
-        responding, fs = guests.get(name, (None, {}))
+        responding, fs, info = guests.get(name, (None, {}, {}))
         # Memory used inside the guest needs the balloon driver's stats; else unknown.
         avail, unused = d.get("balloon.available"), d.get("balloon.unused")
         vms.append({
@@ -180,6 +211,7 @@ def collect(host: KvmHost, prev: dict | None = None) -> dict:
             "disk_capacity_gb": round(sum(int(d.get(f"block.{i}.capacity", 0)) for i in disks) / 2**30, 1),
             "disk_allocated_gb": round(sum(int(d.get(f"block.{i}.allocation", 0)) for i in disks) / 2**30, 1),
             "guest_disk": fs,           # {total_gb, free_gb} from the guest agent, or {}
+            "guest_info": info,         # OS, users, filesystems, disks, interfaces (design §28.6), or {}
         })
 
     if hostio.is_remote(uri):

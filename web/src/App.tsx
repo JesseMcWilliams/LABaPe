@@ -27,6 +27,7 @@ import SecretDetail from "./pages/SecretDetail";
 import AdminLayout, { ToAdmin } from "./pages/Admin";
 import RemoteSession from "./pages/RemoteSession";
 import Sessions from "./pages/Sessions";
+import VmDetail from "./pages/VmDetail";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -142,6 +143,7 @@ export default function App() {
           <Route path="/environments" element={<Environments />} />
           <Route path="/environments/new" element={<EnvironmentNew />} />
           <Route path="/environments/:id" element={<EnvironmentDetail />} />
+          <Route path="/environments/:id/vms/:vm" element={<VmDetail />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/admin" element={<AdminLayout />}>

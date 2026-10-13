@@ -227,12 +227,13 @@ export function OsSection({ view }: { view: AdminView }) {
   );
 }
 
-function ManageDialog({ hostId, op, name, onClose }: { hostId: number; op: string; name: string; onClose: (done: boolean) => void }) {
+function ManageDialog({ url, op, name, windows = false, onClose }: { url: string; op: string; name: string; windows?: boolean; onClose: (done: boolean) => void }) {
   const [form, setForm] = useState({ name, comment: "", groups: "", member: "", ssh_key: "", password: "" });
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const go = async () => {
     try {
-      await api.post(`/api/hosts/${hostId}/accounts`, { op, ...form, groups: form.groups.split(/[\s,]+/).filter(Boolean) });
+      const groups = (windows ? form.groups.split(",") : form.groups.split(/[\s,]+/)).map((g) => g.trim()).filter(Boolean);
+      await api.post(url, { op, ...form, groups });
       onClose(true);
     } catch (e) { setErrs(fromApiError(e)); }
   };
@@ -246,44 +247,52 @@ function ManageDialog({ hostId, op, name, onClose }: { hostId: number; op: strin
       <DialogContent>
         <Stack spacing={1} sx={{ mt: 1 }}>
           <ErrorSummary summary={errs.summary} fields={errs.fields} />
-          {(op === "user.add" || op === "group.add") && <Field label="Name" value={form.name} error={errs.fields.name} help="Lower-case letters, digits, - and _" onChange={(e) => setForm({ ...form, name: e.target.value })} />}
+          {(op === "user.add" || op === "group.add") && <Field label="Name" value={form.name} error={errs.fields.name} help={windows ? "Letters, digits, spaces, . - and _" : "Lower-case letters, digits, - and _"} onChange={(e) => setForm({ ...form, name: e.target.value })} />}
           {op === "user.add" && <Field label="Full name or note" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />}
           {(op === "user.add" || op === "user.groups") && <Field label="Groups" value={form.groups} help="Comma-separated; replaces the account's extra groups" onChange={(e) => setForm({ ...form, groups: e.target.value })} />}
-          {op === "user.add" && <Field label="SSH public key (optional)" value={form.ssh_key} multiline fullWidth help="Lets the account sign in with that key" onChange={(e) => setForm({ ...form, ssh_key: e.target.value })} />}
-          {op === "user.password" && <Field label="New password" type="password" value={form.password} fullWidth help="Sent to the host once over SSH (chpasswd); never stored" onChange={(e) => setForm({ ...form, password: e.target.value })} />}
+          {op === "user.add" && windows && <Field label="Password" type="password" value={form.password} fullWidth help="Sent once to the machine over WinRM; never stored" onChange={(e) => setForm({ ...form, password: e.target.value })} />}
+          {op === "user.add" && !windows && <Field label="SSH public key (optional)" value={form.ssh_key} multiline fullWidth help="Lets the account sign in with that key" onChange={(e) => setForm({ ...form, ssh_key: e.target.value })} />}
+          {op === "user.password" && <Field label="New password" type="password" value={form.password} fullWidth help={windows ? "Sent once to the machine over WinRM; never stored" : "Sent once over SSH (chpasswd); never stored"} onChange={(e) => setForm({ ...form, password: e.target.value })} />}
           {op === "group.member_add" && <Field label="Account" value={form.member} onChange={(e) => setForm({ ...form, member: e.target.value })} />}
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => onClose(false)} title="Close without changing anything">Cancel</Button>
-        <Button variant="contained" onClick={go} title="Apply the change on the host (audited)">Apply</Button>
+        <Button variant="contained" onClick={go} title="Apply the change (audited)">Apply</Button>
       </DialogActions>
     </Dialog>
   );
 }
 
 export function AccountsSection({ view, hostId, reload }: { view: AdminView; hostId: number; reload: () => void }) {
+  return <AccountsTable url={`/api/hosts/${hostId}/accounts`} accounts={view.facts?.accounts ?? []} labape={view.host.ssh_user ?? ""}
+    protectedNames={["root", view.host.ssh_user ?? ""]} reload={reload} />;
+}
+
+// Accounts on a KVM host or a VM (design §28.4, §28.6): `url` takes the changes.
+export function AccountsTable({ url, accounts, labape, protectedNames, windows = false, reload }: {
+  url: string; accounts: Any[]; labape: string; protectedNames: string[]; windows?: boolean; reload: () => void;
+}) {
   const [dialog, setDialog] = useState<{ op: string; name: string } | null>(null);
   const [error, setError] = useState("");
   const direct = async (op: string, name: string) => {
     setError("");
-    try { await api.post(`/api/hosts/${hostId}/accounts`, { op, name }); reload(); } catch (e) { setError((e as Error).message); }
+    try { await api.post(url, { op, name }); reload(); } catch (e) { setError((e as Error).message); }
   };
-  const accounts: Any[] = view.facts?.accounts ?? [];
   return (
     <Stack spacing={1}>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
-      <Stack direction="row"><Box sx={{ flexGrow: 1 }} /><Button variant="contained" onClick={() => setDialog({ op: "user.add", name: "" })} title="Create a local account on this host (opens a form)">Add account</Button></Stack>
+      <Stack direction="row"><Box sx={{ flexGrow: 1 }} /><Button variant="contained" onClick={() => setDialog({ op: "user.add", name: "" })} title="Create a local account (opens a form)">Add account</Button></Stack>
       <Table size="small">
-        <TableHead><TableRow><TableCell>Account</TableCell><TableCell>UID</TableCell><TableCell>Groups</TableCell><TableCell>Shell</TableCell><TableCell>Flags</TableCell><TableCell /></TableRow></TableHead>
+        <TableHead><TableRow><TableCell>Account</TableCell>{!windows && <TableCell>UID</TableCell>}<TableCell>Groups</TableCell>{!windows && <TableCell>Shell</TableCell>}<TableCell>Flags</TableCell><TableCell /></TableRow></TableHead>
         <TableBody>
           {accounts.map((a) => {
-            const protectedAcct = a.name === "root" || a.name === view.host.ssh_user;
+            const protectedAcct = protectedNames.includes(a.name);
             return (
               <TableRow key={a.name}>
                 <TableCell><b>{a.name}</b> <Typography variant="caption" color="text.secondary">{a.comment}</Typography></TableCell>
-                <TableCell>{a.uid}</TableCell><TableCell>{(a.groups ?? []).join(", ")}</TableCell><TableCell>{a.shell}</TableCell>
-                <TableCell>{a.admin && <Chip size="small" label="admin" color="warning" sx={{ mr: 0.5 }} />}{a.locked && <Chip size="small" label="locked" />}{a.name === view.host.ssh_user && <Chip size="small" label="LABaPe" color="primary" sx={{ ml: 0.5 }} />}</TableCell>
+                {!windows && <TableCell>{a.uid}</TableCell>}<TableCell>{(a.groups ?? []).join(", ")}</TableCell>{!windows && <TableCell>{a.shell}</TableCell>}
+                <TableCell>{a.admin && <Chip size="small" label="admin" color="warning" sx={{ mr: 0.5 }} />}{a.locked && <Chip size="small" label="locked" />}{a.name === labape && <Chip size="small" label="LABaPe" color="primary" sx={{ ml: 0.5 }} />}</TableCell>
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
                   <Button size="small" onClick={() => setDialog({ op: "user.groups", name: a.name })} title="Change the account's groups">Groups</Button>
                   <Button size="small" onClick={() => setDialog({ op: "user.password", name: a.name })} title="Set a new password">Password</Button>
@@ -293,8 +302,8 @@ export function AccountsSection({ view, hostId, reload }: { view: AdminView; hos
                         confirm={{ title: `${a.locked ? "Unlock" : "Lock"} ${a.name}?`, confirmLabel: a.locked ? "Unlock" : "Lock", body: a.locked ? "The account can sign in again." : "The account can't sign in with its password until it's unlocked." }}>
                         {a.locked ? "Unlock" : "Lock"}
                       </ActionButton>
-                      <ActionButton size="small" color="error" onClick={() => direct("user.delete", a.name)} tip="Delete the account and its home folder"
-                        confirm={{ title: `Delete ${a.name}?`, danger: true, confirmLabel: "Delete", body: "The account and its home folder are removed from the host. This can't be undone." }}>
+                      <ActionButton size="small" color="error" onClick={() => direct("user.delete", a.name)} tip={windows ? "Delete the account" : "Delete the account and its home folder"}
+                        confirm={{ title: `Delete ${a.name}?`, danger: true, confirmLabel: "Delete", body: windows ? "The account is removed. This can't be undone." : "The account and its home folder are removed. This can't be undone." }}>
                         Delete
                       </ActionButton>
                     </>
@@ -305,28 +314,33 @@ export function AccountsSection({ view, hostId, reload }: { view: AdminView; hos
           })}
         </TableBody>
       </Table>
-      {dialog && <ManageDialog hostId={hostId} op={dialog.op} name={dialog.name} onClose={(done) => { setDialog(null); if (done) reload(); }} />}
+      {dialog && <ManageDialog url={url} windows={windows} op={dialog.op} name={dialog.name} onClose={(done) => { setDialog(null); if (done) reload(); }} />}
     </Stack>
   );
 }
 
 export function GroupsSection({ view, hostId, reload }: { view: AdminView; hostId: number; reload: () => void }) {
+  return <GroupsTable url={`/api/hosts/${hostId}/accounts`} groups={view.facts?.groups ?? []} reload={reload} />;
+}
+
+// Groups on a KVM host or a VM; system and built-in groups can't be deleted from here.
+export function GroupsTable({ url, groups, windows = false, reload }: { url: string; groups: Any[]; windows?: boolean; reload: () => void }) {
   const [dialog, setDialog] = useState<{ op: string; name: string } | null>(null);
   const [error, setError] = useState("");
   const direct = async (op: string, name: string, member?: string) => {
     setError("");
-    try { await api.post(`/api/hosts/${hostId}/accounts`, { op, name, member: member ?? "" }); reload(); } catch (e) { setError((e as Error).message); }
+    try { await api.post(url, { op, name, member: member ?? "" }); reload(); } catch (e) { setError((e as Error).message); }
   };
   return (
     <Stack spacing={1}>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
-      <Stack direction="row"><Box sx={{ flexGrow: 1 }} /><Button variant="contained" onClick={() => setDialog({ op: "group.add", name: "" })} title="Create a group on this host (opens a form)">Add group</Button></Stack>
+      <Stack direction="row"><Box sx={{ flexGrow: 1 }} /><Button variant="contained" onClick={() => setDialog({ op: "group.add", name: "" })} title="Create a group (opens a form)">Add group</Button></Stack>
       <Table size="small">
-        <TableHead><TableRow><TableCell>Group</TableCell><TableCell>GID</TableCell><TableCell>Members</TableCell><TableCell /></TableRow></TableHead>
+        <TableHead><TableRow><TableCell>Group</TableCell>{!windows && <TableCell>GID</TableCell>}<TableCell>Members</TableCell><TableCell /></TableRow></TableHead>
         <TableBody>
-          {((view.facts?.groups ?? []) as Any[]).map((g) => (
+          {groups.map((g) => (
             <TableRow key={g.name}>
-              <TableCell><b>{g.name}</b></TableCell><TableCell>{g.gid}</TableCell>
+              <TableCell><b>{g.name}</b>{windows && g.comment && <Typography variant="caption" color="text.secondary"> {g.comment}</Typography>}</TableCell>{!windows && <TableCell>{g.gid}</TableCell>}
               <TableCell>
                 {(g.members ?? []).map((m: string) => (
                   <Chip key={m} size="small" label={m} sx={{ mr: 0.5 }} onDelete={() => direct("group.member_remove", g.name, m)} />
@@ -334,9 +348,9 @@ export function GroupsSection({ view, hostId, reload }: { view: AdminView; hostI
               </TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>
                 <Button size="small" onClick={() => setDialog({ op: "group.member_add", name: g.name })} title="Add an account to this group">Add member</Button>
-                {g.gid >= 1000 && (
+                {(windows ? !g.builtin : g.gid >= 1000) && (
                   <ActionButton size="small" color="error" onClick={() => direct("group.delete", g.name)} tip="Delete this group"
-                    confirm={{ title: `Delete group ${g.name}?`, danger: true, confirmLabel: "Delete", body: "The group is removed from the host; its members lose what it granted." }}>
+                    confirm={{ title: `Delete group ${g.name}?`, danger: true, confirmLabel: "Delete", body: "The group is removed; its members lose what it granted." }}>
                     Delete
                   </ActionButton>
                 )}
@@ -345,7 +359,7 @@ export function GroupsSection({ view, hostId, reload }: { view: AdminView; hostI
           ))}
         </TableBody>
       </Table>
-      {dialog && <ManageDialog hostId={hostId} op={dialog.op} name={dialog.name} onClose={(done) => { setDialog(null); if (done) reload(); }} />}
+      {dialog && <ManageDialog url={url} windows={windows} op={dialog.op} name={dialog.name} onClose={(done) => { setDialog(null); if (done) reload(); }} />}
     </Stack>
   );
 }

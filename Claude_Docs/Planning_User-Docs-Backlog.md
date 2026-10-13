@@ -17,3 +17,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
 - Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.
 - Remote access: RDP/SSH buttons and .rdp files, the session page (keys, idle close, the recorded marker), Settings → Remote access, Admin → Remote sessions, the auditor role (labape-auditors), and that Windows hosts now allow Remote Desktop (redeploy older environments).
+- VM details page: the sections, who sees what, accounts and groups on Linux and Windows (protected accounts, domain controllers), the VNC and serial consoles (need the KVM host's SSH access; Ctrl+] leaves the serial console), and the virt-viewer command.

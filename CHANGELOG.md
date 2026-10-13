@@ -16,6 +16,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   live-test scripts now check the stack's stores.
 
 ### Fixed
+- VM guest details: an empty value from the guest agent (a Windows loopback's
+  MAC address) no longer swallows the next line.
 - The installer's `Storage.Dirs` gives the VM and template folders to the
   service user, so jobs on a freshly installed host can write there.
 - Long jobs the worker runs itself (VM power, host install) keep their
@@ -26,6 +28,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- A details page for each VM of an environment: Dashboard (state, size,
+  24-hour load), Disks and volumes, NICs and OS from the QEMU guest agent
+  (no login), Accounts and Groups read and changed live by the
+  environment's owners and admins (SSH on Linux, WinRM on Windows;
+  audited, LABaPe's own accounts protected), and a Console section: the
+  VM's VNC console (Windows and Linux workstations) and serial console
+  (Linux) in the browser through the KVM host's access account, plus a
+  copyable virt-viewer command.
 - SSH and RDP in the browser through guacd (in the stack, behind LABaPe's own
   tunnel; credentials never reach the browser): RDP to Windows VMs, SSH to
   Linux VMs (owners and admins) and to KVM hosts (admins), plus a .rdp file

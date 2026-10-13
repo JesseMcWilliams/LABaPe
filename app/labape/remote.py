@@ -9,14 +9,17 @@ and then relays instructions both ways. Credentials never reach the browser.
 Targets: an environment's VM (owners and admins, question 118): RDP for
 Windows (the environment's Administrator or domain Administrator), SSH for
 Linux (the admin user with the VM key); a KVM host (admins): SSH as its
-LABaPe access account with the host-admin key. Sessions are recorded when
+LABaPe access account with the host-admin key; a VM's own console (question
+119) through its KVM host: serial for Linux, VNC for desktops. Sessions are recorded when
 Settings → Remote access says so (question 117), and listed for auditors.
 """
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import secrets as _secrets
+import shlex
 import uuid
 
 from sqlalchemy.orm import Session
@@ -123,18 +126,46 @@ def host_target(h: KvmHost) -> dict:
         "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000"}}
 
 
+def console_target(env: Environment, vm: str, kind: str) -> dict:
+    """A VM's own console through its KVM host (question 119), as the host's LABaPe access
+    account: the serial console is `virsh console` in an SSH session; VNC (libvirt listens on
+    the host's loopback, without a password) goes through a one-shot forwarder in the API,
+    `ssh -W` to the host, started when the tunnel opens."""
+    from .engine import hostadmin
+    groups = {n: g for g in (env.spec or {}).get("host_groups", []) for n in instance_names(g)}
+    if vm not in groups:
+        raise RemoteError(f"{vm} isn't a VM of {env.name}")
+    h = env.kvm_host
+    if h is None or h.access_status != "ready":
+        raise RemoteError("consoles go through the KVM host: an admin sets up its SSH access first "
+                          "(Admin → KVM hosts → SSH access)")
+    windows = str(groups[vm].get("os", "")).startswith("windows")
+    if kind == "serial":
+        if windows:
+            raise RemoteError(f"{vm} is a Windows VM: it has no serial console (use VNC or RDP)")
+        return {"protocol": "ssh", "address": h.ssh_address, "params": {
+            "hostname": h.ssh_address, "port": str(h.ssh_port or 22), "username": h.ssh_user,
+            "private-key": hostadmin.key_path().read_text(encoding="utf-8"),
+            "command": f"sudo -n virsh -c qemu:///system console {shlex.quote(vm)} --force",
+            "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000"}}
+    return {"protocol": "vnc", "address": h.ssh_address,
+            "params": {"hostname": "", "port": "", "color-depth": "24", "cursor": "local"},
+            "forward": {"address": h.ssh_address, "port": h.ssh_port or 22, "user": h.ssh_user, "domain": vm}}
+
+
 def resolve(db: Session, s: RemoteSession) -> dict:
     if s.target_type == "vm":
         env = db.get(Environment, s.environment_id)
         if env is None or env.status != "deployed":
             raise RemoteError("the environment isn't deployed")
-        t = vm_target(db, env, s.target)
+        t = console_target(env, s.target, s.protocol) if s.protocol in ("vnc", "serial") else \
+            vm_target(db, env, s.target)
     else:
         h = db.get(KvmHost, s.kvm_host_id)
         if h is None:
             raise RemoteError("no such KVM host")
         t = host_target(h)
-    if t["protocol"] != s.protocol:
+    if t["protocol"] != {"serial": "ssh"}.get(s.protocol, s.protocol):
         raise RemoteError(f"{s.target} is reached over {t['protocol'].upper()}, not {s.protocol.upper()}")
     if appsettings.get(db, "remote").record_sessions:
         t["params"].update({"recording-path": RECORDING_DIR, "recording-name": f"session-{s.id}",
@@ -148,6 +179,78 @@ def rdp_file(address: str, user: str, domain: str = "") -> str:
              "prompt for credentials:i:1", "authentication level:i:2", "screen mode id:i:2",
              "use multimon:i:0", "session bpp:i:32", "redirectclipboard:i:1", "audiomode:i:2"]
     return "\r\n".join(lines) + "\r\n"
+
+
+# --- the VNC forwarder --------------------------------------------------------------------
+
+API_HOST = "labape-api"                              # how guacd reaches the forwarder
+FORWARD_WAIT = 30                                    # seconds guacd has to connect
+
+
+def vnc_port(fwd: dict) -> int:
+    """The VM's VNC port on its host (`virsh vncdisplay` gives 127.0.0.1:N, port 5900 + N)."""
+    from .engine import hostadmin
+    ssh = hostadmin.Ssh(fwd["address"], fwd["port"], fwd["user"])
+    r = ssh.run(f"sudo -n virsh -c qemu:///system vncdisplay {shlex.quote(fwd['domain'])}", timeout=20)
+    out = (r.stdout or b"").decode(errors="replace").strip()
+    m = re.match(r"^\[?[0-9a-fA-F.:]*\]?:(\d+)$", out)
+    if r.returncode != 0 or not m:
+        err = (r.stderr or b"").decode(errors="replace").strip()[-200:]
+        raise RemoteError(f"{fwd['domain']} has no VNC display (is it running?) {err}".strip())
+    return 5900 + int(m.group(1))
+
+
+async def _pump(reader: asyncio.StreamReader, writer) -> None:
+    try:
+        while data := await reader.read(65536):
+            writer.write(data)
+            await writer.drain()
+    except (ConnectionError, OSError):
+        pass
+    finally:
+        try:
+            writer.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def start_forward(fwd: dict, allow_host: str = GUACD[0]):
+    """Listen on an ephemeral port in the API container for exactly one connection, from guacd,
+    and pipe it to the VM's VNC port on the KVM host through `ssh -W`. Returns (server, port);
+    close the server when the session ends."""
+    from .engine import hostadmin, hostio
+    loop = asyncio.get_running_loop()
+    port = await asyncio.to_thread(vnc_port, fwd)
+    allowed = {ai[4][0] for ai in await loop.getaddrinfo(allow_host, None)} if allow_host else set()
+    base = hostadmin.Ssh(fwd["address"], fwd["port"], fwd["user"]).base()
+    cmd = [*base[:-1], "-W", f"127.0.0.1:{port}", base[-1]]
+    used = asyncio.Event()
+
+    async def handle(reader, writer):
+        peer = (writer.get_extra_info("peername") or ("",))[0]
+        if used.is_set() or (allowed and peer not in allowed):
+            writer.close()
+            return
+        used.set()
+        server.close()
+        proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE,
+                                                    stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.DEVNULL, env=hostio.tool_env())
+        try:
+            await asyncio.gather(_pump(reader, proc.stdin), _pump(proc.stdout, writer))
+        finally:
+            if proc.returncode is None:
+                proc.kill()
+            await proc.wait()
+
+    server = await asyncio.start_server(handle, "0.0.0.0", 0)
+
+    async def expire():
+        await asyncio.sleep(FORWARD_WAIT)
+        if not used.is_set():
+            server.close()
+    asyncio.create_task(expire())
+    return server, server.sockets[0].getsockname()[1]
 
 
 # --- the handshake and relay --------------------------------------------------------------

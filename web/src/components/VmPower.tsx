@@ -2,9 +2,9 @@
 // restart and force off one VM or the whole environment; the start order says
 // which groups come up first (servers before their clients).
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
-  Alert, Checkbox, Chip, FormControlLabel, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead,
+  Alert, Checkbox, Chip, FormControlLabel, Link, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, Typography,
 } from "@mui/material";
 import { api, fmtTime, HostGroup } from "../api";
@@ -107,7 +107,7 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
           <TableBody>
             {vms.map((v) => (
               <TableRow key={v.name}>
-                <TableCell>{v.name}</TableCell>
+                <TableCell><Link component={RouterLink} to={`/environments/${envId}/vms/${v.name}`} title="Details, accounts and console">{v.name}</Link></TableCell>
                 <TableCell>{v.group} <Typography component="span" variant="caption" color="text.secondary">{v.os}</Typography></TableCell>
                 <TableCell>{v.start_order}</TableCell>
                 <TableCell><Chip size="small" label={v.state} color={stateColor(v.state)} /></TableCell>

@@ -469,10 +469,16 @@ NAME_RE = ACCOUNT_RE
 
 def manage(h: KvmHost, op: str, name: str, **kw) -> str:
     """One account or group change, as root through the access account. Returns its output."""
+    return manage_over(for_host(h), PROTECTED | {h.ssh_user}, op, name, **kw)
+
+
+def manage_over(ssh, protected: set[str], op: str, name: str, **kw) -> str:
+    """The same changes over any SSH session with passwordless sudo (a KVM host's access
+    account, or a Linux VM's admin user; design §28.6)."""
     if not NAME_RE.match(name):
         raise AdminError(f"{name!r} isn't a valid user or group name")
     q = shlex.quote
-    if op in ("user.delete", "user.lock") and (name in PROTECTED or name == h.ssh_user):
+    if op in ("user.delete", "user.lock") and name in protected:
         raise AdminError(f"{name} is protected: LABaPe needs it")
     groups = [g for g in (kw.get("groups") or []) if NAME_RE.match(g)]
     commands = {
@@ -506,7 +512,7 @@ def manage(h: KvmHost, op: str, name: str, **kw) -> str:
     if op.startswith("group.member") and not NAME_RE.match(kw.get("member") or ""):
         raise AdminError("give a valid member name")
     cmd = commands[op] if op != "user.add" or not kw.get("ssh_key") else f"bash -c {q(commands[op])}"
-    r = for_host(h).run(f"sudo -n {cmd}", input=stdin, timeout=60)
+    r = ssh.run(f"sudo -n {cmd}", input=stdin, timeout=60)
     if r.returncode != 0:
         raise AdminError((r.stderr or r.stdout).decode(errors="replace").strip()[-300:] or f"{op} failed")
     return (r.stdout or b"").decode(errors="replace").strip()

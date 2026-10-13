@@ -1,4 +1,4 @@
-// A browser SSH/RDP session (design §28.5, question 116): guacamole-common-js
+// A browser SSH/RDP session or VM console (design §28.5-§28.6, questions 116 and 119): guacamole-common-js
 // talking to LABaPe's own tunnel. The one-time token comes in the navigation
 // state, never in the URL, and the target's credentials never reach the browser.
 import { useEffect, useRef, useState } from "react";
