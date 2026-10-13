@@ -131,7 +131,7 @@ def dashboard(db: Session = Depends(get_db), p: Principal = Depends(current_prin
     if env_ids is not None:
         q = q.where(Environment.id.in_(env_ids or {-1}))
     envs = list(db.scalars(q))
-    hosts = visible_hosts(db, p)
+    hosts = [h for h in visible_hosts(db, p) if h.enabled]     # a disabled host is parked: not on the dashboard
     host_ids = {h.id for h in hosts} | {e.kvm_host_id for e in envs}
     stats = {r.kvm_host_id: r for r in db.scalars(select(HostStats).where(HostStats.kvm_host_id.in_(host_ids or {-1})))}
     since = utcnow() - dt.timedelta(hours=24)

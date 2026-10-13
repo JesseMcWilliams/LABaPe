@@ -208,3 +208,39 @@ The user's feature list of 2026-10-12. Plan, options and recommendations: `Claud
 118. ~~**Who may open SSH/RDP/console sessions:** the people who may see the environment's credentials, i.e. owners and admins (recommended), or anyone who can see the environment?~~ **Answered (2026-10-12):** Owners and admins open sessions. A new **auditor** role sees the session logs and recordings.
 119. ~~**VM console:** Guacamole VNC to the VM's libvirt display (recommended with 116 b), noVNC, a serial console for Linux, or a `virt-viewer` file? Should template-build VMs get a console too (useful when an unattended install hangs)?~~ **Answered (2026-10-12):** Guacamole VNC for GUI consoles, a serial console for everything that supports it, and a virt-viewer file as an option.
 120. ~~**Host and VM Accounts/Groups pages:** read-only (recommended), or also manage accounts and group members from LABaPe?~~ **Answered (2026-10-12):** Environment owners can manage accounts and groups on their VMs; admins can too (and on KVM hosts).
+
+## Stack syslog collector and the installer (added 2026-10-13)
+
+The user asked whether syslog should move into the stack as a container that every install gets, and to go through the installer's steps and questions. Discussion in the 2026-10-13 session; recommendations marked.
+
+121. ~~**Syslog in the stack.** Add a `labape-syslog` container (rsyslog, the same listeners and layout as the `syslog_collector` role) to the stack, on by default for the full and web profiles, with LABaPe's audit trail pointed at it from the first start (recommended)? The Syslog collector catalog service stays for collectors inside an environment.~~ **Answered (2026-10-13):** Yes: a syslog container in the stack, with a PostgreSQL container as its backend; the catalog service stays for in-environment collectors.
+122. ~~**Its listeners:** UDP and TCP 514 plus TLS 6514 with a platform-CA certificate, on the host's lab-facing address (recommended), or TLS only? Client certificates (mTLS) optional, off by default.~~ **Answered (2026-10-13):** Yes (UDP and TCP 514, TLS 6514); client certificates optional but on by default.
+123. ~~**Same failure domain.** A collector on the host it records can be lost with it. Offer an optional upstream (`SyslogForwardTo`, e.g. a SIEM) that gets a copy of everything (recommended), and keep logs locally for N days (default 30, size-capped)?~~ **Answered (2026-10-13):** Yes to the option of forwarding to a SIEM Local retention: 90 days by default, with a setting (2026-10-13).
+124. ~~**KVM-only hosts** (like `garagepc`): have the kvm profile point the host's own logs (journald through rsyslog) at the stack's collector (recommended)?~~ **Answered (2026-10-13):** Optional, default yes.
+125. ~~**`syslog1`** (environment 11): destroy it once the stack collector works, or keep it as the catalog service's example?~~ **Answered (2026-10-13):** Keep it for testing; the user deletes it later.
+126. ~~**Web-driven KVM installs.** Jobs bring their own workspace, so a host the web prepares doesn't need the CLI configuration steps (Config.Secrets, Config.Environment, Config.Manifests, the render check) or their questions (DomainName, NetbiosName, ManagementSource). Skip them unless a new `Cli` answer asks for a usable CLI checkout on that host (recommended), or keep them always?~~ **Answered (2026-10-13):** Yes.
+127. ~~**Networks for web-driven installs:** take them from Admin → Networks in the web (one source of truth; the Prepare form picks them) (recommended), or keep typing them into the install form?~~ **Answered (2026-10-13):** Yes.
+128. ~~**Host OS:** the installer requires Debian or a derivative. Add the RHEL family (Rocky, Alma: dnf, the same NetworkManager steps), now or backlog (recommended: backlog unless a host needs it)?~~ **Answered (2026-10-13):** Yes.
+129. ~~**TemplatesToBuild:** stop asking it interactively (templates are built from the web) and keep it as an answer-file option for CLI-only installs (recommended)?~~ **Answered (2026-10-13):** Yes.
+130. ~~**AuthMode default:** `existing` (needs an OIDC issuer) today. Keep it, or default to the throwaway test Authentik for a first lab install?~~ **Answered (2026-10-13):** Depends on the install: if Authentik is installed as part of the deployment, use it; otherwise use a throwaway one for the first sign-in.
+
+Answers 2026-10-13 that add requirements (not numbered questions): one KVM host is the **primary** and holds all
+the files (ISOs, installers) when no file share is used; for this lab it is `kvm1`, because the host running the
+web stack may not have the disk space. The installer asks every question up front on its first run, saves them in
+an answer file that updates reuse, and asks which services to deploy (each defaulting to yes).
+
+131. ~~**What the primary holds:** ISOs and the Files page's uploads only, or also the master copy of each template image that other hosts pull?~~ **Answered (2026-10-13):** All files used.
+132. ~~**How other KVM hosts get files:** copied from the primary over SSH when a job needs them and cached on that host (recommended), or a full mirror kept in sync?~~ **Answered (2026-10-13):** Yes: copied over SSH when a job needs them, cached on the host.
+133. ~~**File share:** which kinds (NFS, SMB/CIFS, both), mounted on every KVM host and the stack host, with its credentials in the secret store?~~ **Answered (2026-10-13):** Off by default; an option on the KVM host's page.
+134. ~~**Stack host that isn't the primary:** the Files page lists, uploads and checksums through the primary over SSH (recommended), or only works with a share?~~ **Answered (2026-10-13):** Yes.
+135. ~~**Designating the primary:** a **Primary** flag on one host in Admin → KVM hosts plus an installer answer (recommended)? What should happen while the primary is down or disabled: jobs needing files wait, or fail?~~ **Answered (2026-10-13):** Wait, with a configurable time before the job fails (the files may already be synced to the other host).
+136. ~~**Syslog database:** its own PostgreSQL container (recommended: log volume can't affect LABaPe's database), or a second database in the existing `postgres` container?~~ **Answered (2026-10-13):** Its own container.
+137. ~~**Log viewer:** search and filter the collected syslog in the web interface (admins and auditors), or keep the database as storage only?~~ **Answered (2026-10-13):** A viewer is needed: a Syslog tab.
+138. ~~**Retention:** keep rows N days (default 30?), and also write plain files next to the database?~~ **Answered (2026-10-13):** 90 days by default, configurable. No plain log files for the syslog messages.
+139. ~~**SIEM forward:** which transport (UDP, TCP, TLS; RFC 5424), and everything or only selected facilities (e.g. LABaPe's audit trail)?~~ **Answered (2026-10-13):** Support all of them, configured in the Admin area.
+140. ~~**Services the installer offers** (each default yes): web interface, OpenBao, Conjur, syslog with its database, remote access (guacd), update agent, CLI toolchain, test Authentik. Which are required (e.g. one secret store, because LABaPe's own secrets live there)?~~ **Answered (2026-10-13):** Yes.
+141. ~~**The answer file:** secrets never go in it (generated into the secret store or typed when needed); an update reuses it silently and asks only questions added since (recommended)?~~ **Answered (2026-10-13):** Yes.
+
+Also 2026-10-13: separating the web stack from the primary KVM host needs a careful design (e.g. the web stack on a
+Raspberry Pi driving KVM on a larger PC or server); test it with a VM deployed as the separate stack host. kvm1 has
+nothing listening on 514/6514 (rsyslog inactive, no network inputs), so the stack collector can bind there.

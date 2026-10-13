@@ -61,7 +61,7 @@ def web(a: Resolver) -> bool:
 STEPS = [
     ("Prereq.Os", S.prereq_os, ["Profile"], None, "Root, Debian, /dev/kvm (KVM profiles)"),
     ("Prereq.User", S.prereq_user, ["ServiceUser"], None, "Service user that owns the repo, vault and SSH keys"),
-    ("Prereq.Packages", S.prereq_packages, [], None, "apt packages: QEMU/KVM, libvirt, virt-install, xorriso, Python"),
+    ("Prereq.Packages", S.prereq_packages, [], None, "apt packages: QEMU/KVM, libvirt, virt-install, xorriso, Python, smartmontools"),
     ("Prereq.Libvirt", S.prereq_libvirt, ["ServiceUser"], kvm, "libvirtd running; service user in libvirt and kvm"),
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
     ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], full, "Don't filter bridged VM traffic with iptables (Docker)"),

@@ -15,7 +15,20 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   the store providers): the stack's own stores replaced it. The store
   live-test scripts now check the stack's stores.
 
+### Changed
+- Pages use the full width of the browser window (no 1,200 px cap), so
+  wide tables and remote sessions get the room.
+- The dashboard leaves out disabled KVM hosts.
+- Preparing a KVM host copies only the installer and the few examples its
+  steps read (jobs bring their own files), and a re-run removes what older,
+  fuller copies left in `/opt/labape-kvm`.
+- KVM hosts get `smartmontools` (disk health) from the installer and from
+  Set up access.
+
 ### Fixed
+- Redeploying an environment whose VMs were off (after a host reboot)
+  starts them, domain controllers first, instead of waiting 45 minutes for
+  DHCP addresses that couldn't come.
 - VM guest details: an empty value from the guest agent (a Windows loopback's
   MAC address) no longer swallows the next line.
 - The installer's `Storage.Dirs` gives the VM and template folders to the
