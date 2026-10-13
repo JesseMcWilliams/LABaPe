@@ -52,10 +52,12 @@ def test_vm_accounts_setting_recorded_per_environment(client):
     client.put("/api/admin/settings/vm_accounts", json={"linux_admin_user": "labape"})
 
 
-def test_r2_kinds_go_to_the_agent_without_maintenance(client):
+def test_r2_kinds_run_on_the_worker_without_maintenance(client):
+    # Since the engine secrets live in the store (design §26), the worker rotates them; the
+    # agent's file-based R2 rotation was removed.
     for kind in ("vault_password", "bootstrap_ssh_key"):
         r = rotation.REGISTRY[kind]
-        assert r.automatic and r.via_agent and not r.needs_restart and r.interval_hours == 24
+        assert r.automatic and not r.via_agent and not r.needs_restart and r.interval_hours == 24
 
 
 def test_update_sheet_touches_only_its_section():

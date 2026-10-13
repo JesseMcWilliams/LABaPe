@@ -51,7 +51,7 @@ Once `stores/stores.sh setup` has run, these live in the secret store instead (d
 | `ssh/<key>` and `ssh/<key>.pub` | One key pair. The runner uses it in place of the vault's `ansible_ssh_private_key_path`, because that path belongs to the CLI host. |
 | `ssh/history/` | Previous VM keys, kept by the rotation (7) and still offered to VMs |
 
-Before the move, the update agent rotates the vault password and the VM key here daily. For the command line on the same host it copies the key to the service user's `~/.ssh/labape_bootstrap`, and gives the command line's vault the same new password (`install.sh --cli-vault`; design §24.3).
+Once `stores.sh setup` has moved them into the platform store, these files are no longer used, and the worker rotates both secrets in the store (design §26). The update agent's rotation of the files here was removed on 2026-10-12, so an install that still has them here must run `stores.sh setup` before they can be rotated.
 
 ### Generated secrets (`container/secrets/`)
 

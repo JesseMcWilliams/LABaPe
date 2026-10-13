@@ -38,9 +38,10 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
 | `live/rotate_r1.py` | lab (container) | Rotate the worker-run secrets end to end |
 | `live/rotate_oidc.py` | lab (container) | Rotate the OIDC client secret end to end |
-| `live/stores.py` | lab (container) | Connect and exercise the test OpenBao and Conjur |
+| `live/stores.py` | lab (container) | Check the stack's secret stores (Test connection, dashboard) |
 | `live/stores_move.py` | lab (container) | Move real secrets between the stores and check them |
-| `live/stores_rotate.py` | lab (container) | Rotate LABaPe's logins to the test stores |
+| `live/stores_rotate.py` | lab (container) | Rotate LABaPe's logins to its stores |
+| `live/syslog_settings.py` | lab (container) | Point Settings → Syslog at a collector and send the test message |
 | `live/templates.py` | lab (container) | Show Settings → Templates; delete a template and wait for the job |
 | `live/maintenance.py` | lab (container) | Turn maintenance mode on, check it, turn it off |
 | `live/update_api.py` | lab (container) | Show the update API's view; offer it a tag |
@@ -85,7 +86,7 @@ tools/helpers/lab-live.sh env_password.py 3 list
 ```
 
 Copies `live/` to `~/labape-test-tools` on the lab host, then runs the script.
-- A `.py` script runs in a throwaway `labape:local` container on the host network, so it needs no Python packages on the host. The test Authentik's `.env` is mounted read-only; the scripts read the test users' password from it and never print it. `~/.config/labape/secrets-test.env` (the test stores' LABaPe logins) is mounted when it exists, and deleted when a script reports that LABaPe has rotated every login in it.
+- A `.py` script runs in a throwaway `labape:local` container on the host network, so it needs no Python packages on the host. The test Authentik's `.env` is mounted read-only; the scripts read the test users' password from it and never print it.
 - A `.sh` script runs on the lab host itself.
 
 The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-dev`), so they need `tools/authentik-test/` running on the lab host. Each one's docstring repeats its usage.
@@ -99,9 +100,10 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `rotate_agent.py` | `rotate_agent.py <kind>` | Kinds: `master_key`, `postgres_password`, `ca_password` (these restart the stack) and `vault_password`, `bootstrap_ssh_key`. Afterwards it checks the store's self-test, directory search, maintenance mode and health. |
 | `rotate_r1.py` | `rotate_r1.py` | Adds the test rotator token as an elevated account, then rotates the directory token (checking the old key now gets 403), the data key and the worker key. Needs the test tokens in Authentik's `.env`. |
 | `rotate_oidc.py` | `rotate_oidc.py` | Adds the rotator token as an elevated account if it's missing, rotates the OIDC client secret, then checks the token endpoint now refuses the old secret (`invalid_client`) and a fresh sign-in works. Afterwards `LABAPE_TEST_CLIENT_SECRET` in `.env` is out of date. |
-| `stores.py` | `stores.py` | Saves the test stores' LABaPe logins in Settings → Secret stores, runs both Test connections and the dashboard check, then writes, reads, replaces, lists and deletes a throwaway value in each store. Once LABaPe has rotated a login, the file's copy is stale: the script keeps LABaPe's saved login and skips that store's direct checks. When every login in the file is stale, `lab-live.sh` deletes the file; without it the script only runs the Test connections and dashboard checks. Needs `~/.config/labape/secrets-test.env` on the lab host (`OPENBAO_ROLE_ID`, `OPENBAO_SECRET_ID`, `CONJUR_HOST_API_KEY`, copied from `/opt/labape-secrets-test/.env` by root, mode 0600); `lab-live.sh` mounts it when present. |
-| `stores_rotate.py` | `stores_rotate.py [openbao\|conjur ...]` | Rotate now on each store's login policy, waits for the job, prints its `labape:` lines, then runs Test connection and checks the previous login (the file's copy, while it was current) no longer signs in. OpenBao needs the policy grant from a current `tools/secrets-test/deploy.sh`. |
+| `stores.py` | `stores.py` | Runs Test connection for each enabled store (the stack's OpenBao and Conjur, design §26) and prints the dashboard's store checks. Never sees a login: LABaPe owns and rotates them. |
+| `stores_rotate.py` | `stores_rotate.py [openbao\|conjur ...]` | Rotate now on each store's login policy, waits for the job, prints its `labape:` lines, then runs Test connection. |
 | `stores_move.py` | `stores_move.py [environment]` | Needs `stores.py` first. Moves the directory token built-in → OpenBao → Conjur → built-in, running group search after each move, moves an environment's credentials sheet (default `lab2`) to OpenBao and back comparing the sheet's hash, and sets the default store to OpenBao and back. |
+| `syslog_settings.py` | `syslog_settings.py show` or `<host> [--port N] [--protocol udp\|tcp\|tls] [--facility F] [--no-verify] [--off]` | Saves Settings → Syslog (enabled, TLS with verification by default), then runs Send test message. Check the collector's `/var/log/remote/all.log` for it. |
 | `maintenance.py` | `maintenance.py on\|check\|off` | `check`: a developer's write gets 503, a read works, and Back up now is refused. |
 | `update_api.py` | `update_api.py [tag]` | Shows the current version, releases, standby version and agent state. With a tag, offers it to the API, which refuses unpublished tags. |
 | `agent-request.sh` | `agent-request.sh <update\|rollback> [tag]` | Writes the agent's request file directly and waits up to 20 minutes. Then it shows the state, running version, checkout, standby version, maintenance mode and the log tail. |

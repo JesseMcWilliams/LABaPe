@@ -15,16 +15,9 @@
 #   containers only read (design §24, phase R3): maintenance on -> new value ->
 #   apply -> recreate the containers using it -> health checks (the CA check
 #   signs a test request) -> maintenance off; everything put back on failure.
-# rotate <vault_password|bootstrap_ssh_key>: the engine's own secrets
-#   (phase R2), which every job copies when it starts, so no restart and no
-#   maintenance mode: a new value is made and checked beside the old one,
-#   then swapped in; nothing changes when a step fails. The VM key goes to
-#   the deployed environments' Linux VMs first (`labape push-vm-key`), then
-#   into ~/.ssh as well, for the command line; 7 previous keys are kept.
-#   The vault password also goes to the command line's vault on this host
-#   (LABAPE_CLI_VAULT and LABAPE_VAULT_PASS_FILE, which install.sh writes to
-#   ~/.config/labape/agent.env), rekeyed beside the engine's and swapped
-#   with it; LABAPE_CLI_VAULT=none leaves it alone.
+# The engine's own secrets (vault password, VM key) are rotated by the worker,
+# in the platform store (design §26, S2/S3); the agent's file-based rotation of
+# them (phase R2) was removed on 2026-10-12, once every install had moved.
 set -uo pipefail
 
 # shellcheck source=/dev/null
@@ -213,95 +206,11 @@ rotate() {
   finish
 }
 
-# --- rotate without restarts (phase R2) ---------------------------------------------
-ES="$(grep -m1 '^LABAPE_ENGINE_SECRETS_PATH=' "$C/.env" 2>/dev/null | cut -d= -f2-)"
-ES="${ES:-./engine-secrets}"; case "$ES" in /*) ;; *) ES="$C/${ES#./}" ;; esac
-KEEP_KEYS=7
-CLI_VAULT="${LABAPE_CLI_VAULT:-$REPO/secrets.vault.yml}"
-CLI_PASS="${LABAPE_VAULT_PASS_FILE:-$HOME/.labape-vault-pass}"
-# cli_opens: the command line's vault opens with its password file (checked in a one-off container).
-cli_opens() {
-  (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$CLI_VAULT:/cli/vault.yml:ro" -v "$CLI_PASS:/cli/pass:ro" \
-     labape-worker ansible-vault view --vault-password-file /cli/pass /cli/vault.yml >/dev/null)
-}
-etool() { (cd "$C" && "${COMPOSE[@]}" run --rm --no-deps -v "$ES:/es" labape-worker "$@"); }
-r2fail() { status failed "$1" "$2"; finish; exit 1; }   # maintenance mode was never turned on
-prune() {   # prune <dir>: keep the newest $KEEP_KEYS key pairs
-  ls -1 "$1"/labape_bootstrap-*.pub 2>/dev/null | sort -r | tail -n +$((KEEP_KEYS + 1)) | while read -r pub; do
-    rm -f "$pub" "${pub%.pub}"; done
-}
-
-rotate_engine() {
-  local kind="$1" stamp
-  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  case "$kind" in
-    vault_password)
-      status running applying "re-encrypting the engine vault with a new password" "$kind"
-      (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$ES/vault-pass.new"
-       cp -p "$ES/secrets.vault.yml" "$ES/secrets.vault.yml.new")
-      etool ansible-vault rekey --vault-password-file /es/vault-pass --new-vault-password-file /es/vault-pass.new \
-          /es/secrets.vault.yml.new >/dev/null \
-        && etool ansible-vault view --vault-password-file /es/vault-pass.new /es/secrets.vault.yml.new >/dev/null \
-        || { rm -f "$ES/vault-pass.new" "$ES/secrets.vault.yml.new"; r2fail applying "re-encrypting the vault failed; nothing changed"; }
-      # The command line's vault (its own contents) gets the same new password, prepared beside the engine's.
-      local cli=0
-      if [ "$CLI_VAULT" != none ] && [ -f "$CLI_VAULT" ]; then
-        (umask 077; cp "$CLI_VAULT" "$ES/cli-vault.new"; cp "$CLI_PASS" "$ES/cli-pass.cur")
-        etool ansible-vault rekey --vault-password-file /es/cli-pass.cur --new-vault-password-file /es/vault-pass.new \
-            /es/cli-vault.new >/dev/null \
-          && etool ansible-vault view --vault-password-file /es/vault-pass.new /es/cli-vault.new >/dev/null \
-          || { rm -f "$ES/vault-pass.new" "$ES/secrets.vault.yml.new" "$ES/cli-vault.new" "$ES/cli-pass.cur"
-               r2fail applying "the command line's vault ($CLI_VAULT) didn't re-encrypt with its password file ($CLI_PASS); nothing changed"; }
-        cli=1
-      else
-        echo "labape-update: no command-line vault to update ($CLI_VAULT)"
-      fi
-      # Jobs copy both files when they start and check the pair opens (retrying), so swap them back to back.
-      # The command line's files are rewritten in place (cat), keeping their owner and mode.
-      cp -p "$ES/vault-pass" "$ES/vault-pass.old"; cp -p "$ES/secrets.vault.yml" "$ES/secrets.vault.yml.old"
-      if [ $cli = 1 ]; then
-        cp -p "$CLI_VAULT" "$CLI_VAULT.old"; cp -p "$CLI_PASS" "$CLI_PASS.old"
-        cat "$ES/cli-vault.new" > "$CLI_VAULT" && cat "$ES/vault-pass.new" > "$CLI_PASS"
-      fi
-      mv "$ES/secrets.vault.yml.new" "$ES/secrets.vault.yml" && mv "$ES/vault-pass.new" "$ES/vault-pass"
-      rm -f "$ES/cli-vault.new" "$ES/cli-pass.cur"
-      if etool ansible-vault view --vault-password-file /es/vault-pass /es/secrets.vault.yml >/dev/null \
-         && { [ $cli = 0 ] || cli_opens; }; then
-        rm -f "$ES/vault-pass.old" "$ES/secrets.vault.yml.old"
-        [ $cli = 0 ] || rm -f "$CLI_VAULT.old" "$CLI_PASS.old"
-      else
-        mv "$ES/secrets.vault.yml.old" "$ES/secrets.vault.yml"; mv "$ES/vault-pass.old" "$ES/vault-pass"
-        if [ $cli = 1 ]; then
-          cat "$CLI_VAULT.old" > "$CLI_VAULT"; cat "$CLI_PASS.old" > "$CLI_PASS"; rm -f "$CLI_VAULT.old" "$CLI_PASS.old"
-        fi
-        r2fail checking "the swapped vault didn't open; the old one is back"
-      fi ;;
-    bootstrap_ssh_key)
-      local K="$ES/ssh/labape_bootstrap" H="$ES/ssh/history"
-      status running applying "making a new VM key and adding it on the environments' Linux VMs" "$kind"
-      rm -f "$K.new" "$K.new.pub"
-      ssh-keygen -q -t ed25519 -N '' -C "labape-bootstrap-$stamp" -f "$K.new" \
-        || r2fail applying "ssh-keygen failed; nothing changed"
-      labape push-vm-key --new /run/labape-secrets/ssh/labape_bootstrap.new \
-        || { rm -f "$K.new" "$K.new.pub"; r2fail applying "adding the new key on the VMs failed (see the update agent log); the old key stays"; }
-      mkdir -p "$H"; chmod 700 "$H"
-      cp -p "$K" "$H/labape_bootstrap-$stamp"; cp -p "$K.pub" "$H/labape_bootstrap-$stamp.pub"
-      mv "$K.new.pub" "$K.pub" && mv "$K.new" "$K"
-      prune "$H"
-      # Option b (question 90): the command line on this host uses the same key.
-      mkdir -p "$HOME/.ssh/labape-history"; chmod 700 "$HOME/.ssh" "$HOME/.ssh/labape-history"
-      [ -f "$HOME/.ssh/labape_bootstrap" ] && cp -p "$HOME/.ssh/labape_bootstrap" "$HOME/.ssh/labape-history/labape_bootstrap-$stamp" \
-        && cp -p "$HOME/.ssh/labape_bootstrap.pub" "$HOME/.ssh/labape-history/labape_bootstrap-$stamp.pub"
-      install -m 0600 "$K" "$HOME/.ssh/labape_bootstrap"; install -m 0644 "$K.pub" "$HOME/.ssh/labape_bootstrap.pub"
-      prune "$HOME/.ssh/labape-history" ;;
-  esac
-  status succeeded done "rotated $kind" "$kind"
-  finish
-}
-
 if [ "$ACTION" = rotate ]; then
   case "$TARGET" in
-    vault_password|bootstrap_ssh_key) rotate_engine "$TARGET" ;;
+    vault_password|bootstrap_ssh_key)
+      status failed checking "$TARGET is rotated by the worker in the secret store now, not by the update agent"
+      finish ;;
     *) rotate "$TARGET" ;;
   esac
   exit 0

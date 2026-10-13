@@ -7,7 +7,25 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Removed
+- The update agent's file-based rotation of the engine vault password and
+  VM key (phase R2): the worker rotates them in the secret store. An install
+  that still has them as files is told to run `stores.sh setup` first.
+- `tools/secrets-test/` (throwaway OpenBao and Conjur used while building
+  the store providers): the stack's own stores replaced it. The store
+  live-test scripts now check the stack's stores.
+
+### Fixed
+- Audit syslog over TLS ends the connection with a TLS close_notify, and
+  trusts the platform root as well as the system roots, so a collector with
+  a platform certificate (the Syslog collector service) verifies without
+  turning verification off. TLS 1.2 is the minimum.
+
 ### Added
+- `container/stores/set-secret.sh NAME`: sets one of the stack's bootstrap
+  secrets where the stack reads it (and in the platform store once they've
+  moved there). The installer and the test Authentik use it for the OIDC
+  client secret.
 - **Syslog collector** catalog service (Linux only): rsyslog receiving UDP and
   TCP on 514, TLS on 6514 and mutual TLS on 6515 with the host's platform
   certificate (TLS 1.2/1.3). Remote messages go to `/var/log/remote/`. Existing
@@ -111,14 +129,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   stores every 24 hours (OpenBao/Vault AppRole secret ID, Conjur host API
   key), once the store is set up. A secret can be marked as rotated by its
   external store only when it lives in one.
-- Stale copies of LABaPe's store logins are cleaned up: the test stores'
-  `deploy.sh` removes them from its `.env` (on every run and at boot) and
-  never re-issues them, and the live-test copy is deleted once it's stale.
-  The admin guide has the steps for other copies.
-- `tools/secrets-test/`: throwaway OpenBao and Conjur instances for building
-  the external secret stores, with platform-CA certificates (the VM's own,
-  or signed by the stack on the LABaPe host), unsealing at boot,
-  certificate renewal and a smoke test.
+- The admin guide has the steps for cleaning up outside copies of LABaPe's
+  store logins once LABaPe rotates them.
 - `labape ca-sign`: signs a certificate request with the platform CA from the
   host's command line, for services on the LABaPe host itself.
 - `Claude_Docs/Reference_Secrets-Backend-Requirements.md`: what a new secrets

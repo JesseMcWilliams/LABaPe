@@ -25,7 +25,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `deploy/` — from-scratch installer: `install-labape.py` (entry, step table) and `labape_deploy/` (answers, state, steps); `update-agent/` (the host-side update and rotation agent, a user systemd unit), `labape-rollback.sh`, `allowed_signers` (release signers). `state/`, `logs/` and `answers.*.json` (except `answers.sample.json`) are gitignored; the answers files never hold secrets.
 - `container/` — Dockerfile, compose.yaml, Caddyfile, Quadlet units, `setup.sh`, `ca/` (platform CA scripts), README. Generated `.env`, `secrets/`, `config/`, `engine-secrets/`, `update/` are gitignored; never read or commit them.
 - `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
-- `tools/secrets-test/` — throwaway OpenBao and Conjur (compose + `deploy.sh`, run as root) with platform-CA certificates, for building the external secret stores; its `.env` and `tls/` are gitignored.
+- The throwaway test stores (`tools/secrets-test/`) were retired on 2026-10-12: the stack's own OpenBao and Conjur (`container/stores/`, design §26) replaced them.
 - `tools/helpers/` — helper scripts used more than once (shipping a change, deploying a working tree to the lab stack, live tests); see its README. Put any reused helper here, never lab details: they come from environment variables.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.
 - Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). `Planning_Web-Interface-Design.md` (~1,050) is over; grep for a section and read that range.

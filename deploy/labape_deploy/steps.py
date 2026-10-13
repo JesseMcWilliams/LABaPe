@@ -405,6 +405,16 @@ def _set_env(c: Ctx, env_file: Path, values: dict) -> None:
     c.r.write(env_file, "\n".join(lines) + "\n", mode=0o600, owner=c.user)
 
 
+def _get_env(env_file: Path, key: str) -> str:
+    """A KEY=value from container/.env, or '' when it's missing."""
+    if not env_file.is_file():
+        return ""
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
 def stack_setup(c: Ctx):
     cdir = c.repo / "container"
     c.r.run(["bash", str(cdir / "setup.sh"), "--hostname", c.a.need("WebHostname"), "--tls", c.a.need("Tls")],
@@ -442,7 +452,10 @@ def stack_auth(c: Ctx):
         return DONE, "throwaway Authentik deployed and wired in (tools/authentik-test)"
     _set_env(c, cdir / ".env", {"LABAPE_OIDC_ISSUER": c.a.need("OidcIssuer"),
                                 "LABAPE_OIDC_CLIENT_ID": c.a.need("OidcClientId")})
-    secret_file = cdir / "secrets" / "oidc_client_secret"
+    # Once the bootstrap secrets are in the platform store (design §26.3), the stack reads
+    # them from LABAPE_SECRETS_DIR; stores/set-secret.sh writes there and pushes to the store.
+    moved = _get_env(cdir / ".env", "LABAPE_SECRETS_DIR")
+    secret_file = Path(moved or cdir / "secrets") / "oidc_client_secret"
     if not secret_file.is_file() or not secret_file.read_text().strip():
         if c.r.dry_run:
             print(f"[dry-run] would prompt for the OIDC client secret and write {secret_file}")
@@ -451,7 +464,8 @@ def stack_auth(c: Ctx):
             secret = getpass.getpass("OIDC client secret (not saved in the answers file): ").strip()
             if not secret:
                 raise StepError("the OIDC client secret is required for AuthMode=existing")
-            c.r.write(secret_file, secret + "\n", mode=0o644, owner=c.user)
+            c.r.run(["bash", str(cdir / "stores" / "set-secret.sh"), "oidc_client_secret"], as_user=True,
+                    input=secret)
     return DONE, f"OIDC issuer {c.a.need('OidcIssuer')}"
 
 

@@ -4,9 +4,7 @@
 # of its scripts there:
 #   *.py  in a throwaway labape:local container on the host network, signed in
 #         through the test Authentik (its .env is mounted read-only; the test
-#         password is read there and never printed); the test secret stores'
-#         LABaPe logins (~/.config/labape/secrets-test.env, if present) too,
-#         deleted once a script reports LABaPe has rotated them all;
+#         password is read there and never printed);
 #   *.sh  on the lab host itself, from the stack's clone.
 # Example: tools/helpers/lab-live.sh env_password.py 3 list
 set -euo pipefail
@@ -26,16 +24,10 @@ case "$script" in
     # $R and $HOME expand on the lab host (a ~ in R=... does too).
     remote="R=$LAB_REPO; docker run --rm --network host"
     remote+=' -v "$HOME/labape-test-tools:/tools:ro" -v "$R/tools/authentik-test/.env:/authentik.env:ro"'
-    remote+=' $(f="$HOME/.config/labape/secrets-test.env"; [ -f "$f" ] && echo "-v $f:/secrets-test.env:ro")'
     remote+=" -e LABAPE='$LAB_URL' -e AK_ENV=/authentik.env"
     remote+=" --entrypoint python3 labape:local /tools/$script$args"
     remote+=' 2>&1 | grep -v -E "InsecureRequestWarning|warnings.warn"'
-    out="$("${LAB_SSH[@]}" "$remote")"; printf '%s\n' "$out"
-    # LABaPe has rotated every login in the copy (stores.py, stores_rotate.py): delete it.
-    if grep -qx 'labape-live: secrets-test.env is stale' <<<"$out"; then
-      "${LAB_SSH[@]}" 'rm -f "$HOME/.config/labape/secrets-test.env"'
-      echo "lab-live: deleted ~/.config/labape/secrets-test.env on the lab host (its logins were rotated)"
-    fi ;;
+    "${LAB_SSH[@]}" "$remote" ;;
   *.sh)
     "${LAB_SSH[@]}" "LABAPE_LAB_REPO=$LAB_REPO bash ~/labape-test-tools/$script$args" ;;
   *) echo "unknown script type: $script" >&2; exit 1 ;;

@@ -22,7 +22,7 @@ What may move to an external store: the engine's Ansible vault password, bootstr
 | Values up to 64 KB | SSH private keys, credential sheets, a whole vault file |
 | An audit log of its own (preferred) | Cross-checks LABaPe's audit trail |
 | Versioning, or writes that can't half-apply (preferred) | Rotation's undo step (section 8) |
-| A test instance that can be scripted | `tools/secrets-test/` grows a service and its setup for each new store |
+| A test instance that can be scripted | A service in the stack (`container/stores/`, set up by `stores.sh`), as OpenBao and Conjur are; the throwaway `tools/secrets-test/` was retired on 2026-10-12 |
 
 ## 3. The provider interface
 
@@ -61,7 +61,7 @@ The session token is held in memory only, renewed before it expires, and fetched
 ## 6. TLS
 
 - HTTPS only; no plain-HTTP option.
-- Certificates are verified, against the LABaPe platform root by default (the stores in `tools/secrets-test/` use certificates from the platform CA) or a CA bundle set in the store's settings. Turning verification off is a separate, visible setting, as for the directory (Settings → Directory).
+- Certificates are verified, against the LABaPe platform root by default (the stack's stores use certificates from the platform CA) or a CA bundle set in the store's settings. Turning verification off is a separate, visible setting, as for the directory (Settings → Directory).
 - Timeouts: 5 s to connect, 15 s per request. A store that doesn't answer is an error, never a hang.
 
 ## 7. Least privilege in the store
@@ -114,6 +114,6 @@ Changing a policy's store copies the secret: read from the old store, write to t
 2. **Settings**: a section per store (address, CA, auth, credential, Test connection). The store appears in the Secrets page's store list once it's configured and its test passes.
 3. **Dashboard**: its `test_connection` in "Secrets and certificates".
 4. **pytest**: the store's HTTP API faked with `httpx` (sign-in, get, put, delete, list, permission denied, timeout, session expiry and re-login), path mapping, no value in any error message, and a move between stores.
-5. **The test instance**: a service in `tools/secrets-test/compose.yaml` with its setup in `deploy.sh` (least-privilege identity, smoke test) and a line in its README.
+5. **The test instance**: a service in the stack's `stores` compose profile with its setup in `container/stores/stores.sh` (least-privilege identity, smoke test) and a line in `container/README.md`.
 6. **Live test**: a `tools/helpers/live/` script that points LABaPe at the test instance, moves a secret there and back, and rotates it.
 7. **Docs**: design §11 and §24, `User_Docs/Web-Interface-Admin.md` §8 (stores), CHANGELOG, and this document if a requirement changed.

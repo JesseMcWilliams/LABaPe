@@ -253,7 +253,8 @@ def _engine_rotator(kind: str):
     def run(db: Session, policy: SecretPolicy, log) -> str:
         from . import engine_secrets
         if not engine_secrets.in_catalog(db):
-            raise RotationError("the engine secrets are still files: the update agent rotates them")
+            raise RotationError("the engine secrets aren't in the secret store yet: run container/stores/stores.sh "
+                                "setup on the LABaPe host, which moves them there")
         if kind == "vault_password":
             return engine_secrets.rotate_vault_password(db, log)
         return engine_secrets.rotate_ssh_key(db, log)
@@ -271,16 +272,14 @@ for kind, label, notes in (
      "The 7 previous keys are kept and still tried, for VMs that were off; keys older than that are removed from "
      "the VMs. Environments on remote KVM hosts are skipped."),
 ):
-    REGISTRY[kind] = Rotator(kind=kind, label=label, via_agent=True, notes=notes, run=_engine_rotator(kind))
+    REGISTRY[kind] = Rotator(kind=kind, label=label, via_agent=False, notes=notes, run=_engine_rotator(kind))
 
 
 def uses_agent(db: Session, kind: str) -> bool:
-    """Whether the host's update agent rotates this kind (the worker otherwise)."""
-    r = REGISTRY[kind]
-    if kind in ENGINE_KINDS:
-        from . import engine_secrets
-        return not engine_secrets.in_catalog(db)
-    return r.via_agent
+    """Whether the host's update agent rotates this kind (the worker otherwise). The engine
+    secrets are the worker's: the agent's file-based rotation of them (R2) was removed once
+    every install had moved them into the store (design §26)."""
+    return REGISTRY[kind].via_agent
 
 REGISTRY["smtp_password"] = Rotator(kind="smtp_password", label="SMTP password", secret_class="external",
                                     automatic=False, interval_hours=168,
