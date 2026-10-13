@@ -146,7 +146,9 @@ def run_download(db: Session, job: Job) -> int:
                         resumed = r.status_code == 206
                         if have and not resumed:
                             log.write("labape: the server doesn't resume downloads; starting over.\n")
-                        total = r.headers.get("content-length")
+                        # A compressed transfer's Content-Length counts the compressed bytes, not the file's.
+                        enc = r.headers.get("content-encoding", "identity").lower()
+                        total = r.headers.get("content-length") if enc in ("", "identity") else None
                         total = (int(total) + (have if resumed else 0)) if total else None
                         log.write(f"labape: downloading {url}"
                                   f"{f' ({_human(total)})' if total else ''}"
