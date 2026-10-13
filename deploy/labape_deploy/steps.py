@@ -315,15 +315,20 @@ def tools_packer(c: Ctx):
 
 def tools_ansible(c: Ctx):
     v = c.a.need("AnsibleCoreVersion")
+    spec, want = f"ansible-core=={v}", f"core {v}"
+    py = shutil.which("python3.12") if os_family() == "rhel" and shutil.which("python3.12") else "python3"
+    if c.r.out([py, "-c", "import sys; print(int(sys.version_info >= (3, 12)))"]) == "0":
+        # ansible-core 2.20+ needs Python 3.12; Debian 12 (bookworm, e.g. a Raspberry Pi web stack host)
+        # has 3.11. Here it's only for the vault (jobs run Ansible on the KVM hosts or in the image).
+        spec, want = "ansible-core>=2.19,<2.20", "core 2.19"
     have = c.r.out([str(VENV / "bin" / "ansible"), "--version"])
-    if f"core {v}" not in have or c.force:
+    if want not in have or c.force:
         if not (VENV / "bin" / "pip").exists():
             # A venv made without python3-venv has python but no pip: start over.
             c.r.run(["rm", "-rf", str(VENV)])
             # ansible-core needs Python 3.12 or later: RHEL 9's own python3 is 3.9, so use python3.12 there.
-            py = shutil.which("python3.12") if os_family() == "rhel" and shutil.which("python3.12") else "python3"
             c.r.run([py, "-m", "venv", "--system-site-packages", str(VENV)])
-        c.r.run([str(VENV / "bin" / "pip"), "install", "--quiet", f"ansible-core=={v}", "pywinrm", "pyyaml"])
+        c.r.run([str(VENV / "bin" / "pip"), "install", "--quiet", spec, "pywinrm", "pyyaml"])
     for tool in ("ansible", "ansible-playbook", "ansible-vault", "ansible-galaxy", "ansible-inventory", "ansible-config"):
         link = Path("/usr/local/bin") / tool
         if not link.exists():
@@ -335,7 +340,7 @@ def tools_ansible(c: Ctx):
         if res.returncode == 0:
             break
         time.sleep(attempt * 15)
-    return DONE, f"ansible-core {v} + collections in {VENV}"
+    return DONE, f"{spec.replace('==', ' ')} + collections in {VENV}"
 
 
 # --- engine configuration --------------------------------------------------------
@@ -474,6 +479,10 @@ def stack_runtime(c: Ctx):
     # ${VAR:-default} values unexpanded in the shared settings block.
     pkgs = ["docker.io", "docker-compose", "docker-buildx"] if rt == "docker" else ["podman", "docker-compose"]
     missing = [p for p in pkgs if not _installed(c, p)]
+    if rt == "docker" and missing and "version" in c.r.out(["docker", "compose", "version"]).lower():
+        # Docker installed some other way (Docker's own docker-ce packages, e.g. on a Raspberry Pi):
+        # Debian's docker.io would conflict with it, and compose v2 is all the stack needs.
+        missing = []
     if missing:
         c.r.run(["apt-get", "install", "-y", *missing], env={"DEBIAN_FRONTEND": "noninteractive"})
     if rt == "docker":
