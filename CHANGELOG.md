@@ -22,6 +22,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- VM power: start, shut down (clean, with an optional force off after a
+  timeout), restart and force off, for one VM or a whole environment
+  (owners and admins). A whole-environment start follows each host group's
+  start order (domain controllers first by default), waiting for each
+  group's guest agents and an optional delay; shutdowns go in reverse.
 - Files: every tab says what its files are for and has filters (name, size,
   SHA-256, description, date added; Templates by name, OS, host). Installers
   list the OSes they target, generic (Any, Windows, Linux), by family or

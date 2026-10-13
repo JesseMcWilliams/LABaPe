@@ -168,6 +168,10 @@ export interface HostGroup {
   services?: string[];
   applications?: string[];
   packages?: string[];
+  // Start order (design §28.3): lower first; absent = DCs 1, others 2.
+  start_order?: number | null;
+  start_wait?: "agent" | "none";
+  start_delay_seconds?: number;
 }
 
 export interface Environment {
