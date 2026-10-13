@@ -3,7 +3,7 @@
 # The update agent refuses any tag not signed by a key listed here.
 # deploy/update-agent/install.sh copies this file to ~/.config/labape/allowed_signers.
 # A host's own list is kept when it already names a key (it may hold keys added there).
-
+# Keep this file free of blank lines: some ssh-keygen versions report them as "missing key".
 # Jesse McWilliams, release and commit signing key (Ed25519, added 2026-10-12),
 # SHA256:qZQhGJvkLFzRRxGiMZbLEVFK687xkkhWu/uXUEZY4NA
 Jesse.McWilliams@outlook.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHoqjiG1mPMMUuMWVBZ9JOhn9mT518qGQ6cCED7oBUgA
