@@ -27,6 +27,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Set up access.
 
 ### Fixed
+- A download from a URL served compressed no longer shows its progress
+  against the compressed size.
 - Redeploying an environment whose VMs were off (after a host reboot)
   starts them, domain controllers first, instead of waiting 45 minutes for
   DHCP addresses that couldn't come.
@@ -42,6 +44,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- The web stack can run on a machine that isn't the primary file host:
+  the Files page then keeps every file on the primary over SSH (uploads
+  and downloads stream there; nothing is staged on the stack host), and
+  templates built on other hosts are copied to the primary.
 - A primary file host: one KVM host holds every file (ISOs, installers,
   template images); a job on another host gets copies of the ones it needs
   (checked, kept for next time), waiting a configurable time when the
