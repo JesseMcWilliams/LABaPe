@@ -16,6 +16,7 @@ from email.message import EmailMessage
 
 from urllib.parse import urlsplit
 
+from . import ca
 from .appsettings import SMTP_PASSWORD_SECRET, SmtpSettings, SyslogSettings
 from .config import get_settings
 
@@ -48,9 +49,26 @@ def send_syslog(cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
             if not cfg.verify_tls:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
+            else:
+                # Also trust LABaPe's own platform root, so a collector with a platform
+                # certificate (e.g. the syslog_collector service, design §27) verifies
+                # without turning verification off. TLS 1.2 is the floor (RFC 9662).
+                ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+                try:
+                    ctx.load_verify_locations(cadata=ca.root_pem())
+                except (ca.CaError, OSError, ssl.SSLError):
+                    pass  # no platform CA here: the system roots only
             sock = ctx.wrap_socket(raw, server_hostname=cfg.host)
         # RFC 6587 octet counting framing for stream transports.
         sock.sendall(f"{len(data)} ".encode() + data)
+        if sock is not raw:
+            # TLS close_notify before closing. Closing the raw socket with unread data in
+            # its buffer (TLS 1.3 session tickets) sends a reset, and the collector may then
+            # drop the message it already received.
+            try:
+                sock.unwrap()
+            except (ssl.SSLError, OSError):
+                pass
     finally:
         raw.close()
 

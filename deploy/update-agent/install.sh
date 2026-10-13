@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Install (or refresh) the LABaPe update agent for the current user (design §23.2):
 #   deploy/update-agent/install.sh [--repo DIR] [--signers FILE] [--cli-vault FILE|none] [--vault-pass-file FILE]
-# --cli-vault is the command line's vault on this host, which a vault-password
-# rotation rekeys too (default <repo>/secrets.vault.yml; none leaves it alone);
-# --vault-pass-file is its password file (default ~/.labape-vault-pass).
+# --cli-vault is the command line's vault on this host (default
+# <repo>/secrets.vault.yml; none for no command line), which stores.sh reads
+# when it sets up the command line's store login; --vault-pass-file is its
+# password file (default ~/.labape-vault-pass).
 # Needs lingering for the user (`sudo loginctl enable-linger <user>`, which
 # the installer's Update.Agent step does), so the user's systemd keeps
 # running without a login.
@@ -19,7 +20,7 @@ while [ $# -gt 0 ]; do
     --signers) SIGNERS="${2:?}"; shift ;;
     --cli-vault) CLI_VAULT="${2:?}"; shift ;;
     --vault-pass-file) PASS_FILE="${2:?}"; shift ;;
-    *) sed -n '2,10p' "$0" >&2; exit 1 ;;
+    *) sed -n '2,11p' "$0" >&2; exit 1 ;;
   esac
   shift
 done
@@ -34,10 +35,10 @@ if [ -n "$SIGNERS" ]; then install -m 0644 "$SIGNERS" "$dest"
 elif [ ! -s "$dest" ] && [ -s "$REPO/deploy/allowed_signers" ]; then install -m 0644 "$REPO/deploy/allowed_signers" "$dest"
 fi
 
-# Where the command line's vault is. An existing setting is kept unless an option is given.
+# Where the command line's vault is (for stores.sh). An existing setting is kept unless an option is given.
 envf="$HOME/.config/labape/agent.env"
 if [ -n "$CLI_VAULT$PASS_FILE" ] || [ ! -f "$envf" ]; then
-  { echo "# Written by deploy/update-agent/install.sh; read by labape-update.sh."
+  { echo "# Written by deploy/update-agent/install.sh; read by container/stores/stores.sh."
     echo "LABAPE_CLI_VAULT=${CLI_VAULT:-$REPO/secrets.vault.yml}"
     echo "LABAPE_VAULT_PASS_FILE=${PASS_FILE:-$HOME/.labape-vault-pass}"; } > "$envf"
 fi

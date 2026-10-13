@@ -159,3 +159,84 @@ def test_directory_group_search(client, monkeypatch):
     assert r["source"] == "known" and r["groups"] == ["lab-dev"] and "can't view groups" in r["warning"]
     r = client.post("/api/admin/settings/directory/test")
     assert r.status_code == 422 and "HTTP 403" in r.json()["errors"][0]["message"]
+
+
+def test_syslog_tls_trusts_the_platform_root(monkeypatch, tmp_root):
+    """Design §27: audit syslog over TLS verifies a collector whose certificate the platform CA
+    signed, with verification on; an unknown CA is still refused."""
+    import datetime as dt
+    import ssl
+    import threading
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    from labape import ca, notify
+    from labape.appsettings import SyslogSettings
+
+    def cert(subject, issuer, key, issuer_key, is_ca):
+        now = dt.datetime.now(dt.timezone.utc)
+        b = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subject)]))
+             .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer)]))
+             .public_key(key.public_key()).serial_number(x509.random_serial_number())
+             .not_valid_before(now - dt.timedelta(minutes=5)).not_valid_after(now + dt.timedelta(hours=1))
+             .add_extension(x509.BasicConstraints(ca=is_ca, path_length=None), critical=True)
+             # Python 3.13's default context is X.509-strict: it wants key identifiers.
+             .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+             .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()), critical=False))
+        if is_ca:
+            b = b.add_extension(x509.KeyUsage(digital_signature=True, key_cert_sign=True, crl_sign=True,
+                                              content_commitment=False, key_encipherment=False,
+                                              data_encipherment=False, key_agreement=False, encipher_only=False,
+                                              decipher_only=False), critical=True)
+        if not is_ca:
+            b = b.add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
+        return b.sign(issuer_key, hashes.SHA256())
+
+    root_key = ec.generate_private_key(ec.SECP256R1())
+    root = cert("Test Platform Root", "Test Platform Root", root_key, root_key, True)
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    leaf = cert("localhost", "Test Platform Root", leaf_key, root_key, False)
+    crt, key = tmp_root / "collector.crt", tmp_root / "collector.key"
+    crt.write_bytes(leaf.public_bytes(serialization.Encoding.PEM))
+    key.write_bytes(leaf_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                           serialization.NoEncryption()))
+    server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(crt, key)
+
+    def serve(listener, got):
+        conn, _ = listener.accept()
+        try:
+            with server_ctx.wrap_socket(conn, server_side=True) as tls:
+                got.append(tls.recv(65535).decode())
+        except (ssl.SSLError, OSError) as exc:
+            got.append(f"error: {exc}")
+
+    def attempt(root_pem):
+        if root_pem is None:
+            monkeypatch.setattr(ca, "root_pem", lambda: (_ for _ in ()).throw(ca.CaError("no CA")))
+        else:
+            monkeypatch.setattr(ca, "root_pem", lambda: root_pem)
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        got: list = []
+        t = threading.Thread(target=serve, args=(listener, got), daemon=True)
+        t.start()
+        cfg = SyslogSettings(enabled=True, host="localhost", port=listener.getsockname()[1], protocol="tls")
+        try:
+            notify.send_syslog(cfg, {"action": "test.tls", "actor": "pytest", "outcome": "ok", "detail": {}})
+            sent = True
+        except (ssl.SSLError, OSError) as exc:
+            sent = False
+            got.append(f"client: {exc!r}")
+        t.join(5)
+        listener.close()
+        return sent, got
+
+    sent, got = attempt(root.public_bytes(serialization.Encoding.PEM).decode())
+    assert sent and "test.tls" in got[0], got
+    sent, got = attempt(None)        # no platform root: the system roots don't know this CA
+    assert not sent

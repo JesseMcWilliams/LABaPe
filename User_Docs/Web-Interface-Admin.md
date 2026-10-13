@@ -174,7 +174,7 @@ The secret ID and API key are kept in the built-in store, are never shown again,
 2. On **Secrets**, open the store's login (*OpenBao / Vault: LABaPe's AppRole secret ID* or *CyberArk Conjur: LABaPe's host API key*) and choose **Rotate now**. From then on, only LABaPe holds a working login.
 3. Delete every copy you made while setting it up: the file or note you pasted it from, and shell history. They no longer work, but they shouldn't be left lying around.
 
-With the test stores from `tools/secrets-test/`, step 3 happens automatically. `deploy.sh` removes the stale lines from its `.env` on its next run or at boot, and the live-test scripts delete their copy (see that folder's README).
+With the stores in the stack (`container/stores/`), LABaPe owns their logins, so there are no outside copies to clean up.
 
 **Where secrets live.** **Secrets → Stored secrets** lists every stored secret: its name, its store, the rotation that changes it (with a link to its page) and the elevated account that rotation uses. Values are never shown.
 - **Move**: tick secrets, choose **Move to** and confirm. LABaPe copies each one, reads it back, switches to the new copy, then deletes the old one. If any step fails, that secret stays where it was and the result says why.

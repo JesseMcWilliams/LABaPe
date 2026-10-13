@@ -88,8 +88,13 @@ if $CONFIGURE; then
   env_file=../../container/.env
   [ -f "$env_file" ] || { echo "authentik-test: run container/setup.sh first" >&2; exit 1; }
   sed -i "s|^LABAPE_OIDC_ISSUER=.*|LABAPE_OIDC_ISSUER=${issuer}|; s|^LABAPE_OIDC_CLIENT_ID=.*|LABAPE_OIDC_CLIENT_ID=labape|" "$env_file"
-  (umask 077; grep '^LABAPE_TEST_CLIENT_SECRET=' .env | cut -d= -f2- > ../../container/secrets/oidc_client_secret)
-  echo "authentik-test: container/.env and container/secrets/oidc_client_secret now point at $issuer"
+  # set-secret.sh writes where the stack reads it: container/secrets/, or the memory
+  # copy plus the platform store once the bootstrap secrets have moved (design §26.3).
+  # It runs as the owner of container/ (this script usually runs as root).
+  owner="$(stat -c %U ../../container)"
+  as_owner=(); [ "$(id -un)" = "$owner" ] || as_owner=(runuser -u "$owner" --)
+  grep '^LABAPE_TEST_CLIENT_SECRET=' .env | cut -d= -f2- | "${as_owner[@]}" bash ../../container/stores/set-secret.sh oidc_client_secret
+  echo "authentik-test: container/.env and the stack's oidc_client_secret now point at $issuer"
   echo "               (recreate the LABaPe containers: $COMPOSE up -d)"
 fi
 

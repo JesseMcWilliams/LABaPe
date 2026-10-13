@@ -31,7 +31,8 @@ def test_import_and_copies(secret_files, tmp_root, monkeypatch):
     monkeypatch.setattr(es.shutil, "which", lambda _: None)      # no ansible-vault here: skip the open check
     with session_factory()() as db:
         assert not es.in_catalog(db)
-        assert uses_agent(db, "vault_password") and uses_agent(db, "bootstrap_ssh_key")
+        # The worker rotates them either way; the agent's file-based rotation (R2) is gone.
+        assert not uses_agent(db, "vault_password") and not uses_agent(db, "bootstrap_ssh_key")
         assert len(es.import_files(db, "builtin")) == len(es.NAMES)
         assert es.in_catalog(db) and es.import_files(db, "builtin") == []      # only once
         assert get_secret(db, es.VAULT_PASSWORD) == "pw-1"

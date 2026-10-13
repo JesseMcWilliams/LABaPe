@@ -102,6 +102,17 @@
   libvirt. The libvirt URI is filled in from it (`qemu+ssh://user@host/system`) for remote hosts.
 - **Install** (R9): **Prepare this host** runs `install-labape.py --profile kvm` on the new host as
   a job, over SSH, and streams its log (question 114).
+- **The remote host's command line** (handoff follow-up, folded in here on 2026-10-12): a remote
+  KVM host's own command line has no login to the platform store, because `store_get.py` reads
+  `~/.config/labape/store.env` and the stores listen only on the stack host's loopback unless
+  `LABAPE_STORES_BIND` is set. Preparing a host would also:
+  - publish the stores on an address the host can reach, with TLS from the platform CA;
+  - issue that host its own read-only store login (one AppRole or Conjur host per KVM host, so
+  one can be revoked alone);
+  - write its `store.env` over SSH.
+
+  The template delete's "is this disk in use" check also needs the SSH account to read VM disks
+  on that host (the libvirt group, or the sudoers whitelist).
 - **Collector**: one read-only script (`engine/hostfacts.sh`, standard tools only) run over SSH. It
   returns JSON from:
   - `lsblk -J -O`, `smartctl -j -a` per disk, `df`, LVM (`pvs`/`vgs`/`lvs --reportformat json`), ZFS or mdraid when present;
