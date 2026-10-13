@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, engine_secrets, hostadmin, hostio, maintenance, power, rotation, template_versions
+from . import downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, power, rotation, template_versions
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -493,7 +493,8 @@ def run(job_id: int, worker: str) -> None:
         if remote is not None:
             try:
                 logf.write(f"labape: running on {remote.host.target} over SSH in {remote.root}\n".encode())
-                _sync_isos(work, remote.host, host, iso_keys, _TextLog(logf))
+                with Session_() as fdb:            # files from the primary (design §29.4)
+                    _distribute(fdb, work, fdb.get(KvmHost, host.id), job_id, iso_keys, _TextLog(logf))
                 secrets_dir = get_settings().secrets_dir
                 files = {"vault-pass": work / ".vault-pass"}
                 if ssh_key_path():   # the scripts check the key has its .pub beside it
@@ -592,20 +593,51 @@ def _iso_keys(job: Job, env: Environment | None) -> set[str]:
             if (g.get("image_source") or "iso_direct") == "iso_direct"}
 
 
-def _sync_isos(work: Path, rhost: hostio.Host, host: KvmHost, keys: set[str], log) -> None:
-    """Point environment.yml's ISOs at the remote host's copies, copying the
-    ones this job needs there first (<vm_storage_path>/.labape-isos)."""
+def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: set[str], log) -> None:
+    """Before a job runs on a remote host: the files it needs from the primary file host
+    (design §29.4), and the workspace pointed at the host's copies. ISOs go to
+    <vm storage>/.labape-isos, installers to <vm storage>/.labape-files/installers (Ansible
+    reads them there: it runs on that host), templates into the host's library."""
+    job = db.get(Job, job_id)
+    env = db.get(Environment, job.environment_id) if job.environment_id else None
     path = work / "environment.yml"
     env_yml = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    remote_dir = f"{host.vm_storage_path.rstrip('/')}/.labape-isos"
+    iso_dir = f"{host.vm_storage_path.rstrip('/')}/.labape-isos"
     isos = env_yml.get("os_iso_paths") or {}
-    for key, local in list(isos.items()):
-        if key in keys and Path(local).is_file():
-            isos[key] = hostio.sync_iso(rhost, Path(local), remote_dir, log)
-        else:
-            isos[key] = f"{remote_dir}/{Path(local).name}"
+    for key, src in list(isos.items()):
+        if key in iso_keys:
+            size, sha = filedist.known(db, src)
+            isos[key] = filedist.ensure(db, host, src, f"{iso_dir}/{Path(src).name}", log, size, sha)
+        elif not host.is_primary and not host.files_from_share:
+            isos[key] = f"{iso_dir}/{Path(src).name}"
     env_yml["os_iso_paths"] = isos
     path.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
+    if job.type != "environment.deploy" or env is None:
+        return
+    for name in sorted({g.get("template") for g in (env.spec or {}).get("host_groups", [])
+                        if g.get("image_source") == "packer_template" and g.get("template")}):
+        filedist.ensure_template(db, host, name, log)
+    # Installers of the applications chosen here (`source: local` entries of the catalog).
+    catalog = yaml.safe_load((work / "ansible" / "package_catalog.yml").read_text(encoding="utf-8")) \
+        if (work / "ansible" / "package_catalog.yml").is_file() else {}
+    packages = (catalog or {}).get("packages") or {}
+    wanted = set()
+    for g in (env.spec or {}).get("host_groups", []):
+        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
+        for app in chosen["applications"]:
+            for spec in (packages.get(app) or {}).values():
+                if isinstance(spec, dict) and spec.get("source") == "local" and spec.get("path"):
+                    wanted.add(spec["path"])
+    store = roots(db)["installers"].rstrip("/")
+    if host.is_primary or host.files_from_share:
+        return
+    cache = filedist.cache_dir(host, "installers")
+    for rel in sorted(wanted):
+        size, sha = filedist.known(db, f"{store}/{rel}")
+        filedist.ensure(db, host, f"{store}/{rel}", f"{cache}/{rel}", log, size, sha)
+    gv = work / "ansible" / "inventory" / "group_vars" / "all" / "labape.yml"
+    if gv.parent.is_dir():
+        gv.write_text(yaml.safe_dump({"software_store_path": cache}), encoding="utf-8")
 
 
 def _signal(proc: subprocess.Popen, sig: int) -> None:

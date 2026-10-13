@@ -528,3 +528,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 2. **Avoided in advance:** `platform.freedesktop_os_release()` is Python 3.10+, and RHEL 9's `python3` is 3.9, so the installer would have failed its OS check there; ansible-core 2.21 also needs Python 3.12+. The installer reads `/etc/os-release` itself, keeps to 3.9 syntax (tested), and builds the Ansible venv with `python3.12` on 9.x.
 3. **Lab limit:** registering the Rocky test host hit `LABAPE_MAX_KVM_HOSTS` (4); the disabled `kvmtest1` record (its VM destroyed) was renamed and reused rather than raising the limit.
 
+## Primary file host (Y3a, 2026-10-13)
+
+1. **A deploy on the Rocky host failed after cloning the VM:** `discover_dhcp_ips.py` stopped with "unsupported operand type(s) for |: 'type' and 'NoneType'". Jobs on a remote host run `scripts/` with that host's `python3`, 3.9 on RHEL 9, where `str | None` in a signature needs `from __future__ import annotations`. Added to the two scripts that use it; a test keeps `scripts/` parsing as 3.9 and checks the import.
+2. **A new bridge on rkvm1 came up without its port:** NetworkManager had made an automatic "Wired connection 1" on the new NIC, and `nmcli con up <bridge>` doesn't bring the port connection up (autoconnect-slaves is off). The installer's `Net.Bridges` now runs `nmcli con up <bridge>-port` too.
+

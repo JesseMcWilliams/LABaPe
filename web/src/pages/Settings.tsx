@@ -38,6 +38,7 @@ interface AllSettings {
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   syslog_collector: Collector;
+  file_distribution: { wait_minutes: number };
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -188,7 +189,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -235,6 +236,12 @@ export default function Settings() {
         <Field label="Linux admin user" value={s.vm_accounts.linux_admin_user} sx={{ maxWidth: 320 }}
           help="Lower case letters, digits, _ and -; up to 32 characters"
           onChange={(e) => set("vm_accounts", { linux_admin_user: e.target.value })} />
+      </Section>
+
+      <Section title="File distribution" intro="The primary file host (Admin → KVM hosts) holds every file; a job on another host gets copies of the ones it needs. While the primary can't be reached, a job waits this long before it fails (a host that already has the file doesn't wait)."
+        onSave={async () => { await put("file_distribution", s.file_distribution); return "File distribution settings saved."; }}>
+        <Field label="Wait for the primary (minutes)" type="number" value={s.file_distribution.wait_minutes} sx={{ width: 240 }} help="0-1440"
+          onChange={(e) => set("file_distribution", { wait_minutes: Number(e.target.value) })} />
       </Section>
 
       <Section title="Remote access" intro="Browser SSH and RDP sessions to VMs (owners and admins) and KVM hosts (admins), through guacd. Each session is in Admin → Remote sessions. Recording saves the screen for the auditors (not keystrokes); it's announced on the session page."

@@ -188,6 +188,14 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
               {field("concurrency_limit", "Concurrent jobs", "Jobs run at once on this host", "number")}
               <FormControlLabel label="Enabled" sx={{ mt: 0.5 }}
                 control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} />
+              <FormControlLabel label="Primary file host" sx={{ mt: 0.5 }}
+                title="Holds every file LABaPe uses (ISOs, installers, template images); jobs on other hosts get copies. There is always exactly one."
+                control={<Checkbox checked={Boolean(form.is_primary)} disabled={Boolean(host?.is_primary)}
+                  onChange={(e) => setForm({ ...form, is_primary: e.target.checked, files_from_share: e.target.checked ? false : form.files_from_share })} />} />
+              <FormControlLabel label="Files from a share" sx={{ mt: 0.5 }}
+                title="You mounted the primary's file locations on this host at the same paths (NFS or SMB): jobs read them there instead of copying"
+                control={<Checkbox checked={Boolean(form.files_from_share)} disabled={Boolean(form.is_primary)}
+                  onChange={(e) => setForm({ ...form, files_from_share: e.target.checked })} />} />
             </Stack>
             <Stack direction="row" spacing={2}>
               <ActionButton type="submit" variant="contained"

@@ -65,6 +65,11 @@ class KvmHost(Base):
     log_forward: Mapped[bool] = mapped_column(Boolean, default=False)
     log_forward_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     log_forward_error: Mapped[str] = mapped_column(Text, default="")
+    # Files (design §29.4, questions 131-135): one host is the primary and holds every file;
+    # the others get copies when a job needs them, unless they see the primary's file
+    # locations at the same paths through a share their admin mounted.
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    files_from_share: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Network(Base):

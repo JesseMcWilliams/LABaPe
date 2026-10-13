@@ -42,6 +42,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- A primary file host: one KVM host holds every file (ISOs, installers,
+  template images); a job on another host gets copies of the ones it needs
+  (checked, kept for next time), waiting a configurable time when the
+  primary is unreachable. Templates on the primary can be used on every
+  host. A host can read the files from a share instead. Applications with
+  local installers now work on remote KVM hosts.
 - KVM hosts on Rocky and Alma Linux 9 or later (the installer's kvm
   profile, so Prepare works there too): dnf packages, libvirt's modular
   daemons, SELinux labels for the storage folders, Ansible on Python 3.12.

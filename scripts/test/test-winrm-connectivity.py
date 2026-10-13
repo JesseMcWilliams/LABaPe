@@ -15,6 +15,8 @@ Tries HTTPS (5986) with NTLM and certificate validation disabled — the
 self-signed-cert setup User_Docs/Install-OpenTofu-WSL.md §3 walks
 through, same reasoning as Claude_Docs/Reference_Credentials.md §2's insecure=true.
 """
+from __future__ import annotations
+
 import argparse
 import getpass
 import os

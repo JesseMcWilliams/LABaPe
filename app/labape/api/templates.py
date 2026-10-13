@@ -28,11 +28,19 @@ def _out(t: Template) -> dict:
 def list_templates(kvm_host_id: int | None = None, os: str | None = None, db: Session = Depends(get_db),
                    _: Principal = Depends(current_principal)):
     q = select(Template).where(Template.present.is_(True)).order_by(Template.name)
-    if kvm_host_id is not None:
-        q = q.where(Template.kvm_host_id == kvm_host_id)
     if os:
         q = q.where(Template.os_key == os)
-    return [_out(t) for t in db.scalars(q)]
+    if kvm_host_id is None:
+        return [_out(t) for t in db.scalars(q)]
+    out = [{**_out(t), "from_primary": False} for t in db.scalars(q.where(Template.kvm_host_id == kvm_host_id))]
+    # The primary file host's templates are usable everywhere: a deploy copies the image (design §29.4).
+    from ..engine import filedist
+    p = filedist.primary(db)
+    if p is not None and p.id != kvm_host_id:
+        have = {t["name"] for t in out}
+        out += [{**_out(t), "from_primary": True} for t in db.scalars(q.where(Template.kvm_host_id == p.id))
+                if t.name not in have]
+    return sorted(out, key=lambda t: t["name"])
 
 
 class TemplateIn(BaseModel):

@@ -1,6 +1,6 @@
 # Plan: syslog in the stack, the installer's answer file, and the primary file host
 
-> **Stage: Planning.** Y1, Y2a and Y2b built 2026-10-13 (Planning_Web-Interface-Design.md §29.1-§29.3); Y3 next. From the user's review of 2026-10-13. Questions 121-141 in
+> **Stage: Planning.** Y1, Y2a, Y2b and Y3a built 2026-10-13 (Planning_Web-Interface-Design.md §29.1-§29.4); Y3b (the stack apart from the primary) next. From the user's review of 2026-10-13. Questions 121-141 in
 > [Planning_Questions.md](Planning_Questions.md) are answered (§0). Building goes batch by batch,
 > Y1 first; each batch ships on its own and is recorded as built in
 > [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) (a new §29 subsection per batch).
@@ -84,7 +84,7 @@ nothing on 514/6514, so the collector binds there.
   modular daemons (`virtqemud`); SELinux file contexts for the storage folders (`virt_image_t`);
   firewalld openings for the syslog and VNC ports where needed. Tested on a Rocky 9 VM with nested KVM.
 
-## Y3. The primary file host
+## Y3. The primary file host (Y3a built: §29.4; the stack apart from the primary is Y3b)
 
 - **Primary.** One KVM host is marked **Primary** (Admin → KVM hosts, and an installer answer); for this
   lab, `kvm1`. It holds every file LABaPe uses (question 131), in the Files locations.
@@ -96,7 +96,8 @@ nothing on 514/6514, so the collector binds there.
   becomes this general mechanism.
 - **Shares** (question 133): off by default; a KVM host's page can say "files come from a share" (NFS or
   SMB, mount point and, for SMB, credentials in the secret store); that host then reads files there
-  instead of copying from the primary.
+  instead of copying from the primary. *(As built, §29.4: the admin mounts the share at the same paths;
+  LABaPe doesn't mount it or keep its credentials.)*
 - **Primary unavailable** (question 135): a job that needs a file the host doesn't have waits for the
   primary up to a setting (default 30 minutes), then fails; a host that already has the file with the
   right checksum doesn't wait.

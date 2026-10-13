@@ -216,6 +216,9 @@ def net_bridges(c: Ctx):
         if old and old != f"{br}-port":
             c.r.run(["nmcli", "con", "mod", old, "connection.autoconnect", "no"])
             c.r.run(["nmcli", "con", "down", old], check=False)
+        # The port too: NetworkManager doesn't bring it up with the bridge (autoconnect-slaves is off by
+        # default), and an automatic "Wired connection" may still hold the NIC.
+        c.r.run(["nmcli", "con", "up", f"{br}-port"], check=False)
         c.r.run(["nmcli", "con", "up", br])
         done.append(f"{br} created on {nic}")
     return DONE, "; ".join(done)

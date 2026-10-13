@@ -20,6 +20,8 @@ new one.
 Usage: discover_dhcp_ips.py <hosts.json> <environment.yml> [--timeout SECONDS]
 libvirt URI from LIBVIRT_URI or TF_VAR_libvirt_uri (default qemu:///system).
 """
+from __future__ import annotations
+
 import ipaddress
 import json
 import os

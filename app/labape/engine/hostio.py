@@ -280,15 +280,6 @@ def tunnel_conn(conn: str, port: int) -> str:
     parts = urlsplit(conn)
     userinfo = parts.netloc.rsplit("@", 1)[0] + "@" if "@" in parts.netloc else ""
     return urlunsplit((parts.scheme, f"{userinfo}127.0.0.1:{port}", parts.path, parts.query, parts.fragment))
-
-
-def sync_iso(host: Host, local: Path, remote_dir: str, log) -> str:
-    """Make sure an ISO is on the remote host (same name and size); returns its remote path."""
-    remote = f"{remote_dir}/{local.name}"
-    size = local.stat().st_size
-    r = host.run(f"stat -c %s {shlex.quote(remote)} 2>/dev/null || echo 0")
-    if r.stdout.decode().strip() == str(size):
-        return remote
     log.write(f"labape: copying {local.name} ({size / 2**30:.1f} GB) to {host.target}:{remote_dir}\n")
     with open(local, "rb") as fh:
         res = subprocess.run([*host.ssh_base(),
