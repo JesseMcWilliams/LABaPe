@@ -4,6 +4,7 @@ Usage: hosts.py list
        hosts.py enable|disable HOST_ID
        hosts.py rename HOST_ID NAME             (reuse a disabled test host's record)
        hosts.py attach HOST_ID NETWORK BRIDGE   (the host carries NETWORK on BRIDGE, as its default)
+       hosts.py set HOST_ID key=value ...       (e.g. libvirt_uri=..., ssh_address=...)
        hosts.py logfwd HOST_ID on|off           (send the host's logs to the stack's syslog collector)
 Signs in as labape-admin. A disabled host takes no jobs and isn't collected.
 """
@@ -25,6 +26,12 @@ elif args[0] == "rename":
 elif args[0] == "attach":
     r = c.put(f"{LABAPE}/api/hosts/{args[1]}/networks", json=[{"network": args[2], "bridge": args[3], "is_default": True}])
     print(r.status_code, r.text[:300])
+elif args[0] == "set":
+    h = c.get(f"{LABAPE}/api/hosts/{args[1]}").json()
+    body = {k: v for k, v in h.items() if k not in ("id", "resources")}
+    body.update(dict(a.split("=", 1) for a in args[2:]))
+    r = c.put(f"{LABAPE}/api/hosts/{args[1]}", json=body)
+    print(r.status_code, r.text[:200] if r.status_code != 200 else {k: r.json()[k] for k in ("name", "libvirt_uri", "ssh_address")})
 elif args[0] == "logfwd":
     r = c.post(f"{LABAPE}/api/hosts/{args[1]}/log-forwarding", json={"enabled": args[2] == "on"})
     j = r.json()

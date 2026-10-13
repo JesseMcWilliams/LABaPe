@@ -162,3 +162,17 @@ def test_installer_code_parses_as_python_3_9():
         src = p.read_text(encoding="utf-8")
         ast.parse(src, feature_version=(3, 9))                               # RHEL 9's python3
         assert "freedesktop_os_release(" not in src.replace("platform.freedesktop_os_release needs", "")
+
+
+def test_arm_stack_host_override_and_arch(monkeypatch):
+    text = S.services_override({}, kvm_device=False)
+    assert "labape-worker:\n    devices: !reset []" in text and "profiles" not in text
+    both = S.services_override({"InstallConjur": False}, kvm_device=False)
+    assert 'labape-conjur:\n    profiles: ["off"]' in both and "devices: !reset []" in both
+    assert S.services_override({}, kvm_device=True) is None
+    import platform as _platform
+    monkeypatch.setattr(_platform, "machine", lambda: "aarch64")
+    assert S.cpu_arch() == "arm64"
+    assert A.Resolver(interactive=False).need("InstallConjur") is False      # Conjur is amd64 only
+    monkeypatch.setattr(_platform, "machine", lambda: "x86_64")
+    assert S.cpu_arch() == "amd64" and A.Resolver(interactive=False).need("InstallConjur") is True
