@@ -7,7 +7,6 @@ import hashlib
 import ipaddress
 import json
 import os
-import platform
 import secrets
 import shutil
 import string
@@ -32,6 +31,43 @@ APT_PACKAGES = [
 ]
 # A web-only install (--profile web): the container image carries the engine's tools.
 WEB_PACKAGES = ["python3-yaml", "python3-venv", "git", "curl", "unzip", "openssl", "iputils-ping", "perl"]
+# RHEL family (Rocky, Alma; question 128), kvm profile: the same tools under their dnf names, plus
+# SELinux's labelling tool and needs-restarting. ansible-core needs Python 3.12 (Rocky 9's own is 3.9).
+RPM_PACKAGES = [
+    "qemu-kvm", "qemu-img", "libvirt", "libvirt-client", "virt-install", "xorriso", "python3-pyyaml",
+    "python3-libvirt", "git", "curl", "unzip", "openssl", "iputils", "NetworkManager", "perl", "smartmontools",
+    "policycoreutils-python-utils", "dnf-utils",
+]
+
+
+def os_release(path: str = "/etc/os-release") -> dict:
+    """/etc/os-release as a dict (platform.freedesktop_os_release needs Python 3.10; RHEL 9 has 3.9)."""
+    out = {}
+    try:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            k, sep, v = line.partition("=")
+            if sep and k.strip():
+                out[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return out
+
+
+def os_family(info: dict | None = None) -> str:
+    """debian, rhel, or '' (unsupported)."""
+    info = os_release() if info is None else info
+    ids = {info.get("ID", "")} | set(info.get("ID_LIKE", "").split())
+    if "debian" in ids:
+        return "debian"
+    if ids & {"rhel", "centos", "fedora", "rocky", "almalinux"}:
+        return "rhel"
+    return ""
+
+
+def rpm_packages(info: dict | None = None) -> list[str]:
+    info = os_release() if info is None else info
+    major = info.get("VERSION_ID", "").split(".")[0]
+    return RPM_PACKAGES + (["python3.12", "python3.12-pip"] if major == "9" else [])
 
 
 def kvm_side(a) -> bool:
@@ -67,9 +103,16 @@ def prereq_os(c: Ctx):
         if not c.r.dry_run:
             raise StepError("run the installer as root (sudo)")
         print("note: not root; a dry run can still show the plan")
-    info = platform.freedesktop_os_release() if hasattr(platform, "freedesktop_os_release") else {}
-    if info.get("ID") != "debian" and "debian" not in info.get("ID_LIKE", ""):
-        raise StepError(f"Debian (or a derivative) is required; this is {info.get('PRETTY_NAME', 'unknown')}")
+    info = os_release()
+    fam = os_family(info)
+    if not fam:
+        raise StepError(f"Debian (or a derivative) or the RHEL family (Rocky, Alma 9+) is required; "
+                        f"this is {info.get('PRETTY_NAME', 'unknown')}")
+    if fam == "rhel":
+        if c.a.need("Profile") != "kvm":
+            raise StepError("on the RHEL family only the kvm profile is supported so far: run the web stack on Debian")
+        if int((info.get("VERSION_ID", "0").split(".")[0] or 0)) < 9:
+            raise StepError(f"RHEL-family hosts need version 9 or later; this is {info.get('PRETTY_NAME')}")
     if kvm_side(c.a) and not Path("/dev/kvm").exists():
         raise StepError("/dev/kvm is missing: enable virtualization (VT-x/AMD-V) in firmware")
     return DONE, info.get("PRETTY_NAME", "")
@@ -83,11 +126,20 @@ def prereq_user(c: Ctx):
 
 
 def _installed(c: Ctx, pkg: str) -> bool:
+    if os_family() == "rhel":
+        # A missing package prints "package X is not installed" on stdout, so compare the name.
+        return c.r.out(["rpm", "-q", "--qf", "%{NAME}", pkg]) == pkg
     # Exact match: "unknown ok not-installed" also ends with "installed".
     return c.r.out(["dpkg-query", "-W", "-f=${Status}", pkg]) == "install ok installed"
 
 
 def prereq_packages(c: Ctx):
+    if os_family() == "rhel":
+        missing = [p for p in rpm_packages() if not _installed(c, p)]
+        if not missing:
+            return DONE, "all present"
+        c.r.run(["dnf", "install", "-y", "-q", *missing])
+        return DONE, f"installed {', '.join(missing)}"
     missing = [p for p in (APT_PACKAGES if kvm_side(c.a) else WEB_PACKAGES) if not _installed(c, p)]
     if not missing:
         return DONE, "all present"
@@ -96,10 +148,22 @@ def prereq_packages(c: Ctx):
     return DONE, f"installed {', '.join(missing)}"
 
 
+MODULAR = ("qemu", "network", "nodedev", "nwfilter", "secret", "storage", "interface", "proxy")
+
+
 def prereq_libvirt(c: Ctx):
-    c.r.run(["systemctl", "enable", "--now", "libvirtd"])
+    if "virtqemud.socket" in c.r.out(["systemctl", "list-unit-files", "virtqemud.socket"]):
+        # RHEL 9+ (and newer Debian builds that ship them): libvirt's modular daemons, started by their
+        # sockets. virtproxyd serves qemu+ssh clients that use the classic libvirt-sock.
+        units = [f"virt{d}d{s}.socket" for d in MODULAR for s in ("", "-ro", "-admin")]
+        have = c.r.out(["systemctl", "list-unit-files", "--no-legend", *units])
+        c.r.run(["systemctl", "enable", "--now", *[u for u in units if u in have]])
+        how = "modular daemons"
+    else:
+        c.r.run(["systemctl", "enable", "--now", "libvirtd"])
+        how = "libvirtd"
     c.r.run(["usermod", "-aG", "libvirt,kvm", c.user])
-    return DONE, f"{c.user} in libvirt, kvm"
+    return DONE, f"{how}; {c.user} in libvirt, kvm"
 
 
 # --- host networking ------------------------------------------------------------
@@ -169,7 +233,18 @@ def storage_dirs(c: Ctx):
     for key in ("VmStoragePath", "TemplateStoragePath"):
         c.r.run(["chown", f"{c.user}:{c.user}", c.a.need(key)])
         c.r.run(["chmod", "0775", c.a.need(key)])
-    return DONE, ", ".join(str(c.a.need(k)) for k in ("VmStoragePath", "TemplateStoragePath", "IsoPath"))
+    note = ""
+    if c.r.out(["getenforce"]) in ("Enforcing", "Permissive"):
+        # SELinux (RHEL family): QEMU may only use files labelled for it: disks and templates
+        # virt_image_t, installation media virt_content_t (read-only).
+        for key, label in (("VmStoragePath", "virt_image_t"), ("TemplateStoragePath", "virt_image_t"),
+                           ("IsoPath", "virt_content_t")):
+            spec = f"{str(c.a.need(key)).rstrip('/')}(/.*)?"
+            if c.r.run(["semanage", "fcontext", "-a", "-t", label, spec], check=False).returncode != 0:
+                c.r.run(["semanage", "fcontext", "-m", "-t", label, spec])      # already defined: update it
+            c.r.run(["restorecon", "-R", c.a.need(key)])
+        note = " (SELinux labels set)"
+    return DONE, ", ".join(str(c.a.need(k)) for k in ("VmStoragePath", "TemplateStoragePath", "IsoPath")) + note
 
 
 def storage_template_pool(c: Ctx):
@@ -235,7 +310,9 @@ def tools_ansible(c: Ctx):
         if not (VENV / "bin" / "pip").exists():
             # A venv made without python3-venv has python but no pip: start over.
             c.r.run(["rm", "-rf", str(VENV)])
-            c.r.run(["python3", "-m", "venv", "--system-site-packages", str(VENV)])
+            # ansible-core needs Python 3.12 or later: RHEL 9's own python3 is 3.9, so use python3.12 there.
+            py = shutil.which("python3.12") if os_family() == "rhel" and shutil.which("python3.12") else "python3"
+            c.r.run([py, "-m", "venv", "--system-site-packages", str(VENV)])
         c.r.run([str(VENV / "bin" / "pip"), "install", "--quiet", f"ansible-core=={v}", "pywinrm", "pyyaml"])
     for tool in ("ansible", "ansible-playbook", "ansible-vault", "ansible-galaxy", "ansible-inventory", "ansible-config"):
         link = Path("/usr/local/bin") / tool

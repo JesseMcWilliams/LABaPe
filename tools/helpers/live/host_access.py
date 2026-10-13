@@ -6,7 +6,7 @@ Usage: host_access.py register NAME ADDRESS [SERVICE_USER]   (a disabled host re
        host_access.py refresh HOST_ID
        host_access.py check HOST_ID                              (libvirt Check, then the SSH access check)
        host_access.py manage HOST_ID OP NAME [key=value ...]   (OP: user.add, group.member_add, ...)
-       host_access.py install HOST_ID                           (the answers JSON on stdin; waits for the job)
+       host_access.py install HOST_ID [BASE64_JSON]             (the answers JSON on stdin or as base64; waits for the job)
        host_access.py reinstall HOST_ID [--catalog [--rename=OLD:NEW]]           (Prepare again with its last successful install's answers;
                                                                  --catalog sends the networks as Admin → Networks choices)
 """
@@ -66,7 +66,10 @@ elif what == "manage":
     print(op, name, r.status_code, r.text[:300] if r.status_code != 200 else "ok")
 elif what in ("install", "reinstall"):
     if what == "install":
-        answers = json.loads(sys.stdin.read())
+        # The answers JSON on stdin, or base64 in the second argument (lab-live.sh passes no stdin).
+        import base64
+        answers = json.loads(base64.b64decode(args[1]) if len(args) > 1 and not args[1].startswith("--")
+                             else sys.stdin.read())
     else:
         done = [j for j in c.get(f"{LABAPE}/api/jobs?type=host.install&state=succeeded&limit=200").json()
                 if j.get("kvm_host_id") == int(args[0])]

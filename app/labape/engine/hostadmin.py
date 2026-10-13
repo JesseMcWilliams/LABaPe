@@ -219,6 +219,8 @@ if shutil.which("apt"):
     out["os"]["updates"] = len([l for l in sh("apt", "list", "--upgradable", timeout=60).splitlines() if "/" in l])
 elif shutil.which("dnf"):
     out["os"]["updates"] = len([l for l in sh("dnf", "-q", "check-update", timeout=120).splitlines() if l.strip() and not l.startswith(" ")])
+    if shutil.which("needs-restarting"):              # RHEL family: exit 1 means a reboot is needed
+        out["os"]["reboot_required"] = subprocess.run(["needs-restarting", "-r"], capture_output=True, timeout=120).returncode == 1
 out["disks"] = (js("lsblk", "-J", "-b", "-o", "NAME,PATH,TYPE,SIZE,MODEL,SERIAL,ROTA,TRAN,FSTYPE,MOUNTPOINTS,LABEL,UUID") or {}).get("blockdevices", [])
 out["filesystems"] = []
 for l in sh("df", "-PT", "-B1", "-x", "tmpfs", "-x", "devtmpfs", "-x", "overlay", "-x", "squashfs").splitlines()[1:]:
@@ -718,6 +720,13 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
                "WorkerPublicKey": hostio.ensure_key(), "TemplatesToBuild": []}     # templates: web jobs
     root = INSTALL_ROOT
     engine = get_settings().engine_dir
+    # The copy needs tar on the host; minimal RHEL-family images don't have it.
+    tar_ok = ssh.run("command -v tar >/dev/null || sudo -n dnf install -y -q tar >/dev/null 2>&1 "
+                     "|| sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tar >/dev/null 2>&1; "
+                     "command -v tar >/dev/null", timeout=300)
+    if tar_ok.returncode != 0:
+        log("labape: the host has no tar and installing it failed (dnf or apt-get)\n")
+        return 1
     pruned = ssh.run(f"sudo -n python3 - {root} {' '.join(INSTALL_KEEP)}", input=PRUNE.encode(), timeout=120)
     if pruned.returncode != 0:
         log(f"labape: tidying {root} failed: {pruned.stderr.decode(errors='replace').strip()[-300:]}\n")

@@ -467,7 +467,7 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Prepare this host</Typography>
           <Typography variant="body2" color="text.secondary">
             Installs what a KVM host needs (libvirt and QEMU, bridges, storage folders, Ansible, OpenTofu, Packer) with the installer&apos;s kvm profile,
-            as a job, through the access account. The host must run Debian (Rocky and Alma follow). Afterwards the host&apos;s libvirt URI points at it
+            as a job, through the access account. The host must run Debian, Rocky or Alma (9 or later). Afterwards the host&apos;s libvirt URI points at it
             and it carries the networks chosen below. Jobs bring their own files, so the host needs no command-line setup unless you want one.
           </Typography>
           <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
