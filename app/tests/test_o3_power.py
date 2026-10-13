@@ -154,6 +154,7 @@ def test_power_api_permissions_and_job(client, tmp_root, monkeypatch):
     with session_factory()() as db:
         job = db.get(Job, job_id)
         job.log_path = str(tmp_root / f"power-{job_id}.log")
+        db.commit()
         clock = Clock()
         assert power.run_job(db, job, run=v, sleep=clock.sleep, now=clock.now) == 0
     assert v.order("shutdown") == ["dc1"] and v.order("start") == ["dc1"]

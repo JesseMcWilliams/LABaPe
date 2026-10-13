@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  Alert, Box, Button, Checkbox, FormControlLabel, Link, Paper, Stack, Table, TableBody, TableCell, TableHead,
-  TableRow, Typography,
+  Alert, Box, Button, Checkbox, FormControlLabel, Link, List, ListItemButton, ListItemText, Paper, Stack, Table,
+  TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, KvmHost, Network } from "../api";
 import { hasRole, useAuth } from "../App";
@@ -11,6 +11,10 @@ import { DetailHeader, Facts } from "../components/PageParts";
 import { ActionButton, useConfirm } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import HostNetworks from "./HostNetworks";
+import {
+  AccessSection, AccountsSection, DashboardSection, DrivesSection, GroupsSection, NicsSection, OsSection, SECTIONS,
+  SectionHeader, useAdminView, VmsSection,
+} from "../components/HostSections";
 
 type HostForm = Omit<KvmHost, "id" | "resources">;
 interface CheckResult { ok: boolean; remote: boolean; libvirt: string; problems: string[] }
@@ -65,9 +69,57 @@ const blank: HostForm = {
   template_storage_path: "/data/VMs/LABaPe/templates", bridge: "br0", concurrency_limit: 2, enabled: true,
 };
 
-// One KVM host (design §22.2): settings, the networks it carries, and its
-// load. Admins edit; others see it read-only.
+// One KVM host (design §22.2, §28.4): sections on the left (question R11):
+// Dashboard, Drives and volumes, NICs, OS, Accounts, Groups, VMs, SSH access,
+// Settings. A new host shows only the registration form.
 export default function HostDetail() {
+  const { id } = useParams();
+  if (id === "new") return <HostSettings />;
+  return <HostSectionsPage hostId={Number(id)} />;
+}
+
+function HostSectionsPage({ hostId }: { hostId: number }) {
+  const [params, setParams] = useSearchParams();
+  const section = params.get("section") ?? "dashboard";
+  const { view, error, load } = useAdminView(hostId);
+  const refresh = async () => { await api.post(`/api/hosts/${hostId}/admin/refresh`); load(); };
+  const label = SECTIONS.find((x) => x.key === section)?.label ?? "";
+  const body = () => {
+    if (section === "settings") return <HostSettings embedded />;
+    if (!view) return error ? <Alert severity="error">{error}</Alert> : null;
+    if (section === "access") return <AccessSection host={view.host} reload={load} />;
+    if (section === "vms") return <VmsSection view={view} />;
+    if (view.host.access_status !== "ready" || !view.collected_at) return null;
+    if (section === "drives") return <DrivesSection view={view} />;
+    if (section === "nics") return <NicsSection view={view} />;
+    if (section === "os") return <OsSection view={view} />;
+    if (section === "accounts") return <AccountsSection view={view} hostId={hostId} reload={load} />;
+    if (section === "groups") return <GroupsSection view={view} hostId={hostId} reload={load} />;
+    return <DashboardSection view={view} />;
+  };
+  return (
+    <Stack spacing={2}>
+      <DetailHeader back="/admin/hosts" backLabel="KVM hosts" title={view?.host.name ?? "KVM host"} />
+      <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
+        <Paper variant="outlined" sx={{ width: 190, flexShrink: 0 }}>
+          <List dense disablePadding>
+            {SECTIONS.map((x) => (
+              <ListItemButton key={x.key} selected={section === x.key} onClick={() => setParams({ section: x.key }, { replace: true })}>
+                <ListItemText primary={x.label} />
+              </ListItemButton>
+            ))}
+          </List>
+        </Paper>
+        <Stack spacing={2} sx={{ flexGrow: 1, minWidth: 0 }}>
+          {section !== "settings" && section !== "access" && <SectionHeader view={view} onRefresh={refresh} title={label} />}
+          {body()}
+        </Stack>
+      </Box>
+    </Stack>
+  );
+}
+
+function HostSettings({ embedded = false }: { embedded?: boolean }) {
   const { id } = useParams();
   const isNew = id === "new";
   const navigate = useNavigate();
@@ -116,7 +168,7 @@ export default function HostDetail() {
       onChange={(e) => setForm({ ...form, [key]: type === "number" ? Number(e.target.value) : e.target.value })} />
   );
 
-  const header = (
+  const header = embedded ? null : (
     <DetailHeader back="/admin/hosts" backLabel="KVM hosts" title={isNew ? "Register a KVM host" : host?.name ?? "KVM host"} />
   );
 

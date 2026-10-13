@@ -193,7 +193,12 @@ def run_job(db: Session, job: Job, run=None, sleep=time.sleep, now=time.monotoni
     action, only = p.get("action"), p.get("vms") or None
     timeout = int(p.get("timeout_seconds") or DEFAULT_TIMEOUT)
     steps = plan(env, only)
-    log = lambda msg: _append(job, msg)                                   # noqa: E731
+    from .runner import beat
+
+    def log(msg: str) -> None:
+        _append(job, msg)
+        if job.id is not None:
+            beat(job.id)                   # waits can run long: keep the job from looking stale
     what = ", ".join(only) if only else f"all of {env.name}"
     log(f"labape: {action.replace('_', ' ')} {what} on {host.name}\n")
     vms = Vms(host.libvirt_uri, run)

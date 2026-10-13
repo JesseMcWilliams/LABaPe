@@ -164,6 +164,11 @@ def storage_dirs(c: Ctx):
         path = Path(c.a.need(key))
         if not path.is_dir():
             c.r.run(["mkdir", "-p", str(path)])
+    # Jobs write VM disks and templates as the service user (OpenTofu, promote, refresh):
+    # those two folders are theirs. The ISO folder stays as it is (read by jobs only).
+    for key in ("VmStoragePath", "TemplateStoragePath"):
+        c.r.run(["chown", f"{c.user}:{c.user}", c.a.need(key)])
+        c.r.run(["chmod", "0775", c.a.need(key)])
     return DONE, ", ".join(str(c.a.need(k)) for k in ("VmStoragePath", "TemplateStoragePath", "IsoPath"))
 
 

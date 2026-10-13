@@ -495,3 +495,14 @@ Design §27 (Planning_Web-Interface-Design.md). Deployed as environment `syslog1
 
 1. **A reset could drop the message.** `notify.send_syslog` closed the raw socket right after sending, without a TLS close. With unread data in its receive buffer (TLS 1.3 session tickets), closing sends a TCP reset, and the collector's pending read then fails ("connection was forcibly closed"; rsyslog: "non-properly terminated"), which can lose the message it had already received. Found while writing the TLS pytest. Fixed: `unwrap()` sends close_notify first.
 2. **A platform certificate didn't verify.** The sender trusted only the container's system roots, so a collector with a platform certificate (the Syslog collector service) worked only with verification off. It now also trusts the platform root (`ca.root_pem()`), with TLS 1.2 as the minimum. Live: Settings → Syslog pointed at `syslog1:6514` (TLS, verification on); the settings change and the test message arrived with no TLS errors on the collector.
+
+### KVM host access and Prepare bring-up (2026-10-13)
+
+Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
+
+1. **"Refused the password":** LABaPe's VMs allow key sign-in only (`PasswordAuthentication no`). Correct for them, and the error now says it may be the cause. The live script turns password sign-in on for the test only.
+2. **The install job never started:** the worker skips jobs on disabled hosts, and a host is prepared before it's enabled. `host.install` now runs regardless.
+3. **Jobs marked failed after two minutes:** jobs the worker runs itself didn't update their heartbeat, so `recover_stale` failed the long install ("the worker running this job stopped"). `runner.beat()` now keeps it (and the power job's) alive and reports Cancel.
+4. **No metrics on a disabled host:** the collector filtered on `enabled`, which is about deploys. It now watches every host with access.
+5. **Installer: missing `secrets.vault.example.yml`, then "Destination not writable":** the image lacked the repo-root example, and `Config.Secrets` runs ansible-vault as the service user, who must own the repository copy. The image now carries the file; the job installs to a stable `/opt/labape-kvm` owned by the service user (a per-job folder also lost the installer's progress and the host's vault between runs).
+6. **Installer bug, older than this work:** `Storage.Dirs` created the VM and template folders as root without giving them to the service user, so **Check** reported them not writable on a fresh host. Fixed in the installer; it showed only on a host that didn't have the folders already.

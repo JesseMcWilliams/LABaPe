@@ -16,12 +16,23 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   live-test scripts now check the stack's stores.
 
 ### Fixed
+- The installer's `Storage.Dirs` gives the VM and template folders to the
+  service user, so jobs on a freshly installed host can write there.
+- Long jobs the worker runs itself (VM power, host install) keep their
+  heartbeat, so they're no longer marked failed after two minutes.
 - Audit syslog over TLS ends the connection with a TLS close_notify, and
   trusts the platform root as well as the system roots, so a collector with
   a platform certificate (the Syslog collector service) verifies without
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- KVM host administration over SSH: a dedicated access account (default
+  `localadmin01`, key-only, passwordless sudo) set up once from an admin
+  login typed in and never stored; a details page with Dashboard (warnings,
+  24-hour trends), Drives and volumes (with SMART), NICs, OS, Accounts,
+  Groups and VMs; metrics every 5 minutes kept 7 days; admins manage the
+  host's accounts and groups; **Prepare this host** runs the installer's kvm
+  profile on a new Debian host as a job and points LABaPe at it.
 - VM power: start, shut down (clean, with an optional force off after a
   timeout), restart and force off, for one VM or a whole environment
   (owners and admins). A whole-environment start follows each host group's

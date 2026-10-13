@@ -35,3 +35,10 @@ app/tests
 container/secrets
 container/.env
 tools/**/.env
+
+# The installer ships to new KVM hosts from the image (design §28.4): never its
+# per-host state, logs or answer files.
+deploy/state
+deploy/logs
+deploy/answers.*.json
+!deploy/answers.sample.json

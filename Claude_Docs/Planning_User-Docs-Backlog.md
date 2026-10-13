@@ -15,3 +15,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - The Admin area (left-hand list; Hosts and Networks are admin pages now), the filters on Jobs, Audit log and User errors (kept in the URL), the User errors export, and Catalog → Requests → New request.
 - Files: tab descriptions and filters; installer targets (generic, family, specific OS), how they're inferred, and the catalog/deploy refusals.
 - Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
+- Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.

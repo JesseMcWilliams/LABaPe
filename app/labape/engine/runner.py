@@ -39,7 +39,7 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, engine_secrets, hostio, maintenance, power, rotation, template_versions
+from . import downloads, engine_secrets, hostadmin, hostio, maintenance, power, rotation, template_versions
 from .. import maintenance_mode, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -88,7 +88,8 @@ def claim(db: Session, worker: str) -> Job | None:
             continue
         if job.kvm_host_id is not None:
             limit, enabled = limits.get(job.kvm_host_id, (0, False))
-            if not enabled or running.get(job.kvm_host_id, 0) >= limit:
+            # A host is prepared (host.install) before it's enabled for deploys (design §28.4).
+            if (not enabled and job.type != "host.install") or running.get(job.kvm_host_id, 0) >= max(limit, 1):
                 continue
         job.state = "running"
         job.worker = worker
@@ -117,6 +118,22 @@ def recover_stale(db: Session) -> None:
                 if env is not None:
                     env.status = "failed"
     db.commit()
+
+
+def beat(job_id: int) -> bool:
+    """Keep a long job the worker runs itself (power, host install) from looking stale, and
+    say whether it's been asked to cancel."""
+    try:
+        with session_factory()() as db:
+            j = db.get(Job, job_id)
+            if j is None:
+                return False
+            j.heartbeat_at = utcnow()
+            db.commit()
+            return bool(j.cancel_requested)
+    except Exception as exc:  # noqa: BLE001 — best effort: a busy database mustn't fail the job
+        log.debug("heartbeat for job %s failed: %s", job_id, exc)
+        return False
 
 
 def _append(job: Job, msg: str) -> None:
@@ -435,7 +452,7 @@ def run(job_id: int, worker: str) -> None:
         # Jobs the worker runs itself, with no KVM host or engine scripts.
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
-                  "environment.power": power.run_job}
+                  "environment.power": power.run_job, "host.install": hostadmin.run_install}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -682,6 +699,8 @@ def serve(slots: int | None = None) -> None:
                 sync_templates(db)
             with session_factory()() as db:
                 collect_host_stats(db)
+            with session_factory()() as db:
+                hostadmin.collect_due(db)          # host facts and metrics over SSH (design §28.4)
             with session_factory()() as db:
                 scan_files(db)
             hash_in_background()
