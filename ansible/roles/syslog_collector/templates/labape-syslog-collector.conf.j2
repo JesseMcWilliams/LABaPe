@@ -8,9 +8,15 @@
 # Each line shows the parsed header, so a sender's format can be checked:
 #   <received> from=<ip> host= pri=<facility>.<severity> app= procid= msgid= sd= msg=
 
-# No reverse DNS for senders: the lines record the sender's address (from=), and
-# a slow PTR lookup held each new TCP connection's messages back by seconds.
+{% if not syslog_collector_dns_lookup | bool %}
+# No reverse DNS for senders (syslog_collector_dns_lookup: false, the default):
+# the lines record the sender's address (from=), and a slow PTR lookup held each
+# new TCP connection's messages back by seconds.
 global(net.enableDNS="off")
+{% else %}
+# Reverse DNS for senders is on (syslog_collector_dns_lookup: true): rsyslog
+# resolves each sender's name; a slow resolver delays new TCP connections.
+{% endif %}
 
 template(name="labape_remote_file" type="string"
          string="{{ syslog_collector_log_dir }}/%HOSTNAME:::secpath-replace%/%APP-NAME:::secpath-replace%.log")
