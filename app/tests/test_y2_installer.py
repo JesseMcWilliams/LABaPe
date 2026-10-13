@@ -140,3 +140,25 @@ def test_stores_script_honours_conjur_off():
     text = (DEPLOY.parent / "container" / "stores" / "stores.sh").read_text(encoding="utf-8")
     assert 'STORE_SERVICES=(labape-openbao)' in text and '[ "$CONJUR_ON" = no ] || configure_conjur' in text
     assert 'dc up -d "${STORE_SERVICES[@]}"' in text and 'if sys.argv[5] != "no":' in text
+
+
+def test_os_family_and_rhel_packages(tmp_path):
+    rocky9 = {"ID": "rocky", "ID_LIKE": "rhel centos fedora", "VERSION_ID": "9.6", "PRETTY_NAME": "Rocky Linux 9.6"}
+    assert S.os_family(rocky9) == "rhel"
+    assert S.os_family({"ID": "almalinux", "ID_LIKE": "rhel centos fedora", "VERSION_ID": "10.0"}) == "rhel"
+    assert S.os_family({"ID": "ubuntu", "ID_LIKE": "debian"}) == "debian"
+    assert S.os_family({"ID": "arch"}) == ""
+    pk9, pk10 = S.rpm_packages(rocky9), S.rpm_packages({**rocky9, "VERSION_ID": "10.0"})
+    assert "python3.12" in pk9 and "python3.12" not in pk10              # ansible-core needs 3.12+
+    assert {"qemu-kvm", "libvirt", "virt-install", "policycoreutils-python-utils", "smartmontools"} <= set(pk10)
+    f = tmp_path / "os-release"
+    f.write_text('NAME="Rocky Linux"\nID="rocky"\nID_LIKE="rhel centos fedora"\nVERSION_ID="9.6"\n# c\n')
+    assert S.os_release(str(f))["ID_LIKE"] == "rhel centos fedora" and S.os_release(str(tmp_path / "x")) == {}
+
+
+def test_installer_code_parses_as_python_3_9():
+    import ast
+    for p in [DEPLOY / "install-labape.py", *(DEPLOY / "labape_deploy").glob("*.py")]:
+        src = p.read_text(encoding="utf-8")
+        ast.parse(src, feature_version=(3, 9))                               # RHEL 9's python3
+        assert "freedesktop_os_release(" not in src.replace("platform.freedesktop_os_release needs", "")

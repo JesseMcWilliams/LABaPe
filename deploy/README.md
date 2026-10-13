@@ -61,14 +61,14 @@ Nothing secret is ever written to the answers file.
 
 | Step | What it does | Needs root for |
 |---|---|---|
-| `Prereq.Os` | Root, Debian, `/dev/kvm` present | |
+| `Prereq.Os` | Root, Debian (any profile) or Rocky/Alma 9+ (kvm profile only), `/dev/kvm` present | |
 | `Prereq.User` | Creates the service user if missing | useradd |
-| `Prereq.Packages` | QEMU/KVM, libvirt, virt-install, xorriso, Python, NetworkManager | apt |
-| `Prereq.Libvirt` | libvirtd enabled; service user in `libvirt` and `kvm` | systemctl, usermod |
+| `Prereq.Packages` | QEMU/KVM, libvirt, virt-install, xorriso, Python, NetworkManager, smartmontools (apt; dnf on the RHEL family, plus SELinux tools, `dnf-utils` and, on 9.x, Python 3.12 for Ansible) | apt, dnf |
+| `Prereq.Libvirt` | libvirt's modular daemons (sockets, where the system has them, e.g. RHEL 9+) or `libvirtd`; service user in `libvirt` and `kvm` | systemctl, usermod |
 | `Net.Validate` | Checks the network answers: a default exists, ranges are inside their networks, static addressing has a pool | |
 | `Net.BridgeNetfilter` | Stops iptables filtering bridged VM traffic; otherwise Docker drops it (Claude_Docs/Testing_Troubleshooting-Log.md) | sysctl |
 | `Net.Bridges` | Creates each missing VM bridge on its NIC with NetworkManager. The host takes a DHCP address on it but never its default route. Refuses the NIC carrying the default route. | nmcli |
-| `Storage.Dirs` | VM, template and ISO directories | |
+| `Storage.Dirs` | VM, template and ISO directories; with SELinux, labelled `virt_image_t` (VMs, templates) and `virt_content_t` (ISOs) | semanage |
 | `Storage.TemplatePool` | libvirt pool `labape-templates` | |
 | `Tools.Ansible` | ansible-core, pywinrm and the four collections in `/opt/labape/venv`, linked into `/usr/local/bin`. Every install needs it, for the vault. | |
 | `Tools.OpenTofu`, `Tools.Packer` | Checksum-verified downloads into `/usr/local/bin`, plus the Packer plugins (`InstallCli`) | |

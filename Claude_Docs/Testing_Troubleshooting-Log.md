@@ -522,3 +522,9 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 2. **A fresh install's image was stamped `dev`:** `git describe` ran as root on the service user's checkout and git refused it ("dubious ownership"). `repo_version` passes `-c safe.directory=<repo>`.
 3. **Noise, not fixed yet:** every audit event sent over TLS makes the collector log "unexpected eof while reading", because the sender opens and closes one TLS connection per event. Nothing is lost. A persistent connection in the sender would remove it (backlog).
 
+## RHEL-family KVM hosts (Y2b, 2026-10-13)
+
+1. **Prepare stopped at "sudo: tar: command not found"** on a minimal Rocky 9 image. Prepare now installs `tar` (dnf or apt) before copying the installer.
+2. **Avoided in advance:** `platform.freedesktop_os_release()` is Python 3.10+, and RHEL 9's `python3` is 3.9, so the installer would have failed its OS check there; ansible-core 2.21 also needs Python 3.12+. The installer reads `/etc/os-release` itself, keeps to 3.9 syntax (tested), and builds the Ansible venv with `python3.12` on 9.x.
+3. **Lab limit:** registering the Rocky test host hit `LABAPE_MAX_KVM_HOSTS` (4); the disabled `kvmtest1` record (its VM destroyed) was renamed and reused rather than raising the limit.
+

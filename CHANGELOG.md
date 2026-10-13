@@ -42,6 +42,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- KVM hosts on Rocky and Alma Linux 9 or later (the installer's kvm
+  profile, so Prepare works there too): dnf packages, libvirt's modular
+  daemons, SELinux labels for the storage folders, Ansible on Python 3.12.
 - The installer reuses its saved answers on every run (an update asks only
   new questions; `--fresh` asks again), shows every answer for a yes before
   it starts when anything was asked, and offers each optional service:

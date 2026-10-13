@@ -14,11 +14,11 @@ K=(ssh -i "$D/ssh/labape_bootstrap" -o BatchMode=yes -o StrictHostKeyChecking=ac
 PW="$(openssl rand -base64 32 | tr -d '\n/+=' | cut -c1-28)"
 printf 'labape:%s\n' "$PW" | "${K[@]}" sudo chpasswd
 printf 'PasswordAuthentication yes\nKbdInteractiveAuthentication no\n' \
-  | "${K[@]}" "sudo tee /etc/ssh/sshd_config.d/00-labape-test.conf >/dev/null && sudo systemctl reload ssh"
+  | "${K[@]}" "sudo tee /etc/ssh/sshd_config.d/00-labape-test.conf >/dev/null && sudo systemctl reload sshd 2>/dev/null || sudo systemctl reload ssh"
 printf '%s' "$PW" | docker run --rm -i --network host -v "$HOME/labape-test-tools:/tools:ro" \
   -v "$R/tools/authentik-test/.env:/authentik.env:ro" -e LABAPE="$URL" -e AK_ENV=/authentik.env \
   --entrypoint python3 labape:local /tools/host_access.py setup "$HOST_ID" "$VM" labape \
   2>&1 | grep -v -E "InsecureRequestWarning|warnings.warn"
 unset PW
-"${K[@]}" "sudo rm -f /etc/ssh/sshd_config.d/00-labape-test.conf && sudo systemctl reload ssh"
+"${K[@]}" "sudo rm -f /etc/ssh/sshd_config.d/00-labape-test.conf && sudo systemctl reload sshd 2>/dev/null || sudo systemctl reload ssh"
 "${K[@]}" sudo passwd -l labape >/dev/null && echo "host_access_vm: the test password on labape@$VM is locked again"

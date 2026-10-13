@@ -80,7 +80,8 @@ def test_install_copies_only_the_installer_and_examples(client, tmp_path, monkey
     members = [a for a in tar if not a.startswith("-") and a not in ("tar",)][1:]   # after -C <engine>
     assert members and set(members) <= set(hostadmin.INSTALL_FILES)
     assert "--exclude=deploy/update-agent" in tar and not {"packer", "iso", "tofu", "ansible"} & set(members)
-    assert seen["runs"][0].startswith("sudo -n python3 - /opt/labape-kvm deploy/state")
+    assert seen["runs"][0].startswith("command -v tar") and "dnf install -y -q tar" in seen["runs"][0]
+    assert seen["runs"][1].startswith("sudo -n python3 - /opt/labape-kvm deploy/state")
     assert "removed what older installs left in /opt/labape-kvm: packer\n" in log.read_text()   # not the copy's own files
 
 

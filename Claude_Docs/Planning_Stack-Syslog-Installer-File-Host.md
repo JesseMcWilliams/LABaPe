@@ -1,6 +1,6 @@
 # Plan: syslog in the stack, the installer's answer file, and the primary file host
 
-> **Stage: Planning.** Y1 and Y2a built 2026-10-13 (Planning_Web-Interface-Design.md §29.1, §29.2); Y2b (RHEL family) next. From the user's review of 2026-10-13. Questions 121-141 in
+> **Stage: Planning.** Y1, Y2a and Y2b built 2026-10-13 (Planning_Web-Interface-Design.md §29.1-§29.3); Y3 next. From the user's review of 2026-10-13. Questions 121-141 in
 > [Planning_Questions.md](Planning_Questions.md) are answered (§0). Building goes batch by batch,
 > Y1 first; each batch ships on its own and is recorded as built in
 > [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) (a new §29 subsection per batch).
