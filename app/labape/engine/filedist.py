@@ -44,6 +44,23 @@ def primary(db: Session) -> KvmHost | None:
     return db.scalar(select(KvmHost).where(KvmHost.is_primary.is_(True)))
 
 
+def ensure_primary(db: Session) -> KvmHost | None:
+    """There's always a primary once there's a host (design §29.4): the host the stack runs on
+    (qemu:///system), else the first one registered. A new install's database is created at
+    the latest schema (no migration picks one) and `labape bootstrap` registers hosts directly,
+    so the worker checks this every minute."""
+    p = primary(db)
+    if p is not None:
+        return p
+    hosts = list(db.scalars(select(KvmHost).order_by(KvmHost.id)))
+    if not hosts:
+        return None
+    p = next((h for h in hosts if not hostio.is_remote(h.libvirt_uri)), hosts[0])
+    p.is_primary, p.files_from_share = True, False
+    db.commit()
+    return p
+
+
 def endpoint(h: KvmHost) -> hostio.Host | None:
     """None: the host the worker runs on (its paths are local)."""
     return hostio.Host(h.libvirt_uri) if hostio.is_remote(h.libvirt_uri) else None

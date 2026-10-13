@@ -283,3 +283,18 @@ def test_file_roots_and_templates_back_to_the_primary(client, monkeypatch):
         assert [c[2] for c in f.copies] == [f"{p_dir}/new.json", f"{p_dir}/new.qcow2"]
         assert filedist.to_primary(db, r, "new", log) is False                          # already there
         assert filedist.to_primary(db, p, "new", log) is False                          # built on the primary
+
+
+def test_a_primary_is_always_chosen(client):
+    """A new install's hosts come from `labape bootstrap`, not the API, and its database starts at
+    the latest schema: the worker makes sure there's a primary (design §29.4)."""
+    from labape import bootstrap
+    with session_factory()() as db:
+        assert filedist.ensure_primary(db) is None                         # no hosts yet
+        changes = bootstrap.apply(db, {"hosts": [{"name": "garagepc", "libvirt_uri": "qemu+ssh://labape@10.0.0.9/system"}]})
+        assert "host garagepc: the primary file host" in changes
+        assert filedist.primary(db).name == "garagepc"
+        db.query(KvmHost).update({KvmHost.is_primary: False})
+        db.add(KvmHost(name="local", libvirt_uri="qemu:///system"))
+        db.commit()
+        assert filedist.ensure_primary(db).name == "local"                  # the stack's own host first
