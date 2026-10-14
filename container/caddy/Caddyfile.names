@@ -1,0 +1,36 @@
+# TLS in front of the LABaPe API and Authentik with one certificate for every name of the stack
+# (design §48.4, question 158): container/caddy/web-tls.sh gets it from the platform CA, with
+# LABAPE_HOSTNAME and LABAPE_ALT_NAMES (host name, FQDN, LAN address) as SANs, and renews it daily
+# when due. Caddy answers on any name with it: browsers may use whichever they like.
+
+{
+	default_sni {$LABAPE_HOSTNAME}
+	auto_https disable_certs
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}
+
+:443 {
+	tls /labape-tls/web.crt /labape-tls/web.key
+	encode gzip
+	reverse_proxy labape-api:8000 {
+		header_up -X-LABaPe-Local
+		flush_interval -1
+	}
+}
+
+# Authentik (design §47): the same certificate, on port 9445.
+:9445 {
+	tls /labape-tls/web.crt /labape-tls/web.key
+	reverse_proxy {$LABAPE_AUTHENTIK_UPSTREAM}
+}
+
+https://localhost:8443 {
+	tls internal
+	reverse_proxy labape-api:8000 {
+		header_up X-LABaPe-Local 1
+		flush_interval -1
+	}
+}

@@ -104,6 +104,8 @@ STEPS = [
      "Sign-in: Authentik installed with LABaPe, an existing OIDC provider, a throwaway Authentik, or none"),
     ("Stack.Build", S.stack_build, ["InstallWebUi", "ContainerRuntime"], web, "Build the LABaPe image"),
     ("Stack.Up", S.stack_up, ["InstallWebUi", "ContainerRuntime", "WebHostname"], web, "Start the stack"),
+    ("Stack.WebTls", S.stack_web_tls, ["InstallWebUi", "Tls", "ServiceUser"], web,
+     "The web certificate with every name of the stack (host name, FQDN, address) from the platform CA"),
     ("Stack.Stores", S.stack_stores, ["InstallWebUi", "ContainerRuntime", "ServiceUser", "InstallConjur"], web,
      "OpenBao (and Conjur if chosen) in the stack: initialize, unseal at boot, connect LABaPe (design §26)"),
     ("Stack.UpdateAgent", S.update_agent, ["InstallWebUi", "ServiceUser", "InstallUpdateAgent"], agent,

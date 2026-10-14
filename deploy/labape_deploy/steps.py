@@ -739,6 +739,19 @@ def stack_stores(c: Ctx):
     return DONE, ("OpenBao and Conjur" if conjur else "OpenBao") + " running in the stack, unsealed and connected to LABaPe"
 
 
+def stack_web_tls(c: Ctx):
+    """The web interface's certificate with every name of the stack (design §48.4, question 158): the
+    host name, FQDN and LAN address next to the web name, one certificate from the platform CA, and the
+    daily renewal timer. Only with the platform CA (Tls labape-ca)."""
+    if c.a.need("Tls") != "labape-ca":
+        return NA, "the web certificate isn't from the platform CA"
+    uid = c.r.out(["id", "-u", c.user]) or "1000"
+    c.r.run(["loginctl", "enable-linger", c.user])     # the renewal timer is a user unit
+    c.r.run(["bash", str(c.repo / "container" / "caddy" / "web-tls.sh"), "setup"], as_user=True,
+            cwd=c.repo / "container", env={"XDG_RUNTIME_DIR": f"/run/user/{uid}"})
+    return DONE, "one certificate for every name of the stack, renewed daily when due"
+
+
 def update_agent(c: Ctx):
     """The host-side update agent (design §23.2): a user-level systemd path
     unit for the service user, kept running by lingering."""
