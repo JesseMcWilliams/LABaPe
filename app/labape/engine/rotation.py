@@ -315,6 +315,28 @@ def _env_rotator(kind: str):
 for kind, (label, notes) in ENV_ACCOUNTS.items():
     REGISTRY[kind] = Rotator(kind=kind, label=label, interval_hours=168, notes=notes, run=_env_rotator(kind))
 
+
+def _account_rotator(db: Session, policy: SecretPolicy, log) -> str:
+    """An environment's own account (design §42): a new password on its VMs."""
+    from .. import env_accounts
+    from ..models import Environment
+    from .vmaccess import AccessError
+    env = db.get(Environment, (policy.params or {}).get("environment_id"))
+    if env is None or env.status != "deployed":
+        raise RotationError("the environment isn't deployed")
+    try:
+        return env_accounts.rotate(db, env, (policy.params or {}).get("account", ""), log)
+    except AccessError as exc:
+        raise RotationError(str(exc)) from exc
+
+
+REGISTRY["env_account"] = Rotator(kind="env_account", label="Environment account", interval_hours=168,
+                                  notes="Sets a new password for one of the environment's own accounts on its VMs "
+                                        "(the domain controller for a domain account), and stores it.",
+                                  run=_account_rotator)
+# Everything tied to one environment: skipped while it isn't deployed, its job linked to it.
+ENV_KINDS = set(ENV_ACCOUNTS) | {"env_account"}
+
 PLATFORM = ("builtin_data_key", "worker_ssh_key", "directory_token", "master_key", "postgres_password", "ca_password",
             "vault_password", "bootstrap_ssh_key", "oidc_client_secret", "smtp_password")
 
@@ -368,6 +390,9 @@ def policy_secret(p: SecretPolicy) -> str | None:
     if p.kind in ENGINE_KINDS:            # catalog rows once imported (design §26)
         from . import engine_secrets
         return engine_secrets.VAULT_PASSWORD if p.kind == "vault_password" else engine_secrets.SSH_KEY
+    if p.kind == "env_account" and (p.params or {}).get("environment_id"):
+        from ..env_accounts import secret_name
+        return secret_name(p.params["environment_id"], p.params.get("account", ""))
     if p.kind in ENV_ACCOUNTS and (p.params or {}).get("environment_id"):
         from .vmaccess import env_password_name
         return env_password_name(p.params["environment_id"], p.kind)
@@ -397,7 +422,16 @@ def ensure_env_policies(db: Session) -> None:
     from ..models import Environment
     from .vmaccess import _inventory, env_targets, remote_env
     have = set(db.scalars(select(SecretPolicy.name).where(SecretPolicy.name.startswith("env."))))
+    from ..env_accounts import accounts
     for env in db.scalars(select(Environment).where(Environment.status == "deployed")):
+        for a in accounts(env):                    # its own accounts (design §42)
+            name = f"env.{env.id}.account.{a['name']}"
+            if name not in have:
+                r = REGISTRY["env_account"]
+                db.add(SecretPolicy(name=name, kind="env_account", label=f"{env.name}: account {a['name']}",
+                                    secret_class=r.secret_class, interval_hours=r.interval_hours, needs_restart=False,
+                                    params={"environment_id": env.id, "account": a["name"]}, notes=r.notes,
+                                    status="pending", next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
         missing = [k for k in ENV_ACCOUNTS if env_policy_name(env.id, k) not in have]
         if not missing or remote_env(env):
             continue
@@ -446,7 +480,7 @@ def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
             continue
         if p.needs_restart and not (window and window["in_window"]):
             continue
-        if p.kind in ENV_ACCOUNTS and not _env_deployed(db, p):
+        if p.kind in ENV_KINDS and not _env_deployed(db, p):
             continue
         if r.needs_elevated and not p.elevated_ref:      # a reminder until it has an elevated account
             continue
@@ -512,7 +546,7 @@ def schedule(db: Session, now: dt.datetime | None = None) -> list[int]:
                 db.commit()
             continue
         job = Job(type="secret.rotate", params={"policy_id": p.id}, requested_by="system",
-                  environment_id=(p.params or {}).get("environment_id") if p.kind in ENV_ACCOUNTS else None)
+                  environment_id=(p.params or {}).get("environment_id") if p.kind in ENV_KINDS else None)
         db.add(job)
         db.commit()
         queued.append(job.id)

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, leases, quotas
+from .. import appsettings, env_accounts, leases, quotas
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
@@ -641,6 +641,44 @@ def vm_manage_accounts(env_id: int, vm: str, body: VmManageIn, request: Request,
     audit(db, p.username, f"vm.{body.op}", object_type="environment", object_id=e.id, detail=detail,
           source_ip=client_ip(request))
     return {"ok": True}
+
+
+# --- the environment's own accounts (design §42) ---------------------------------------------------
+
+class AccountIn(BaseModel):
+    name: str = Field(max_length=20)
+    kind: Literal["domain", "local"]
+    hosts: list[str] = Field(default_factory=list, max_length=5)
+    groups: list[str] = Field(default_factory=list, max_length=20)
+    display_name: str = Field(default="", max_length=64)
+    ou: str = Field(default="", max_length=255)
+
+
+class AccountsIn(BaseModel):
+    accounts: list[AccountIn] = Field(default_factory=list, max_length=50)
+
+
+@router.get("/{env_id}/accounts")
+def env_account_list(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    e = _get(db, env_id, p)
+    return {"accounts": env_accounts.accounts(e), "roles": sorted(env_accounts.env_roles(e) & set(env_accounts.ROLES)),
+            "can_edit": is_owner(db, p, "environment", e.id)}
+
+
+@router.put("/{env_id}/accounts")
+def env_account_save(env_id: int, body: AccountsIn, request: Request, db: Session = Depends(get_db),
+                     p: Principal = Depends(current_principal)):
+    """Replace the list (owners): applied by the next deploy, which creates them on the VMs."""
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "change its accounts")
+    try:
+        items = env_accounts.set_accounts(db, e, [a.model_dump() for a in body.accounts])
+    except env_accounts.AccountError as exc:
+        raise FieldError("accounts", str(exc)) from exc
+    audit(db, p.username, "environment.accounts", object_type="environment", object_id=e.id,
+          detail={"accounts": [{k: v for k, v in a.items() if k != "groups"} for a in items]},
+          source_ip=client_ip(request))
+    return {"accounts": items}
 
 
 # --- the lease (design §40) -------------------------------------------------------------------------

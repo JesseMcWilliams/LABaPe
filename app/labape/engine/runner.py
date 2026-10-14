@@ -305,8 +305,11 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     env_yml = yaml.safe_load(env_file.read_text(encoding="utf-8")) or {}
     env_yml["linux_admin_user"] = spec.get("linux_admin_user") or "labape"
     env_file.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
+    # The environment's own accounts (design §42) join the directory manifest, their passwords the vault.
+    from .. import env_accounts
+    env_accounts.merge_manifest(work / "ansible" / "directory-manifest.yml", env, str(env_yml.get("domain_name") or ""))
     # Passwords rotated for this environment (design §24, R4) replace the vault's.
-    rotated = env_password_overrides(db, env.id)
+    rotated = {**env_password_overrides(db, env.id), **env_accounts.vault_overrides(db, env)}
     if rotated:
         overlay_vault(work, rotated)
 
@@ -734,7 +737,14 @@ def _collect_outputs(db: Session, job: Job, env: Environment, work: Path | None)
     for name, secret in (("credentials.generated", "credentials"), ("generated", "inventory")):
         f = inv / name
         if f.is_file():
-            put_secret(db, f"environment/{env.id}/{secret}", f.read_text(encoding="utf-8"))
+            text = f.read_text(encoding="utf-8")
+            if secret == "credentials":            # with the environment's own accounts (design §42)
+                from .. import env_accounts
+                envy = yaml.safe_load((work / "environment.yml").read_text(encoding="utf-8")) \
+                    if (work / "environment.yml").is_file() else {}
+                text = env_accounts.apply_sheet(text, env_accounts.sheet_section(
+                    db, env, str((envy or {}).get("netbios_name") or "")))
+            put_secret(db, f"environment/{env.id}/{secret}", text)
             f.unlink()  # don't leave plaintext credentials on disk
 
 
