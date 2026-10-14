@@ -52,7 +52,7 @@ interface AllSettings {
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   syslog_collector: Collector;
-  file_distribution: { wait_minutes: number };
+  file_distribution: { wait_minutes: number; copy_templates_to_all: boolean };
   monitoring: { email_to: string[]; syslog: boolean; disk_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number };
   file_roots: Record<string, string>;
 }
@@ -274,6 +274,9 @@ export default function Settings() {
         onSave={async () => { await put("file_distribution", s.file_distribution); return "File distribution settings saved."; }}>
         <Field label="Wait for the primary (minutes)" type="number" value={s.file_distribution.wait_minutes} sx={{ width: 240 }} help="0-1440"
           onChange={(e) => set("file_distribution", { wait_minutes: Number(e.target.value) })} />
+        <FormControlLabel label="Copy every template to every KVM host daily" title="Placement and deploys then don't wait for copies; templates are large"
+          control={<Checkbox checked={s.file_distribution.copy_templates_to_all}
+            onChange={(e) => set("file_distribution", { copy_templates_to_all: e.target.checked })} />} />
       </Section>
 
       <Section title="Remote access" intro="Browser SSH and RDP sessions to VMs (owners and admins) and KVM hosts (admins), through guacd. Each session is in Admin → Remote sessions. Recording saves the screen for the auditors (not keystrokes); it's announced on the session page."

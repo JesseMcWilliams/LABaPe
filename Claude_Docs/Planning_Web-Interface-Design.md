@@ -1555,3 +1555,16 @@ created at deploy, on the credentials sheet, rotatable.
 | API and UI | `GET/PUT /api/environments/{id}/accounts` (owners change it; audited as `environment.accounts`), applied by the next deploy. Environment page: an **Accounts** panel (the list; Edit: name, kind, the roles' hosts for local ones, groups). `tools/helpers/live/env_accounts.py`. |
 | Verified | pytest 249. Live on a throwaway Debian environment: a local account `tester` on linux_server was added and the environment redeployed: `id tester` on the VM, a SHA-512 hash in `/etc/shadow`, and the sheet's Environment accounts section; Rotate now changed the stored password and `/etc/shadow` on the VM. The domain path (it needs a Windows DC) is covered by the unit tests and reuses the engine's `domain_directory` task as it is. |
 
+## 43. Best-fit placement and templates ahead of need (P1a, built 2026-10-14)
+
+Batch 13 of the order in Planning_Backlog.md, first part: §15's "best fit" for a whole environment,
+and the automatic template copies. Spreading one environment over several hosts (P1b) and live
+migration (P2) wait on questions 151 and 152.
+
+| Area | As built |
+|---|---|
+| Ranking | `rank_hosts` (api/environments.py): every enabled KVM host (not stack-only ones) that passes the same checks a chosen host gets (its networks for these host groups, the templates on it or on the primary to copy, the RAM commitment limit), best first by memory committed with this environment added, plus vCPUs per CPU / 16, plus 0.15 per queued or running job there, plus 0.1 per template still to copy; a host without a load reading in 10 minutes ranks after the rest. Hosts that don't fit say why. |
+| Use | `POST /api/environments/placement` (deployers: the ranking, nothing created); `POST /api/environments` with `kvm_host_id: null` takes the best (422 with each host's reason when none fits), for scripts and API tokens. The new-environment form's **Suggest best host** ranks the hosts for the groups as filled in, picks the first and shows the list with reasons (the form keeps a host chosen, because its network and template lists are per host). |
+| Templates | Settings → File distribution → "Copy every template to every KVM host daily" (off: templates are large): a `files.sync_templates` job once a day copies each template in the primary's library to every enabled host that lacks it (file distribution's `ensure_template`, host to host through the worker); one copy failing doesn't stop the others. |
+| Verified | pytest 252 (two hosts ranked by load, running jobs counted, a full host refused with its reason, `null` placing on the best, no host fitting, the daily schedule). Live on kvm1 (one enabled KVM host in that stack): the ranking with its reason, and an environment created with `kvm_host_id: null` placed on kvm1 and deployed (job 142); destroyed afterwards. |
+

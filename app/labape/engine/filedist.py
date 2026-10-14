@@ -233,3 +233,70 @@ def ensure_template(db: Session, target: KvmHost, name: str, log) -> bool:
     db.commit()
     log.write(f"labape: template {name} is now on {target.name} too\n")
     return True
+
+
+# --- templates ahead of need (design §43) ---------------------------------------------------------
+
+SYNC_KEY = "files.templates_synced_at"
+
+
+def run_sync_templates(db: Session, job) -> int:
+    """Job `files.sync_templates`: every template in the primary's library onto every enabled KVM host
+    that doesn't have it. One host or template failing doesn't stop the others."""
+    p = primary(db)
+    with open(job.log_path, "a", encoding="utf-8") as log:
+        if p is None:
+            log.write("labape: no primary file host\n")
+            return 1
+        names = sorted(set(db.scalars(select(Template.name).where(Template.kvm_host_id == p.id,
+                                                                   Template.present.is_(True)))))
+        hosts = [h for h in db.scalars(select(KvmHost).where(KvmHost.enabled.is_(True)))
+                 if h.id != p.id and h.role != "stack"]
+        log.write(f"labape: {len(names)} template(s) from {p.name} to {len(hosts)} host(s)\n")
+        failed = 0
+        for h in hosts:
+            for name in names:
+                try:
+                    ensure_template(db, h, name, log)
+                except FileDistError as exc:
+                    failed += 1
+                    log.write(f"labape: {name} to {h.name} failed: {exc}\n")
+        from ..models import Setting, utcnow
+        row = db.get(Setting, SYNC_KEY)
+        value = {"at": utcnow().isoformat(), "failed": failed}
+        if row is None:
+            db.add(Setting(key=SYNC_KEY, value=value))
+        else:
+            row.value = value
+        db.commit()
+        log.write(f"labape: done; {failed} copy(ies) failed\n" if failed else "labape: done\n")
+        return 1 if failed else 0
+
+
+def schedule_template_sync(db: Session, now=None) -> int | None:
+    """Daily, when Settings → File distribution asks for it and no sync is queued or running."""
+    import datetime as dt
+
+    from .. import appsettings
+    from ..models import Job, Setting, utcnow
+    if not appsettings.get(db, "file_distribution").copy_templates_to_all:
+        return None
+    now = now or utcnow()
+    row = db.get(Setting, SYNC_KEY)
+    if row is not None and row.value and row.value.get("at"):
+        last = dt.datetime.fromisoformat(row.value["at"])
+        if now - (last if last.tzinfo else last.replace(tzinfo=dt.timezone.utc)) < dt.timedelta(hours=24):
+            return None
+    if db.scalar(select(Job).where(Job.type == "files.sync_templates", Job.state.in_(("queued", "running")))):
+        return None
+    job = Job(type="files.sync_templates", params={}, requested_by="system")
+    db.add(job)
+    # Marked now, so a slow or failing sync isn't queued again every minute.
+    value = {"at": now.isoformat(), "queued": True}
+    if row is None:
+        db.add(Setting(key=SYNC_KEY, value=value))
+    else:
+        row.value = value
+    db.commit()
+    return job.id
+

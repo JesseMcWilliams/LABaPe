@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Alert, Autocomplete, Box, Checkbox, Chip, FormControlLabel, ListItemText, MenuItem, Paper, Stack, TextField, Tooltip, Typography,
+  Alert, Autocomplete, Box, Button, Checkbox, Chip, FormControlLabel, ListItemText, MenuItem, Paper, Stack, TextField, Tooltip, Typography,
 } from "@mui/material";
 import type { CatalogItem } from "./Catalog";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -175,6 +175,20 @@ export default function EnvironmentNew() {
 
   const err = (f: string) => errors[f];
   const row = { alignItems: "flex-start", flexWrap: "wrap" } as const;
+  // Best fit (design §43): rank the hosts for these host groups and pick the first that fits.
+  const [placement, setPlacement] = useState<{ id: number; name: string; ok: boolean; reasons: string[] }[] | null>(null);
+  const suggest = async () => {
+    try {
+      const host_groups = groups.map((g) => ({ ...g, network: netOf(g)?.name,
+        template: g.image_source === "packer_template" ? g.template : undefined, names: (g.names ?? []).slice(0, g.count) }));
+      const r = await api.post<{ hosts: { id: number; name: string; ok: boolean; reasons: string[] }[] }>("/api/environments/placement", { host_groups });
+      setPlacement(r.hosts);
+      const best = r.hosts.find((h) => h.ok);
+      if (best) setHostId(best.id);
+    } catch (e) {
+      setSummary((e as Error).message);
+    }
+  };
   const hostName = useMemo(() => hosts.find((h) => h.id === hostId)?.name ?? "", [hosts, hostId]);
 
   return (
@@ -192,7 +206,16 @@ export default function EnvironmentNew() {
           sx={{ minWidth: 200 }} required error={err("kvm_host_id")}>
           {hosts.map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
         </Field>
+        {hosts.length > 1 && <Button sx={{ mt: 1 }} onClick={suggest}
+          title="Rank the KVM hosts for these host groups (memory, CPU, running jobs, templates there) and choose the best">Suggest best host</Button>}
       </Stack>
+      {placement && (
+        <Alert severity="info" onClose={() => setPlacement(null)}>
+          {placement.map((h, i) => (
+            <div key={h.id}>{h.ok ? `${i + 1}. ${h.name}` : `${h.name}: doesn't fit`} — {h.reasons.join("; ") || "no findings"}</div>
+          ))}
+        </Alert>
+      )}
       {hostId !== "" && <HostLoad resources={resources} demand={demand} />}
       <Typography variant="h6">Host groups</Typography>
       {groups.map((g, i) => {

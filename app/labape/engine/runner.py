@@ -457,7 +457,8 @@ def run(job_id: int, worker: str) -> None:
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
-                  "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job}
+                  "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job,
+                  "files.sync_templates": filedist.run_sync_templates}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -801,6 +802,10 @@ def serve(slots: int | None = None) -> None:
                     from .. import leases
                     for what in leases.tick(db):           # environment leases (§40)
                         log.info("lease: %s", what)
+                with session_factory()() as db:
+                    jid = filedist.schedule_template_sync(db)   # templates ahead of need (§43)
+                    if jid:
+                        log.info("queued template copies to every KVM host (job %s)", jid)
                 with session_factory()() as db:
                     if stackbackup.schedule(db):
                         log.info("asked the update agent for the daily full-stack backup")

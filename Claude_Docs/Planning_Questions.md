@@ -261,3 +261,9 @@ nothing listening on 514/6514 (rsyslog inactive, no network inputs), so the stac
 150. **Release v0.3.0:** cut it after the backup, link and API-token batches (B1-A2 in Planning_Backlog.md), as the first release a stack can be rebuilt from? Open.
 
 Also 2026-10-14: Authentik high availability (several server and worker replicas over one replicated PostgreSQL; supported, and Redis is gone since 2025.10) was judged too complex and fragile for the lab. A full-stack backup with an install-from-backup script replaces it (B1, B2).
+
+## Placement across hosts and live migration (added 2026-10-14)
+
+151. **Spreading one environment over several KVM hosts (P1b, §15's per-group host):** the engine runs a remote host's whole job on that host (its disks are made with qemu-img on its own filesystem), so one environment on several hosts means running parts of one job on each, with every host bridged to the same lab VLANs (static addresses, the DC and domain joins across hosts). It can't be tried in this lab today: kvm1's stack has one enabled KVM host (garagepc belongs to the Pi's stack). Build it now (and test it with a nested KVM VM as a second host on kvm1), or later when a second host joins one stack? Recommended: later. Open.
+152. **Live migration (P2):** moving a running VM needs two hosts in one stack with the same VLAN bridges, and either shared storage or a full disk copy while it runs (`virsh migrate --live --copy-storage-all`, slow for big disks). Same lab limit as 151. Also later? Recommended: later, with 151. Open.
+
