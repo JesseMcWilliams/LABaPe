@@ -7,12 +7,11 @@
 ## Order of work (agreed 2026-10-14)
 
 Items 3-9 of the 2026-10-14 review plus the earlier deferred work, in the order to build them. Each
-batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32), 3 B2 (§33), 4 L1 (§34), 5 L2 (§35), 6 B3 (§36), 7 A1 (§37). Questions 146-150 in
+batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32), 3 B2 (§33), 4 L1 (§34), 5 L2 (§35), 6 B3 (§36), 7 A1 (§37), 8 A2 (§38). Questions 146-150 in
 Planning_Questions.md.
 
 | # | Batch | What | Why here |
 |---|---|---|---|
-| 8 | A2 Metrics export | A Prometheus `/metrics` endpoint (hosts, environments, jobs, alerts), read with an A1 token. | Uses A1. |
 | 9 | V1 VM snapshots | Take, revert and delete from the VM page; optionally automatic before risky jobs; shown on the host's disk use. | |
 | 10 | E1 Environment leases | An expiry per environment, reminder emails to the owner, then shut down and, after a grace period, destroy; owners can extend. | |
 | 11 | E2 Quotas | Limits per user and group: vCPUs, RAM, disk and the number of environments, checked when a job is queued. | Pairs with E1. |

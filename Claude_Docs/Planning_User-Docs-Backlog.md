@@ -17,6 +17,7 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
 - Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.
 - Remote access: RDP/SSH buttons and .rdp files, the session page (keys, idle close, the recorded marker), Settings → Remote access, Admin → Remote sessions, the auditor role (labape-auditors), and that Windows hosts now allow Remote Desktop (redeploy older environments).
+- Prometheus metrics (§38): a service token with the auditor role, a scrape config example, the metric list.
 - API tokens (§37): making one, personal vs service, roles and expiry, using it (curl example), revoking, what's audited.
 - Backups to linked stacks (§36): what's sent and when, where the copies are kept, restoring a lost stack from a copy (with its key).
 - The All stacks panel (§35): what the totals count (shared machines once), the card statuses, opening another stack.
