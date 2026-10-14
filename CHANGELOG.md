@@ -7,6 +7,16 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- Alert handling: acknowledge an alert, silence its condition for a while
+  (with a reason), no alert announcements during maintenance mode (they go
+  out when it ends if still open), and an alert when alert emails can't be
+  sent, cleared when the mail server works again.
+
+### Changed
+- Audit events go to syslog over one kept-open TCP/TLS connection instead
+  of one connection per event.
+
 ### Removed
 - The update agent's file-based rotation of the engine vault password and
   VM key (phase R2): the worker rotates them in the secret store. An install

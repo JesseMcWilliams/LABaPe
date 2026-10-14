@@ -547,3 +547,6 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 1. **Conjur crash-looping on the Pi although the installer had parked it:** Compose *merges* a service's `profiles` with the override's, so `labape-conjur` had both `stores` and `off`, and the `stores` profile (COMPOSE_PROFILES in `.env`) started it on the next `compose up`; its amd64 image restarted forever on arm64. The installer's override now writes `profiles: !override ["off"]`; the stale containers were removed.
 2. **First alerts were mostly noise:** exited containers that aren't LABaPe's (other projects on the same Docker) and "certificate expires within 7 days" for the 24-hour web certificates Caddy renews by itself. Only LABaPe's compose projects count now, and certificates alert below a quarter of their lifetime (or 7 days, whichever is less).
 
+## Alert handling (M2, 2026-10-14)
+
+1. **The kept-open syslog connection reconnected on every event over TLS (fine over TCP):** `SSLContext.wrap_socket(raw)` *detaches* `raw` (its file descriptor moves to the TLS socket), so the liveness check's `select([raw], ...)` raised and every check said "closed". Select on, and close, the TLS socket; `raw.close()` is then a no-op. The unit test only used plain TCP, so a TLS variant with a throwaway certificate was added.

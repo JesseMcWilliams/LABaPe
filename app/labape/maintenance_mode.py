@@ -21,7 +21,7 @@ KEY = "maintenance.state"
 CACHE_SECONDS = 5
 # Writes that stay open: signing in and out, ending maintenance, update and
 # rollback controls, cancelling a job, running jobs finishing their work, and
-# the browser's blocked-form reports.
+# the browser's blocked-form reports, and acknowledging or silencing alerts.
 ALLOWED = [re.compile(p) for p in (
     r"^/api/auth/",
     r"^/api/admin/maintenance$",
@@ -29,6 +29,7 @@ ALLOWED = [re.compile(p) for p in (
     r"^/api/jobs/\d+/cancel$",
     r"^/api/engine/certificates$",
     r"^/api/errors/report$",
+    r"^/api/dashboard/monitoring/",     # acknowledging and silencing alerts (design §31)
 )]
 EMPTY = {"active": False, "reason": "", "source": "", "started_by": "", "started_at": None, "expected_end": None,
          "scheduled_start": None}
