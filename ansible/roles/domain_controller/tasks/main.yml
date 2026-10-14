@@ -37,3 +37,22 @@
 - name: Show dcdiag output
   ansible.builtin.debug:
     var: dcdiag_result.stdout_lines
+
+# A1 (Planning_Lists-Secrets-Settings.md): a second domain admin, only for recovery: LABaPe sets the
+# domain Administrator's password again with it when that one is lost, and the other way round. Its
+# password is LABaPe's (labape_recovery_domain_password, per environment); a deploy sets it again.
+- name: Second domain admin for recovery (labape-admin2)
+  microsoft.ad.user:
+    name: "{{ labape_recovery_admin | default('labape-admin2') }}"
+    password: "{{ labape_recovery_domain_password }}"
+    update_password: always
+    password_never_expires: true
+    enabled: true
+    description: LABaPe recovery account (resets the domain Administrator; see the Secrets page)
+    groups:
+      add: [Domain Admins]
+    state: present
+  run_once: true
+  no_log: true
+  when: labape_recovery_domain_password | default('') | length > 0
+

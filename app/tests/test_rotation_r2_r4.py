@@ -106,7 +106,8 @@ def _fake_hosts(monkeypatch, env_id, **kw):
 def test_env_policies_and_rotation(client, monkeypatch):
     env_id = _deployed_env(client)
     pols = client.get(f"/api/environments/{env_id}/rotation").json()["policies"]
-    assert sorted(p["kind"] for p in pols) == ["domain_admin", "windows_admin"]
+    # With the recovery pairs' second admins (A1).
+    assert sorted(p["kind"] for p in pols) == ["domain_admin", "domain_admin2", "windows_admin", "windows_admin2"]
     assert all(p["interval_hours"] == 168 and p["enabled"] for p in pols)
     assert client.put(f"/api/environments/{env_id}/rotation/windows_admin",
                       json={"enabled": True, "interval_hours": 12}).status_code == 422    # a day at least

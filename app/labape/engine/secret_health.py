@@ -303,7 +303,8 @@ AUTH_FAILURE = re.compile(r"rejected|401|unauthori[sz]ed|authenticat|password|lo
 
 def _env_password(kind: str):
     def check(db: Session, p: SecretPolicy) -> str:
-        from .vmaccess import _ansible, _hosts, _inventory, env_targets, remote_env
+        from .vmaccess import (_ansible, _hosts, _inventory, env_password_name, env_targets, probe, recovery_user,
+                               remote_env)
         env = db.get(Environment, (p.params or {}).get("environment_id"))
         if env is None or env.status != "deployed" or remote_env(env):
             raise NotInUse("the environment isn't deployed here")
@@ -311,8 +312,14 @@ def _env_password(kind: str):
         targets = env_targets(env, inv, kind)
         if not targets:
             raise NotInUse("no hosts use this account")
-        r = _ansible(inv, ":".join(targets), "ansible.windows.win_ping", {}, timeout=300,
-                     scrub=tuple(_hosts(inv)[h].get("ansible_password", "") for h in targets))
+        if kind.endswith("2"):                 # the recovery pair's second admin (A1)
+            pw = get_secret(db, env_password_name(env.id, kind)) or ""
+            if not pw:
+                raise NotInUse("no labape-admin2 here yet (a redeploy creates it)")
+            r = probe(inv, targets, recovery_user(inv, kind), pw)
+        else:
+            r = _ansible(inv, ":".join(targets), "ansible.windows.win_ping", {}, timeout=300,
+                         scrub=tuple(_hosts(inv)[h].get("ansible_password", "") for h in targets))
         refused = [h for h in targets if r.get(h) not in ("ok", "changed") and AUTH_FAILURE.search(r.errors.get(h, ""))]
         if refused:
             raise CheckError(f"{', '.join(refused)} refuse the stored password")
@@ -325,29 +332,34 @@ def _env_password(kind: str):
 
 def _env_password_recover(kind: str):
     def recover(db: Session, p: SecretPolicy, log) -> str:
-        """The value a rotation tried last (kept until it's sure) becomes the stored one if it signs in;
-        for member servers' Administrator, the domain admin sets the stored password again."""
-        from .vmaccess import _ansible, _hosts, _inventory, env_password_name, env_targets
+        """In order: the value a rotation tried last (kept until it's sure), if it signs in; the other admin
+        of the recovery pair setting the stored password again (A1); for member servers' Administrator,
+        the domain admin doing the same."""
+        from .vmaccess import (AccessError, _ansible, _hosts, _inventory, env_password_name, env_targets, probe,
+                               recovery_user, reset_with_pair)
         env = db.get(Environment, (p.params or {}).get("environment_id"))
         inv = _inventory(db, env)
         targets = env_targets(env, inv, kind)
         candidate = get_secret(db, f"environment/{env.id}/rotation-candidate/{kind}") or ""
         if candidate:
-            probe = {**inv, "all": {**inv["all"], "hosts": {h: {**_hosts(inv)[h], "ansible_password": candidate}
-                                                            for h in targets}}}
-            r = _ansible(probe, ":".join(targets), "ansible.windows.win_ping", {}, scrub=(candidate,))
+            r = probe(inv, targets, recovery_user(inv, kind) if kind.endswith("2") else None, candidate)
             if all(r.get(h) in ("ok", "changed") for h in targets):
-                for h in targets:
-                    _hosts(inv)[h]["ansible_password"] = candidate
-                put_secret(db, f"environment/{env.id}/inventory", yaml.safe_dump(inv, sort_keys=False))
+                if not kind.endswith("2"):
+                    for h in targets:
+                        _hosts(inv)[h]["ansible_password"] = candidate
+                    put_secret(db, f"environment/{env.id}/inventory", yaml.safe_dump(inv, sort_keys=False))
                 put_secret(db, env_password_name(env.id, kind), candidate)
                 log.write("labape: the last attempted password signs in; it's the stored one now\n")
                 return "the last attempted password works; stored"
-        if kind != "windows_admin":
-            raise CheckError("no kept value signs in; the domain Administrator needs a person (DSRM or a reset)")
+        try:
+            return reset_with_pair(db, env, kind, log)
+        except AccessError as exc:
+            log.write(f"labape: the recovery pair couldn't: {exc}\n")
+            if kind != "windows_admin":
+                raise CheckError(f"no kept value signs in and the other admin of the pair couldn't reset it ({exc})") from exc
         dcs = env_targets(env, inv, "domain_admin")
         if not dcs:
-            raise CheckError("no kept value signs in, and there's no domain admin to reset it (not domain members)")
+            raise CheckError("no kept value signs in, the pair couldn't reset it, and there's no domain admin to")
         stored = _hosts(inv)[targets[0]].get("ansible_password", "")
         domain_pw = _hosts(inv)[dcs[0]].get("ansible_password", "")
         netbios = str((inv.get("all", {}).get("vars") or {}).get("netbios_name") or "").upper()
@@ -389,12 +401,17 @@ HEALTH: dict[str, Health] = {
                                       "the host, which gives LABaPe a new login.", _store_login("openbao"), _stores_recover),
     "conjur_api_key": Health(True, "The update agent runs stores.sh setup with the stores' root credentials kept on the "
                                    "host, which gives LABaPe a new login.", _store_login("conjur"), _stores_recover),
-    "windows_admin": Health(True, "The last attempted password if it signs in; else the domain admin sets the stored "
-                                  "password again on the member servers.", _env_password("windows_admin"),
+    "windows_admin": Health(True, "The last attempted password if it signs in; else labape-admin2 (its recovery pair) "
+                                  "sets the stored password again; else the domain admin does.", _env_password("windows_admin"),
                             _env_password_recover("windows_admin")),
-    "domain_admin": Health(False, "Only the last attempted password is tried; otherwise the domain's Administrator needs "
-                                  "a person (DSRM sign-in or a reset).", _env_password("domain_admin"),
+    "domain_admin": Health(True, "The last attempted password if it signs in; else the domain's labape-admin2 (its "
+                                 "recovery pair) sets the stored password again. Before a redeploy has made labape-admin2, "
+                                 "a person (DSRM sign-in or a reset).", _env_password("domain_admin"),
                            _env_password_recover("domain_admin")),
+    "windows_admin2": Health(True, "Administrator (its recovery pair) sets the stored password again.",
+                             _env_password("windows_admin2"), _env_password_recover("windows_admin2")),
+    "domain_admin2": Health(True, "The domain Administrator (its recovery pair) sets the stored password again.",
+                            _env_password("domain_admin2"), _env_password_recover("domain_admin2")),
     "env_account": Health(True, "LABaPe sets accounts as the VMs' admin, without the old password: a rotation sets a "
                                 "new one."),
 }

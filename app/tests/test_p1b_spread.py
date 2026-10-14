@@ -71,8 +71,9 @@ def _engine(tmp_root):
     (cfg / "environment.yml").write_text("vm_storage_path: /old\n")
 
 
-def test_parts_of_a_spread_job(tmp_root, db_reset):
+def test_parts_of_a_spread_job(tmp_root, db_reset, monkeypatch):
     _engine(tmp_root)
+    monkeypatch.setattr(runner, "overlay_vault", lambda work, overrides: None)    # no ansible-vault here (A1 passwords)
     with session_factory()() as db:
         _hosts_rows(db)
         e = _env()

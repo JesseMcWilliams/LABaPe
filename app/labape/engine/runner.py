@@ -315,6 +315,9 @@ def prepare(db: Session, env: Environment, host: KvmHost, only: list[dict] | Non
     from .. import env_accounts
     env_accounts.merge_manifest(work / "ansible" / "directory-manifest.yml", env, str(env_yml.get("domain_name") or ""))
     # Passwords rotated for this environment (design §24, R4) replace the vault's.
+    # The recovery pairs' second admins (A1) get passwords before the deploy that creates them.
+    from .vmaccess import ensure_recovery_passwords
+    ensure_recovery_passwords(db, env)
     rotated = {**env_password_overrides(db, env.id), **env_accounts.vault_overrides(db, env)}
     if rotated:
         overlay_vault(work, rotated)

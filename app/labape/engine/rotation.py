@@ -316,6 +316,34 @@ for kind, (label, notes) in ENV_ACCOUNTS.items():
     REGISTRY[kind] = Rotator(kind=kind, label=label, interval_hours=168, notes=notes, run=_env_rotator(kind))
 
 
+# A1: the second admins of the recovery pairs, rotated while signed in as Administrator.
+def _recovery_rotator(kind: str):
+    def run(db: Session, policy: SecretPolicy, log) -> str:
+        from ..models import Environment
+        from .vmaccess import AccessError, rotate_recovery_password
+        env = db.get(Environment, (policy.params or {}).get("environment_id"))
+        if env is None or env.status != "deployed":
+            raise RotationError("the environment isn't deployed")
+        try:
+            return rotate_recovery_password(db, env, kind, log)
+        except AccessError as exc:
+            raise RotationError(str(exc)) from exc
+    return run
+
+
+RECOVERY_ACCOUNTS = {
+    "windows_admin2": ("Second local admin (labape-admin2, member servers; recovers Administrator)",
+                       "Sets a new password for labape-admin2 on the member servers, signed in as Administrator, checks it "
+                       "signs in, and stores it. It and Administrator each set the other's password again if one is lost."),
+    "domain_admin2": ("Second domain admin (labape-admin2; recovers the domain Administrator)",
+                      "Sets a new password for the domain's labape-admin2 (Domain Admins), signed in as Administrator, "
+                      "checks it signs in, and stores it. It and the domain Administrator each set the other's again."),
+}
+for kind, (label, notes) in RECOVERY_ACCOUNTS.items():
+    REGISTRY[kind] = Rotator(kind=kind, label=label, interval_hours=168, notes=notes, run=_recovery_rotator(kind))
+ENV_ACCOUNTS = {**ENV_ACCOUNTS, **{k: v for k, v in RECOVERY_ACCOUNTS.items()}}
+
+
 def _account_rotator(db: Session, policy: SecretPolicy, log) -> str:
     """An environment's own account (design §42): a new password on its VMs."""
     from .. import env_accounts
@@ -440,10 +468,12 @@ def ensure_env_policies(db: Session) -> None:
             if not env_targets(env, inv, kind):
                 continue
             r = REGISTRY[kind]
+            # The second admin of a pair rotates half a period after its partner: never both at once (A1).
+            offset = dt.timedelta(hours=r.interval_hours * (1.5 if kind in RECOVERY_ACCOUNTS else 1))
             db.add(SecretPolicy(name=env_policy_name(env.id, kind), kind=kind, label=f"{env.name}: {r.label}",
                                 secret_class=r.secret_class, interval_hours=r.interval_hours, needs_restart=False,
                                 params={"environment_id": env.id}, notes=r.notes, status="pending",
-                                next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
+                                next_due_at=utcnow() + offset))
     db.commit()
 
 
