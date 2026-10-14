@@ -24,6 +24,18 @@ if [ ! -f "$STEPPATH/config/ca.json" ]; then
   step ca provisioner update labape-runner --x509-default-dur 720h --x509-max-dur 2160h >/dev/null
   echo "labape-ca: root fingerprint $(step certificate fingerprint "$STEPPATH/certs/root_ca.crt")"
 fi
+# The names the CA answers to follow LABAPE_CA_DNS on every start (the web interface's host name
+# can change after the CA was made): missing ones are added to ca.json, old ones kept so existing
+# clients keep working. step-ca issues its own TLS certificate for these names when it starts.
+want="$(printf '%s' "$LABAPE_CA_DNS" | jq -R 'split(",") | map(select(length > 0))')"
+tmp="$STEPPATH/config/ca.json.tmp"
+if jq --argjson want "$want" '.dnsNames = ((.dnsNames // []) + $want | unique)' "$STEPPATH/config/ca.json" > "$tmp" \
+   && ! cmp -s "$tmp" "$STEPPATH/config/ca.json"; then
+  mv "$tmp" "$STEPPATH/config/ca.json"
+  echo "labape-ca: answering to $(jq -r '.dnsNames | join(", ")' "$STEPPATH/config/ca.json")"
+else
+  rm -f "$tmp"
+fi
 # Readable by the other containers that mount this volume (the root and intermediate certificates only).
 chmod 0755 "$STEPPATH" "$STEPPATH/certs"
 chmod 0644 "$STEPPATH/certs/root_ca.crt" "$STEPPATH/certs/intermediate_ca.crt"

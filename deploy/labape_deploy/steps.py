@@ -532,6 +532,10 @@ def stack_setup(c: Ctx):
         (home / ".ssh" / "labape_bootstrap", cdir / "engine-secrets" / "ssh" / "labape_bootstrap", 0o600),
         (home / ".ssh" / "labape_bootstrap.pub", cdir / "engine-secrets" / "ssh" / "labape_bootstrap.pub", 0o644),
     ]
+    if (cdir / "stores" / "secrets" / "platform_store_active").is_file():
+        # The engine secrets live in the platform store now (design §26): a re-run (e.g. a changed
+        # host name) mustn't put copies back on disk.
+        copies = copies[:3]
     copied = 0
     for src, dst, mode in copies:
         if src.is_file():

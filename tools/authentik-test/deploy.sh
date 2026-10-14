@@ -48,6 +48,13 @@ LABAPE_TEST_USER_PASSWORD=$(gen)
 LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG
 EOF
 fi
+# LABaPe's host name can change (e.g. from an address to its DNS name): the blueprint's redirect
+# URI follows it; `up -d` below recreates the containers when it changed.
+if ! grep -qx "LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG" .env; then
+  sed -i '/^LABAPE_HOSTNAME=/d' .env
+  echo "LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG" >> .env
+  echo "authentik-test: LABaPe's host name is now $LABAPE_HOSTNAME_ARG"
+fi
 # Added later: keep an older .env working.
 grep -q '^LABAPE_TEST_DIRECTORY_TOKEN=' .env || echo "LABAPE_TEST_DIRECTORY_TOKEN=$(gen)" >> .env
 grep -q '^LABAPE_TEST_ROTATOR_TOKEN=' .env || echo "LABAPE_TEST_ROTATOR_TOKEN=$(gen)" >> .env
@@ -65,6 +72,19 @@ curl -fsS "${issuer}.well-known/openid-configuration" >/dev/null || {
   echo "authentik-test: the LABaPe application didn't appear at $issuer; check: $COMPOSE logs worker" >&2
   exit 1
 }
+
+# The blueprint makes the provider once (state: created, so a rotated client secret sticks), so a
+# changed LABaPe host name never reaches its redirect URI that way: set that one field here.
+$COMPOSE exec -T worker ak shell -c "
+import dataclasses, os
+from authentik.providers.oauth2.models import OAuth2Provider
+p = OAuth2Provider.objects.get(client_id='labape')
+url = 'https://%s/api/auth/oidc/callback' % os.environ['LABAPE_HOSTNAME']
+if [u.url for u in p.redirect_uris] != [url]:
+    p.redirect_uris = [dataclasses.replace(u, url=url) for u in p.redirect_uris[:1]]
+    p.save()
+    print('authentik-test: the redirect URI is now', url)
+" 2>&1 | grep '^authentik-test:' || true
 
 # The rotation account may set the directory token's key and the LABaPe
 # provider's client secret, on those two objects only (object permissions; the

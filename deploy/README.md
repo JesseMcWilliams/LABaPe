@@ -129,6 +129,16 @@ Remote hosts work the way design §22.4 describes: jobs for a `qemu+ssh` host ru
 
 Re-running the installer is how a host's own setup is updated: it reads the saved answers and asks only new questions. `Stack.UpdateAgent` (`InstallUpdateAgent`) sets up the host-side update agent for the service user (lingering, a user systemd path unit). The web interface's Check now then offers signed releases and a one-step rollback (design §23.2). Release signers are listed in `deploy/allowed_signers`, copied to `~/.config/labape/allowed_signers`. Until a key is listed there, every update is refused. To go back more than one version: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
 
+## Changing the web interface's host name
+
+To move from an address to a DNS name (or between names), set the new name and re-run the steps that use it:
+
+```bash
+sudo deploy/install-labape.py --set WebHostname=labape.example.lan --step Stack.Setup --step Stack.Auth --step Stack.Up --step Smoke.Web
+```
+
+`Stack.Setup` writes it to `container/.env` (engine secrets already in the platform store aren't copied back), `Stack.Auth` points the stack's Authentik at it (the provider's redirect URI included), `Stack.Up` recreates the containers: Caddy then serves a certificate for the new name, and the platform CA adds it to the names it answers to (`container/ca/init.sh`). Browsers that open the site by a name other than `WebHostname` get a TLS "internal error" from Caddy, which only has a certificate for that name.
+
 ## Not done by the installer
 
 - **No NIC carrying the default route is bridged.** Moving management onto a bridge is done by hand, because a mistake there cuts off the host.
