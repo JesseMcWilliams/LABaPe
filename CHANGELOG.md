@@ -27,6 +27,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Set up access.
 
 ### Fixed
+- Changing the web interface's host name (e.g. from an address to its DNS
+  name) works by re-running the installer's steps: the platform CA adds the
+  new name, the stack's Authentik updates its redirect URI, and Stack.Setup
+  no longer copies engine secrets back onto disk once they're in the store.
 - Destroying a VM on a KVM host LABaPe prepared no longer fails on the
   disk cleanup (it needed sudo the service user doesn't have).
 - A new install always has a primary file host (the Files page could
