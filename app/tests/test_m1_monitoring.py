@@ -58,7 +58,8 @@ def test_containers_self_checks_and_peers(client, monkeypatch):
                            {"name": "labape-ca-1", "state": "running", "health": "unhealthy", "restarts": 0}],
             "restart_seen": {"labape-api-1": (NOW - dt.timedelta(minutes=5)).isoformat()},
             "self": {"backup": {"enabled": True, "newest": (NOW - dt.timedelta(hours=30)).isoformat()},
-                     "certs": {"web": {"expires": (NOW + dt.timedelta(days=3)).isoformat()},
+                     "certs": {"web": {"expires": (NOW + dt.timedelta(days=3)).isoformat(),
+                                       "issued": (NOW - dt.timedelta(days=87)).isoformat()},
                                "ca intermediate": {"expires": (NOW + dt.timedelta(days=300)).isoformat()}}}}))
         db.merge(StackStatus(kvm_host_id=pi.id, data={"peer": {"ok": False, "failures": 2, "error": "timed out",
                                                                 "cert_expires": None}}))
@@ -111,9 +112,10 @@ def test_announcements_go_to_syslog_and_email(client, monkeypatch):
 def test_containers_over_the_access_account(client, monkeypatch):
     _admin_session(client)
     _host(client)
-    runs = iter([{"runtime": "docker", "containers": [{"name": "labape-api-1", "state": "running", "restarts": 1}],
+    runs = iter([{"runtime": "docker", "containers": [{"name": "labape-api-1", "state": "running", "restarts": 1, "project": "labape"},
+                                                      {"name": "someone-elses", "state": "exited", "restarts": 0, "project": "other"}],
                   "volumes": [{"name": "labape_postgres-data", "size": "1.2GB"}]},
-                 {"runtime": "docker", "containers": [{"name": "labape-api-1", "state": "running", "restarts": 2}],
+                 {"runtime": "docker", "containers": [{"name": "labape-api-1", "state": "running", "restarts": 2, "project": "labape"}],
                   "volumes": None}])
 
     class Ssh:
@@ -125,6 +127,7 @@ def test_containers_over_the_access_account(client, monkeypatch):
         h = _setup(db)
         d = stackmon.collect_containers(db, h, volumes=True, now=NOW)
         assert d["volumes"][0]["size"] == "1.2GB" and not d["restart_seen"]
+        assert [c["name"] for c in d["containers"]] == ["labape-api-1"]          # only LABaPe's own
         d = stackmon.collect_containers(db, h, volumes=False, now=NOW + dt.timedelta(minutes=5))
         assert d["restart_seen"]["labape-api-1"].startswith("2026-10-14T12:05") and d["volumes"]   # volumes kept
 
@@ -147,3 +150,13 @@ def test_roles_api_and_views(client):
     client.app.dependency_overrides.clear()
     bad = client.put("/api/admin/settings/monitoring", json={"email_to": ["not-an-address"]})
     assert bad.status_code == 422
+
+
+def test_certificate_thresholds_follow_their_lifetime():
+    issued, exp = NOW - dt.timedelta(hours=16), NOW + dt.timedelta(hours=8)        # a 24 h web certificate
+    c = {"issued": issued.isoformat(), "expires": exp.isoformat()}
+    assert stackmon.cert_due(c, NOW, 7) is False                                  # Caddy renews it: fine
+    assert stackmon.cert_due(c, NOW + dt.timedelta(hours=3), 7) is True            # under a quarter left: renewal failed
+    long = {"issued": (NOW - dt.timedelta(days=80)).isoformat(), "expires": (NOW + dt.timedelta(days=5)).isoformat()}
+    assert stackmon.cert_due(long, NOW, 7) is True                                 # a 90-day one inside 7 days
+    assert stackmon.cert_due({"expires": (NOW + dt.timedelta(days=30)).isoformat()}, NOW, 7) is False

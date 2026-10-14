@@ -38,6 +38,8 @@ CONTAINERS_EVERY = dt.timedelta(minutes=5)
 VOLUMES_EVERY = dt.timedelta(hours=1)
 RESTART_WINDOW = dt.timedelta(minutes=15)
 STACK_ROLES = ("stack", "both")
+# The containers that are LABaPe's (compose projects): others on the host aren't its business.
+PROJECTS = ("labape", "authentik-test")
 
 STACK_SCRIPT = r'''
 import json, shutil, subprocess
@@ -53,7 +55,9 @@ if rt:
     names = sh(rt, "ps", "-a", "--format", "{{.Names}}").split()
     for c in (json.loads(sh(rt, "inspect", *names) or "[]") if names else []):
         st = c.get("State") or {}
+        labels = (c.get("Config") or {}).get("Labels") or {}
         out["containers"].append({"name": c.get("Name", "").lstrip("/"), "image": (c.get("Config") or {}).get("Image", ""),
+                                  "project": labels.get("com.docker.compose.project", ""),
                                   "state": st.get("Status", ""), "health": (st.get("Health") or {}).get("Status", ""),
                                   "restarts": c.get("RestartCount", 0), "started_at": st.get("StartedAt", "")})
     if ARGS.get("volumes"):
@@ -105,6 +109,7 @@ def collect_containers(db: Session, h: KvmHost, volumes: bool, now: dt.datetime 
     got = hostadmin.for_host(h).python(STACK_SCRIPT, {"volumes": volumes}, timeout=900)
     before = {c["name"]: c for c in (data.get("containers") or [])}
     seen = dict(data.get("restart_seen") or {})
+    got["containers"] = [c for c in got.get("containers", []) if c.get("project") in PROJECTS]
     for c in got.get("containers", []):
         old = before.get(c["name"])
         if old is not None and c["restarts"] > old.get("restarts", 0):
@@ -119,8 +124,16 @@ def collect_containers(db: Session, h: KvmHost, volumes: bool, now: dt.datetime 
     return data
 
 
-def cert_expiry(url: str, timeout: float = 10) -> dt.datetime | None:
-    """When the TLS certificate served at `url` expires (not verified: a peer's own CA)."""
+def _file_cert(path: Path):
+    from cryptography import x509
+    try:
+        return x509.load_pem_x509_certificate(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+
+
+def served_cert(url: str, timeout: float = 10):
+    """The TLS certificate served at `url` (not verified: a peer's own CA)."""
     from cryptography import x509
     u = urlsplit(url)
     ctx = ssl.create_default_context()
@@ -128,15 +141,23 @@ def cert_expiry(url: str, timeout: float = 10) -> dt.datetime | None:
     with socket.create_connection((u.hostname, u.port or 443), timeout=timeout) as raw, \
             ctx.wrap_socket(raw, server_hostname=u.hostname) as s:
         der = s.getpeercert(binary_form=True)
-    return x509.load_der_x509_certificate(der).not_valid_after_utc if der else None
+    return x509.load_der_x509_certificate(der) if der else None
 
 
-def _file_expiry(path: Path) -> dt.datetime | None:
-    from cryptography import x509
-    try:
-        return x509.load_pem_x509_certificate(path.read_bytes()).not_valid_after_utc
-    except (OSError, ValueError):
-        return None
+def _validity(cert) -> dict:
+    return {"issued": cert.not_valid_before_utc.isoformat(), "expires": cert.not_valid_after_utc.isoformat()} if cert else {}
+
+
+def cert_due(c: dict, now: dt.datetime, days: int) -> bool:
+    """Less left than `days`, or than a quarter of its lifetime for short-lived, auto-renewed
+    certificates (the web ones from the platform CA last 24 hours; Caddy renews at a third left)."""
+    if not c.get("expires"):
+        return False
+    exp = dt.datetime.fromisoformat(c["expires"])
+    limit = dt.timedelta(days=days)
+    if c.get("issued"):
+        limit = min(limit, (exp - dt.datetime.fromisoformat(c["issued"])) / 4)
+    return exp - now < limit
 
 
 def self_checks(db: Session) -> dict:
@@ -148,16 +169,16 @@ def self_checks(db: Session) -> dict:
     newest = max((p.stat().st_mtime for p in d.glob("*") if p.is_file()), default=None) if d.is_dir() else None
     out["backup"] = {"enabled": cfg.enabled,
                      "newest": dt.datetime.fromtimestamp(newest, dt.timezone.utc).isoformat() if newest else None}
-    for name, fn in (("web", lambda: cert_expiry(s.public_url)),
-                     ("ca intermediate", lambda: _file_expiry(s.ca_root.with_name("intermediate_ca.crt"))),
-                     ("syslog collector", lambda: _file_expiry(s.syslog_tls_dir / "server.crt"))):
+    for name, fn in (("web", lambda: served_cert(s.public_url)),
+                     ("ca intermediate", lambda: _file_cert(s.ca_root.with_name("intermediate_ca.crt"))),
+                     ("syslog collector", lambda: _file_cert(s.syslog_tls_dir / "server.crt"))):
         try:
-            exp = fn()
-        except OSError as exc:
+            cert = fn()
+        except (OSError, ssl.SSLError) as exc:
             out["certs"][name] = {"error": str(exc)[:200]}
             continue
-        if exp is not None:
-            out["certs"][name] = {"expires": exp.isoformat()}
+        if cert is not None:
+            out["certs"][name] = _validity(cert)
     try:
         out["databases"]["labape"] = db.execute(text("SELECT pg_database_size(current_database())")).scalar()
     except Exception:  # noqa: BLE001 — SQLite in tests
@@ -183,10 +204,10 @@ def probe_peer(url: str, timeout: float = 10) -> dict:
     except (httpx.HTTPError, OSError) as exc:
         out = {"ok": False, "status": None, "ms": None, "error": str(exc)[:200]}
     try:
-        exp = cert_expiry(url, timeout)
-        out["cert_expires"] = exp.isoformat() if exp else None
+        v = _validity(served_cert(url, timeout))
+        out["cert_expires"], out["cert_issued"] = v.get("expires"), v.get("issued")
     except (OSError, ssl.SSLError, ValueError):
-        out["cert_expires"] = None
+        out["cert_expires"] = out["cert_issued"] = None
     return out
 
 
@@ -247,19 +268,16 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
                 if newest is None or now - newest > dt.timedelta(hours=cfg.backup_hours):
                     add(h, "warning", f"no backup in the last {cfg.backup_hours} hours", "backup")
             for name, c in (me.get("certs") or {}).items():
-                if c.get("expires"):
-                    left = dt.datetime.fromisoformat(c["expires"]) - now
-                    if left < dt.timedelta(days=cfg.cert_days):
-                        add(h, "error" if left.total_seconds() <= 0 else "warning",
-                            f"the {name} certificate expires {c['expires'][:16].replace('T', ' ')} UTC", "cert")
+                if cert_due(c, now, cfg.cert_days):
+                    expired = dt.datetime.fromisoformat(c["expires"]) <= now
+                    add(h, "error" if expired else "warning",
+                        f"the {name} certificate expires {c['expires'][:16].replace('T', ' ')} UTC", "cert")
         elif h.stack_url:
             p = data.get("peer") or {}
             if p.get("failures", 0) >= cfg.peer_failures:
                 add(h, "error", f"the stack at {h.stack_url} isn't answering ({p.get('error') or p.get('status')})", "peer")
-            if p.get("cert_expires"):
-                left = dt.datetime.fromisoformat(p["cert_expires"]) - now
-                if left < dt.timedelta(days=cfg.cert_days):
-                    add(h, "warning", f"the stack's certificate expires {p['cert_expires'][:16].replace('T', ' ')} UTC", "cert")
+            if cert_due({"expires": p.get("cert_expires"), "issued": p.get("cert_issued")}, now, cfg.cert_days):
+                add(h, "warning", f"the stack's certificate expires {p['cert_expires'][:16].replace('T', ' ')} UTC", "cert")
     return out
 
 

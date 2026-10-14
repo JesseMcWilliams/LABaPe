@@ -38,7 +38,7 @@ def test_services_override_parks_what_wasnt_chosen():
     text = S.services_override({"InstallSyslog": False, "InstallConjur": False, "InstallRemoteAccess": True})
     assert text.startswith(S.OVERRIDE_HEADER)
     for svc in ("labape-syslog-db", "labape-syslog", "labape-conjur", "labape-conjur-db", "labape-conjur-tls"):
-        assert f'  {svc}:\n    profiles: ["off"]\n' in text
+        assert f'  {svc}:\n    profiles: !override ["off"]\n' in text
     assert "labape-guacd" not in text and "labape-openbao" not in text      # OpenBao always runs
 
 
@@ -168,7 +168,7 @@ def test_arm_stack_host_override_and_arch(monkeypatch):
     text = S.services_override({}, kvm_device=False)
     assert "labape-worker:\n    devices: !reset []" in text and "profiles" not in text
     both = S.services_override({"InstallConjur": False}, kvm_device=False)
-    assert 'labape-conjur:\n    profiles: ["off"]' in both and "devices: !reset []" in both
+    assert 'labape-conjur:\n    profiles: !override ["off"]' in both and "devices: !reset []" in both
     assert S.services_override({}, kvm_device=True) is None
     import platform as _platform
     monkeypatch.setattr(_platform, "machine", lambda: "aarch64")
