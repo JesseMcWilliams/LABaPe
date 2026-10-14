@@ -29,6 +29,8 @@ def flow(url: str) -> str:
     ex = f"{base}/api/v3/flows/executor/{slug}/?" + urlencode({"query": p.query})
     print(f"  {p.netloc}: flow {slug}")
     r = c.get(ex)
+    if r.status_code in (301, 302, 303, 307):            # the flow finished at once: on to where it sends us
+        return urljoin(base, r.headers["location"])
     if not r.headers.get("content-type", "").startswith("application/json"):
         raise SystemExit(f"flow {slug} at {p.netloc}: HTTP {r.status_code} {r.text[:300]}")
     ch = r.json()
