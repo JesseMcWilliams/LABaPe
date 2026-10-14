@@ -7,12 +7,11 @@
 ## Order of work (agreed 2026-10-14)
 
 Items 3-9 of the 2026-10-14 review plus the earlier deferred work, in the order to build them. Each
-batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32), 3 B2 (§33). Questions 146-150 in
+batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32), 3 B2 (§33), 4 L1 (§34). Questions 146-150 in
 Planning_Questions.md.
 
 | # | Batch | What | Why here |
 |---|---|---|---|
-| 4 | L1 Stack link | One stack issues a one-time link code; the other enters it; each then holds a client certificate from the other's platform CA. A read-only summary API (hosts, environments, jobs, open alerts, capacity) behind that certificate. A stack that stops answering shows its last data, marked stale, plus M1's peer alert. | Needed by L2 and B3. |
 | 5 | L2 Overall dashboard | On every linked stack (question 148): totals across all stacks, one card per stack with its alerts; a card opens that stack's own dashboard. View-only (question 147). | |
 | 6 | B3 Backups to linked stacks | Each stack sends its B1 archive over the link to every linked stack, which keeps it on its primary KVM host (question 149), with its own retention. Restoring from a copy is B2 with the file fetched from there. | |
 | 7 | A1 API tokens | Personal and service tokens with roles and an expiry, for scripts and CI; created, listed and revoked in the UI; every use audited. | |

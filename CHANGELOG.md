@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Linked stacks: Admin → Linked stacks links two LABaPe stacks with a
+  one-time code (the other stack's CA is checked against it); each reads
+  the other's summary every minute (hosts, environments, jobs, alerts),
+  keeps the last one when it stops answering, and raises an alert.
 - Install from a backup: `install-labape.py --from-backup ARCHIVE
   --backup-key-file KEY` makes a new machine the stack that was backed up
   (same address, CA, secrets, OpenBao, Authentik users, data);
