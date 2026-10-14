@@ -6,9 +6,9 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db, session_factory
@@ -55,9 +55,9 @@ def _visible_query(db: Session, p: Principal):
 
 
 @router.get("")
-def list_jobs(limit: int = 100, environment: str | None = None, type: str | None = None,
-              state: str | None = None, requested_by: str | None = None, since: dt.datetime | None = None,
-              until: dt.datetime | None = None, db: Session = Depends(get_db),
+def list_jobs(response: Response, limit: int = 100, offset: int = 0, environment: str | None = None,
+              type: str | None = None, state: str | None = None, requested_by: str | None = None,
+              since: dt.datetime | None = None, until: dt.datetime | None = None, db: Session = Depends(get_db),
               p: Principal = Depends(current_principal)):
     """Filters (O1): environment name (contains, case-insensitive), type (prefix), state,
     requested_by (exact), created since/until. Visibility is applied first, so a filter
@@ -75,7 +75,9 @@ def list_jobs(limit: int = 100, environment: str | None = None, type: str | None
         q = q.where(Job.created_at >= since)
     if until:
         q = q.where(Job.created_at <= until)
-    q = q.order_by(Job.id.desc()).limit(min(max(limit, 1), 1000))
+    # Paging (L1): the matching total in X-Total-Count, the page from offset.
+    response.headers["X-Total-Count"] = str(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+    q = q.order_by(Job.id.desc()).offset(max(offset, 0)).limit(min(max(limit, 1), 1000))
     return [_out(j, env) for j, env in db.execute(q)]
 
 

@@ -26,6 +26,7 @@ class User(Base):
     groups: Mapped[list] = mapped_column(JSON, default=list)   # snapshot from the last sign-in
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # the user's own: page size (L1)
 
 
 class RoleBinding(Base):

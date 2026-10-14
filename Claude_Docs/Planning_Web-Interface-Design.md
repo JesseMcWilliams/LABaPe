@@ -1649,3 +1649,13 @@ Questions 156 (b: a user keeps their role groups) and 157 (an admin turns it on 
 | Networks | Filters by name or description, address (network, gateway, pools, DNS), addressing, VLAN and, for admins, enabled or disabled. |
 | Verified | pytest 274 (the OS at upload: refused without targets, unknown targets, targets kept, an ISO's OS beats the guess, other files' targets; the download test names its targets). Live on kvm1: the build type-checked the UI; an installer upload without an OS was refused with the message; another file uploaded with `linux,rocky9` kept them; it was deleted afterwards. |
 
+### 48.2 L1: pages, page size and exports (built)
+
+| Area | As built |
+|---|---|
+| Page size | `users.preferences` (migration 0021), `GET/PUT /api/auth/me/preferences` (`page_size` 5-1000, 50 by default). `components/Paging.tsx`: `usePageSize()` (loaded once, shared by every list, saved on change), `Pager` (rows a-b of n, previous/next, rows per page 25/50/100/250 or **Other…**). |
+| Lists | Environments, Files and Catalog page in the browser (their lists are small and already filtered there). Jobs pages on the server: `GET /api/jobs?limit&offset` with the matching total in `X-Total-Count` (the API client's `getPage`). Syslog pages by message id (the newest page first; Next asks for the messages before the page's last), at the user's page size; **Live** adds new messages on the first page only. |
+| Exports | `ExportButton`: this page, rows from-to (1-based, of the filtered list; question 159) or all, built in the browser and saved as a file. Environments CSV (name, status, KVM host, hosts, addresses, created by/at, expiry, updated); Files CSV per tab (name, OS, size, SHA-256, description, path, added by/at); Jobs JSON or CSV (the API's job objects: parameters and result, no logs; fetched 1000 at a time; question 160). |
+| Environments | Filters: name, status, KVM host, OS (a host group runs it), created by, created since/until; in the address. |
+| Verified | pytest 276 (the preference's default, change and limits; Jobs pages and totals). Live on kvm1: the UI built (type-check); `labape-dev`'s page size 50 → 25 → back; Jobs `limit=50&offset=50` gave 50 rows of 166, starting below the first page. |
+

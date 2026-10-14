@@ -5,6 +5,7 @@ import { api, fmtTime, Job } from "../api";
 import { StateChip } from "../components";
 import { DateRangeFields, FilterBar, SelectFilter, toQuery, useUrlFilters } from "../components/Filters";
 import { Field } from "../forms";
+import { ExportButton, Pager, usePageSize } from "../components/Paging";
 
 interface Facets {
   types: string[];
@@ -21,19 +22,35 @@ export default function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [facets, setFacets] = useState<Facets>({ types: [], states: [], requested_by: [], environments: [] });
   const [error, setError] = useState("");
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [size] = usePageSize();
   const f = useUrlFilters(KEYS);
   const query = toQuery(f.applied).toString();
+  useEffect(() => setPage(0), [query]);
 
   useEffect(() => {
     api.get<Facets>("/api/jobs/facets").then(setFacets, () => undefined);
   }, []);
   useEffect(() => {
-    const load = () => api.get<Job[]>(`/api/jobs?limit=300&${query}`).then((j) => { setJobs(j); setError(""); },
-      (e) => setError(e.message));
+    // Paged on the server (L1); refreshed every 5 seconds.
+    const load = () => api.getPage<Job>(`/api/jobs?limit=${size}&offset=${page * size}&${query}`)
+      .then((r) => { setJobs(r.rows); setTotal(r.total); setError(""); }, (e) => setError(e.message));
     load();
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
-  }, [query]);
+  }, [query, page, size]);
+  // Exports (question 160): the jobs as the API gives them (parameters and result, no logs), up to 1000 per call.
+  const fetchJobs = async (offset: number, limit: number) => {
+    const out: Job[] = [];
+    while (out.length < limit) {
+      const n = Math.min(1000, limit - out.length);
+      const r = await api.getPage<Job>(`/api/jobs?limit=${n}&offset=${offset + out.length}&${query}`);
+      out.push(...r.rows);
+      if (r.rows.length < n) break;
+    }
+    return out;
+  };
 
   return (
     <Stack spacing={2}>
@@ -55,9 +72,17 @@ export default function Jobs() {
           onChange={(v) => f.set("requested_by", v)} />
         <DateRangeFields since={f.draft.since} until={f.draft.until} onChange={f.set} />
       </FilterBar>
-      <Typography variant="body2" color="text.secondary">
-        {jobs.length} job{jobs.length === 1 ? "" : "s"}{f.active ? " match" : ""}{jobs.length === 300 ? " (newest 300 shown)" : ""}
-      </Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <Typography variant="body2" color="text.secondary">{total} job{total === 1 ? "" : "s"}{f.active ? " match" : ""}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <ExportButton name="jobs" total={total} page={page} formats={["json", "csv"]} fetchRows={fetchJobs}
+            columns={[{ header: "id", value: (j: Job) => j.id }, { header: "type", value: (j: Job) => j.type },
+              { header: "state", value: (j: Job) => j.state }, { header: "environment", value: (j: Job) => j.environment_name ?? "" },
+              { header: "requested_by", value: (j: Job) => j.requested_by }, { header: "created_at", value: (j: Job) => j.created_at },
+              { header: "finished_at", value: (j: Job) => j.finished_at ?? "" }, { header: "exit_code", value: (j: Job) => j.exit_code ?? "" }]} />
+          <Pager total={total} page={page} onPage={setPage} />
+        </Stack>
+      </Stack>
       <Table size="small">
         <TableHead>
           <TableRow>

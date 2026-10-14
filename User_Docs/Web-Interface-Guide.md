@@ -37,6 +37,8 @@ Everyone signed in can browse files, the catalog, and the hosts and networks the
 
 **Reload rights.** If someone adds you to a group, choose **Reload rights** in the account menu. LABaPe asks Authentik for your current groups without signing you out, then recalculates your roles. If Authentik needs you to sign in again first, LABaPe says so: sign out and back in.
 
+**Lists: pages and exports.** Environments, Jobs, Files, the Catalog and Syslog show 50 rows per page. **Rows per page** above a list changes it for every list (25, 50, 100, 250, or **Other…** for your own number, 5-1000); LABaPe keeps your choice with your profile. **Export** (Environments and Files as CSV; Jobs as JSON or CSV, each job with its parameters and result, not its log) asks which rows: **this page**, **rows from - to** of the filtered list, or **all**; it uses the filters shown.
+
 ## 2. The dashboard
 
 The dashboard is the landing page; clicking the app name at the top left always returns to it. It refreshes every minute.
@@ -52,6 +54,8 @@ Admins and auditors also see:
 A VM's free space and "responding" state come from the QEMU guest agent, which LABaPe installs on every new VM. VMs built before the agent was added show "unknown" and the size of their disk file instead.
 
 ## 3. Creating an environment
+
+**Environments** lists the environments you can see, filtered by name, status, KVM host, OS, who created it and when, with **Export** as CSV.
 
 Choose **Environments → New environment** (deployers and template editors). The form:
 
@@ -131,7 +135,7 @@ Linux VMs have no admin password: Ansible signs in with an SSH key (the admin us
 
 ## 5. Jobs
 
-Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** lists them; each job's page shows its live log (**Follow** keeps the newest lines in view).
+Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** lists them, newest first, a page at a time (filter by environment, type, state, who and when; **Export** downloads them as JSON or CSV); each job's page shows its live log (**Follow** keeps the newest lines in view).
 - **Cancel** stops the job's tools. Work already done stays: VMs created so far are kept, and you can retry the deploy or destroy the environment.
 - **Retry** starts a new job with the same settings. OpenTofu picks up from its saved state.
 - One job runs per environment at a time; a second one waits.
