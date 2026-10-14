@@ -261,9 +261,9 @@ class RemoteJob:
                 f"bash -lc {shlex.quote(script)}"]
 
     def pull(self, rel: str) -> None:
-        """Copy a directory of the remote workspace back over the local one."""
+        """Copy a directory or file of the remote workspace back over the local one."""
         r = subprocess.run([*self.host.ssh_base(),
-                            f"cd {shlex.quote(self.root)} && test -d {shlex.quote(rel)} && tar -czf - {shlex.quote(rel)}"],
+                            f"cd {shlex.quote(self.root)} && test -e {shlex.quote(rel)} && tar -czf - {shlex.quote(rel)}"],
                            capture_output=True, timeout=300, env=tool_env(), check=False)
         if r.returncode == 0 and r.stdout:
             subprocess.run(["tar", "-C", str(self.work), "-xzf", "-"], input=r.stdout, check=True, timeout=300)

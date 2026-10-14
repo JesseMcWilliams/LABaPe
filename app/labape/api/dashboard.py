@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, ca, notify, stores, version
+from .. import appsettings, ca, notify, spread, stores, version
 from ..auth import load_providers, provider_enabled
 from ..config import get_settings
 from ..db import get_db
@@ -134,7 +134,7 @@ def dashboard(db: Session = Depends(get_db), p: Principal = Depends(current_prin
         q = q.where(Environment.id.in_(env_ids or {-1}))
     envs = list(db.scalars(q))
     hosts = [h for h in visible_hosts(db, p) if h.enabled]     # a disabled host is parked: not on the dashboard
-    host_ids = {h.id for h in hosts} | {e.kvm_host_id for e in envs}
+    host_ids = {h.id for h in hosts} | {hid for e in envs for hid in [e.kvm_host_id, *spread.host_ids(e)]}
     stats = {r.kvm_host_id: r for r in db.scalars(select(HostStats).where(HostStats.kvm_host_id.in_(host_ids or {-1})))}
     since = utcnow() - dt.timedelta(hours=24)
     samples: dict[tuple[int, str], list] = defaultdict(list)
@@ -146,10 +146,10 @@ def dashboard(db: Session = Depends(get_db), p: Principal = Depends(current_prin
     by_id = {h.id: h for h in db.scalars(select(KvmHost).where(KvmHost.id.in_(host_ids or {-1})))}
     env_out = []
     for e in envs:
-        row = stats.get(e.kvm_host_id)
-        vms = {v["name"]: v for v in ((row.stats if row else None) or {}).get("vms", [])}
-        names = [n for g in (e.spec or {}).get("host_groups", []) for n in instance_names(g)]
-        env_samples = [s for n in names for s in samples.get((e.kvm_host_id, n), [])]
+        vm_hosts = spread.vm_host_ids(e)                      # each VM on its own host (design §45)
+        vms = {v["name"]: v for hid in set(vm_hosts.values()) | {e.kvm_host_id}
+               for v in ((stats[hid].stats if hid in stats else None) or {}).get("vms", []) if vm_hosts.get(v["name"]) == hid}
+        env_samples = [s for n, hid in vm_hosts.items() for s in samples.get((hid, n), [])]
         env_out.append(_env_out(e, by_id.get(e.kvm_host_id), vms, env_samples))
     return {
         "hosts": [_host_out(h, stats.get(h.id), samples.get((h.id, ""), [])) for h in hosts],

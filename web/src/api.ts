@@ -190,6 +190,8 @@ export interface HostGroup {
   start_order?: number | null;
   start_wait?: "agent" | "none";
   start_delay_seconds?: number;
+  // Design §45: this group on another KVM host; absent = the environment's host.
+  kvm_host_id?: number;
 }
 
 export interface Environment {

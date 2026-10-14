@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Fixed
+- Preparing a host that had no NetworkManager (e.g. a Debian cloud image)
+  no longer leaves it without DNS servers.
+- A template copied to a host that had it once before no longer fails
+  with a duplicate-key error.
 - KVM and stack hosts never sleep. A desktop install's login screen
   suspended kvm1 15 minutes after boot, stopping its VMs and the web stack.
   The installer's new `Prereq.NoSleep` step and a host's access-account
@@ -21,6 +25,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- One environment over several KVM hosts: each host group can name its
+  own KVM host on the new-environment form. Each host's part runs on that
+  host in its own OpenTofu workspace, then Ansible runs once over all the
+  VMs. Power, snapshots, VM details and consoles go to each VM's own host.
 - A logo (Settings → Branding): PNG, JPEG or WebP, in the top bar, on the
   sign-in page and as the tab icon.
 - Best-fit placement: Suggest best host on the new-environment form ranks

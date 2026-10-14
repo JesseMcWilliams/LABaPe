@@ -22,9 +22,9 @@ import secrets as _secrets
 import shlex
 import uuid
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from . import appsettings
+from . import appsettings, spread
 from .models import Environment, KvmHost, RemoteSession
 from .naming import instance_names
 
@@ -135,7 +135,7 @@ def console_target(env: Environment, vm: str, kind: str) -> dict:
     groups = {n: g for g in (env.spec or {}).get("host_groups", []) for n in instance_names(g)}
     if vm not in groups:
         raise RemoteError(f"{vm} isn't a VM of {env.name}")
-    h = env.kvm_host
+    h = object_session(env).get(KvmHost, spread.vm_host_id(env, vm))     # the VM's own host (design §45)
     if h is None or h.access_status != "ready":
         raise RemoteError("consoles go through the KVM host: an admin sets up its SSH access first "
                           "(Admin → KVM hosts → SSH access)")

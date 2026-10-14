@@ -54,6 +54,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/relay_host_to_vm.sh` | lab (worker) | Copy a file from a registered host to a test VM through the worker (restore drills); prints only size and hash |
 | `live/logo.py` | lab (container) | The logo: `roundtrip` uploads a generated PNG, checks the public URL, removes it |
 | `live/placement.py` | lab (container) | Best-fit placement: the ranking for a small Debian environment, or `create NAME` with no host (waits for the deploy) |
+| `live/spread.py` | lab (container) | One environment over two hosts (design §45): `create NAME HOME OTHER`, `vms ENV`, `power ENV ACTION`, `job ENV deploy|destroy|refresh`, `log JOB [LINES]` (waits for each job) |
 | `live/env_accounts.py` | lab (container) | An environment's own accounts: `ENV [list]`, `set-local NAME ROLES`, `set-domain NAME`, `clear`, `rotate NAME` (passwords masked) |
 | `live/quotas.py` | lab (container) | Quotas: list them, or `roundtrip` (limit labape-dev, check the refusal, remove the quota) |
 | `live/leases.py` | lab (container) | Environment leases: `ENV [show]`, `days N`, `in-minutes N` (admin's exact end), `clear`; `settings on/off [grace=N] [after=destroy/keep] [remind=7,1]` |

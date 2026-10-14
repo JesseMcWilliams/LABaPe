@@ -14,7 +14,7 @@ import { ConnectButton, RdpFileLink } from "./Connect";
 
 interface VmRow {
   name: string; group: string; os: string; start_order: number; state: string; online: boolean;
-  responding: boolean | null;
+  responding: boolean | null; kvm_host?: string;
 }
 type Action = "start" | "shutdown" | "restart" | "force_off";
 
@@ -26,6 +26,7 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
 }) {
   const navigate = useNavigate();
   const [vms, setVms] = useState<VmRow[]>([]);
+  const spreadOut = new Set(vms.map((v) => v.kvm_host)).size > 1;      // design §45: VMs on several hosts
   const [collected, setCollected] = useState<string | null>(null);
   const [canOperate, setCanOperate] = useState(false);
   const [force, setForce] = useState(false);
@@ -100,7 +101,7 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>VM</TableCell><TableCell>Group</TableCell><TableCell>Start order</TableCell>
+              <TableCell>VM</TableCell><TableCell>Group</TableCell>{spreadOut && <TableCell>KVM host</TableCell>}<TableCell>Start order</TableCell>
               <TableCell>State</TableCell><TableCell>Guest agent</TableCell>{canOperate && <TableCell />}
             </TableRow>
           </TableHead>
@@ -109,6 +110,7 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
               <TableRow key={v.name}>
                 <TableCell><Link component={RouterLink} to={`/environments/${envId}/vms/${v.name}`} title="Details, accounts and console">{v.name}</Link></TableCell>
                 <TableCell>{v.group} <Typography component="span" variant="caption" color="text.secondary">{v.os}</Typography></TableCell>
+                {spreadOut && <TableCell>{v.kvm_host}</TableCell>}
                 <TableCell>{v.start_order}</TableCell>
                 <TableCell><Chip size="small" label={v.state} color={stateColor(v.state)} /></TableCell>
                 <TableCell>{!v.online ? "—" : v.responding === true ? "answers" : v.responding === false ? "not answering" : "none"}</TableCell>
