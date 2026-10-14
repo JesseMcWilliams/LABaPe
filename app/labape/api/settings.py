@@ -18,7 +18,7 @@ from .. import appsettings, notify, stores
 from ..db import get_db
 from ..errors import FieldError
 from ..files import roots
-from ..models import Job
+from ..models import Job, StackLink
 from ..security import Principal, audit, client_ip, get_secret, put_secret, require_roles
 
 router = APIRouter(prefix="/api/admin", tags=["settings"])
@@ -173,7 +173,12 @@ def list_stack_backups(db: Session = Depends(get_db), _: Principal = Depends(req
             "requested": stackbackup._setting(db, stackbackup.REQUESTED_KEY),
             "key_saved": stackbackup.key_saved(db),
             "key_file": next((f["key_file"] for f in files if f.get("key_file")), ""),
-            "service_user": next((f["service_user"] for f in files if f.get("service_user")), agent.get("user", ""))}
+            "service_user": next((f["service_user"] for f in files if f.get("service_user")), agent.get("user", "")),
+            # Copies to and from linked stacks (design §36).
+            "sent": [{"link": link.name, "url": link.url, **((stackbackup._setting(db, stackbackup.SENT_KEY) or {})
+                                                            .get(str(link.id)) or {})}
+                     for link in db.scalars(select(StackLink).order_by(StackLink.name))],
+            "copies": stackbackup._setting(db, stackbackup.COPIES_KEY) or {}}
 
 
 @router.post("/backups/stack")

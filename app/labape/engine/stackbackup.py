@@ -12,6 +12,7 @@ import json
 import re
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import appsettings, update
@@ -106,3 +107,121 @@ def mark_key_saved(db: Session, actor: str) -> dict:
 def newest(db: Session) -> dict | None:
     a = archives(appsettings.get(db, "stack_backup").directory)
     return a[0] if a else None
+
+
+# --- copies to and from linked stacks (design §36, batch B3; question 149) ----------------------
+
+SENT_KEY = "backup.stack_sent"            # {link id: {"archive", "at", "error", "tried_at"}}
+COPIES_KEY = "backup.linked_copies"       # {peer url: [{"archive", "size", "created_at", "received_at", "host", "path"}]}
+SHA_KEY = "backup.stack_sha256"           # {archive: sha256}, so a file is hashed once
+RETRY = dt.timedelta(minutes=10)
+LINKED_DIR = "linked-backups"             # under the primary file host's file cache
+
+
+def sha256_file(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def send_to_links(db: Session, now: dt.datetime | None = None, client_for=None) -> dict:
+    """Send the newest checked archive to each linked stack that doesn't have it yet. A failed send
+    is tried again after RETRY. Returns {link id: result}."""
+    import base64
+
+    import httpx
+
+    from .. import links
+    from ..models import StackLink
+    from ..security import get_secret
+    now = now or utcnow()
+    cfg = appsettings.get(db, "stack_backup")
+    out: dict = {}
+    newest_ok = next((a for a in archives(cfg.directory) if (a.get("check") or {}).get("ok")), None)
+    if not cfg.send_to_links or newest_ok is None:
+        return out
+    path = Path(cfg.directory) / newest_ok["archive"]
+    sent = _setting(db, SENT_KEY) or {}
+    shas = _setting(db, SHA_KEY) or {}
+    for link in db.scalars(select(StackLink)).all():
+        st = sent.get(str(link.id)) or {}
+        if st.get("archive") == newest_ok["archive"] and not st.get("error"):
+            continue
+        if st.get("error") and st.get("tried_at") and now - dt.datetime.fromisoformat(st["tried_at"]) < RETRY:
+            continue
+        if newest_ok["archive"] not in shas:
+            shas = {newest_ok["archive"]: sha256_file(path)}      # only the newest is ever sent
+            _put(db, SHA_KEY, shas)
+        side = {k: v for k, v in newest_ok.items() if k not in ("key_file",)}
+        token = get_secret(db, links._secret_name(link.id))
+        try:
+            with open(path, "rb") as fh, (client_for or links.client)(link.ca_pem) as h:
+                r = h.post(f"{link.url}/api/link/backups/{newest_ok['archive']}", content=fh,
+                           headers={"Authorization": f"Bearer {token}", "X-Sha256": shas[newest_ok["archive"]],
+                                    "X-LABaPe-Sidecar": base64.b64encode(json.dumps(side, default=str).encode()).decode(),
+                                    "Content-Length": str(path.stat().st_size)},
+                           timeout=httpx.Timeout(60, write=3600, read=600))
+            if r.status_code != 200:
+                raise RuntimeError(f"{r.status_code}: {r.text[:200]}")
+            sent[str(link.id)] = {"archive": newest_ok["archive"], "at": now.isoformat(), "error": "",
+                                  "tried_at": now.isoformat()}
+        except Exception as exc:  # noqa: BLE001 — recorded and tried again later
+            sent[str(link.id)] = {**st, "error": str(exc)[:300] or exc.__class__.__name__, "tried_at": now.isoformat()}
+        out[link.id] = sent[str(link.id)]
+        _put(db, SENT_KEY, sent)
+    return out
+
+
+def incoming_dir(db: Session) -> Path:
+    """Where a linked stack's archive lands before the worker moves it to the primary file host."""
+    return Path(appsettings.get(db, "stack_backup").directory).parent / "linked" / ".incoming"
+
+
+def store_linked(db: Session, job) -> int:
+    """Job `backup.store_linked`: a received archive onto this stack's primary file host, with its
+    sidecar, then the peer's copies there past the retention (the newest always stays)."""
+    import shlex
+
+    from . import filedist
+    p = job.params or {}
+    staged = Path(p["staged"])
+    peer = p["peer"]
+    with open(job.log_path, "a", encoding="utf-8") as log:
+        prim = filedist.primary(db)
+        if prim is None:
+            log.write("labape: no primary file host to keep the copy on\n")
+            return 1
+        ep = filedist.endpoint(prim)
+        d = f"{filedist.cache_dir(prim, LINKED_DIR)}/{peer}"
+        dst = f"{d}/{p['archive']}"
+        log.write(f"labape: {p['archive']} from {p['peer_url']} -> {prim.name}:{dst}\n")
+        side_path = staged.with_name(staged.name + ".json")
+        filedist.copy(None, str(staged), ep, dst, log)
+        if side_path.is_file():
+            filedist.copy(None, str(side_path), ep, f"{dst}.json", log)
+        staged.unlink(missing_ok=True)
+        side_path.unlink(missing_ok=True)
+        cfg = appsettings.get(db, "stack_backup")
+        keep_after = utcnow() - dt.timedelta(days=cfg.retention_days)
+        copies = _setting(db, COPIES_KEY) or {}
+        mine = [c for c in copies.get(p["peer_url"], []) if c["archive"] != p["archive"]]
+        mine.insert(0, {"archive": p["archive"], "size": p["size"], "created_at": p.get("created_at"),
+                        "received_at": utcnow().isoformat(), "host": prim.name, "path": dst})
+        mine.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+        kept, gone = mine[:1], []
+        for c in mine[1:]:
+            (gone if dt.datetime.fromisoformat(c["received_at"]) < keep_after else kept).append(c)
+        for c in gone:
+            cmd = f"rm -f {shlex.quote(c['path'])} {shlex.quote(c['path'] + '.json')}"
+            if ep is None:
+                Path(c["path"]).unlink(missing_ok=True)
+                Path(c["path"] + ".json").unlink(missing_ok=True)
+            else:
+                ep.run(cmd, timeout=120)
+            log.write(f"labape: removed {c['archive']} (older than {cfg.retention_days} days)\n")
+        copies[p["peer_url"]] = kept
+        _put(db, COPIES_KEY, copies)
+    return 0
