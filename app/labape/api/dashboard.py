@@ -374,3 +374,49 @@ def end_silence(silence_id: int, db: Session = Depends(get_db), p: Principal = D
     audit(db, p.username, "monitor.silence.end", object_type="monitor_silence", object_id=s.id,
           detail={"key": s.key, "message": s.message})
     return {"ok": True}
+
+
+@router.get("/stacks")
+def all_stacks(db: Session = Depends(get_db), _: Principal = Depends(require_roles("auditor"))):
+    """The overall view of every linked stack (design §35): this stack live, the others as last read
+    (stale when they stopped answering), and totals across them all. Empty `stacks` without links."""
+    from .. import links
+    from ..models import StackLink
+    rows = list(db.scalars(select(StackLink).order_by(StackLink.name)))
+    if not rows:
+        return {"stacks": [], "totals": None}
+    stacks = [{"self": True, "id": None, "url": links.own_url(), "status": "ok", "last_ok_at": utcnow(), "error": "",
+               "summary": links.summary(db)}]
+    for link in rows:
+        o = links.out(link)
+        status = "never" if not link.last_ok_at else ("down" if link.failures else ("stale" if o["stale"] else "ok"))
+        stacks.append({"self": False, "id": link.id, "url": link.url, "status": status, "last_ok_at": link.last_ok_at,
+                       "error": link.error, "summary": link.summary})
+    totals = {"stacks": len(stacks), "answering": sum(1 for s in stacks if s["status"] == "ok"), "hosts": 0,
+              "cpus": 0, "memory_total_mb": 0, "memory_used_mb": 0, "disk_total_gb": 0.0, "disk_free_gb": 0.0,
+              "vms_running": 0, "vms_defined": 0, "environments": 0, "jobs_running": 0, "jobs_queued": 0,
+              "alerts_error": 0, "alerts_warning": 0}
+    # A machine two stacks both drive (a KVM host registered in each) counts once, with its newest
+    # reading; hosts disabled everywhere add nothing to the capacity.
+    machines: dict[str, dict] = {}
+    for s in stacks:
+        for h in (s["summary"] or {}).get("hosts") or []:
+            key = h.get("machine") or f"{s['url']}#{h.get('name')}"
+            cur = machines.get(key)
+            if cur is None or (h.get("enabled") and (not cur.get("enabled") or
+                                                    (h.get("collected_at") or "") > (cur.get("collected_at") or ""))):
+                machines[key] = h
+    totals["hosts"] = len(machines)
+    for h in machines.values():
+        if h.get("enabled"):
+            for k in ("cpus", "memory_total_mb", "memory_used_mb", "disk_total_gb", "disk_free_gb", "vms_running",
+                      "vms_defined"):
+                totals[k] += h.get(k) or 0
+    for s in stacks:
+        m = s["summary"] or {}
+        totals["environments"] += len(m.get("environments") or [])
+        totals["jobs_running"] += (m.get("jobs") or {}).get("running", 0)
+        totals["jobs_queued"] += (m.get("jobs") or {}).get("queued", 0)
+        for a in m.get("alerts") or []:
+            totals["alerts_error" if a.get("level") == "error" else "alerts_warning"] += 1
+    return {"stacks": stacks, "totals": totals}

@@ -234,6 +234,86 @@ interface Monitoring {
 
 const SILENCE_HOURS = [[1, "1 hour"], [4, "4 hours"], [24, "1 day"], [72, "3 days"], [168, "1 week"], [720, "30 days"]] as const;
 
+interface StackSummary {
+  name: string; version: string; maintenance: { active: boolean; reason: string };
+  hosts: { name: string; role: string; enabled: boolean }[];
+  totals: { cpus: number; memory_total_mb: number; memory_used_mb: number; disk_total_gb: number; disk_free_gb: number; vms_running: number; vms_defined: number };
+  environments: { name: string; status: string }[]; jobs: { running: number; queued: number; failed_24h: number };
+  alerts: { level: string; message: string }[];
+}
+interface AllStacks {
+  stacks: { self: boolean; id: number | null; url: string; status: string; last_ok_at: string | null; error: string; summary: StackSummary | null }[];
+  totals: {
+    stacks: number; answering: number; hosts: number; cpus: number; memory_total_mb: number; memory_used_mb: number;
+    disk_total_gb: number; disk_free_gb: number; vms_running: number; vms_defined: number; environments: number;
+    jobs_running: number; jobs_queued: number; alerts_error: number; alerts_warning: number;
+  } | null;
+}
+
+const STACK_STATUS: Record<string, { color: "success" | "warning" | "error"; label: string }> = {
+  ok: { color: "success", label: "answering" }, stale: { color: "warning", label: "stale" },
+  down: { color: "error", label: "not answering" }, never: { color: "warning", label: "not reached yet" },
+};
+const mbAsGb = (mb: number) => `${(mb / 1024).toFixed(0)} GB`;
+
+/** Every linked stack at a glance (design §35): totals, then a card per stack that opens its own dashboard. */
+function AllStacksPanel({ d }: { d: AllStacks }) {
+  const t = d.totals!;
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack spacing={1.5}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }} useFlexGap>
+          <Typography variant="h6">All stacks</Typography>
+          <Chip size="small" label={`${t.answering} of ${t.stacks} answering`} color={t.answering === t.stacks ? "success" : "warning"} />
+          <Typography variant="body2" color="text.secondary">
+            {t.hosts} hosts · {t.cpus} CPUs · {mbAsGb(t.memory_used_mb)} of {mbAsGb(t.memory_total_mb)} memory used ·{" "}
+            {t.disk_free_gb.toFixed(0)} of {t.disk_total_gb.toFixed(0)} GB VM disk free · {t.vms_running} of {t.vms_defined} VMs running ·{" "}
+            {t.environments} environments · {t.jobs_running} jobs running, {t.jobs_queued} queued
+          </Typography>
+          {(t.alerts_error > 0 || t.alerts_warning > 0) && (
+            <Chip size="small" color={t.alerts_error ? "error" : "warning"} label={`${t.alerts_error + t.alerts_warning} open alerts`} />
+          )}
+        </Stack>
+        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
+          {d.stacks.map((s) => {
+            const m = s.summary;
+            const st = STACK_STATUS[s.status] ?? STACK_STATUS.never;
+            const errs = m?.alerts.filter((a) => a.level === "error").length ?? 0;
+            return (
+              <Paper key={s.url} variant="outlined" sx={{ p: 1.5, flex: "1 1 260px", maxWidth: 420, opacity: s.status === "ok" ? 1 : 0.85 }}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                  <Link href={s.self ? "/" : `${s.url}/`} target={s.self ? undefined : "_blank"} rel="noreferrer" variant="subtitle1"
+                    sx={{ fontWeight: 600 }} title={s.self ? "This stack" : `Open ${s.url} (its own sign-in)`}>
+                    {m?.name ?? s.url}
+                  </Link>
+                  {s.self ? <Chip size="small" label="this stack" /> : <Chip size="small" color={st.color} label={st.label} title={s.error || undefined} />}
+                  {m?.maintenance.active && <Chip size="small" label="maintenance" title={m.maintenance.reason} />}
+                </Stack>
+                {m ? (
+                  <Typography variant="body2" component="div" sx={{ mt: 0.5 }}>
+                    {m.version} · {m.hosts.length} hosts ({m.hosts.map((h) => h.name).join(", ")})<br />
+                    {m.totals.vms_running ?? 0} of {m.totals.vms_defined ?? 0} VMs running · {m.environments.length} environments ·{" "}
+                    {m.jobs.running} running, {m.jobs.queued} queued, {m.jobs.failed_24h} failed today
+                    {m.alerts.length > 0 && (
+                      <Box sx={{ mt: 0.5 }}>
+                        <Chip size="small" color={errs ? "error" : "warning"} label={`${m.alerts.length} open alerts`} sx={{ mr: 1 }} />
+                        <Typography variant="caption" color="text.secondary">{m.alerts.slice(0, 2).map((a) => a.message).join(" · ")}</Typography>
+                      </Box>
+                    )}
+                  </Typography>
+                ) : <Typography variant="body2" color="text.secondary">No summary yet{s.error ? `: ${s.error}` : ""}</Typography>}
+                {!s.self && s.status !== "ok" && s.last_ok_at && (
+                  <Typography variant="caption" color="text.secondary" component="div">As of {fmtTime(s.last_ok_at)}</Typography>
+                )}
+              </Paper>
+            );
+          })}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
 /** Silence an alert's condition: no syslog or email until it ends; still shown (design §31). */
 function SilenceDialog({ alert, onClose }: { alert: MonAlert | null; onClose: (changed: boolean) => void }) {
   const [hours, setHours] = useState(4);
@@ -339,6 +419,7 @@ export default function Dashboard() {
   const [data, setData] = useState<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean } | null>(null);
   const [health, setHealth] = useState<AdminHealth | null>(null);
   const [mon, setMon] = useState<Monitoring | null>(null);
+  const [all, setAll] = useState<AllStacks | null>(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -347,7 +428,10 @@ export default function Dashboard() {
     api.get<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean }>("/api/dashboard").then((d) => {
       setData(d);
       if (d.is_admin) api.get<AdminHealth>("/api/dashboard/admin").then(setHealth, () => setHealth(null));
-      if (d.is_admin || hasRole(me, "auditor")) api.get<Monitoring>("/api/dashboard/monitoring").then(setMon, () => setMon(null));
+      if (d.is_admin || hasRole(me, "auditor")) {
+        api.get<Monitoring>("/api/dashboard/monitoring").then(setMon, () => setMon(null));
+        api.get<AllStacks>("/api/dashboard/stacks").then(setAll, () => setAll(null));
+      }
     }, (e) => setError(e.message));
   };
   useEffect(() => {
@@ -394,6 +478,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
+      {all?.totals && <AllStacksPanel d={all} />}
       {mon && <AlertsPanel m={mon} admin={data.is_admin} reload={load} />}
 
       <Box>
