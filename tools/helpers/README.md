@@ -61,7 +61,8 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/leases.py` | lab (container) | Environment leases: `ENV [show]`, `days N`, `in-minutes N` (admin's exact end), `clear`; `settings on/off [grace=N] [after=destroy/keep] [remind=7,1]` |
 | `live/snapshots.py` | lab (container) | VM snapshots: `ENV VM [list]`, `refresh`, `auto on/off`, `take NAME`, `revert NAME`, `delete NAME` (waits for each job) |
 | `live/tokens.py` | lab (container) | API tokens: list them, `roundtrip` (make, use, revoke a throwaway token; the secret is never printed), or `scrape` (`/api/metrics` with a throwaway auditor service token) |
-| `live/links.py` | lab (container) | Linked stacks: list, `invite` (prints only the code), `join CODE`, `poll ID`, `remove ID`, `overall` (the dashboard's All stacks) |
+| `live/links.py` | lab (container) | Linked stacks: list, `invite` (prints only the code), `join CODE`, `poll ID`, `remove ID`, `overall` (the dashboard's All stacks), `signon ID on\|off` (sign-on from that stack, §47.2; waits for the agent) |
+| `live/linked_login.py` | lab (container) or the linked stack's host | Sign in to a stack's LABaPe with a linked stack's account (design §47.2): `SOURCE_NAME USER`; `LABAPE` the stack, `AK_ENV` the linked stack's Authentik `.env` |
 | `live/stack_backup.py` | lab (container) | Full-stack backups: list them (and what went to, or came from, linked stacks), or `run [--wait]` one through the update agent |
 | `live/monitoring.py` | lab (container) | Open and cleared alerts, silences, and each stack host's checks; `ack`/`unack`/`silence`/`end` |
 | `live/syslog_stack.py` | lab (container) | The stack's syslog collector: status, messages, test senders, forwarding test, settings |
