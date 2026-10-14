@@ -173,9 +173,15 @@ def env_password_overrides(db: Session, env_id: int) -> dict[str, str]:
 
 
 def clear_env_passwords(db: Session, env_id: int) -> None:
-    for kind in ENV_PASSWORD_VAULT_KEYS:
-        if db.get(Secret, env_password_name(env_id, kind)) is not None:
-            put_secret(db, env_password_name(env_id, kind), "")
+    """When an environment is destroyed: its rotated passwords, its own accounts' passwords and any
+    value a rotation was trying (S2 found accounts kept after a destroy)."""
+    from sqlalchemy import select
+    names = {env_password_name(env_id, kind) for kind in ENV_PASSWORD_VAULT_KEYS}
+    for prefix in (f"environment/{env_id}/account/", f"environment/{env_id}/rotation-candidate/"):
+        names |= set(db.scalars(select(Secret.name).where(Secret.name.startswith(prefix))))
+    for name in sorted(names):
+        if db.get(Secret, name) is not None:
+            put_secret(db, name, "")
 
 
 def split_legacy_passwords(db: Session) -> int:

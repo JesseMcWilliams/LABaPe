@@ -2,6 +2,8 @@
 stored-secret catalog with Move between stores."""
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -9,12 +11,13 @@ from sqlalchemy.orm import Session
 
 from .. import stores
 from ..db import get_db
-from ..engine.rotation import (ELEVATED_PREFIX, REGISTRY, RESTART_INTERVAL_HOURS, RotationError, ensure_policies,
-                               policy_secret, request_agent, uses_agent)
+from ..engine.rotation import (ELEVATED_PREFIX, ENV_KINDS, REGISTRY, RESTART_INTERVAL_HOURS, RotationError,
+                               ensure_policies, policy_secret, request_agent, uses_agent)
 from ..engine import secret_health
 from ..errors import FieldError
-from ..models import Job, Secret, SecretPolicy
-from ..security import Principal, audit, client_ip, pinned, put_secret, require_roles
+from ..models import Environment, Job, Secret, SecretPolicy
+from ..naming import instance_names
+from ..security import Principal, audit, client_ip, get_secret, pinned, put_secret, require_roles
 
 router = APIRouter(prefix="/api/admin", tags=["secrets"])
 FIELDS = ("id", "name", "kind", "label", "store", "secret_class", "interval_hours", "needs_restart", "enabled",
@@ -36,7 +39,10 @@ def _out(db: Session, p: SecretPolicy, last_jobs: dict[int, Job] | None = None) 
     return {**{f: getattr(p, f) for f in FIELDS}, "automatic": bool(r and r.automatic),
             "needs_elevated": bool(r and r.needs_elevated), "rotator_notes": r.notes if r else "",
             "last_job": {"id": last.id, "state": last.state} if last else None, "secret_name": policy_secret(p),
-            **secret_health.describe(p)}
+            **secret_health.describe(p),
+            # The Secrets page's sections (S2): the stack, the KVM hosts, the environments.
+            "section": "kvm" if p.kind == "worker_ssh_key" else "environments" if p.kind in ENV_KINDS else "stack",
+            "environment_id": (p.params or {}).get("environment_id") if p.kind in ENV_KINDS else None}
 
 
 def _elevated(db: Session) -> list[str]:
@@ -169,16 +175,69 @@ def add_elevated(body: ElevatedIn, request: Request, db: Session = Depends(get_d
 
 # --- stored secrets (the catalog, design §25) -------------------------------------
 
+ENV_SECRET = re.compile(r"^environment/(\d+)/(.+)$")
+KEYISH = re.compile(r"(^|[/_.])(ssh_key|key|secret_id|api_key|token)(_pub|_history)?$")
+
+
+def _vms_of(env: Environment, what: str) -> list[str]:
+    """The VMs an environment secret belongs to, from the spec (S2)."""
+    from .. import env_accounts
+    groups = (env.spec or {}).get("host_groups", [])
+    vms = [(n, set(g.get("roles") or []), str(g.get("os", ""))) for g in groups for n in instance_names(g)]
+    dcs = [n for n, r, _ in vms if "domain_controller" in r]
+    kind = what.split("/")[-1]
+    if kind == "windows_admin":
+        return [n for n, r, os_ in vms if os_.startswith("windows") and "domain_controller" not in r]
+    if kind == "domain_admin":
+        return dcs
+    if what.split("/")[0] in ("account",) or kind.startswith("account-"):
+        name = kind[len("account-"):] if kind.startswith("account-") else kind
+        a = next((x for x in env_accounts.accounts(env) if x["name"] == name), None)
+        if a is None:
+            return []
+        return dcs if a["kind"] == "domain" else [n for n, r, _ in vms if r & set(a.get("hosts") or [])]
+    return [n for n, _, _ in vms]
+
+
+def classify(name: str, envs: dict[int, Environment]) -> dict:
+    """Which section of the Secrets page a stored secret belongs to and, for an environment's, the
+    environment, its VMs, local or domain, and password, key or document (S2)."""
+    m = ENV_SECRET.match(name)
+    if m:
+        env = envs.get(int(m.group(1)))
+        what = m.group(2)
+        kind = what.split("/")[-1]
+        account = what.startswith("account/") or kind.startswith("account-")
+        if kind in ("credentials", "inventory"):
+            typ = "document"
+        else:
+            typ = "password"
+        scope = "domain" if kind == "domain_admin" else "local" if kind == "windows_admin" else ""
+        if account and env is not None:
+            from .. import env_accounts
+            aname = kind[len("account-"):] if kind.startswith("account-") else kind
+            a = next((x for x in env_accounts.accounts(env) if x["name"] == aname), None)
+            scope = a["kind"] if a else ""
+        return {"section": "environments", "environment_id": int(m.group(1)),
+                "environment": env.name if env else f"#{m.group(1)} (gone)",
+                "environment_status": env.status if env else "gone", "vms": _vms_of(env, what) if env else [],
+                "scope": scope, "type": typ, "attempt": "rotation-candidate" in what}
+    section = "kvm" if name.startswith(("kvm/", "hosts/")) else "stack"
+    return {"section": section, "type": "key" if KEYISH.search(name) else "password"}
+
 @router.get("/stored-secrets")      # not under /secrets/, where /secrets/{policy_id} would catch it
 def list_stored(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
     """Every stored secret's name, store and rotation; never a value."""
     ensure_policies(db)
     pols = {p.id: p for p in db.scalars(select(SecretPolicy))}
+    envs = {e.id: e for e in db.scalars(select(Environment))}
     out = []
     for row in db.scalars(select(Secret).order_by(Secret.name)):
         pol = pols.get(row.policy_id) if row.policy_id else None
         out.append({"name": row.name, "store": row.store, "updated_at": row.updated_at, "pinned": pinned(row.name),
-                    "empty": row.store == "builtin" and not row.value,
+                    **classify(row.name, envs),
+                    # A cleared secret is stored as an encrypted "" (spent job tokens, destroyed environments).
+                    "empty": row.store == "builtin" and not (get_secret(db, row.name) or ""),
                     "rotation": {"policy_id": pol.id, "label": pol.label, "kind": pol.kind, "enabled": pol.enabled,
                                  "interval_hours": pol.interval_hours, "elevated_ref": pol.elevated_ref,
                                  "status": pol.status, "next_due_at": pol.next_due_at} if pol else None})
