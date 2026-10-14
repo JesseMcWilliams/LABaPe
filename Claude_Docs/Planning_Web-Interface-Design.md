@@ -1463,3 +1463,17 @@ stack has a link (§34).
 | Shared hosts | Two stacks can both have a record for the same machine (kvm1 is a KVM host of the Pi's stack too). Each host in a summary now carries `machine`: its own host name from its facts (§28.4), else its libvirt address, else this stack's host for `qemu:///system`. The totals count each machine once, with its newest reading, and only enabled ones add capacity. A record without facts keyed by address (kvm1's old, disabled `kvm1-ssh`) still counts as a separate host; it adds no capacity. |
 | Verified | pytest 229. Live, kvm1 and the Pi linked: 2 of 2 answering, 4 machines, 60 CPUs (kvm1's 56 and garagepc's 4, kvm1 counted once although both stacks list it), 3 environments; each card with its version and counts. |
 
+## 36. Full backups to linked stacks (B3, built 2026-10-14)
+
+Batch 6 of the order in Planning_Backlog.md (review item 6, question 149): each stack's newest full
+backup (§32) is also kept by every linked stack (§34), on that stack's primary file host (§29.4), so
+losing a stack host and its own disks doesn't lose its backups.
+
+| Area | As built |
+|---|---|
+| Sending | The worker, in a background thread each loop (one at a time), takes the newest archive that passed its check and sends it to every link that doesn't have it yet: `POST /api/link/backups/{name}` on the peer, with the link's token, the file's SHA-256 (computed once per archive) and the sidecar without the key file's path. A failed send is tried again after 10 minutes. Settings → Full stack backups → Copy to linked stacks (on by default). What each link last got, and any error, is the setting `backup.stack_sent`. |
+| Receiving | The peer's API streams it into `<backup folder>/../linked/.incoming/` (507 when there isn't 1.2 times its size free), checks size and SHA-256 (400, send again, when they differ), and queues a `backup.store_linked` job, which copies it (and its sidecar, with where it came from) to `<primary's VM storage>/.labape-files/linked-backups/<peer>/` on the primary file host through file distribution's copy, then removes that peer's copies older than this stack's retention (the newest stays). The copies are listed in the setting `backup.linked_copies`. Received archives stay sealed with the sending stack's backup key: holding one tells this stack nothing. |
+| Restoring from a copy | Copy the file from the primary file host to the new machine and install from it (§33), with the lost stack's key. |
+| UI | Settings → Full stack backups: a chip per link with what it was last sent (or that it failed and will retry), and a table of the copies this stack keeps for others (peer, archive, size, taken, host and path). `tools/helpers/live/stack_backup.py` prints both. |
+| Verified | pytest 231. Live, kvm1 and the Pi linked: the Pi's newest archive went to kvm1 and is kept on kvm1 (its own primary) under `/data/VMs/LABaPe/.labape-files/linked-backups/director.jlm.abq/`; kvm1's (56 MB) went to the Pi, whose primary is garagepc, and is kept there under `/data/VMs/LABaPe/.labape-files/linked-backups/172.21.20.11/` (job `backup.store_linked` succeeded). kvm1's first try got 405 because the Pi wasn't updated yet; the retry 10 minutes later went through. |
+

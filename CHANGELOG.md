@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Full backups to linked stacks: each stack sends its newest checked
+  archive to every linked stack, which keeps it (still sealed) on its
+  primary file host with its own retention; Settings lists what was sent
+  and the copies kept for others.
 - All stacks on the dashboard: totals across every linked stack (a machine
   two stacks share counted once) and a card per stack that opens its own
   dashboard; stacks that stopped answering show their last data.

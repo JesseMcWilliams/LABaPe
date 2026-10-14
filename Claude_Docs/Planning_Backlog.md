@@ -7,12 +7,11 @@
 ## Order of work (agreed 2026-10-14)
 
 Items 3-9 of the 2026-10-14 review plus the earlier deferred work, in the order to build them. Each
-batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32), 3 B2 (§33), 4 L1 (§34), 5 L2 (§35). Questions 146-150 in
+batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32), 3 B2 (§33), 4 L1 (§34), 5 L2 (§35), 6 B3 (§36). Questions 146-150 in
 Planning_Questions.md.
 
 | # | Batch | What | Why here |
 |---|---|---|---|
-| 6 | B3 Backups to linked stacks | Each stack sends its B1 archive over the link to every linked stack, which keeps it on its primary KVM host (question 149), with its own retention. Restoring from a copy is B2 with the file fetched from there. | |
 | 7 | A1 API tokens | Personal and service tokens with roles and an expiry, for scripts and CI; created, listed and revoked in the UI; every use audited. | |
 | 8 | A2 Metrics export | A Prometheus `/metrics` endpoint (hosts, environments, jobs, alerts), read with an A1 token. | Uses A1. |
 | 9 | V1 VM snapshots | Take, revert and delete from the VM page; optionally automatic before risky jobs; shown on the host's disk use. | |

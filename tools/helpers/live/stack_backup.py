@@ -30,3 +30,8 @@ for a in m["archives"]:
     ck = a.get("check") or {}
     print(f"  {a['archive']}  {a['size'] / 1048576:.1f} MB  {a['created_at'][:19]}  {a.get('version')}  "
           f"check={'ok' if ck.get('ok') else 'FAILED'} restores={ck.get('restores')} problems={ck.get('problems')}")
+for x in m.get("sent", []):
+    print(f"sent to {x['link']}: {x.get('archive') or '-'} at {str(x.get('at'))[:19]} error={x.get('error') or '-'}")
+for peer, lst in (m.get("copies") or {}).items():
+    for c in lst:
+        print(f"copy for {peer}: {c['archive']} {c['size'] / 1048576:.1f} MB on {c['host']}:{c['path']}")
