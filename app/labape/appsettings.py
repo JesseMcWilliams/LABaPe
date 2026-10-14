@@ -81,6 +81,25 @@ class FileDistributionSettings(BaseModel):
     wait_minutes: int = Field(default=30, ge=0, le=1440)    # how long a job waits for an unreachable primary
 
 
+class MonitoringSettings(BaseModel):
+    """Alerts about hosts and stacks (design §30, question 143)."""
+    email_to: list[str] = Field(default=[], max_length=20)            # empty: no email alerts
+    syslog: bool = True                                               # through Settings → Syslog (audit trail)
+    disk_pct: int = Field(default=85, ge=50, le=99)                   # stack hosts; KVM hosts warn at 90
+    temp_c: int = Field(default=80, ge=50, le=110)                    # stack hosts (a Pi 5 throttles at 85)
+    cert_days: int = Field(default=7, ge=1, le=90)
+    backup_hours: int = Field(default=26, ge=2, le=24 * 14)
+    peer_failures: int = Field(default=2, ge=1, le=60)               # failed probes in a row before an alert
+
+    @field_validator("email_to")
+    @classmethod
+    def _emails(cls, v: list[str]) -> list[str]:
+        bad = [a for a in v if "@" not in a or " " in a.strip()]
+        if bad:
+            raise ValueError(f"not email addresses: {', '.join(bad)}")
+        return [a.strip() for a in v]
+
+
 class SyslogCollectorSettings(BaseModel):
     """The stack's syslog collector (design §29.1, questions 121-139)."""
     retention_days: int = Field(default=30, ge=1, le=3650)       # 30 days (user, 2026-10-13; was 90)
@@ -195,6 +214,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "remote": RemoteSettings,
     "syslog_collector": SyslogCollectorSettings,
     "file_distribution": FileDistributionSettings,
+    "monitoring": MonitoringSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

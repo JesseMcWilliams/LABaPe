@@ -222,10 +222,46 @@ function CheckList({ title, items, extra }: {
 
 // The landing page (design §22.1): KVM host load and the user's environments,
 // filtered to what they may see; admins also get platform health.
+interface MonAlert { id: number; host: string; kvm_host_id: number | null; level: string; message: string; started_at: string; cleared_at: string | null }
+interface Monitoring { open: MonAlert[]; recent: MonAlert[]; stacks: { id: number; name: string; self: boolean; stack_url: string; status: { peer?: { ok: boolean; ms: number | null } } }[] }
+
+/** Open alerts and the stacks being watched (design §30). */
+function AlertsPanel({ m }: { m: Monitoring }) {
+  const peers = m.stacks.filter((s) => !s.self && s.stack_url);
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <Typography variant="h6">Alerts</Typography>
+          <Chip size="small" label={m.open.length ? `${m.open.length} open` : "none open"} color={m.open.some((a) => a.level === "error") ? "error" : m.open.length ? "warning" : "success"} />
+          <Box sx={{ flexGrow: 1 }} />
+          {peers.map((p) => (
+            <Chip key={p.id} size="small" variant="outlined" component={RouterLink} to={`/admin/hosts/${p.id}?section=stack`} clickable
+              color={p.status.peer?.ok ? "success" : "error"} label={`${p.name}: ${p.status.peer ? (p.status.peer.ok ? `${p.status.peer.ms} ms` : "not answering") : "not probed yet"}`}
+              title={`The stack at ${p.stack_url}`} />
+          ))}
+        </Stack>
+        {m.open.map((a) => (
+          <Alert key={a.id} severity={a.level === "error" ? "error" : "warning"}
+            action={a.kvm_host_id ? <Button size="small" component={RouterLink} to={`/admin/hosts/${a.kvm_host_id}?section=stack`}>Host</Button> : undefined}>
+            {a.message} <Typography component="span" variant="caption" color="text.secondary">since {fmtTime(a.started_at)}</Typography>
+          </Alert>
+        ))}
+        {m.recent.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            Recently cleared: {m.recent.slice(0, 5).map((a) => `${a.message} (${fmtTime(a.cleared_at)})`).join(" · ")}
+          </Typography>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
 export default function Dashboard() {
   const { me } = useAuth();
   const [data, setData] = useState<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean } | null>(null);
   const [health, setHealth] = useState<AdminHealth | null>(null);
+  const [mon, setMon] = useState<Monitoring | null>(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -234,6 +270,7 @@ export default function Dashboard() {
     api.get<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean }>("/api/dashboard").then((d) => {
       setData(d);
       if (d.is_admin) api.get<AdminHealth>("/api/dashboard/admin").then(setHealth, () => setHealth(null));
+      if (d.is_admin || hasRole(me, "auditor")) api.get<Monitoring>("/api/dashboard/monitoring").then(setMon, () => setMon(null));
     }, (e) => setError(e.message));
   };
   useEffect(() => {
@@ -279,6 +316,8 @@ export default function Dashboard() {
           </Typography>
         </Alert>
       )}
+
+      {mon && <AlertsPanel m={mon} />}
 
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>KVM hosts</Typography>

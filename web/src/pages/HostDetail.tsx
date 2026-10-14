@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  Alert, Box, Button, Checkbox, FormControlLabel, Link, List, ListItemButton, ListItemText, Paper, Stack, Table,
+  Alert, Box, Button, Checkbox, FormControlLabel, Link, List, ListItemButton, ListItemText, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, KvmHost, Network } from "../api";
@@ -13,7 +13,7 @@ import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import HostNetworks from "./HostNetworks";
 import {
   AccessSection, AccountsSection, DashboardSection, DrivesSection, GroupsSection, NicsSection, OsSection, SECTIONS,
-  SectionHeader, useAdminView, VmsSection,
+  SectionHeader, sectionsFor, StackSection, useAdminView, VmsSection,
 } from "../components/HostSections";
 
 type HostForm = Omit<KvmHost, "id" | "resources">;
@@ -89,6 +89,7 @@ function HostSectionsPage({ hostId }: { hostId: number }) {
     if (!view) return error ? <Alert severity="error">{error}</Alert> : null;
     if (section === "access") return <AccessSection host={view.host} reload={load} />;
     if (section === "vms") return <VmsSection view={view} />;
+    if (section === "stack") return <StackSection view={view} />;
     if (view.host.access_status !== "ready" || !view.collected_at) return null;
     if (section === "drives") return <DrivesSection view={view} />;
     if (section === "nics") return <NicsSection view={view} />;
@@ -103,7 +104,7 @@ function HostSectionsPage({ hostId }: { hostId: number }) {
       <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
         <Paper variant="outlined" sx={{ width: 190, flexShrink: 0 }}>
           <List dense disablePadding>
-            {SECTIONS.map((x) => (
+            {sectionsFor(view?.host.role).map((x) => (
               <ListItemButton key={x.key} selected={section === x.key} onClick={() => setParams({ section: x.key }, { replace: true })}>
                 <ListItemText primary={x.label} />
               </ListItemButton>
@@ -186,6 +187,15 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
               {field("template_storage_path", "Template storage path")}
               {field("bridge", "Fallback bridge", "Used when a network has no bridge here")}
               {field("concurrency_limit", "Concurrent jobs", "Jobs run at once on this host", "number")}
+              <Field select label="Role" value={form.role ?? "kvm"} sx={{ width: 190 }} help="What runs on it"
+                onChange={(e) => setForm({ ...form, role: e.target.value as HostForm["role"] })}>
+                <MenuItem value="kvm">KVM host</MenuItem><MenuItem value="stack">LABaPe stack only</MenuItem><MenuItem value="both">KVM host and stack</MenuItem>
+              </Field>
+              {form.role && form.role !== "kvm" && (
+                <Field label="Stack address" value={form.stack_url ?? ""} sx={{ minWidth: 240 }} error={errs.fields.stack_url}
+                  help="https://… of its web interface; another stack's is probed every minute"
+                  onChange={(e) => setForm({ ...form, stack_url: e.target.value })} />
+              )}
               <FormControlLabel label="Enabled" sx={{ mt: 0.5 }}
                 control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} />
               <FormControlLabel label="Primary file host" sx={{ mt: 0.5 }}

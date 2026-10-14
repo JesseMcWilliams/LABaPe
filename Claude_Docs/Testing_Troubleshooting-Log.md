@@ -542,3 +542,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 5. **Firefox: `SSL_ERROR_INTERNAL_ERROR_ALERT` on the Pi's site:** the browser opened it by DNS name (`director.jlm.abq`) and sent that name; Caddy had a certificate only for the address it was installed with, so it answered with an internal_error alert (reproduced with `openssl s_client -servername`). The Pi now uses the name; the procedure is in deploy/README.md.
 6. **After the name change, Authentik refused the redirect URI (400):** the blueprint creates the LABaPe provider with `state: created` (so a rotated client secret isn't reset), which also means a new `LABAPE_HOSTNAME` never reaches its redirect URI; and `deploy.sh` only wrote `LABAPE_HOSTNAME` into its `.env` the first time. It now updates both.
 
+## Stack monitoring (M1, 2026-10-14)
+
+1. **Conjur crash-looping on the Pi although the installer had parked it:** Compose *merges* a service's `profiles` with the override's, so `labape-conjur` had both `stores` and `off`, and the `stores` profile (COMPOSE_PROFILES in `.env`) started it on the next `compose up`; its amd64 image restarted forever on arm64. The installer's override now writes `profiles: !override ["off"]`; the stale containers were removed.
+2. **First alerts were mostly noise:** exited containers that aren't LABaPe's (other projects on the same Docker) and "certificate expires within 7 days" for the 24-hour web certificates Caddy renews by itself. Only LABaPe's compose projects count now, and certificates alert below a quarter of their lifetime (or 7 days, whichever is less).
+

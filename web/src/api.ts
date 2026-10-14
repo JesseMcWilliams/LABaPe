@@ -108,6 +108,9 @@ export interface KvmHost {
   // Files (design §29.4): the primary holds them all; a host with a share sees them at the same paths
   is_primary?: boolean;
   files_from_share?: boolean;
+  // What runs on it (design §30): kvm, stack (a LABaPe web stack only) or both; the stack's address
+  role?: "kvm" | "stack" | "both";
+  stack_url?: string;
 }
 
 export interface Network {

@@ -564,7 +564,9 @@ def services_override(answers: dict, kvm_device: bool = True) -> str | None:
     off = [svc for key, svcs in OPTIONAL_SERVICES.items() if not answers.get(key, True) for svc in svcs]
     if not off and kvm_device:
         return None
-    body = "".join(f"  {svc}:\n    profiles: [\"off\"]\n" for svc in off)
+    # !override: Compose merges a service's `profiles` with the override's, so the stores' own
+    # "stores" profile would still start a parked Conjur.
+    body = "".join(f"  {svc}:\n    profiles: !override [\"off\"]\n" for svc in off)
     if not kvm_device:
         body += "  labape-worker:\n    devices: !reset []     # no /dev/kvm here: template builds run on the KVM hosts\n"
     note = f"# Services not installed: {', '.join(off)}\n" if off else ""
