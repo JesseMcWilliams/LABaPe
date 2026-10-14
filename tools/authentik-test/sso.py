@@ -25,6 +25,7 @@ if op == "provider_add":
     p, _ = OAuth2Provider.objects.update_or_create(client_id=E["SSO_CLIENT_ID"], defaults={
         "name": f"LABaPe link: {E['SSO_NAME']}",
         "client_type": "public",
+        "grant_types": list(base.grant_types),       # empty refuses every grant ("Invalid grant_type")
         "redirect_uris": [RedirectURI(RedirectURIMatchingMode.STRICT, E["SSO_REDIRECT_URI"])],
         "authorization_flow": base.authorization_flow,
         "invalidation_flow": base.invalidation_flow,
