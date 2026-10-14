@@ -26,7 +26,7 @@ def _env(db):
 def test_passwords_before_the_deploy_and_the_rotators(db_reset):
     with session_factory()() as db:
         e = _env(db)
-        assert sorted(vmaccess.ensure_recovery_passwords(db, e)) == ["domain_admin2", "windows_admin2"]
+        assert vmaccess.ensure_recovery_passwords(db, e) == ["domain_admin2"]     # members' are per VM (A2)
         first = get_secret(db, f"environment/{e.id}/domain_admin2")
         assert len(first) == 20 and vmaccess.ensure_recovery_passwords(db, e) == []      # kept
         assert vmaccess.env_password_overrides(db, e.id)["labape_recovery_domain_password"] == first

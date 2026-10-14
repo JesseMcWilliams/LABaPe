@@ -21,9 +21,15 @@
   hosts: all
   gather_facts: false
   tasks:
+    # Member servers: their own Administrator password (A2), which also waits for the connection.
+    - name: Each member server's own Administrator password (A2)
+      ansible.builtin.include_tasks: tasks/labape_admin_password.yml
+      when: ansible_connection | default('ssh') == 'winrm'
+
     - name: Wait for connection
       ansible.builtin.wait_for_connection:
         timeout: 1800
+      when: ansible_connection | default('ssh') != 'winrm'
 
 - name: Linux hosts resolve their own name
   # Template clones keep the build VM's "127.0.1.1 template" line, so the

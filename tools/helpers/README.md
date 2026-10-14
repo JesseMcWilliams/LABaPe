@@ -35,6 +35,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/oidc_login.py` | lab (container) | Sign in through the test Authentik; imported by the others |
 | `live/env_create.py` | lab (container) | Create a one-VM environment (optionally with catalog applications, `--apps`, and services, `--services`) and wait for its deploy |
 | `live/env_job.py` | lab (container) | Deploy, refresh or destroy an environment and wait |
+| `live/job_log.py` | lab (container) | A finished job's log, or only one host's lines with their task names |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
 | `live/rotate_r1.py` | lab (container) | Rotate the worker-run secrets end to end |
@@ -49,6 +50,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/remote_session.py` | lab (container) | Open an SSH/RDP session or a VM console through the tunnel like the browser does; toggle recording; list sessions |
 | `live/host_exec.sh` | lab host | Run a command on a registered host as its LABaPe access account (sudo) |
 | `live/vm_exec.sh` | lab host | Run a command on an environment's Linux VM as its admin user (the VM key stays in the worker) |
+| `live/win_probe.sh` | lab host | Which stored Administrator password a Windows member VM takes (environment, own, pending), and its recent Ansible async results; never prints values |
 | `live/hosts.py` | lab (container) | List KVM hosts; enable, disable, rename one or attach a network; turn its log forwarding on or off |
 | `live/dashboard_hosts.py` | lab (container) | The KVM hosts the dashboard shows |
 | `live/files_ops.py` | lab (container) | Files page through the API: a chunked tus upload, a download from a URL, list, delete |
@@ -125,6 +127,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `oidc_login.py` | `oidc_login.py <user>` | Signs in and prints `/api/auth/me`. The others import `LABAPE`, `ENV`, `login()` and `job_log()` (a finished job's log, parsed from the event stream) from it. |
 | `env_create.py` | `env_create.py list` or `<name> <os key> <template> [--vm NAME] [--cpu N] [--mem MB] [--disk GB] [--network NAME] [--addressing static\|dhcp] [--apps A,B] [--services S,T]` | `list` shows hosts, their templates and networks, and the environments. Otherwise it creates the environment as `labape-admin` (or `--as` user), waits for the deploy and prints the VM's address and the job's summary lines. |
 | `env_job.py` | `env_job.py <env id> <deploy\|refresh-addresses\|destroy>` | Waits, then prints the result, duration, and the `labape:`, `fatal:` and PLAY RECAP lines. **destroy deletes the VMs.** |
+| `job_log.py` | `job_log.py <job id> [host]` | The whole log, or one host's lines under their `TASK [...]` headers. |
 | `env_password.py` | `env_password.py <env id> list` or `<env id> <windows_admin\|domain_admin>` | Lists the environment's rotation policies, or rotates one. It prints the credentials sheet's labels, never its values. |
 | `rotate_agent.py` | `rotate_agent.py <kind>` | Kinds: `master_key`, `postgres_password`, `ca_password` (these restart the stack) and `vault_password`, `bootstrap_ssh_key`. Afterwards it checks the store's self-test, directory search, maintenance mode and health. |
 | `rotate_r1.py` | `rotate_r1.py` | Adds the test rotator token as an elevated account, then rotates the directory token (checking the old key now gets 403), the data key and the worker key. Needs the test tokens in Authentik's `.env`. |

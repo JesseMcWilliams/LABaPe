@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Fixed
+- Rotating a Windows Administrator password no longer depends on a
+  detached change finishing in its first second: a detached process lost
+  its access to the account database once WinRM closed the shell that
+  started it. The change now runs in the same shell.
 - Destroying an environment now also clears its own accounts' passwords
   and any value a rotation was trying, not only its Administrator
   passwords, credentials sheet and inventory.
@@ -37,6 +41,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- A password of its own per VM: each Windows member server's
+  Administrator and `labape-admin2`, and each of the environment's own
+  local accounts on each VM, get a unique password, stored per VM. A
+  redeploy gives deployed environments theirs; the credentials sheet lists
+  them per VM, and rotation and the secret checks work per VM. Domain
+  controllers keep the domain's.
 - Recovery pairs: environments with Windows hosts get a second admin,
   `labape-admin2` (in the domain and on each member server), whose
   password LABaPe keeps and rotates apart from Administrator's; each of a

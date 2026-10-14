@@ -129,15 +129,20 @@ def sheet_section(db: Session, env: Environment, netbios: str = "") -> str:
     items = accounts(env)
     if not items:
         return ""
+    from . import vm_passwords
     lines = [SECTION, ""]
     for a in items:
-        pw = get_secret(db, secret_name(env.id, a["name"])) or ""
         if a["kind"] == "domain":
             who = f"{netbios}\\{a['name']}" if netbios else a["name"]
-            lines += [f"User: {who} (domain)"]
-        else:
-            lines += [f"User: {a['name']} (local on {', '.join(a['hosts'])})"]
-        lines += [f"Password: {pw}", ""]
+            lines += [f"User: {who} (domain)", f"Password: {get_secret(db, secret_name(env.id, a['name'])) or ''}", ""]
+            continue
+        # A local account has a password of its own on each VM (A2).
+        lines += [f"User: {a['name']} (local on {', '.join(a['hosts'])}; each VM its own password)"]
+        for vm in vm_passwords.local_account_vms(env, a):
+            pw = (get_secret(db, vm_passwords.name(env.id, vm, f"account/{a['name']}"))
+                  or get_secret(db, secret_name(env.id, a["name"])) or "")
+            lines += [f"{vm}: {pw}"]
+        lines += [""]
     return "\n".join(lines)
 
 
@@ -174,26 +179,40 @@ def rotate(db: Session, env: Environment, name: str, log) -> str:
     targets = hosts_for(env, inv, a)
     if not targets:
         return "no hosts to change in this environment"
-    new = new_windows_password()
+    from . import vm_passwords
+    from .engine.vmaccess import _per_host
+    local = a["kind"] == "local"
+    # A domain account has one password; a local one a password of its own on each VM (A2).
+    one = new_windows_password()
+    new = {h: new_windows_password() if local else one for h in targets}
     candidate = f"environment/{env.id}/rotation-candidate/account-{name}"
-    put_secret(db, candidate, new)
+    put_secret(db, candidate, one if not local else "")
+    inv2 = _per_host(inv, targets, {h: {"labape_new_pw": new[h]} for h in targets})
     windows = [h for h in targets if (_hosts(inv).get(h) or {}).get("ansible_connection") == "winrm"]
     linux = [h for h in targets if h not in windows]
     failed = []
     if windows:
         module = "microsoft.ad.user" if a["kind"] == "domain" else "ansible.windows.win_user"
-        res = _ansible(inv, ":".join(windows), module, {"name": name, "password": "{{ new_pw }}", "update_password": "always"},
-                       {"new_pw": new}, scrub=(new,))
+        res = _ansible(inv2, ":".join(windows), module,
+                       {"name": name, "password": "{{ labape_new_pw }}", "update_password": "always"},
+                       scrub=tuple(new.values()))
         failed += [h for h in windows if res.get(h) not in ("ok", "changed")]
     if linux:
-        res = _ansible(inv, ":".join(linux), "ansible.builtin.user",
-                       {"name": name, "password": "{{ new_pw | password_hash('sha512') }}", "update_password": "always"},
-                       {"new_pw": new}, scrub=(new,), task={"become": True})
+        res = _ansible(inv2, ":".join(linux), "ansible.builtin.user",
+                       {"name": name, "password": "{{ labape_new_pw | password_hash('sha512') }}", "update_password": "always"},
+                       scrub=tuple(new.values()), task={"become": True})
         failed += [h for h in linux if res.get(h) not in ("ok", "changed")]
+    if local:
+        for h in targets:
+            if h not in failed:
+                put_secret(db, vm_passwords.name(env.id, h, f"account/{name}"), new[h])
     if failed:
-        raise AccessError(f"couldn't set {name}'s new password on {', '.join(failed)}; the other hosts may already "
-                          f"have it (it's in the secret store as {candidate}), the stored one is unchanged")
-    put_secret(db, secret_name(env.id, name), new)
+        raise AccessError(f"couldn't set {name}'s new password on {', '.join(failed)}; "
+                          + ("the others have theirs, stored" if local else
+                             f"the other hosts may already have it (it's in the secret store as {candidate}), "
+                             "the stored one is unchanged"))
+    if not local:
+        put_secret(db, secret_name(env.id, name), one)
     creds = get_secret(db, f"environment/{env.id}/credentials") or ""
     if creds:
         put_secret(db, f"environment/{env.id}/credentials", apply_sheet(creds, sheet_section(db, env)))
