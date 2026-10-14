@@ -48,7 +48,7 @@ def test_detail_endpoints_keep_literal_routes(client):
 
 
 def test_branding(client):
-    assert client.get("/api/branding").json() == {"app_name": "LABaPe"}           # public
+    assert client.get("/api/branding").json() == {"app_name": "LABaPe", "logo": None}   # public
     _admin_session(client)
     s = client.get("/api/admin/settings").json()["branding"]
     assert client.put("/api/admin/settings/branding", json={**s, "app_name": "<b>"}).status_code == 422

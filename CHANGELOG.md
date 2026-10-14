@@ -8,6 +8,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- A logo (Settings → Branding): PNG, JPEG or WebP, in the top bar, on the
+  sign-in page and as the tab icon.
 - Best-fit placement: Suggest best host on the new-environment form ranks
   the KVM hosts (memory, CPU, running jobs, templates there) with reasons;
   the API places an environment created without a host on the best one.

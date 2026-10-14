@@ -1568,3 +1568,15 @@ migration (P2) wait on questions 151 and 152.
 | Templates | Settings → File distribution → "Copy every template to every KVM host daily" (off: templates are large): a `files.sync_templates` job once a day copies each template in the primary's library to every enabled host that lacks it (file distribution's `ensure_template`, host to host through the worker); one copy failing doesn't stop the others. |
 | Verified | pytest 252 (two hosts ranked by load, running jobs counted, a full host refused with its reason, `null` placing on the best, no host fitting, the daily schedule). Live on kvm1 (one enabled KVM host in that stack): the ranking with its reason, and an environment created with `kvm_host_id: null` placed on kvm1 and deployed (job 142); destroyed afterwards. |
 
+## 44. A logo (built 2026-10-14)
+
+Part of batch 16 of the order in Planning_Backlog.md (question 68: "name only now; a logo later").
+Kerberos, the other half, waits on question 154; sign-on between stacks (F1) on question 153.
+
+| Area | As built |
+|---|---|
+| What | Settings → Branding: Upload logo (PNG, JPEG or WebP, at most 256 KB; checked by its first bytes), Replace and Remove. It shows in the top bar before the name, above "Sign in to …", and as the browser tab's icon. |
+| Why not SVG | An SVG can carry scripts, which would run in LABaPe's origin if someone opened the logo's URL; the raster formats can't. The logo is also served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`. |
+| Storage and API | The setting `branding.logo` (type, the image in base64, a version: the first 12 hex digits of its SHA-256, used to bust caches); `GET /api/branding` gives `logo` (that version, or null), `GET /api/branding/logo` serves it (public: the sign-in page needs it; cached a day), `PUT`/`DELETE /api/admin/settings/branding/logo` (admins; audited `branding.logo`, `branding.logo.remove`). |
+| Verified | pytest 253 (an SVG refused, an oversized image refused, PNG and WebP served with their types and the headers, removal). Live on kvm1 (`tools/helpers/live/logo.py roundtrip`): a generated PNG uploaded, served publicly byte for byte with the sandbox policy, listed in `/api/branding`, then removed. |
+

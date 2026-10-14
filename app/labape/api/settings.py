@@ -28,8 +28,77 @@ stores.providers()                     # registers each external store's setting
 
 @public_router.get("/api/branding")
 def branding(db: Session = Depends(get_db)):
-    """Public: the login page shows the app name before anyone signs in."""
-    return appsettings.get(db, "branding", cached=True).model_dump()
+    """Public: the login page shows the app name (and logo) before anyone signs in."""
+    from ..models import Setting
+    logo = db.get(Setting, LOGO_KEY)
+    return {**appsettings.get(db, "branding", cached=True).model_dump(),
+            "logo": (logo.value or {}).get("version") if logo and logo.value else None}
+
+
+# --- the logo (design §44, question 68) -------------------------------------------------------------
+# PNG, JPEG or WebP only: an SVG can carry scripts, which would run if someone opened its URL.
+LOGO_KEY = "branding.logo"
+LOGO_MAX = 256 * 1024
+LOGO_TYPES = {b"\x89PNG\r\n\x1a\n": "image/png", b"\xff\xd8\xff": "image/jpeg"}
+
+
+def _logo_type(data: bytes) -> str | None:
+    for magic, mime in LOGO_TYPES.items():
+        if data.startswith(magic):
+            return mime
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+@public_router.get("/api/branding/logo")
+def branding_logo(db: Session = Depends(get_db)):
+    import base64
+
+    from fastapi.responses import Response
+
+    from ..models import Setting
+    row = db.get(Setting, LOGO_KEY)
+    if row is None or not row.value:
+        raise FieldError("logo", "No logo", status_code=404)
+    return Response(base64.b64decode(row.value["data"]), media_type=row.value["mime"],
+                    headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400",
+                             "Content-Security-Policy": "default-src 'none'; sandbox"})
+
+
+@router.put("/settings/branding/logo")
+async def put_logo(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """The raw image as the body (PNG, JPEG or WebP, at most 256 KB)."""
+    import base64
+    import hashlib
+
+    from ..models import Setting
+    data = await request.body()
+    if len(data) > LOGO_MAX:
+        raise FieldError("logo", "The logo may be at most 256 KB.", status_code=413)
+    mime = _logo_type(data)
+    if mime is None:
+        raise FieldError("logo", "Use a PNG, JPEG or WebP image (SVG isn't accepted: it can carry scripts).")
+    value = {"mime": mime, "data": base64.b64encode(data).decode(), "version": hashlib.sha256(data).hexdigest()[:12]}
+    row = db.get(Setting, LOGO_KEY)
+    if row is None:
+        db.add(Setting(key=LOGO_KEY, value=value))
+    else:
+        row.value = value
+    db.commit()
+    audit(db, p.username, "branding.logo", detail={"mime": mime, "bytes": len(data)}, source_ip=client_ip(request))
+    return {"logo": value["version"]}
+
+
+@router.delete("/settings/branding/logo")
+def delete_logo(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    from ..models import Setting
+    row = db.get(Setting, LOGO_KEY)
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    audit(db, p.username, "branding.logo.remove", source_ip=client_ip(request))
+    return {"logo": None}
 BACKUP_NAME = re.compile(r"^labape-\d{8}-\d{6}(-[a-z0-9._-]{1,80})?\.dump$")
 
 
