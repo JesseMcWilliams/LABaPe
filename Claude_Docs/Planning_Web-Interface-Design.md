@@ -1637,3 +1637,15 @@ Questions 156 (b: a user keeps their role groups) and 157 (an admin turns it on 
 | Host side | `tools/authentik-test/sso.sh` (the agent's action `authentik_sso`; also `--bundle-only`) writes the bundle, starts Authentik with it if needed and runs `sso.py` with `ak shell` in the worker. `deploy.sh` writes the bundle before starting Authentik and, run as root (the installer), hands `.env` and `trust/` to the checkout's owner, because the agent runs as the service user. |
 | Verified | pytest 273 (names, the HTTPS requirement, the callback check, the peer and local requests, the agent's result, a busy agent, the endpoint). Live between kvm1 (172.21.20.11) and the Pi (director.jlm.abq), both on this branch: on kvm1, sign-on from the Pi: the Pi's agent made its client, kvm1's agent the source; `live/linked_login.py` signed in to kvm1's LABaPe as the Pi's `labape-admin` (`labape-admin@director.jlm.abq`, groups `labape-admins`, role admin), first through enrollment, then through the returning-user flow. The other direction from the Pi the same way (`labape-admin@172.21.20.11`, admin). Off then on again on the Pi: the source removed and remade. Both left on. |
 | Upgrading a stack | After updating: reinstall the agent (`deploy/update-agent/install.sh`; an update doesn't replace the running agent), and in `tools/authentik-test/` as the service user `bash sso.sh --bundle-only && docker compose up -d` (if `.env` there is root's, give it to the service user first). Admin guide §9. |
+
+## 48. Lists, secrets and settings round (2026-10-14; Planning_Lists-Secrets-Settings.md)
+
+### 48.1 L2: filters and the file's OS at upload (built)
+
+| Area | As built |
+|---|---|
+| Files | Every tab has an **OS** filter; its choices are the OSes that tab's files are for (an ISO's `os_key`; installers' and other files' `targets`). The upload and **Download from URL** ask for the file's OS first: an ISO's OS (empty: guessed from the name, as before), an installer's targets (required; the upload button waits for them), another file's targets (optional). The API takes them as tus metadata (`os_key`, `targets` comma-separated) and in `POST /api/files/download` (`os_key`, `targets`), checked against the target vocabulary (`api/files.os_choice`); an installer without targets is refused (422, field `targets`). Other files' targets can be edited on their page. CSV export comes with L1's export dialog. |
+| Catalog | Each tab filters by name (or display name), platform, description or notes and, for admins, status; in the browser, kept in the address. |
+| Networks | Filters by name or description, address (network, gateway, pools, DNS), addressing, VLAN and, for admins, enabled or disabled. |
+| Verified | pytest 274 (the OS at upload: refused without targets, unknown targets, targets kept, an ISO's OS beats the guess, other files' targets; the download test names its targets). Live on kvm1: the build type-checked the UI; an installer upload without an OS was refused with the message; another file uploaded with `linux,rocky9` kept them; it was deleted afterwards. |
+

@@ -34,7 +34,7 @@ export default function FileDetail() {
   const save = async () => {
     setSaved(false);
     try {
-      await api.put(`/api/files/${id}`, file?.category === "installers" ? form : { ...form, targets: null });
+      await api.put(`/api/files/${id}`, file?.category !== "isos" ? form : { ...form, targets: null });
       setErrs({ summary: "", fields: {} });
       setSaved(true);
     } catch (e) { setErrs(fromApiError(e)); }
@@ -64,7 +64,7 @@ export default function FileDetail() {
       {!canManage && errs.summary && <Alert severity="error">{errs.summary}</Alert>}
       {file && <Facts rows={canManage ? facts : [
         ...facts, ["Installs OS", file.os_key ? `${file.os_key}${file.is_default ? " (default)" : ""}` : ""],
-        ...(file.category === "installers" ? [["Targets", <TargetChips targets={file.targets ?? []} vocab={vocab} />] as [string, React.ReactNode]] : []),
+        ...(file.category !== "isos" ? [["OS targets", <TargetChips targets={file.targets ?? []} vocab={vocab} />] as [string, React.ReactNode]] : []),
         ["Description", file.description], ["Notes", <Box sx={{ whiteSpace: "pre-wrap" }}>{file.notes}</Box>],
       ]} />}
       {canManage && file && (
@@ -82,7 +82,7 @@ export default function FileDetail() {
                   onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />} />
               </Stack>
             )}
-            {file.category === "installers" && (
+            {file.category !== "isos" && (
               <TargetPicker value={form.targets} onChange={(targets) => setForm({ ...form, targets })}
                 error={errs.fields.targets?.message} />
             )}

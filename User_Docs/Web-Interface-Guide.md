@@ -149,11 +149,12 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 
 ## 7. Files and templates
 
-**Files** has a tab for each location: **ISOs**, **Installers**, **Other files**, and the **Templates** library. Everyone can browse them. Admins and file managers can change them. Each tab says what its files are for and can be filtered (name, size, hash, description, date added; installers by target; templates by name, OS, host and description). Filters stay in the address, so a filtered list can be bookmarked.
+**Files** has a tab for each location: **ISOs**, **Installers**, **Other files**, and the **Templates** library. Everyone can browse them. Admins and file managers can change them. Each tab says what its files are for and can be filtered (name, **OS**, size, hash, description, date added; templates by name, OS, host and description). The OS filter offers the OSes that tab's files are for: an ISO's OS, an installer's or other file's OS targets. Filters stay in the address, so a filtered list can be bookmarked.
 
 **Installer targets.** An installer says which systems it's for: any, Windows or Linux, a family (Windows Server, Windows client, RHEL family, Debian family) or exact OS versions. LABaPe sets a first guess from the file type (MSI and EXE: Windows; DEB: Debian family; RPM: RHEL family). An application whose installer doesn't target a host group's OS is refused for that group, naming the installer.
 
-**Uploading.** Choose the upload button on a tab and pick a file; LABaPe asks you to confirm.
+**Uploading.** Say first which OS the file is for, then choose the upload button and pick a file; LABaPe asks you to confirm.
+- **The file's OS**: an ISO, the OS it installs (or leave it to the guess from the file name); an installer, the OSes it targets (required: the upload button waits for it); another file, its OS targets if it has any. **Download from URL** asks the same.
 - Uploads resume after a dropped connection.
 - A file with the same content as one already stored is refused as a duplicate, and a name already in use is refused before the upload starts.
 - **Verify against a hash**: paste the vendor's value (SHA-256, SHA-1, SHA-512 or MD5) or a checksum-file line such as a `SHA256SUMS` entry. If the file doesn't match, it's deleted.
@@ -176,7 +177,7 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 
 ## 8. The catalog: services, applications and packages
 
-**Catalog** lists what host groups can add on top of their template:
+**Catalog** lists what host groups can add on top of their template (each tab filters by name, platform, description and, for admins, status):
 - **Services**: Windows roles and features, or Linux packages and systemd units (for example IIS, DNS server, nginx, Cockpit).
 - **Applications**: software installed through Chocolatey, apt or dnf, or from an installer in the Files tab (for example Firefox, VS Code, 7-Zip).
 - **Packages**: named groups of services, applications and other packages.
@@ -187,7 +188,7 @@ If what you need isn't there, open the **Requests** tab and choose **New request
 
 ## 9. Hosts and networks
 
-The new-environment form shows the KVM hosts and networks you may use. Admins manage both under **Admin** ([Web-Interface-Admin.md](Web-Interface-Admin.md)).
+The new-environment form shows the KVM hosts and networks you may use. **Networks** lists the networks you may deploy on, filtered by name, address (network, gateway, pools, DNS), addressing and VLAN. Admins manage both under **Admin** ([Web-Interface-Admin.md](Web-Interface-Admin.md)).
 
 ## 10. Confirmations, tooltips and maintenance
 

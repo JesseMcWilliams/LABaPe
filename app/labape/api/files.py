@@ -55,6 +55,22 @@ def tus_options(upload_id: str | None = None):
     return Response(status_code=204, headers={**TUS, "Tus-Version": "1.0.0", "Tus-Extension": "creation,termination"})
 
 
+def os_choice(category: str, os_key: str, targets: list[str] | None) -> tuple[str, list[str]]:
+    """The OS a new file is for, given when it's uploaded or downloaded (L2): an ISO names the OS it
+    installs (guessed from its name when not given); an installer lists the OSes it targets
+    (required); another file may list targets."""
+    if category == "isos":
+        if os_key and os_key not in ostargets.OSES:
+            raise FieldError("os_key", f"Unknown OS {os_key}.")
+        return os_key, []
+    targets = [t.strip() for t in (targets or []) if t.strip()]
+    if bad := ostargets.invalid(targets):
+        raise FieldError("targets", f"Unknown targets: {', '.join(bad)}.")
+    if category == "installers" and not targets:
+        raise FieldError("targets", "Choose the OSes this installer is for (Any OS if it doesn't matter).")
+    return "", list(dict.fromkeys(targets))
+
+
 @router.post("/tus")
 def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("file_manager"))):
     meta = _meta(request.headers.get("upload-metadata", ""))
@@ -77,6 +93,7 @@ def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = D
                              status_code=409)
     except filestore.StoreError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    os_key, targets = os_choice(category, meta.get("os_key", ""), (meta.get("targets") or "").split(","))
     hash_type = meta.get("hash_type") or "sha256"
     expected = ""
     if meta.get("expected_hash"):
@@ -86,7 +103,8 @@ def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = D
             raise FieldError("expected_hash", str(exc)) from None
     up = Upload(id=secrets.token_hex(16), category=category, filename=name, length=length,
                 partial_path=f"{root}/.uploads/{secrets.token_hex(8)}.part",
-                meta={"description": meta.get("description", ""), "hash_type": hash_type, "expected_hash": expected},
+                meta={"description": meta.get("description", ""), "hash_type": hash_type, "expected_hash": expected,
+                      "os_key": os_key, "targets": targets},
                 created_by=p.username)
     try:
         store.makedirs(f"{root}/.uploads")
@@ -160,8 +178,8 @@ def _finish(db: Session, up: Upload, request: Request, p: Principal) -> None:
     store.replace(partial, target)
     size, mtime = store.stat(target)
     f = StoredFile(category=up.category, name=up.filename, path=target, size=size, mtime=mtime, sha256=digest,
-                   os_key=infer_os(up.filename) if up.category == "isos" else "",
-                   targets=ostargets.infer(up.filename) if up.category == "installers" else [],
+                   os_key=(up.meta.get("os_key") or infer_os(up.filename)) if up.category == "isos" else "",
+                   targets=up.meta.get("targets") or (ostargets.infer(up.filename) if up.category == "installers" else []),
                    description=up.meta.get("description", ""), uploaded_by=p.username, uploaded_at=utcnow())
     db.add(f)
     db.delete(up)
@@ -189,6 +207,8 @@ class DownloadIn(BaseModel):
     hash_type: str = "sha256"
     expected_hash: str = ""
     description: str = Field(default="", max_length=2000)
+    os_key: str = Field(default="", pattern=r"^[a-z0-9_]*$")     # ISOs (L2)
+    targets: list[str] = []                                       # installers (required) and other files
 
 
 @router.post("/download")
@@ -205,6 +225,7 @@ def start_download(body: DownloadIn, request: Request, db: Session = Depends(get
     if not NAME_RE.match(name):
         raise FieldError("filename", "Give a file name (letters, digits, spaces and . _ ( ) + -, starting with a "
                                      "letter or digit); the address doesn't end in a usable one.")
+    os_key, targets = os_choice(body.category, body.os_key, body.targets)
     if body.hash_type not in HASH_LENGTHS:
         raise FieldError("hash_type", f"Hash type must be one of {', '.join(HASH_LENGTHS)}.")
     expected = ""
@@ -222,7 +243,8 @@ def start_download(body: DownloadIn, request: Request, db: Session = Depends(get
             raise FieldError("filename", f"Job {j.id} is already downloading {name}.", status_code=409)
     job = Job(type="files.download", requested_by=p.username,
               params={"category": body.category, "url": body.url.strip(), "filename": name,
-                      "hash_type": body.hash_type, "expected_hash": expected, "description": body.description})
+                      "hash_type": body.hash_type, "expected_hash": expected, "description": body.description,
+                      "os_key": os_key, "targets": targets})
     db.add(job)
     db.commit()
     audit(db, p.username, "file.download.start", object_type="job", object_id=job.id,
@@ -276,7 +298,7 @@ class FileIn(BaseModel):
     notes: str = Field(default="", max_length=8000)
     os_key: str = Field(default="", pattern=r"^[a-z0-9_]*$")
     is_default: bool = False
-    targets: list[str] | None = None        # installers only; None keeps the current value
+    targets: list[str] | None = None        # installers and other files (L2); None keeps the current value
 
 
 @router.put("/{file_id}")
@@ -288,9 +310,9 @@ def update_file(file_id: int, body: FileIn, request: Request, db: Session = Depe
     if body.is_default and not body.os_key:
         raise FieldError("is_default", "Choose the OS this ISO installs before making it the default.")
     if body.targets is not None:
-        if f.category != "installers":
+        if f.category == "isos":
             body.targets = []
-        elif not body.targets:
+        elif f.category == "installers" and not body.targets:
             raise FieldError("targets", "Choose at least one OS this installer is for (Any OS if it doesn't matter).")
         elif bad := ostargets.invalid(body.targets):
             raise FieldError("targets", f"Unknown targets: {', '.join(bad)}.")
