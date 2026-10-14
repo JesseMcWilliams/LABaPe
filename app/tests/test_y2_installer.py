@@ -231,3 +231,30 @@ def test_installing_networkmanager_keeps_the_dns_servers(tmp_path, monkeypatch):
     S.prereq_packages(c)
     assert any(k.replace("\\", "/").endswith("conf.d/90-labape-dns.conf") and "dns=none" in v for k, v in wrote.items())
     assert resolv.read_text() == "nameserver 172.21.48.1\n"
+
+
+def test_web_tls_step_only_with_the_platform_ca(tmp_path):
+    ran = []
+
+    class R:
+        def run(self, cmd, **kw):
+            ran.append((cmd, kw.get("as_user")))
+
+        def out(self, cmd, **kw):
+            return "1001"
+
+    class A:
+        def __init__(self, tls):
+            self.tls = tls
+
+        def need(self, name):
+            return {"Tls": self.tls, "ServiceUser": "labape"}[name]
+
+    c = S.Ctx(r=R(), a=A("internal"), repo=Path("/opt/LABaPe"), deploy_root=Path("/opt/LABaPe/deploy"))
+    assert S.stack_web_tls(c)[0] == S.NA and ran == []
+    c.a = A("labape-ca")
+    assert S.stack_web_tls(c)[0] == S.DONE
+    cmd, as_user = ran[-1]
+    assert cmd[1].replace("\\", "/").endswith("container/caddy/web-tls.sh") and cmd[2] == "setup" and as_user
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Stack.Up") < names.index("Stack.WebTls")

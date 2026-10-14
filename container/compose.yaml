@@ -197,6 +197,8 @@ services:
     volumes:
       # LABAPE_CADDYFILE=Caddyfile.labape-ca: the web interface's certificate from the platform CA.
       - ./caddy/${LABAPE_CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      # Caddyfile.names: the certificate with every name of the stack (caddy/web-tls.sh, design §48.4).
+      - ./caddy/tls:/labape-tls:ro
       - labape-ca:/labape-ca:ro
       - caddy-data:/data
       - caddy-config:/config

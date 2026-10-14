@@ -141,6 +141,8 @@ For ACME, set `LABAPE_TLS` to your contact email. Using an internal ACME server 
 
 `LABAPE_HOSTNAME` can be an IP address. The Caddyfile sets `default_sni` so clients that connect by IP still get a certificate.
 
+**Every name of the stack, one certificate** (design §48.4). `caddy/web-tls.sh setup` (the installer's `Stack.WebTls`, with the platform CA) finds the host's short name, FQDN and LAN address, keeps them in `LABAPE_ALT_NAMES` (comma-separated; edit it to add or drop names), gets one certificate from the platform CA with `LABAPE_HOSTNAME` and those names as SANs into `caddy/tls/`, switches Caddy to `Caddyfile.names` (that certificate on 443 and on Authentik's 9445, for any name) and installs `labape-web-tls.timer`, which renews it when 10 days are left or the names changed (`web-tls.sh renew`; `web-tls.sh status` shows the names and the end date). Sign-in still returns to `LABAPE_HOSTNAME` (the OIDC redirect address is one name).
+
 ## Break-glass access
 
 There's no standing local admin password. If every sign-in provider is down, someone with control of the container runtime runs:

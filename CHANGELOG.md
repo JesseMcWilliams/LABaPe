@@ -32,6 +32,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- A stack answers on its web name, host name, FQDN and address with one
+  certificate from the platform CA carrying all of them as SANs, on the
+  web interface and Authentik, renewed daily when due
+  (`container/caddy/web-tls.sh`, installer step `Stack.WebTls`).
 - A KVM host's Drives and volumes hide loop devices unless **Show loop
   devices** is ticked. Host setup and the installer install lm-sensors
   (temperatures), and a host's page says when it's missing.

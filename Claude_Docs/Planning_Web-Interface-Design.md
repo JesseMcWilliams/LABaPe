@@ -1667,3 +1667,16 @@ Questions 156 (b: a user keeps their role groups) and 157 (an admin turns it on 
 | Sensors | The access-account setup script installs `lm-sensors` (apt) / `lm_sensors` (dnf) next to smartmontools, when `sensors` is missing; the installer's `Prereq.Packages` lists them for both families. The host page notes a missing `sensors` (only the kernel's thermal zones then). |
 | Verified | pytest (the setup script installs both). Live: access setup on nkvm1 installed `sensors` (it had none) and its page had no warnings; the Pi showed the new note until lm-sensors was installed; installing smartmontools on kvm1 showed its first SMART reading: `/dev/sdc` (in `md10`, `/data`) has 76 reallocated and 4032 pending sectors, reported to the user. |
 
+### 48.4 N1: every name of the stack, one certificate (built)
+
+Question 158: one combined certificate.
+
+| Area | As built |
+|---|---|
+| Names | `LABAPE_HOSTNAME` (the main name, also the OIDC redirect address) plus `LABAPE_ALT_NAMES` (comma-separated), which `web-tls.sh setup` fills once from the host: `hostname -s`, `hostname -f`, the default route's source address; the main name and repeats left out. Editable in `container/.env`. |
+| Certificate | `container/caddy/web-tls.sh`: an EC P-256 key and a CSR with every name as a SAN (IP addresses as IP SANs), signed by `labape ca-sign` (the platform CA, 30 days) into `caddy/tls/web.crt` and `web.key` (mounted read-only at `/labape-tls`). `renew` (the user timer `labape-web-tls.timer`, daily) signs again when 10 days are left or the name list changed, then `caddy reload --force`. |
+| Serving | `Caddyfile.names`: `:443` (the web interface) and `:9445` (Authentik) with that certificate whatever name arrives, `:80` redirects to HTTPS, the break-glass listener as before. `setup` switches `LABAPE_CADDYFILE` only after the certificate exists, so Caddy never starts without one. |
+| Installer | Step `Stack.WebTls` after `Stack.Up` (it needs `labape-api` to sign), only with `Tls` `labape-ca`; existing stacks run `web-tls.sh setup` once (admin guide §9). |
+| Not yet | Editing the names from the web interface (they're host configuration; `.env` and `renew`). |
+| Verified | pytest (the step only with the platform CA, its command, its place). Live on kvm1: setup found `OZ` and `OZ.jlm.abq` beside `172.21.20.11`, one certificate `DNS:OZ, DNS:OZ.jlm.abq, IP:172.21.20.11`, timer active; each name on 443 and 9445 answered 200 verified against the platform root; HTTP redirected; sign-in unchanged; `renew` not due did nothing; a name added to `LABAPE_ALT_NAMES` was in the renewed certificate and served (Caddy reloaded), then removed again. |
+

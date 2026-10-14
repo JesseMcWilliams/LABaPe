@@ -76,3 +76,7 @@ container/update/
 
 # Sign-on between linked stacks (design §47.2): the CA bundle Authentik reads, made on the host.
 tools/authentik-test/trust/
+
+# The web interface's certificate (design §48.4), made on the host.
+container/caddy/tls/*
+!container/caddy/tls/README.md
