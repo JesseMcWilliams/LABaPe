@@ -22,7 +22,9 @@ bundle() {
     grep -q "BEGIN CERTIFICATE" trust/certifi.pem.tmp || { echo "sso: couldn't read the image's CA roots" >&2; exit 1; }
     mv trust/certifi.pem.tmp trust/certifi.pem
   fi
-  cat trust/certifi.pem trust/peers/*.pem 2>/dev/null > trust/ca-bundle.pem.tmp
+  local peers
+  shopt -s nullglob; peers=(trust/peers/*.pem); shopt -u nullglob
+  cat trust/certifi.pem "${peers[@]}" > trust/ca-bundle.pem.tmp
   chmod 0644 trust/ca-bundle.pem.tmp
   mv trust/ca-bundle.pem.tmp trust/ca-bundle.pem
 }
