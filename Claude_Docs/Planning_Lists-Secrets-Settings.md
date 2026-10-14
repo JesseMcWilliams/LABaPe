@@ -40,7 +40,7 @@
 | **S2** (built, design §48.6) | Secrets page in sections: **Stack** (platform, links, stores, engine), **KVM hosts** (access accounts, the worker's key), **Environments** (VM local admins, domain admin, the environment's own accounts, keys). Environment secrets: filters for environment, store, VM, local or domain, password or key, last changed. | S1 |
 | **V1** | Environment secrets in their own paths and policies; the environment page's secrets list with Reveal and Store; then OpenBao's UI and CLI with Authentik sign-in and per-environment groups (question 163-164, 166). | Questions 163, 164, 166 |
 | **V2** | VMs read their secrets with OpenBao certificate sign-in; `labape-secret` / `Get-LabapeSecret`; OpenBao on the lab network (question 165). | Question 165; V1 |
-| **S3** | Settings in sections, a list on the left like Admin: **Sign-in** (directory, break-glass, VM accounts), **Stack** (branding, monitoring, notifications, syslog, maintenance), **Updates and backups**, **Environments** (leases, quotas, snapshots, placement, templates), **Files** (file distribution, downloads), **Secrets** (rotation, stores), **Remote access**. | Question 162: answered (yes) |
+| **S3** (built, design §48.7) | Settings in sections, a list on the left like Admin: **Sign-in** (directory, break-glass, VM accounts), **Stack** (branding, monitoring, notifications, syslog, maintenance), **Updates and backups**, **Environments** (leases, quotas, snapshots, placement, templates), **Files** (file distribution, downloads), **Secrets** (rotation, stores), **Remote access**. | Question 162: answered (yes) |
 
 ## V1 and V2: people's and VMs' access to environment secrets (proposal; questions 163-166)
 
