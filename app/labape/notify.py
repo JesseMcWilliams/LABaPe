@@ -8,6 +8,7 @@ import datetime as dt
 import json
 import logging
 import queue
+import select
 import smtplib
 import socket
 import ssl
@@ -35,12 +36,8 @@ def format_rfc5424(cfg: SyslogSettings, event: dict) -> bytes:
     return f"<{pri}>1 {ts} {host} {cfg.app_name} - {event.get('action', 'audit')[:32]} - {msg}".encode()
 
 
-def send_syslog(cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
-    data = format_rfc5424(cfg, event)
-    if cfg.protocol == "udp":
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.sendto(data, (cfg.host, cfg.port))
-        return
+def _open_stream(cfg: SyslogSettings, timeout: float) -> tuple[socket.socket, socket.socket]:
+    """A TCP or TLS connection to the collector: (raw socket, the socket to write to)."""
     raw = socket.create_connection((cfg.host, cfg.port), timeout=timeout)
     try:
         sock = raw
@@ -62,18 +59,100 @@ def send_syslog(cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
                 d = get_settings().syslog_tls_dir
                 ctx.load_cert_chain(str(d / "client.crt"), str(d / "client.key"))
             sock = ctx.wrap_socket(raw, server_hostname=cfg.host)
-        # RFC 6587 octet counting framing for stream transports.
-        sock.sendall(f"{len(data)} ".encode() + data)
-        if sock is not raw:
-            # TLS close_notify before closing. Closing the raw socket with unread data in
-            # its buffer (TLS 1.3 session tickets) sends a reset, and the collector may then
-            # drop the message it already received.
-            try:
-                sock.unwrap()
-            except (ssl.SSLError, OSError):
-                pass
-    finally:
+        return raw, sock
+    except BaseException:
         raw.close()
+        raise
+
+
+def _close_stream(raw: socket.socket, sock: socket.socket) -> None:
+    if sock is not raw:
+        # TLS close_notify before closing. Closing the raw socket with unread data in
+        # its buffer (TLS 1.3 session tickets) sends a reset, and the collector may then
+        # drop the message it already received. wrap_socket detached `raw`: the TLS
+        # socket owns the connection now.
+        try:
+            sock.unwrap()
+        except (ssl.SSLError, OSError, ValueError):
+            pass
+        sock.close()
+    raw.close()
+
+
+def _frame(data: bytes) -> bytes:
+    return f"{len(data)} ".encode() + data           # RFC 6587 octet counting for stream transports
+
+
+def send_syslog(cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
+    """One event on its own connection (the Settings page's test send)."""
+    data = format_rfc5424(cfg, event)
+    if cfg.protocol == "udp":
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.sendto(data, (cfg.host, cfg.port))
+        return
+    raw, sock = _open_stream(cfg, timeout)
+    try:
+        sock.sendall(_frame(data))
+    finally:
+        _close_stream(raw, sock)
+
+
+class _Stream:
+    """The audit sender's connection, kept open between events (one connection, not one per event:
+    the collector logged an "unexpected eof" for each) and closed after IDLE seconds without one."""
+
+    IDLE = 60.0
+
+    def __init__(self) -> None:
+        self.key: tuple | None = None
+        self.raw: socket.socket | None = None
+        self.sock: socket.socket | None = None
+        self.opened = 0                                   # connections made, for the tests
+
+    def close(self) -> None:
+        if self.raw is not None:
+            _close_stream(self.raw, self.sock)
+        self.key = self.raw = self.sock = None
+
+    def _alive(self) -> bool:
+        """False when the collector closed its end (or reset it) since the last send. Readable data
+        on a quiet syslog connection is a close, or TLS 1.3 session tickets, which are read and kept."""
+        try:
+            # The TLS socket, not `raw`: wrap_socket detached that one.
+            readable, _, _ = select.select([self.sock], [], [], 0)
+            if not readable:
+                return True
+            self.sock.setblocking(False)
+            try:
+                return self.sock.recv(4096) != b""
+            except (ssl.SSLWantReadError, BlockingIOError):
+                return True
+            finally:
+                self.sock.settimeout(5.0)
+        except (OSError, ValueError):
+            return False
+
+    def send(self, cfg: SyslogSettings, event: dict, timeout: float = 5.0) -> None:
+        if cfg.protocol == "udp":
+            self.close()
+            send_syslog(cfg, event, timeout)
+            return
+        key = (cfg.protocol, cfg.host, cfg.port, cfg.verify_tls, cfg.client_cert)
+        if self.raw is not None and (self.key != key or not self._alive()):
+            self.close()
+        payload = _frame(format_rfc5424(cfg, event))
+        for attempt in (1, 2):
+            if self.raw is None:
+                self.raw, self.sock = _open_stream(cfg, timeout)
+                self.key = key
+                self.opened += 1
+            try:
+                self.sock.sendall(payload)
+                return
+            except OSError:
+                self.close()
+                if attempt == 2:
+                    raise
 
 
 _syslog_q: queue.Queue = queue.Queue(maxsize=10000)
@@ -82,11 +161,18 @@ _syslog_thread: threading.Thread | None = None
 last_syslog: dict = {"at": None, "ok": None, "error": ""}
 
 
+_stream = _Stream()
+
+
 def _syslog_worker() -> None:
     while True:
-        cfg, event = _syslog_q.get()
         try:
-            send_syslog(cfg, event)
+            cfg, event = _syslog_q.get(timeout=_stream.IDLE)
+        except queue.Empty:
+            _stream.close()
+            continue
+        try:
+            _stream.send(cfg, event)
             last_syslog.update(at=dt.datetime.now(dt.timezone.utc).isoformat(), ok=True, error="")
         except OSError as exc:
             last_syslog.update(at=dt.datetime.now(dt.timezone.utc).isoformat(), ok=False, error=str(exc))
@@ -130,6 +216,25 @@ def send_email(cfg: SmtpSettings, password: str, to: list[str], subject: str, bo
             pass
 
 
+def smtp_check(cfg: SmtpSettings, password: str, timeout: float = 10) -> None:
+    """Connect, STARTTLS and log in as send_email does, without sending; raises on failure."""
+    if cfg.security == "ssl":
+        server = smtplib.SMTP_SSL(cfg.host, cfg.port, timeout=timeout, context=ssl.create_default_context())
+    else:
+        server = smtplib.SMTP(cfg.host, cfg.port, timeout=timeout)
+    try:
+        server.ehlo()
+        if cfg.security == "starttls":
+            server.starttls(context=ssl.create_default_context())
+        if cfg.username:
+            server.login(cfg.username, password)
+    finally:
+        try:
+            server.quit()
+        except smtplib.SMTPException:
+            pass
+
+
 def email_in_background(cfg: SmtpSettings, password: str, to: list[str], subject: str, body: str,
                         on_done=None) -> None:
     """Send on a thread; on_done(ok, error) records the result if given."""
@@ -148,5 +253,5 @@ def email_in_background(cfg: SmtpSettings, password: str, to: list[str], subject
     threading.Thread(target=go, name="email", daemon=True).start()
 
 
-__all__ = ["SMTP_PASSWORD_SECRET", "audit_to_syslog", "email_in_background", "format_rfc5424", "send_email",
+__all__ = ["SMTP_PASSWORD_SECRET", "audit_to_syslog", "email_in_background", "format_rfc5424", "send_email", "smtp_check",
            "send_syslog"]

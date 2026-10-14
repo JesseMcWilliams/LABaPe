@@ -1,8 +1,8 @@
 import { Fragment, ReactNode, useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
-  Alert, Box, Button, Chip, Collapse, IconButton, LinearProgress, Link, Paper, Stack, Table, TableBody, TableCell,
-  TableHead, TableRow, Tooltip, Typography,
+  Alert, Box, Button, Chip, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, LinearProgress,
+  Link, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
@@ -222,12 +222,56 @@ function CheckList({ title, items, extra }: {
 
 // The landing page (design §22.1): KVM host load and the user's environments,
 // filtered to what they may see; admins also get platform health.
-interface MonAlert { id: number; host: string; kvm_host_id: number | null; level: string; message: string; started_at: string; cleared_at: string | null }
-interface Monitoring { open: MonAlert[]; recent: MonAlert[]; stacks: { id: number; name: string; self: boolean; stack_url: string; status: { peer?: { ok: boolean; ms: number | null } } }[] }
+interface MonAlert {
+  id: number; host: string; kvm_host_id: number | null; level: string; message: string; started_at: string;
+  cleared_at: string | null; announced_at: string | null; acked_at: string | null; acked_by: string; silenced_until: string | null;
+}
+interface Silence { id: number; key: string; message: string; reason: string; created_by: string; until: string }
+interface Monitoring {
+  quiet: boolean; silences: Silence[]; open: MonAlert[]; recent: MonAlert[];
+  stacks: { id: number; name: string; self: boolean; stack_url: string; status: { peer?: { ok: boolean; ms: number | null } } }[];
+}
 
-/** Open alerts and the stacks being watched (design §30). */
-function AlertsPanel({ m }: { m: Monitoring }) {
+const SILENCE_HOURS = [[1, "1 hour"], [4, "4 hours"], [24, "1 day"], [72, "3 days"], [168, "1 week"], [720, "30 days"]] as const;
+
+/** Silence an alert's condition: no syslog or email until it ends; still shown (design §31). */
+function SilenceDialog({ alert, onClose }: { alert: MonAlert | null; onClose: (changed: boolean) => void }) {
+  const [hours, setHours] = useState(4);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const save = () => api.post("/api/dashboard/monitoring/silences", { alert_id: alert!.id, hours, reason })
+    .then(() => { setReason(""); onClose(true); }, (e) => setError(e.message));
+  return (
+    <Dialog open={!!alert} onClose={() => onClose(false)} maxWidth="sm" fullWidth>
+      <DialogTitle>Silence alert</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <Typography variant="body2">{alert?.message}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            No syslog messages or emails for this condition until the silence ends. It stays on the dashboard, and if it's
+            still open when the silence ends it's announced then.
+          </Typography>
+          <TextField select label="For" value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+            {SILENCE_HOURS.map(([h, label]) => <MenuItem key={h} value={h}>{label}</MenuItem>)}
+          </TextField>
+          <TextField label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. disk replacement ordered" />
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => onClose(false)}>Cancel</Button>
+        <Button variant="contained" onClick={save}>Silence</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Open alerts and the stacks being watched (design §30); admins acknowledge and silence (§31). */
+function AlertsPanel({ m, admin, reload }: { m: Monitoring; admin: boolean; reload: () => void }) {
   const peers = m.stacks.filter((s) => !s.self && s.stack_url);
+  const [silencing, setSilencing] = useState<MonAlert | null>(null);
+  const ack = (a: MonAlert, on: boolean) => api.post(`/api/dashboard/monitoring/alerts/${a.id}/ack`, { ack: on }).then(reload);
+  const endSilence = (s: Silence) => api.del(`/api/dashboard/monitoring/silences/${s.id}`).then(reload);
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={1}>
@@ -241,12 +285,45 @@ function AlertsPanel({ m }: { m: Monitoring }) {
               title={`The stack at ${p.stack_url}`} />
           ))}
         </Stack>
+        {m.quiet && (
+          <Alert severity="info" icon={false}>
+            Maintenance mode is on: new alerts are recorded here but not sent to syslog or email until it ends.
+          </Alert>
+        )}
         {m.open.map((a) => (
-          <Alert key={a.id} severity={a.level === "error" ? "error" : "warning"}
-            action={a.kvm_host_id ? <Button size="small" component={RouterLink} to={`/admin/hosts/${a.kvm_host_id}?section=stack`}>Host</Button> : undefined}>
+          <Alert key={a.id} severity={a.level === "error" ? "error" : "warning"} variant={a.acked_at ? "outlined" : "standard"}
+            action={
+              <Stack direction="row" spacing={0.5}>
+                {admin && (a.acked_at
+                  ? <Button size="small" onClick={() => ack(a, false)} title="Mark it as not acknowledged again">Unack</Button>
+                  : <Button size="small" onClick={() => ack(a, true)} title="Mark it as seen: someone is on it">Ack</Button>)}
+                {admin && !a.silenced_until && (
+                  <Button size="small" onClick={() => setSilencing(a)} title="No syslog or email for this condition for a while">Silence</Button>
+                )}
+                {a.kvm_host_id && <Button size="small" component={RouterLink} to={`/admin/hosts/${a.kvm_host_id}?section=stack`}>Host</Button>}
+              </Stack>
+            }>
             {a.message} <Typography component="span" variant="caption" color="text.secondary">since {fmtTime(a.started_at)}</Typography>
+            {a.acked_at && <Chip size="small" sx={{ ml: 1, height: 18 }} label={`acknowledged by ${a.acked_by}`} title={fmtTime(a.acked_at)} />}
+            {a.silenced_until && <Chip size="small" sx={{ ml: 1, height: 18 }} label={`silenced until ${fmtTime(a.silenced_until)}`} />}
           </Alert>
         ))}
+        {m.silences.length > 0 && (
+          <Box>
+            <Typography variant="caption" color="text.secondary">Silences</Typography>
+            {m.silences.map((s) => (
+              <Stack key={s.id} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Typography variant="body2">
+                  {s.message} <Typography component="span" variant="caption" color="text.secondary">
+                    until {fmtTime(s.until)} · {s.created_by}{s.reason ? ` · ${s.reason}` : ""}
+                  </Typography>
+                </Typography>
+                {admin && <Button size="small" onClick={() => endSilence(s)} title="End the silence now">End</Button>}
+              </Stack>
+            ))}
+          </Box>
+        )}
+        <SilenceDialog alert={silencing} onClose={(changed) => { setSilencing(null); if (changed) reload(); }} />
         {m.recent.length > 0 && (
           <Typography variant="caption" color="text.secondary">
             Recently cleared: {m.recent.slice(0, 5).map((a) => `${a.message} (${fmtTime(a.cleared_at)})`).join(" · ")}
@@ -317,7 +394,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      {mon && <AlertsPanel m={mon} />}
+      {mon && <AlertsPanel m={mon} admin={data.is_admin} reload={load} />}
 
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>KVM hosts</Typography>

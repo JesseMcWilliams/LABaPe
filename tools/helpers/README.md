@@ -51,7 +51,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/hosts.py` | lab (container) | List KVM hosts; enable, disable, rename one or attach a network; turn its log forwarding on or off |
 | `live/dashboard_hosts.py` | lab (container) | The KVM hosts the dashboard shows |
 | `live/files_ops.py` | lab (container) | Files page through the API: a chunked tus upload, a download from a URL, list, delete |
-| `live/monitoring.py` | lab (container) | Open and cleared alerts, and each stack host's checks |
+| `live/monitoring.py` | lab (container) | Open and cleared alerts, silences, and each stack host's checks; `ack`/`unack`/`silence`/`end` |
 | `live/syslog_stack.py` | lab (container) | The stack's syslog collector: status, messages, test senders, forwarding test, settings |
 | `live/vm_details.py` | lab (container) | A VM's details page data; read its accounts and groups; an account round trip |
 | `live/host_access.py` | lab (container) | KVM host administration: register, set up access, show sections, manage accounts, install |

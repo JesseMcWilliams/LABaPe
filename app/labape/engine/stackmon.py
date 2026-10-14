@@ -27,9 +27,9 @@ from urllib.parse import urlsplit
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from .. import appsettings
+from .. import appsettings, maintenance_mode
 from ..config import get_settings
-from ..models import HostFacts, HostMetric, KvmHost, MonitorAlert, StackStatus, utcnow
+from ..models import HostFacts, HostMetric, KvmHost, MonitorAlert, MonitorSilence, Setting, StackStatus, utcnow
 from . import hostadmin
 
 log = logging.getLogger("labape.stackmon")
@@ -37,6 +37,10 @@ log = logging.getLogger("labape.stackmon")
 CONTAINERS_EVERY = dt.timedelta(minutes=5)
 VOLUMES_EVERY = dt.timedelta(hours=1)
 RESTART_WINDOW = dt.timedelta(minutes=15)
+# Alert emails (design §31): the last send's result, and how often a failing server is re-checked.
+EMAIL_STATE_KEY = "monitor.email_state"
+EMAIL_KEY = "monitor:email"
+EMAIL_RECHECK = dt.timedelta(minutes=5)
 STACK_ROLES = ("stack", "both")
 # The containers that are LABaPe's (compose projects): others on the host aren't its business.
 PROJECTS = ("labape", "authentik-test")
@@ -278,34 +282,71 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
                 add(h, "error", f"the stack at {h.stack_url} isn't answering ({p.get('error') or p.get('status')})", "peer")
             if cert_due({"expires": p.get("cert_expires"), "issued": p.get("cert_issued")}, now, cfg.cert_days):
                 add(h, "warning", f"the stack's certificate expires {p['cert_expires'][:16].replace('T', ' ')} UTC", "cert")
+    em = email_state(db)
+    if em.get("ok") is False:
+        out[EMAIL_KEY] = (None, "error", f"alert emails can't be sent: {em.get('error', '')[:300]}")
     return out
 
 
+def email_state(db: Session) -> dict:
+    row = db.get(Setting, EMAIL_STATE_KEY)
+    return dict(row.value) if row else {}
+
+
+def _put_email_state(db: Session, ok: bool, error: str, now: dt.datetime) -> None:
+    value = {"ok": ok, "error": error, "at": now.isoformat()}
+    row = db.get(Setting, EMAIL_STATE_KEY)
+    if row is None:
+        db.add(Setting(key=EMAIL_STATE_KEY, value=value))
+    else:
+        row.value = value
+    db.commit()
+
+
+def silenced(db: Session, now: dt.datetime) -> dict[str, MonitorSilence]:
+    return {s.key: s for s in db.scalars(select(MonitorSilence).where(MonitorSilence.until > now))}
+
+
 def sync_alerts(db: Session, current: dict, now: dt.datetime | None = None, send=None) -> tuple[list, list]:
-    """Open the alerts that started, clear the ones that ended, announce both. Returns (started, cleared)."""
+    """Open the alerts that started and clear the ones that ended, then announce what's due.
+
+    A start is announced once, when it's neither silenced nor in maintenance mode, so one that began
+    in either is announced when that ends if it's still open (design §31). A clear is announced when
+    its start was, silence or not, so whoever got the start also gets the all-clear. `send` returns
+    an error text when the alert email failed. Returns the (started, cleared) alerts announced."""
     now = now or utcnow()
     open_ = {a.key: a for a in db.scalars(select(MonitorAlert).where(MonitorAlert.cleared_at.is_(None)))}
-    started, cleared = [], []
+    cleared = []
     for key, (host_id, level, message) in current.items():
         a = open_.get(key)
         if a is None:
             a = MonitorAlert(key=key, kvm_host_id=host_id, level=level, message=message, started_at=now)
             db.add(a)
-            started.append(a)
+            open_[key] = a
         else:
             a.level, a.message = level, message
-    for key, a in open_.items():
+    for key, a in list(open_.items()):
         if key not in current:
             a.cleared_at = now
-            cleared.append(a)
+            if a.announced_at is not None:
+                cleared.append(a)
+            del open_[key]
+    quiet = maintenance_mode.get(db)["active"]
+    hush = silenced(db, now)
+    started = [] if quiet else [a for a in open_.values() if a.announced_at is None and a.key not in hush]
+    for a in started:
+        a.announced_at = now
     db.commit()
     if started or cleared:
-        (send or announce)(db, started, cleared)
+        err = (send or announce)(db, started, cleared)
+        if err is not None:
+            _put_email_state(db, not err, err, now)
     return started, cleared
 
 
-def announce(db: Session, started: list, cleared: list) -> None:
-    """Syslog (through the audit trail's sender) and one email for the batch (question 143)."""
+def announce(db: Session, started: list, cleared: list) -> str | None:
+    """Syslog (through the audit trail's sender) and one email for the batch (question 143).
+    Returns "" when the email went, its error when it failed, None when none was due."""
     from .. import notify
     from ..appsettings import SMTP_PASSWORD_SECRET
     from ..security import get_secret
@@ -319,7 +360,9 @@ def announce(db: Session, started: list, cleared: list) -> None:
                                             "detail": {"level": a.level, "message": a.message, "key": a.key,
                                                        "started_at": a.started_at, "cleared_at": a.cleared_at}})
     smtp = appsettings.get(db, "smtp")
-    if cfg.email_to and smtp.enabled and smtp.host and smtp.from_address:
+    # The email alert's own start can't go by email.
+    started = [a for a in started if a.key != EMAIL_KEY]
+    if (started or cleared) and cfg.email_to and smtp.enabled and smtp.host and smtp.from_address:
         name = urlsplit(get_settings().public_url).hostname or "LABaPe"
         lines = [f"[{a.level.upper()}] {a.message}" for a in started] + [f"[CLEARED] {a.message}" for a in cleared]
         subject = f"LABaPe {name}: " + (f"{len(started)} new alert(s)" if started else "") + \
@@ -327,8 +370,33 @@ def announce(db: Session, started: list, cleared: list) -> None:
         try:
             notify.send_email(smtp, get_secret(db, SMTP_PASSWORD_SECRET) or "", cfg.email_to, subject,
                               "\n".join(lines) + f"\n\nDashboard: {get_settings().public_url}\n")
-        except Exception as exc:  # noqa: BLE001 — the dashboard still has them
+        except Exception as exc:  # noqa: BLE001 — the dashboard still has them; raises its own alert
             log.warning("alert email failed: %s", exc)
+            return str(exc)[:500] or exc.__class__.__name__
+        return ""
+    return None
+
+
+def recheck_email(db: Session, now: dt.datetime) -> None:
+    """While alert emails fail, try the server (log in, no send) every few minutes, so the alert
+    clears when it works again even if nothing else is due to be sent."""
+    from .. import notify
+    from ..appsettings import SMTP_PASSWORD_SECRET
+    from ..security import get_secret
+    em = email_state(db)
+    if em.get("ok") is not False:
+        return
+    if em.get("at") and now - _aware(dt.datetime.fromisoformat(em["at"])) < EMAIL_RECHECK:
+        return
+    smtp = appsettings.get(db, "smtp")
+    if not (smtp.enabled and smtp.host):
+        _put_email_state(db, True, "", now)          # email turned off: nothing is failing
+        return
+    try:
+        notify.smtp_check(smtp, get_secret(db, SMTP_PASSWORD_SECRET) or "")
+        _put_email_state(db, True, "", now)
+    except Exception as exc:  # noqa: BLE001
+        _put_email_state(db, False, str(exc)[:500] or exc.__class__.__name__, now)
 
 
 # --- the worker's part -----------------------------------------------------------------------
@@ -365,6 +433,7 @@ def tick(db_factory) -> None:
                         st.error = str(exc)[:1000]
                         db.merge(st)
                         db.commit()
+                recheck_email(db, now)
                 sync_alerts(db, evaluate(db, now), now)
         except Exception:  # noqa: BLE001
             log.exception("stack monitoring")
@@ -378,11 +447,17 @@ def view(db: Session) -> dict:
     """What the dashboard and the hosts' Stack sections show."""
     hosts = {h.id: h for h in db.scalars(select(KvmHost))}
     alerts = list(db.scalars(select(MonitorAlert).order_by(MonitorAlert.started_at.desc()).limit(200)))
+    hush = silenced(db, utcnow())
     out = lambda a: {"id": a.id, "key": a.key, "host": hosts[a.kvm_host_id].name if a.kvm_host_id in hosts else "",  # noqa: E731
                      "kvm_host_id": a.kvm_host_id, "level": a.level, "message": a.message,
-                     "started_at": a.started_at, "cleared_at": a.cleared_at}
+                     "started_at": a.started_at, "cleared_at": a.cleared_at, "announced_at": a.announced_at,
+                     "acked_at": a.acked_at, "acked_by": a.acked_by,
+                     "silenced_until": hush[a.key].until if a.key in hush and a.cleared_at is None else None}
     rows = {r.kvm_host_id: r for r in db.scalars(select(StackStatus))}
-    return {"open": [out(a) for a in alerts if a.cleared_at is None],
+    return {"quiet": bool(maintenance_mode.get(db)["active"]),
+            "silences": [{"id": s.id, "key": s.key, "message": s.message, "reason": s.reason, "created_by": s.created_by,
+                          "created_at": s.created_at, "until": s.until} for s in hush.values()],
+            "open": [out(a) for a in alerts if a.cleared_at is None],
             "recent": [out(a) for a in alerts if a.cleared_at is not None][:50],
             "stacks": [{"id": h.id, "name": h.name, "role": h.role, "stack_url": h.stack_url, "self": is_self(h),
                         "status": rows[h.id].data if h.id in rows else {},

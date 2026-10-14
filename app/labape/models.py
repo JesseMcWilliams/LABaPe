@@ -345,6 +345,26 @@ class MonitorAlert(Base):
     message: Mapped[str] = mapped_column(Text)
     started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     cleared_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    # When its start went to syslog and email; empty while it waits for a silence or maintenance
+    # to end (design §31). A clear is announced only when the start was.
+    announced_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acked_by: Mapped[str] = mapped_column(String(255), default="")
+
+
+class MonitorSilence(Base):
+    """No announcements for alerts with this key until `until` (design §31). The alerts are still
+    recorded and shown."""
+
+    __tablename__ = "monitor_silences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), index=True)
+    message: Mapped[str] = mapped_column(Text, default="")              # the alert it was made from
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    until: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
 
 
 class HostFacts(Base):

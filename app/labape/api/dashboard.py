@@ -11,8 +11,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -21,10 +22,11 @@ from ..auth import load_providers, provider_enabled
 from ..config import get_settings
 from ..db import get_db
 from ..engine.maintenance import EMAIL_STATUS_KEY
-from ..models import BreakglassGrant, Environment, HostStats, KvmHost, MetricSample, Secret, Setting, User, utcnow
+from ..models import (BreakglassGrant, Environment, HostStats, KvmHost, MetricSample, MonitorAlert, MonitorSilence,
+                      Secret, Setting, User, utcnow)
 from ..naming import instance_names
 from ..permissions import visible_hosts, visible_ids
-from ..security import Principal, _fernet, current_principal, decrypt_value, get_secret, require_roles
+from ..security import Principal, _fernet, audit, current_principal, decrypt_value, get_secret, require_roles
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 BUCKET_MINUTES = 10
@@ -320,3 +322,55 @@ def monitoring(db: Session = Depends(get_db), _: Principal = Depends(require_rol
     """Alerts (open and recently cleared) and the stacks being watched (design §30)."""
     from ..engine import stackmon
     return stackmon.view(db)
+
+
+class AckIn(BaseModel):
+    ack: bool = True
+
+
+class SilenceIn(BaseModel):
+    alert_id: int
+    hours: int = Field(ge=1, le=720)
+    reason: str = Field(default="", max_length=500)
+
+
+@router.post("/monitoring/alerts/{alert_id}/ack")
+def ack_alert(alert_id: int, body: AckIn, db: Session = Depends(get_db),
+              p: Principal = Depends(require_roles("admin"))):
+    """Mark an open alert as seen (someone is on it), or undo that (design §31)."""
+    a = db.get(MonitorAlert, alert_id)
+    if a is None or a.cleared_at is not None:
+        raise HTTPException(404, "No such open alert")
+    a.acked_at, a.acked_by = (utcnow(), p.username) if body.ack else (None, "")
+    db.commit()
+    audit(db, p.username, "monitor.alert.ack" if body.ack else "monitor.alert.unack", object_type="monitor_alert",
+          object_id=a.id, detail={"message": a.message})
+    return {"ok": True}
+
+
+@router.post("/monitoring/silences")
+def add_silence(body: SilenceIn, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """No syslog or email for this alert's condition until the silence ends; still shown (design §31)."""
+    a = db.get(MonitorAlert, body.alert_id)
+    if a is None:
+        raise HTTPException(404, "No such alert")
+    now = utcnow()
+    s = MonitorSilence(key=a.key, message=a.message, reason=body.reason, created_by=p.username, created_at=now,
+                       until=now + dt.timedelta(hours=body.hours))
+    db.add(s)
+    db.commit()
+    audit(db, p.username, "monitor.silence.add", object_type="monitor_silence", object_id=s.id,
+          detail={"key": s.key, "message": s.message, "hours": body.hours, "reason": body.reason})
+    return {"id": s.id, "until": s.until}
+
+
+@router.delete("/monitoring/silences/{silence_id}")
+def end_silence(silence_id: int, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    s = db.get(MonitorSilence, silence_id)
+    if s is None:
+        raise HTTPException(404, "No such silence")
+    s.until = min(s.until if s.until.tzinfo else s.until.replace(tzinfo=dt.timezone.utc), utcnow())
+    db.commit()
+    audit(db, p.username, "monitor.silence.end", object_type="monitor_silence", object_id=s.id,
+          detail={"key": s.key, "message": s.message})
+    return {"ok": True}
