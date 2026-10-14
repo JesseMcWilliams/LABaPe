@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import {
   Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, Table, TableBody, TableCell,
-  TableHead, TableRow, Tooltip, Typography,
+  TableHead, TableRow, Tab, Tabs, Tooltip, Typography,
 } from "@mui/material";
-import { api, fmtTime } from "../api";
+import { api, fmtTime, KvmHost } from "../api";
 import { ListHeader } from "../components/PageParts";
 import StoredSecrets from "../components/StoredSecrets";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
@@ -20,7 +20,15 @@ export interface SecretPolicy {
   // Health (S1, question 161).
   check_status: string; check_error: string; last_checked_at: string | null; next_check_at: string | null;
   recoverable: boolean; recovery: string; checkable: boolean; check_every_hours: number | null;
+  section: "stack" | "kvm" | "environments"; environment_id: number | null;
 }
+
+// Sections (S2): the stack's own secrets, what reaches the KVM hosts, and the environments'.
+const SECTIONS = [
+  { key: "stack", label: "Stack", help: "The stack's own secrets: its keys, the database, the CA, sign-in, the stores' logins, links." },
+  { key: "kvm", label: "KVM hosts", help: "How the stack reaches its KVM hosts: the worker's key (libvirt and jobs) and each host's LABaPe access account." },
+  { key: "environments", label: "Environments", help: "Each environment's accounts and passwords, its credentials sheet and inventory." },
+] as const;
 
 const HEALTH_COLOR: Record<string, "success" | "error" | "warning" | "default"> = {
   ok: "success", recovered: "success", failed: "error", recovering: "warning",
@@ -107,6 +115,10 @@ function AddElevated({ onDone }: { onDone: () => void }) {
 export default function Secrets() {
   const [data, setData] = useState<{ policies: SecretPolicy[]; elevated: string[] } | null>(null);
   const [error, setError] = useState("");
+  const [params, setParams] = useSearchParams();
+  const section = (SECTIONS.find((s) => s.key === params.get("section"))?.key ?? "stack") as SecretPolicy["section"];
+  const [hosts, setHosts] = useState<KvmHost[]>([]);
+  useEffect(() => { if (section === "kvm") api.get<KvmHost[]>("/api/hosts").then(setHosts, () => setHosts([])); }, [section]);
   const load = () => api.get<{ policies: SecretPolicy[]; elevated: string[] }>("/api/admin/secrets")
     .then(setData, (e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -120,6 +132,11 @@ export default function Secrets() {
       {data && data.elevated.length > 0 && (
         <Alert severity="info" icon={false}>Elevated accounts: {data.elevated.join(", ")}</Alert>
       )}
+      <Tabs value={section} onChange={(_, v) => setParams({ section: v }, { replace: true })}>
+        {SECTIONS.map((s) => <Tab key={s.key} value={s.key} label={s.label} />)}
+      </Tabs>
+      <Typography variant="body2" color="text.secondary">{SECTIONS.find((s) => s.key === section)?.help}</Typography>
+      <Typography variant="h6">Rotation and health</Typography>
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -129,7 +146,7 @@ export default function Secrets() {
           </TableRow>
         </TableHead>
         <TableBody>
-          {data?.policies.map((p) => (
+          {data?.policies.filter((p) => p.section === section).map((p) => (
             <TableRow key={p.id} hover sx={{ opacity: p.enabled ? 1 : 0.5 }}>
               <TableCell>
                 <Link component={RouterLink} to={`/admin/secrets/${p.id}`}>{p.label}</Link>
@@ -150,7 +167,28 @@ export default function Secrets() {
           ))}
         </TableBody>
       </Table>
-      <StoredSecrets onMoved={load} />
+      {section === "kvm" && (
+        <>
+          <Typography variant="h6">Host access accounts</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Each KVM host's LABaPe access account signs in with the stack's host-admin key (no password); it reads the host,
+            manages its accounts, opens consoles and puts the worker's key back if a check finds it gone.
+          </Typography>
+          <Table size="small">
+            <TableHead><TableRow><TableCell>Host</TableCell><TableCell>Account</TableCell><TableCell>Access</TableCell></TableRow></TableHead>
+            <TableBody>
+              {hosts.map((h) => (
+                <TableRow key={h.id}>
+                  <TableCell><Link component={RouterLink} to={`/admin/hosts/${h.id}`}>{h.name}</Link></TableCell>
+                  <TableCell sx={{ fontFamily: "monospace" }}>{h.access_status === "none" ? "—" : `${h.ssh_user}@${h.ssh_address}`}</TableCell>
+                  <TableCell><Chip size="small" label={h.access_status} color={h.access_status === "ready" ? "success" : "default"} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
+      )}
+      <StoredSecrets onMoved={load} section={section} />
     </Stack>
   );
 }

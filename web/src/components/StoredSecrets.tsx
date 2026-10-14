@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
-  Alert, Checkbox, Chip, Link, MenuItem, Stack, Table, TableBody, TableCell, TableHead, TableRow, Tooltip, Typography,
+  Alert, Checkbox, Chip, FormControlLabel, Link, MenuItem, Stack, Table, TableBody, TableCell, TableHead, TableRow, Tooltip,
+  Typography,
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { Field, fromApiError } from "../forms";
 import { ActionButton } from "./Confirm";
+import { DateRangeFields, FilterBar, SelectFilter, useUrlFilters } from "./Filters";
 
 // The secret catalog (design §25): every stored secret, the store it lives
 // in and the rotation linked to it, with Move between stores. Never a value.
@@ -13,14 +15,23 @@ interface StoredSecret {
   name: string; store: string; updated_at: string; pinned: boolean; empty: boolean;
   rotation: { policy_id: number; label: string; kind: string; enabled: boolean; interval_hours: number;
     elevated_ref: string; status: string; next_due_at: string | null } | null;
+  // Its section of the Secrets page (S2) and, for an environment's, what it belongs to.
+  section: "stack" | "kvm" | "environments"; type: "password" | "key" | "document";
+  environment_id?: number; environment?: string; environment_status?: string; vms?: string[]; scope?: string;
+  attempt?: boolean;
 }
+const ENV_KEYS = ["env", "store", "vm", "scope", "type", "since", "until"];
+const opts = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => Boolean(x)))].sort();
 interface Catalog { secrets: StoredSecret[]; stores: { name: string; display_name: string }[] }
 interface MoveResult { name: string; ok: boolean; message: string }
 
 const every = (h: number) => (h % 24 === 0 ? `${h / 24} d` : `${h} h`);
 
-export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
+export default function StoredSecrets({ onMoved, section = "stack" }: { onMoved?: () => void; section?: StoredSecret["section"] }) {
   const [data, setData] = useState<Catalog | null>(null);
+  const [showCleared, setShowCleared] = useState(false);
+  const f = useUrlFilters(ENV_KEYS);
+  const a = f.applied;
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState("builtin");
@@ -36,6 +47,13 @@ export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
     setPicked(next);
   };
   const movable = data.secrets.filter((s) => !s.pinned || target === "builtin");
+  // This section's secrets; for environments, the filters (S2); spent one-time tokens hidden unless asked.
+  const mine = data.secrets.filter((s) => s.section === section && (showCleared || !s.empty));
+  const shown = section !== "environments" ? mine : mine.filter((s) => (!a.env || s.environment === a.env)
+    && (!a.store || s.store === a.store) && (!a.vm || (s.vms ?? []).includes(a.vm))
+    && (!a.scope || s.scope === a.scope) && (!a.type || s.type === a.type)
+    && (!a.since || new Date(s.updated_at) >= new Date(a.since)) && (!a.until || new Date(s.updated_at) <= new Date(a.until)));
+  const cleared = data.secrets.filter((s) => s.section === section && s.empty).length;
   const move = async () => {
     setResults([]);
     try {
@@ -52,7 +70,26 @@ export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
 
   return (
     <Stack spacing={1}>
-      <Typography variant="h6">Stored secrets</Typography>
+      <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+        <Typography variant="h6">Stored secrets</Typography>
+        {cleared > 0 && <FormControlLabel label={`Show cleared (${cleared})`} title="Spent one-time tokens and emptied values"
+          control={<Checkbox size="small" checked={showCleared} onChange={(e) => setShowCleared(e.target.checked)} />} />}
+      </Stack>
+      {section === "environments" && (
+        <FilterBar onApply={() => f.apply()} onClear={f.clear} active={f.active}>
+          <SelectFilter label="Environment" value={f.draft.env} width={170} options={opts(mine.map((s) => s.environment))}
+            onChange={(v) => f.set("env", v)} />
+          <SelectFilter label="Store" value={f.draft.store} width={130} options={opts(mine.map((s) => s.store))}
+            onChange={(v) => f.set("store", v)} />
+          <SelectFilter label="VM" value={f.draft.vm} width={140} options={opts(mine.flatMap((s) => s.vms ?? []))}
+            onChange={(v) => f.set("vm", v)} />
+          <SelectFilter label="Local or domain" value={f.draft.scope} width={150} options={["local", "domain"]}
+            onChange={(v) => f.set("scope", v)} />
+          <SelectFilter label="Password or key" value={f.draft.type} width={160} options={["password", "key", "document"]}
+            onChange={(v) => f.set("type", v)} />
+          <DateRangeFields since={f.draft.since} until={f.draft.until} onChange={f.set} />
+        </FilterBar>
+      )}
       <Typography variant="body2" color="text.secondary">
         Where each secret lives. Moving one copies it, reads it back, switches it over, then deletes the old copy; if
         any step fails it stays where it was. Store logins, elevated accounts and job tokens always stay in the
@@ -78,12 +115,14 @@ export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
         <TableHead>
           <TableRow>
             <TableCell padding="checkbox" />
-            <TableCell>Secret</TableCell><TableCell>Store</TableCell><TableCell>Rotation</TableCell>
+            <TableCell>Secret</TableCell>
+            {section === "environments" && <><TableCell>Environment</TableCell><TableCell>VMs</TableCell><TableCell>Kind</TableCell></>}
+            <TableCell>Store</TableCell><TableCell>Rotation</TableCell>
             <TableCell>Elevated account</TableCell><TableCell>Changed</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {data.secrets.map((s) => (
+          {shown.map((s) => (
             <TableRow key={s.name} hover sx={{ opacity: s.empty ? 0.5 : 1 }}>
               <TableCell padding="checkbox">
                 <Checkbox size="small" checked={picked.has(s.name)} disabled={!movable.includes(s) || s.store === target}
@@ -94,7 +133,14 @@ export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
                 {s.pinned && <Tooltip title="LABaPe needs it to reach the other stores, or it's a one-time token">
                   <Chip size="small" label="built-in only" sx={{ ml: 1 }} /></Tooltip>}
                 {s.empty && <Chip size="small" label="cleared" sx={{ ml: 1 }} />}
+                {s.attempt && <Tooltip title="The value a rotation tried, kept until it's sure (secret health tries it)"><Chip size="small" label="attempt" sx={{ ml: 1 }} /></Tooltip>}
               </TableCell>
+              {section === "environments" && <>
+                <TableCell>{s.environment_id ? <Link component={RouterLink} to={`/environments/${s.environment_id}`}>{s.environment}</Link> : "—"}
+                  {s.environment_status && s.environment_status !== "deployed" && <Typography variant="caption" color="text.secondary"> ({s.environment_status})</Typography>}</TableCell>
+                <TableCell>{(s.vms ?? []).join(", ") || "—"}</TableCell>
+                <TableCell>{[s.scope, s.type].filter(Boolean).join(" ")}</TableCell>
+              </>}
               <TableCell>{label(s.store)}</TableCell>
               <TableCell>
                 {s.rotation
@@ -107,6 +153,7 @@ export default function StoredSecrets({ onMoved }: { onMoved?: () => void }) {
               <TableCell>{fmtTime(s.updated_at)}</TableCell>
             </TableRow>
           ))}
+          {shown.length === 0 && <TableRow><TableCell colSpan={9}>{mine.length ? "None match these filters." : "None in this section."}</TableCell></TableRow>}
         </TableBody>
       </Table>
     </Stack>

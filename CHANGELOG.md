@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Fixed
+- Destroying an environment now also clears its own accounts' passwords
+  and any value a rotation was trying, not only its Administrator
+  passwords, credentials sheet and inventory.
 - Preparing a host that had no NetworkManager (e.g. a Debian cloud image)
   no longer leaves it without DNS servers.
 - A template copied to a host that had it once before no longer fails
@@ -32,6 +35,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Secrets in tabs: Stack, KVM hosts (with each host's access account) and
+  Environments, whose secrets filter by environment, store, VM, local or
+  domain, password or key, and last change. Cleared values (spent job
+  tokens, destroyed environments) are hidden unless asked for.
 - Secret health: each secret is checked (every quarter of its rotation
   period, at least daily; weekly when LABaPe doesn't rotate it) and shows
   **Recoverable** yes/no. A failed check on a recoverable secret puts a
