@@ -69,7 +69,7 @@ def test_download_job(client, tmp_root, server):
     _admin_session(client)
     with session_factory()() as db:
         set_roots(db, {"installers": str(tmp_root / "dl-installers")})
-    body = {"category": "installers", "url": f"{server}/moved"}
+    body = {"category": "installers", "url": f"{server}/moved", "targets": ["windows"]}
     r = client.post("/api/files/download", json={**body, "filename": "tool.msi"})
     assert r.status_code == 422 and r.json()["errors"][0]["field"] == "url"           # http not allowed yet
     s = client.get("/api/admin/settings").json()["downloads"]

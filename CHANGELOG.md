@@ -32,6 +32,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Files: an OS filter on every tab (the OSes that tab's files are for);
+  a file's OS is given when it's uploaded or downloaded (required for
+  installers), and other files can carry OS targets too. Catalog and
+  Networks lists have filters.
 - Sign-on between linked stacks (Admin → Linked stacks → Sign-on): an
   admin lets a linked stack's users sign in here with their own accounts,
   per link and per side. They appear as `<user>@<stack>` and keep their

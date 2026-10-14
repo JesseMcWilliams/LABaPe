@@ -10,6 +10,7 @@ import { api, fmtTime } from "../api";
 import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
+import { FilterBar, SelectFilter, useUrlFilters } from "../components/Filters";
 
 // Services, applications and packages users can add to host groups, on
 // top of the template (design §21.4). Users browse and request; admins
@@ -67,8 +68,17 @@ function RequestDialog({ kind, onClose }: { kind: string; onClose: (sent: boolea
   );
 }
 
+const ITEM_KEYS = ["name", "platform", "status", "desc"];
+const has = (hay: string, needle: string) => !needle || hay.toLowerCase().includes(needle.toLowerCase());
+
 function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
   const [items, setItems] = useState<CatalogItem[]>([]);
+  // Filters (L2), in the browser: the catalog is small.
+  const flt = useUrlFilters(ITEM_KEYS);
+  const a = flt.applied;
+  const shown = items.filter((i) => (has(i.name, a.name) || has(i.display_name, a.name))
+    && (!a.platform || i.platforms.includes(a.platform)) && (!a.status || i.status === a.status)
+    && (has(i.description, a.desc) || has(i.notes ?? "", a.desc)));
   const [requesting, setRequesting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -92,6 +102,17 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
           title={`New ${kind}: opens the form; it's saved as a draft`}>New {kind}</Button>}
       </Stack>
       {msg && <Alert severity={msg.ok ? "success" : "error"} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      <FilterBar onApply={() => flt.apply()} onClear={flt.clear} active={flt.active}>
+        <Field label="Name" value={flt.draft.name} sx={{ width: 180 }} help="Contains (name or display name)"
+          onChange={(e) => flt.set("name", e.target.value)} />
+        <SelectFilter label="Platform" value={flt.draft.platform} width={150} help="Installs on"
+          options={[...new Set(items.flatMap((i) => i.platforms))].sort()} onChange={(v) => flt.set("platform", v)} />
+        {isAdmin && <SelectFilter label="Status" value={flt.draft.status} width={150}
+          options={[...new Set(items.map((i) => i.status))].sort()} onChange={(v) => flt.set("status", v)} />}
+        <Field label="Description" value={flt.draft.desc} sx={{ width: 200 }} help="Contains (description or notes)"
+          onChange={(e) => flt.set("desc", e.target.value)} />
+      </FilterBar>
+      {flt.active && <Typography variant="body2" color="text.secondary">{shown.length} of {items.length} match</Typography>}
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -101,7 +122,7 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
           </TableRow>
         </TableHead>
         <TableBody>
-          {items.map((i) => (
+          {shown.map((i) => (
             <TableRow key={i.id} sx={{ opacity: i.status === "retired" ? 0.5 : 1 }}>
               {isAdmin && (
                 <TableCell padding="checkbox">
@@ -137,7 +158,7 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
               )}
             </TableRow>
           ))}
-          {items.length === 0 && <TableRow><TableCell colSpan={7}>Nothing here yet.</TableCell></TableRow>}
+          {shown.length === 0 && <TableRow><TableCell colSpan={7}>{items.length ? "Nothing matches these filters." : "Nothing here yet."}</TableCell></TableRow>}
         </TableBody>
       </Table>
       {requesting && <RequestDialog kind={kind} onClose={(sent) => { setRequesting(false); if (sent) setMsg({ ok: true, text: "Request sent; an admin will follow up." }); }} />}

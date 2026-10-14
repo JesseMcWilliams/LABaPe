@@ -193,8 +193,8 @@ def run_download(db: Session, job: Job) -> int:
         store.replace(part, target)
         size, mtime = store.stat(target)
         f = StoredFile(category=p["category"], name=name, path=target, size=size, mtime=mtime, sha256=sha256,
-                       os_key=infer_os(name) if p["category"] == "isos" else "",
-                       targets=ostargets.infer(name) if p["category"] == "installers" else [],
+                       os_key=(p.get("os_key") or infer_os(name)) if p["category"] == "isos" else "",
+                       targets=p.get("targets") or (ostargets.infer(name) if p["category"] == "installers" else []),
                        description=p.get("description", ""), uploaded_by=job.requested_by, uploaded_at=utcnow())
         db.add(f)
         db.commit()

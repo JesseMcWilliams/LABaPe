@@ -14,7 +14,7 @@ import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
 import { DateRangeFields, FilterBar, SelectFilter, useUrlFilters } from "../components/Filters";
-import { TargetChips, useTargetVocabulary } from "../components/Targets";
+import { TargetChips, TargetPicker, useTargetVocabulary } from "../components/Targets";
 
 // File manager (design §9, §21.3): ISOs, installers, other files, and the
 // template library. Admins and file managers upload; template editors
@@ -38,7 +38,7 @@ const CATS = [
 ];
 const TEMPLATES_HELP = "Disk images new VMs are cloned from, one library per KVM host. Build one from an ISO, refresh it with the latest updates, or promote a configured VM from an environment.";
 
-const FILE_KEYS = ["name", "minmb", "maxmb", "sha", "desc", "target", "since", "until"];
+const FILE_KEYS = ["name", "os", "minmb", "maxmb", "sha", "desc", "since", "until"];
 const contains = (hay: string, needle: string) => !needle || hay.toLowerCase().includes(needle.toLowerCase());
 
 export const size = (n: number) => n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${(n / 2 ** 20).toFixed(1)} MB`
@@ -64,6 +64,30 @@ function HashFields({ hashType, expected, onChange, errs }: {
   );
 }
 
+/** The OS a new file is for (L2): an ISO's OS (guessed from its name when left empty), an installer's
+ *  targets (required) or another file's (optional). */
+export interface OsChoice { os_key: string; targets: string[] }
+function OsFields({ category, value, onChange }: { category: string; value: OsChoice; onChange: (v: OsChoice) => void }) {
+  if (category === "isos") {
+    return (
+      <Field select label="OS" value={value.os_key} sx={{ minWidth: 220 }} help="The OS this ISO installs"
+        onChange={(e) => onChange({ ...value, os_key: e.target.value })}>
+        <MenuItem value="">Guess from the file name</MenuItem>
+        {OS_KEYS.map((k) => <MenuItem key={k} value={k}>{k}</MenuItem>)}
+      </Field>
+    );
+  }
+  return (
+    <Box sx={{ minWidth: 360, flex: 1 }}>
+      <TargetPicker value={value.targets} onChange={(targets) => onChange({ ...value, targets })}
+        error={category === "installers" && value.targets.length === 0 ? "Choose the OSes this installer is for before uploading" : undefined} />
+    </Box>
+  );
+}
+const osReady = (category: string, v: OsChoice) => category !== "installers" || v.targets.length > 0;
+const osMeta = (category: string, v: OsChoice): Record<string, string> =>
+  category === "isos" ? (v.os_key ? { os_key: v.os_key } : {}) : (v.targets.length ? { targets: v.targets.join(",") } : {});
+
 function Uploader({ category, onDone }: { category: string; onDone: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
@@ -71,6 +95,7 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
   const [upload, setUpload] = useState<tus.Upload | null>(null);
   const [hash, setHash] = useState({ type: "sha256", expected: "" });
   const [showHash, setShowHash] = useState(false);
+  const [os, setOs] = useState<OsChoice>({ os_key: "", targets: [] });
   const confirm = useConfirm();
 
   const start = async (file: File) => {
@@ -82,7 +107,7 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
       chunkSize: 32 * 2 ** 20,
       retryDelays: [0, 3000, 10000, 30000],
       removeFingerprintOnSuccess: true,
-      metadata: { filename: file.name, category, ...(hash.expected.trim() ? { hash_type: hash.type, expected_hash: hash.expected.trim() } : {}) },
+      metadata: { filename: file.name, category, ...osMeta(category, os), ...(hash.expected.trim() ? { hash_type: hash.type, expected_hash: hash.expected.trim() } : {}) },
       onProgress: (sent, total) => setProgress({ name: file.name, pct: total ? (sent / total) * 100 : 0 }),
       onSuccess: () => { setProgress(null); setUpload(null); setHash({ type: "sha256", expected: "" }); onDone(); },
       onError: (err) => {
@@ -106,7 +131,7 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
     <Stack spacing={1}>
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
         <input ref={input} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) start(f); e.target.value = ""; }} />
-        <ActionButton variant="contained" startIcon={<UploadIcon />} disabled={Boolean(progress)} onClick={() => input.current?.click()}
+        <ActionButton variant="contained" startIcon={<UploadIcon />} disabled={Boolean(progress) || !osReady(category, os)} onClick={() => input.current?.click()}
           tip="Choose a file to upload into this location (asks to confirm after you pick it)">
           Upload
         </ActionButton>
@@ -129,6 +154,9 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
         <Box sx={{ flexGrow: 1 }} />
         <DownloadButton category={category} />
       </Stack>
+      {!progress && <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
+        <OsFields category={category} value={os} onChange={setOs} />
+      </Stack>}
       {showHash && !progress && (
         <HashFields hashType={hash.type} expected={hash.expected} onChange={(type, expected) => setHash({ type, expected })} />
       )}
@@ -140,13 +168,14 @@ function Uploader({ category, onDone }: { category: string; onDone: () => void }
 function DownloadButton({ category }: { category: string }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ url: "", filename: "", hash_type: "sha256", expected_hash: "", description: "" });
+  const [os, setOs] = useState<OsChoice>({ os_key: "", targets: [] });
   return (
     <>
       <ActionButton variant="outlined" startIcon={<LinkIcon />} onClick={() => setOpen(true)}
         tip="Have the worker download a file from a URL into this location (opens a form)">Download from URL</ActionButton>
       {open && (
         <JobDialog title="Download a file from a URL" onClose={() => setOpen(false)}
-          submit={() => api.post("/api/files/download", { ...form, category })}
+          submit={() => api.post("/api/files/download", { ...form, category, os_key: os.os_key, targets: os.targets })}
           fields={(errs) => (
             <>
               <Typography variant="body2">
@@ -160,6 +189,7 @@ function DownloadButton({ category }: { category: string }) {
               <HashFields hashType={form.hash_type} expected={form.expected_hash} errs={errs}
                 onChange={(hash_type, expected_hash) => setForm({ ...form, hash_type, expected_hash })} />
               <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <OsFields category={category} value={os} onChange={setOs} />
             </>
           )} />
       )}
@@ -180,10 +210,12 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
     return contains(x.name, a.name) && contains(x.description, a.desc)
       && (!a.sha || x.sha256.toLowerCase().startsWith(a.sha.toLowerCase()))
       && (!a.minmb || mb >= Number(a.minmb)) && (!a.maxmb || mb <= Number(a.maxmb))
-      && (!a.target || (x.targets ?? []).includes(a.target))
+      && (!a.os || (category === "isos" ? x.os_key === a.os : (x.targets ?? []).includes(a.os)))
       && (!a.since || (added !== null && new Date(added) >= new Date(a.since)))
       && (!a.until || (added !== null && new Date(added) <= new Date(a.until)));
   });
+  // The OS filter offers the OSes this list's files are for (L2).
+  const osOptions = [...new Set(files.flatMap((x) => category === "isos" ? (x.os_key ? [x.os_key] : []) : (x.targets ?? [])))].sort();
   const load = () => api.get<StoredFile[]>(`/api/files?category=${category}`).then(setFiles, (e) => setError(e.message));
   useEffect(() => { load(); }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
   const remove = async (f: StoredFile) => {
@@ -201,10 +233,9 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
           onChange={(e) => flt.set("maxmb", e.target.value.replace(/[^0-9.]/g, ""))} />
         <Field label="SHA-256" value={flt.draft.sha} sx={{ width: 150 }} help="Starts with" onChange={(e) => flt.set("sha", e.target.value.trim())} />
         <Field label="Description" value={flt.draft.desc} sx={{ width: 170 }} help="Contains" onChange={(e) => flt.set("desc", e.target.value)} />
-        {category === "installers" && (
-          <SelectFilter label="Target" value={flt.draft.target} width={190} help="Lists this target"
-            options={vocab.map((t) => t.value)} onChange={(v) => flt.set("target", v)} />
-        )}
+        <SelectFilter label="OS" value={flt.draft.os} width={190}
+          help={category === "isos" ? "Installs this OS" : "Lists this OS target"} options={osOptions}
+          onChange={(v) => flt.set("os", v)} />
         <DateRangeFields since={flt.draft.since} until={flt.draft.until} onChange={flt.set} />
       </FilterBar>
       <Typography variant="body2" color="text.secondary">
@@ -215,7 +246,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
           <TableRow>
             <TableCell>Name</TableCell>
             {category === "isos" && <TableCell>OS</TableCell>}
-            {category === "installers" && <TableCell>Targets</TableCell>}
+            {category !== "isos" && <TableCell>OS targets</TableCell>}
             <TableCell>Size</TableCell><TableCell>SHA-256</TableCell><TableCell>Description</TableCell>
             <TableCell>Added</TableCell><TableCell />
           </TableRow>
@@ -230,7 +261,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
               {category === "isos" && (
                 <TableCell>{f.os_key || "—"}{f.is_default && <Chip size="small" label="default" color="primary" sx={{ ml: 1 }} />}</TableCell>
               )}
-              {category === "installers" && <TableCell><TargetChips targets={f.targets ?? []} vocab={vocab} /></TableCell>}
+              {category !== "isos" && <TableCell>{(f.targets ?? []).length ? <TargetChips targets={f.targets ?? []} vocab={vocab} /> : "—"}</TableCell>}
               <TableCell sx={{ whiteSpace: "nowrap" }}>{size(f.size)}</TableCell>
               <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>
                 {f.sha256 ? <Tooltip title={f.sha256}><span>{f.sha256.slice(0, 12)}…</span></Tooltip> : "computing…"}

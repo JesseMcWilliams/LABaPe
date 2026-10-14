@@ -12,9 +12,11 @@ def _meta(**kv):
     return ",".join(f"{k} {base64.b64encode(v.encode()).decode()}" for k, v in kv.items())
 
 
-def _upload(client, name, data: bytes, category="isos", chunk=7):
+def _upload(client, name, data: bytes, category="isos", chunk=7, **meta):
+    if category == "installers" and "targets" not in meta:
+        meta["targets"] = "any"                           # an installer names its OSes at upload (L2)
     r = client.post("/api/files/tus", headers={"Tus-Resumable": "1.0.0", "Upload-Length": str(len(data)),
-                                               "Upload-Metadata": _meta(filename=name, category=category)})
+                                               "Upload-Metadata": _meta(filename=name, category=category, **meta)})
     assert r.status_code == 201, r.text
     loc = r.headers["location"]
     offset = 0
@@ -90,3 +92,23 @@ def test_template_jobs(client):
         from pathlib import Path
         cmd = command_for(j, None, Path("/w"))
     assert cmd[1].endswith("refresh-template.sh") and "--os" in cmd and "rocky9" in cmd
+
+
+def test_the_os_is_given_at_upload(client, tmp_root):
+    _admin_session(client)
+    with session_factory()() as db:
+        set_roots(db, {"isos": str(tmp_root / "isos2"), "installers": str(tmp_root / "inst2"), "files": str(tmp_root / "f2")})
+    # An installer must name its OSes.
+    r = client.post("/api/files/tus", headers={"Upload-Length": "3", "Upload-Metadata": _meta(filename="a.msi", category="installers")})
+    assert r.status_code == 422 and r.json()["errors"][0]["field"] == "targets"
+    r = client.post("/api/files/tus", headers={"Upload-Length": "3", "Upload-Metadata": _meta(
+        filename="a.msi", category="installers", targets="nope")})
+    assert r.status_code == 422 and "Unknown targets" in r.text
+    assert _upload(client, "agent.msi", b"msi bytes!", category="installers", targets="windows-server,windows_11").status_code == 204
+    assert client.get("/api/files?category=installers").json()[0]["targets"] == ["windows-server", "windows_11"]
+    # An ISO's OS, given, beats the guess from its name.
+    assert _upload(client, "mystery.iso", b"some iso", os_key="debian_latest").status_code == 204
+    assert client.get("/api/files?category=isos").json()[0]["os_key"] == "debian_latest"
+    # Another file may name targets, or not.
+    assert _upload(client, "notes.txt", b"plain text", category="files", targets="linux").status_code == 204
+    assert client.get("/api/files?category=files").json()[0]["targets"] == ["linux"]
