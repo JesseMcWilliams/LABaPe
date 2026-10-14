@@ -561,19 +561,23 @@ OPTIONAL_SERVICES = {
 OVERRIDE_HEADER = "# Written by deploy/install-labape.py (Stack.Services). Don't edit: re-run the installer.\n"
 
 
-def services_override(answers: dict, kvm_device: bool = True) -> str | None:
+def services_override(answers: dict, kvm_device: bool = True, drill_host: str = "") -> str | None:
     """compose.override.yaml parking the services not chosen in a profile nobody enables (Compose
     merges the file by itself, so the update agent and every `compose up` honour it), and, on a
     host without /dev/kvm (a web stack on a Raspberry Pi), the worker without that device: Docker
-    won't start a container whose device is missing. None: nothing to override."""
+    won't start a container whose device is missing. A restore drill (design §33) gives the CA
+    `drill_host` -> this host: the web address still points at the real stack in DNS, so the CA's
+    ACME check of Caddy would go there. None: nothing to override."""
     off = [svc for key, svcs in OPTIONAL_SERVICES.items() if not answers.get(key, True) for svc in svcs]
-    if not off and kvm_device:
+    if not off and kvm_device and not drill_host:
         return None
     # !override: Compose merges a service's `profiles` with the override's, so the stores' own
     # "stores" profile would still start a parked Conjur.
     body = "".join(f"  {svc}:\n    profiles: !override [\"off\"]\n" for svc in off)
     if not kvm_device:
         body += "  labape-worker:\n    devices: !reset []     # no /dev/kvm here: template builds run on the KVM hosts\n"
+    if drill_host:
+        body += f"  labape-ca:\n    extra_hosts: [\"{drill_host}:host-gateway\"]     # restore drill: ACME checks reach this copy\n"
     note = f"# Services not installed: {', '.join(off)}\n" if off else ""
     return f"{OVERRIDE_HEADER}{note}services:\n{body}"
 
@@ -583,7 +587,8 @@ def stack_services(c: Ctx):
     override = cdir / "compose.override.yaml"
     if c.a.need("InstallConjur") and cpu_arch() == "arm64":
         raise StepError("Conjur has no arm64 image: answer InstallConjur=false on this machine (OpenBao is installed)")
-    text = services_override(c.a.answers, kvm_device=Path("/dev/kvm").exists())
+    text = services_override(c.a.answers, kvm_device=Path("/dev/kvm").exists(),
+                             drill_host=c.a.need("WebHostname") if c.restore_drill else "")
     if text is None:
         if override.is_file() and override.read_text(encoding="utf-8").startswith(OVERRIDE_HEADER):
             c.r.run(["rm", "-f", str(override)])
