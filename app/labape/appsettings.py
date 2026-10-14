@@ -38,6 +38,8 @@ class StackBackupSettings(BaseModel):
     directory: str = "/data/backups/stack"
     include_syslog: bool = True
     include_recordings: bool = False
+    # A copy of the newest archive to every linked stack, kept on its primary file host (design §36).
+    send_to_links: bool = True
 
     @field_validator("directory")
     @classmethod

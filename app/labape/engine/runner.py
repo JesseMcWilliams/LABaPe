@@ -453,7 +453,8 @@ def run(job_id: int, worker: str) -> None:
         # Jobs the worker runs itself, with no KVM host or engine scripts.
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
-                  "environment.power": power.run_job, "host.install": hostadmin.run_install}
+                  "environment.power": power.run_job, "host.install": hostadmin.run_install,
+                  "backup.store_linked": stackbackup.store_linked}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -770,6 +771,7 @@ def serve(slots: int | None = None) -> None:
             with session_factory()() as db:
                 filedist.ensure_primary(db)        # always one primary file host (§29.4)
             stackmon.tick(session_factory())       # stack hosts, peer stacks, alerts (§30)
+            _send_backups_in_background()          # the newest full backup to linked stacks (§36)
             with session_factory()() as db:
                 scan_files(db)
             hash_in_background()
@@ -817,6 +819,27 @@ def serve(slots: int | None = None) -> None:
                 continue
         stop.wait(3)
     log.info("worker %s: stopping; %d job(s) still running will be failed by recovery", worker, len(active))
+
+
+_send_lock = threading.Lock()
+
+
+def _send_backups_in_background() -> None:
+    """Uploads can take minutes: in a thread, one at a time, so the loop goes on."""
+    if not _send_lock.acquire(blocking=False):
+        return
+
+    def go():
+        try:
+            with session_factory()() as db:
+                for link_id, r in stackbackup.send_to_links(db).items():
+                    log.info("full backup to linked stack %s: %s", link_id, r.get("error") or f"sent {r.get('archive')}")
+        except Exception:  # noqa: BLE001
+            log.exception("sending the full backup to linked stacks")
+        finally:
+            _send_lock.release()
+
+    threading.Thread(target=go, name="backup-send", daemon=True).start()
 
 
 def _heartbeat(db: Session, worker: str) -> None:

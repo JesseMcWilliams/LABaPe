@@ -116,3 +116,53 @@ def delete_link(link_id: int, request: Request, db: Session = Depends(get_db),
     audit(db, p.username, "link.remove", object_type="stack_link", object_id=link_id, detail={"url": url},
           source_ip=client_ip(request))
     return {"ok": True}
+
+
+@router.post("/api/link/backups/{name}")
+async def receive_backup(name: str, request: Request, db: Session = Depends(get_db),
+                         authorization: str | None = Header(default=None),
+                         x_sha256: str = Header(default=""), x_labape_sidecar: str = Header(default="")):
+    """A linked stack's newest full backup (design §36): staged, checked against its SHA-256, then
+    a job keeps it on this stack's primary file host. It's sealed with the other stack's key."""
+    import base64
+    import hashlib
+    import json
+    import shutil
+
+    from ..engine import stackbackup
+    from ..models import Job
+    link = _peer(db, authorization)
+    if not stackbackup.ARCHIVE_NAME.match(name) or len(x_sha256) != 64:
+        raise HTTPException(400, "Not a full-stack backup archive")
+    size = int(request.headers.get("content-length") or 0)
+    d = stackbackup.incoming_dir(db)
+    d.mkdir(parents=True, exist_ok=True)
+    if size <= 0 or shutil.disk_usage(d).free < size * 1.2:
+        raise HTTPException(507, "Not enough room here for that backup")
+    peer = links._name(link.url)
+    staged = d / f"{peer}--{name}"
+    part = staged.with_name(staged.name + ".part")
+    h, got = hashlib.sha256(), 0
+    with open(part, "wb") as out:
+        async for chunk in request.stream():
+            out.write(chunk)
+            h.update(chunk)
+            got += len(chunk)
+    if got != size or h.hexdigest() != x_sha256.lower():
+        part.unlink(missing_ok=True)
+        raise HTTPException(400, "The backup arrived damaged (size or SHA-256 differs); send it again")
+    part.replace(staged)
+    try:
+        side = json.loads(base64.b64decode(x_labape_sidecar)) if x_labape_sidecar else {}
+    except ValueError:
+        side = {}
+    side.update(received_from=link.url, sha256=x_sha256.lower())
+    staged.with_name(staged.name + ".json").write_text(json.dumps(side, default=str), encoding="utf-8")
+    job = Job(type="backup.store_linked", requested_by=f"link:{peer}",
+              params={"staged": str(staged), "archive": name, "peer": peer, "peer_url": link.url, "size": size,
+                      "created_at": side.get("created_at")})
+    db.add(job)
+    db.commit()
+    audit(db, f"link:{peer}", "backup.linked.received", detail={"archive": name, "size": size, "job": job.id},
+          source_ip=client_ip(request))
+    return {"ok": True, "job": job.id}

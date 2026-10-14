@@ -33,7 +33,7 @@ interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; ha
 interface StoreBase { enabled: boolean; url: string; verify_tls: boolean; ca_bundle: string }
 interface OpenBao extends StoreBase { mount: string; path_prefix: string; auth_mount: string; role_id: string; namespace: string; has_secret_id: boolean }
 interface Conjur extends StoreBase { account: string; login: string; authenticator: string; branch: string; has_api_key: boolean }
-interface StackBackup { enabled: boolean; time_of_day: string; retention_days: number; directory: string; include_syslog: boolean; include_recordings: boolean }
+interface StackBackup { enabled: boolean; time_of_day: string; retention_days: number; directory: string; include_syslog: boolean; include_recordings: boolean; send_to_links: boolean }
 interface StackArchive {
   archive: string; size: number; created_at: string; version: string; db_revision: string; file_count: number; parts: string[];
   check: { ok: boolean; problems: string[]; restores: Record<string, string> };
@@ -42,6 +42,8 @@ interface StackBackupList {
   directory: string; archives: StackArchive[]; agent: { installed: boolean; user: string; home: string };
   status: { state: string; step?: string; message?: string; action?: string; pending?: boolean } | null;
   key_saved: { by: string; at: string } | null; key_file: string; service_user: string;
+  sent: { link: string; url: string; archive?: string; at?: string; error?: string; tried_at?: string }[];
+  copies: Record<string, { archive: string; size: number; created_at: string | null; received_at: string; host: string; path: string }[]>;
 }
 interface AllSettings {
   backup: Backup; stack_backup: StackBackup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
@@ -364,6 +366,8 @@ export default function Settings() {
             onChange={(e) => set("stack_backup", { include_syslog: e.target.checked })} />} />
           <FormControlLabel label="Session recordings" title="Recorded SSH/RDP sessions (can be very large)" control={<Checkbox checked={s.stack_backup.include_recordings}
             onChange={(e) => set("stack_backup", { include_recordings: e.target.checked })} />} />
+          <FormControlLabel label="Copy to linked stacks" title="Send the newest archive to every linked stack, which keeps it on its primary file host" control={<Checkbox checked={s.stack_backup.send_to_links}
+            onChange={(e) => set("stack_backup", { send_to_links: e.target.checked })} />} />
         </Stack>
         {stackBackups?.status && (
           <Alert severity={stackBackups.status.state === "succeeded" ? "success" : stackBackups.status.state === "running" || stackBackups.status.pending ? "info" : "error"}
@@ -389,6 +393,32 @@ export default function Settings() {
                 </TableRow>
               ))}
               {stackBackups.archives.length === 0 && <TableRow><TableCell colSpan={5}>No full backups yet.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        )}
+        {stackBackups && stackBackups.sent.length > 0 && (
+          <Typography variant="body2" component="div">
+            Sent to linked stacks:{" "}
+            {stackBackups.sent.map((x) => (
+              <Chip key={x.url} size="small" sx={{ mr: 1 }} color={x.error ? "error" : x.archive ? "success" : "default"}
+                title={x.error || (x.at ? `sent ${fmtTime(x.at)}` : "not sent yet")}
+                label={`${x.link}: ${x.error ? "failed, will retry" : x.archive ? x.archive.replace(/^labape-stack-/, "") : "nothing yet"}`} />
+            ))}
+          </Typography>
+        )}
+        {stackBackups && Object.keys(stackBackups.copies).length > 0 && (
+          <Table size="small">
+            <TableHead>
+              <TableRow><TableCell>Kept for</TableCell><TableCell>Archive</TableCell><TableCell>Size</TableCell><TableCell>Taken</TableCell><TableCell>Where</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {Object.entries(stackBackups.copies).flatMap(([peer, list]) => list.map((c) => (
+                <TableRow key={c.path}>
+                  <TableCell>{peer}</TableCell><TableCell>{c.archive}</TableCell><TableCell>{mb(c.size)}</TableCell>
+                  <TableCell>{c.created_at ? fmtTime(c.created_at) : "—"}</TableCell>
+                  <TableCell title="Sealed with the other stack's backup key; to rebuild it, copy this file to the new machine (design §33)"><code>{c.host}:{c.path}</code></TableCell>
+                </TableRow>
+              )))}
             </TableBody>
           </Table>
         )}
