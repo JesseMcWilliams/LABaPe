@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Environment leases (off until an admin turns them on): reminder emails
+  before the end, the VMs shut down at the end, destroyed (or kept) after a
+  grace period; owners extend, admins set any end or none.
 - VM snapshots: take, revert and delete on the VM page (internal libvirt
   snapshots with memory, BIOS VMs), and optionally a snapshot of every VM
   before a deploy changes an environment (Settings → VM snapshots).
