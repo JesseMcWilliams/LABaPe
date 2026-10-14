@@ -30,8 +30,8 @@ from sqlalchemy.orm import Session
 
 from . import ca, maintenance_mode, version
 from .config import get_settings
-from .models import (Environment, HostStats, Job, KvmHost, MonitorAlert, Secret, StackLink, StackLinkInvite,
-                     utcnow)
+from .models import (Environment, HostFacts, HostStats, Job, KvmHost, MonitorAlert, Secret, StackLink,
+                     StackLinkInvite, utcnow)
 from .security import get_secret, put_secret
 
 CODE_PREFIX = "LABAPE-LINK-1:"
@@ -216,6 +216,7 @@ def summary(db: Session) -> dict:
     """This stack as a whole, for the stacks linked with it (read-only)."""
     now = utcnow()
     stats = {r.kvm_host_id: r for r in db.scalars(select(HostStats))}
+    facts = {r.kvm_host_id: r.facts or {} for r in db.scalars(select(HostFacts))}
     hosts = []
     tot = {"cpus": 0, "memory_total_mb": 0, "memory_used_mb": 0, "disk_total_gb": 0.0, "disk_free_gb": 0.0,
            "vms_running": 0, "vms_defined": 0}
@@ -224,7 +225,11 @@ def summary(db: Session) -> dict:
         s = (row.stats if row else None) or {}
         vm = (s.get("storage") or {}).get("vm") or {}
         used = (s["memory_total_mb"] - s["memory_available_mb"]) if s.get("memory_total_mb") else None
-        out = {"id": h.id, "name": h.name, "role": h.role, "enabled": h.enabled,
+        # The machine behind the record, so the overall view counts a host two stacks share once
+        # (design §35): its own host name when its facts were read, else the libvirt address.
+        machine = (((facts.get(h.id) or {}).get("os") or {}).get("hostname") or
+                   urlsplit(h.libvirt_uri).hostname or urlsplit(own_url()).hostname or h.name).lower()
+        out = {"id": h.id, "name": h.name, "machine": machine, "role": h.role, "enabled": h.enabled,
                "collected_at": row.collected_at.isoformat() if row and row.collected_at else None,
                "cpus": s.get("cpus"), "cpu_pct": s.get("cpu_pct"), "memory_total_mb": s.get("memory_total_mb"),
                "memory_used_mb": used, "disk_total_gb": vm.get("total_gb"), "disk_free_gb": vm.get("free_gb"),

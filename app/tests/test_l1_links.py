@@ -158,3 +158,30 @@ def test_polling_keeps_the_last_summary_and_alerts(client, monkeypatch):
         links.remove(db, link)
         assert Fake.calls[-1][0:2] == ("POST", "https://b.lab/api/link/leave")
         assert db.query(StackLink).count() == 0 and get_secret(db, f"link.{link.id}.outbound") is None
+
+
+def test_the_overall_view_adds_up_every_stack(client):
+    _admin_session(client)
+    _host(client)
+    assert client.get("/api/dashboard/stacks").json() == {"stacks": [], "totals": None}
+    with session_factory()() as db:
+        db.add(StackLink(name="pi.lab", url="https://pi.lab", ca_pem=THEIRS, ca_fingerprint="0" * 64, inbound_hash="x",
+                         last_ok_at=dt.datetime.now(dt.timezone.utc), failures=0,
+                         summary={"name": "pi.lab", "hosts": [
+                             {"name": "garagepc", "machine": "garage-pc", "enabled": True, "cpus": 4, "vms_running": 3,
+                              "collected_at": "2026-10-14T12:00:00"},
+                             {"name": "kvm1", "machine": "labape.local", "enabled": True, "cpus": 99, "collected_at": None}],
+                                  "environments": [{"name": "lab2"}],
+                                  "jobs": {"running": 1, "queued": 2}, "alerts": [{"level": "error"}, {"level": "warning"}]}))
+        db.add(StackLink(name="old.lab", url="https://old.lab", ca_pem=THEIRS, ca_fingerprint="1" * 64, inbound_hash="y",
+                         failures=3, error="timed out"))
+        db.commit()
+    m = client.get("/api/dashboard/stacks").json()
+    assert [s["status"] for s in m["stacks"]] == ["ok", "never", "ok"]       # this stack first, then by name
+    t = m["totals"]
+    mine = m["stacks"][0]["summary"]["hosts"][0]
+    assert mine["machine"] == "labape.local"            # no facts, qemu:///system: this stack's own host
+    # kvm1 is in both stacks: once (neither has a newer reading, so the first, this stack's, stays).
+    assert t["stacks"] == 3 and t["answering"] == 2 and t["hosts"] == 2 and t["environments"] == 1
+    assert t["cpus"] == 4 + (mine["cpus"] or 0) and t["vms_running"] == 3
+    assert t["jobs_running"] == 1 and t["jobs_queued"] == 2 and t["alerts_error"] == 1

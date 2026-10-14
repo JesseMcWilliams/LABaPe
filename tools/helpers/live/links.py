@@ -1,6 +1,6 @@
 """Linked stacks (design §34): list, make a link code, link with a code, check, unlink.
 
-Usage: links.py [list] | invite | join CODE | poll ID | remove ID
+Usage: links.py [list] | invite | join CODE | poll ID | remove ID | overall
 `invite` prints only the code (one use, one hour): pass it on without showing it, e.g. into a
 variable. Signs in as labape-admin.
 """
@@ -10,6 +10,14 @@ from oidc_login import LABAPE, login
 
 c = login("labape-admin")
 cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
+if cmd == "overall":                      # the dashboard's All stacks view (design §35)
+    m = c.get(f"{LABAPE}/api/dashboard/stacks").json()
+    print("totals:", m["totals"])
+    for s in m["stacks"]:
+        sm = s["summary"] or {}
+        print(f"  {'*' if s['self'] else ' '} {sm.get('name', s['url'])} {s['status']} {sm.get('version')} "
+              f"hosts={len(sm.get('hosts', []))} envs={len(sm.get('environments', []))} alerts={len(sm.get('alerts', []))}")
+    sys.exit(0)
 if cmd == "invite":
     sys.exit(print(c.post(f"{LABAPE}/api/admin/links/invite").json()["code"]))
 if cmd == "join":
