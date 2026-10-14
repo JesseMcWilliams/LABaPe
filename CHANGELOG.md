@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- API tokens: personal tokens (act as you, never with more than your current
+  roles) and admins' service tokens, with an expiry of at most a year, for
+  scripts and CI (`Authorization: Bearer`); writes made with a token are
+  audited. User menu → API tokens.
 - Full backups to linked stacks: each stack sends its newest checked
   archive to every linked stack, which keeps it (still sealed) on its
   primary file host with its own retention; Settings lists what was sent

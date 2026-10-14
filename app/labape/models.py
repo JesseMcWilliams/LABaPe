@@ -546,3 +546,25 @@ class StackLinkInvite(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     used_by: Mapped[str] = mapped_column(String(255), default="")
+
+
+class ApiToken(Base):
+    """A token a script or CI signs in with (design §37): `Authorization: Bearer lpat_...` (personal:
+    acts as its owner, with at most the owner's current roles) or `lpst_...` (service: the roles an
+    admin gave it, as `svc:<name>`). Only the SHA-256 is kept; `prefix` identifies it in lists."""
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(16))                      # personal | service
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))         # owner, or the admin who made it
+    roles: Mapped[list] = mapped_column(JSON, default=list)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_ip: Mapped[str] = mapped_column(String(64), default="")
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by: Mapped[str] = mapped_column(String(255), default="")
