@@ -27,7 +27,11 @@ def flow(url: str) -> str:
     slug = re.match(r"/if/flow/([^/]+)/", p.path).group(1)
     base = f"{p.scheme}://{p.netloc}"
     ex = f"{base}/api/v3/flows/executor/{slug}/?" + urlencode({"query": p.query})
-    ch = c.get(ex).json()
+    print(f"  {p.netloc}: flow {slug}")
+    r = c.get(ex)
+    if not r.headers.get("content-type", "").startswith("application/json"):
+        raise SystemExit(f"flow {slug} at {p.netloc}: HTTP {r.status_code} {r.text[:300]}")
+    ch = r.json()
     for _ in range(8):
         comp = ch.get("component")
         if comp == "ak-stage-identification":
