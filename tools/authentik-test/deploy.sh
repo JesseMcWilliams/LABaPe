@@ -73,6 +73,19 @@ curl -fsS "${issuer}.well-known/openid-configuration" >/dev/null || {
   exit 1
 }
 
+# The blueprint makes the provider once (state: created, so a rotated client secret sticks), so a
+# changed LABaPe host name never reaches its redirect URI that way: set that one field here.
+$COMPOSE exec -T worker ak shell -c "
+import dataclasses, os
+from authentik.providers.oauth2.models import OAuth2Provider
+p = OAuth2Provider.objects.get(client_id='labape')
+url = 'https://%s/api/auth/oidc/callback' % os.environ['LABAPE_HOSTNAME']
+if [u.url for u in p.redirect_uris] != [url]:
+    p.redirect_uris = [dataclasses.replace(u, url=url) for u in p.redirect_uris[:1]]
+    p.save()
+    print('authentik-test: the redirect URI is now', url)
+" 2>&1 | grep '^authentik-test:' || true
+
 # The rotation account may set the directory token's key and the LABaPe
 # provider's client secret, on those two objects only (object permissions; the
 # blueprint importer can't assign them to a role).
