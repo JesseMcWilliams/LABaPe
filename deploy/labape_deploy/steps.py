@@ -28,7 +28,7 @@ NA = "NotApplicable"
 APT_PACKAGES = [
     "qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "virtinst", "xorriso",
     "python3-yaml", "python3-venv", "python3-libvirt", "git", "curl", "unzip", "openssl", "iputils-ping",
-    "network-manager", "perl", "smartmontools",
+    "network-manager", "perl", "smartmontools", "lm-sensors",
 ]
 # A web-only install (--profile web): the container image carries the engine's tools.
 WEB_PACKAGES = ["python3-yaml", "python3-venv", "git", "curl", "unzip", "openssl", "iputils-ping", "perl"]
@@ -37,7 +37,7 @@ WEB_PACKAGES = ["python3-yaml", "python3-venv", "git", "curl", "unzip", "openssl
 RPM_PACKAGES = [
     "qemu-kvm", "qemu-img", "libvirt", "libvirt-client", "virt-install", "xorriso", "python3-pyyaml",
     "python3-libvirt", "git", "curl", "unzip", "openssl", "iputils", "NetworkManager", "perl", "smartmontools",
-    "policycoreutils-python-utils", "dnf-utils",
+    "lm_sensors", "policycoreutils-python-utils", "dnf-utils",
 ]
 
 

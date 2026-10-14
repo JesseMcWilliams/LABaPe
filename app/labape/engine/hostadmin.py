@@ -134,16 +134,19 @@ USERS="$(printf '%%s\n' "$SSHD" | awk '$1=="allowusers"{for(i=2;i<=NF;i++) print
 if [ -n "$USERS" ] && ! printf '%%s\n' $USERS | grep -qx "$ACCOUNT"; then
   echo "labape-setup: warning: sshd's AllowUsers doesn't list $ACCOUNT; add it there, or it can't sign in" >&2
 fi
-# Disk health (SMART) for the Drives section; best effort, the account works without it.
-if ! command -v smartctl >/dev/null 2>&1; then
+# Disk health (SMART) and temperatures (lm-sensors) for the host's page; best effort, the account
+# works without them. tool:Debian package:RHEL package
+for want in smartctl:smartmontools:smartmontools sensors:lm-sensors:lm_sensors; do
+  tool="${want%%%%:*}"; rest="${want#*:}"; deb="${rest%%%%:*}"; rpm="${rest#*:}"
+  command -v "$tool" >/dev/null 2>&1 && continue
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get install -y -qq smartmontools >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq smartmontools >/dev/null 2>&1; } || true
+    apt-get install -y -qq "$deb" >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq "$deb" >/dev/null 2>&1; } || true
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y -q smartmontools >/dev/null 2>&1 || true
+    dnf install -y -q "$rpm" >/dev/null 2>&1 || true
   fi
-  command -v smartctl >/dev/null 2>&1 && echo "labape-setup: installed smartmontools" || echo "labape-setup: couldn't install smartmontools (install it for disk health)"
-fi
+  command -v "$tool" >/dev/null 2>&1 && echo "labape-setup: installed $deb" || echo "labape-setup: couldn't install $deb (install it for the host's page)"
+done
 # A KVM host must never sleep (a desktop's login screen suspends after 15 idle minutes): mask the sleep targets.
 UNMASKED=""
 for t in sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target; do
@@ -505,6 +508,9 @@ def warnings(facts: dict, smart: dict, latest: dict | None) -> list[dict]:
         w.append({"level": "info", "message": f"{os_['updates']} updates available"})
     if facts and not (facts.get("tools") or {}).get("smartctl"):
         w.append({"level": "info", "message": "smartctl isn't installed, so disk health isn't read (install smartmontools)"})
+    if facts and not (facts.get("tools") or {}).get("sensors", True):
+        w.append({"level": "info", "message": "sensors isn't installed, so only the kernel's thermal zones give temperatures "
+                                              "(install lm-sensors, or set up the access account again)"})
     return w
 
 

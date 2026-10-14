@@ -32,6 +32,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- A KVM host's Drives and volumes hide loop devices unless **Show loop
+  devices** is ticked. Host setup and the installer install lm-sensors
+  (temperatures), and a host's page says when it's missing.
 - Paged lists (Environments, Jobs, Files, Catalog, Syslog): 50 rows by
   default, each user's own page size kept in their profile. Exports ask
   for this page, rows from-to or all: Environments and Files as CSV, Jobs

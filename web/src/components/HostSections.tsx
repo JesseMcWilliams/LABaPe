@@ -200,12 +200,20 @@ function DiskRows({ devs, depth = 0 }: { devs: Any[]; depth?: number }): ReactNo
 export function DrivesSection({ view }: { view: AdminView }) {
   const f = view.facts ?? {};
   const smart = view.smart ?? {};
+  // Loop devices (snaps, mounted images) are hidden unless asked for (D1).
+  const [showLoop, setShowLoop] = useState(false);
+  const disks: Any[] = f.disks ?? [];
+  const loops = disks.filter((d) => d.type === "loop").length;
   return (
     <Stack spacing={2}>
-      <Typography variant="subtitle1">Disks and partitions</Typography>
+      <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+        <Typography variant="subtitle1">Disks and partitions</Typography>
+        {loops > 0 && <FormControlLabel label={`Show loop devices (${loops})`}
+          control={<Checkbox size="small" checked={showLoop} onChange={(e) => setShowLoop(e.target.checked)} />} />}
+      </Stack>
       <Table size="small">
         <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Type</TableCell><TableCell>Size</TableCell><TableCell>Model</TableCell><TableCell>FS</TableCell><TableCell>Mounted</TableCell></TableRow></TableHead>
-        <TableBody><DiskRows devs={f.disks ?? []} /></TableBody>
+        <TableBody><DiskRows devs={showLoop ? disks : disks.filter((d) => d.type !== "loop")} /></TableBody>
       </Table>
       <Typography variant="subtitle1">Disk health (SMART)</Typography>
       {!smart.available ? <Alert severity="info">smartctl isn&apos;t installed on the host (package smartmontools).</Alert> : (
