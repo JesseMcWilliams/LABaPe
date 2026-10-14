@@ -155,9 +155,30 @@ def prereq_packages(c: Ctx):
     missing = [p for p in (APT_PACKAGES if kvm_side(c.a) else WEB_PACKAGES) if not _installed(c, p)]
     if not missing:
         return DONE, "all present"
+    resolv = RESOLV
+    keep_dns = "network-manager" in missing and resolv.is_file() and not resolv.is_symlink()
+    saved = resolv.read_text(encoding="utf-8", errors="replace") if keep_dns else ""
+    if keep_dns:
+        # Written before the package starts NetworkManager: see NM_DNS_NONE.
+        c.r.write(Path("/etc/NetworkManager/conf.d/90-labape-dns.conf"), NM_DNS_NONE)
     c.r.run(["apt-get", "update"], env={"DEBIAN_FRONTEND": "noninteractive"})
     c.r.run(["apt-get", "install", "-y", "--no-install-recommends", *missing], env={"DEBIAN_FRONTEND": "noninteractive"})
+    if keep_dns and "nameserver" in saved and "nameserver" not in resolv.read_text(encoding="utf-8", errors="replace"):
+        c.r.write(resolv, saved)
     return DONE, f"installed {', '.join(missing)}"
+
+
+# A host set up with ifupdown or cloud-init (e.g. a Debian cloud image) gets its DNS servers from
+# them. NetworkManager, installed for the VM bridges, would rewrite /etc/resolv.conf from the
+# connections it manages, which don't include the management NIC, and leave it with no nameserver
+# (seen on a nested KVM host: pip then found no packages). Kept for any host that had no
+# NetworkManager before.
+RESOLV = Path("/etc/resolv.conf")
+NM_DNS_NONE = """# LABaPe (Prereq.Packages): this host's DNS settings came from before NetworkManager was
+# installed for the VM bridges; NetworkManager leaves /etc/resolv.conf alone.
+[main]
+dns=none
+"""
 
 
 MODULAR = ("qemu", "network", "nodedev", "nwfilter", "secret", "storage", "interface", "proxy")

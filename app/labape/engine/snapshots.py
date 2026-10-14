@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings
+from .. import appsettings, spread
 from ..models import Environment, KvmHost, Setting, VmSnapshot, utcnow
 from ..naming import instance_names
 from . import power
@@ -192,13 +192,14 @@ def before_deploy(db: Session, job, env: Environment, host: KvmHost, log, run=No
         return
     name = f"{AUTO_PREFIX}{job.id}"
     for vm in env_vms(env):
-        if not exists(host.libvirt_uri, vm, run):
+        vh = db.get(KvmHost, spread.vm_host_id(env, vm)) or host      # its own host (design §45)
+        if not exists(vh.libvirt_uri, vm, run):
             continue
-        if uefi(host.libvirt_uri, vm, run):
+        if uefi(vh.libvirt_uri, vm, run):
             log(f"labape: {vm} boots with UEFI: no automatic snapshot (libvirt can't)\n")
             continue
         log(f"labape: snapshot {name} of {vm} before the deploy\n")
-        create(host.libvirt_uri, vm, name, f"Automatic, before job {job.id}", run)
+        create(vh.libvirt_uri, vm, name, f"Automatic, before job {job.id}", run)
         db.add(VmSnapshot(environment_id=env.id, vm=vm, name=name, description=f"Automatic, before job {job.id}",
                           created_by="system", created_at=utcnow(), auto=True))
         db.commit()
@@ -207,11 +208,11 @@ def before_deploy(db: Session, job, env: Environment, host: KvmHost, log, run=No
                                 .order_by(VmSnapshot.created_at.desc(), VmSnapshot.id.desc())))
         for old in autos[cfg.keep_auto:]:
             try:
-                delete(host.libvirt_uri, vm, old.name, run)
+                delete(vh.libvirt_uri, vm, old.name, run)
                 log(f"labape: removed the older automatic snapshot {old.name} of {vm}\n")
             except SnapshotError as exc:
                 log(f"labape: couldn't remove {old.name} of {vm}: {exc}\n")
                 continue
             db.delete(old)
             db.commit()
-        sync(db, env, host, vm, run)
+        sync(db, env, vh, vm, run)

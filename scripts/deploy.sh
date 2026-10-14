@@ -19,6 +19,12 @@
 #                             ansible/directory-manifest.yml (DNs are
 #                             domain-specific, so a second domain needs its own).
 #   --no-ansible              Stop after tofu apply + inventory generation.
+#   --hosts-out <path>        Also save the VMs' hosts.json (after DHCP
+#                             discovery) there: one host's part of an
+#                             environment spread over hosts (design §45).
+#   --hosts-from <path>       Skip OpenTofu: build the inventory from this
+#                             hosts.json (every part's VMs, merged) and run
+#                             Ansible over it (design §45).
 #
 # Host-group names must be unique across every environment on one libvirt
 # host: VM names are host-global, and create-iso-direct.sh refuses a VM
@@ -26,7 +32,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: deploy.sh <backend> <environment-instance-name> <profile> [--test] [--env-file <path>] [--directory-manifest <path>] [--no-ansible]"
+USAGE="usage: deploy.sh <backend> <environment-instance-name> <profile> [--test] [--env-file <path>] [--directory-manifest <path>] [--no-ansible] [--hosts-out <path>] [--hosts-from <path>]"
 
 BACKEND="${1:?$USAGE}"
 ENV_INSTANCE="${2:?$USAGE}"
@@ -37,10 +43,14 @@ TEST_MODE=false
 RUN_ANSIBLE=true
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 DIRECTORY_MANIFEST=""
+HOSTS_OUT=""
+HOSTS_FROM=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --test) TEST_MODE=true ;;
     --no-ansible) RUN_ANSIBLE=false ;;
+    --hosts-out) HOSTS_OUT="${2:?--hosts-out needs a path}"; shift ;;
+    --hosts-from) HOSTS_FROM="$(realpath "${2:?--hosts-from needs a path}")"; shift ;;
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
     --directory-manifest) DIRECTORY_MANIFEST="$(realpath "${2:?--directory-manifest needs a path}")"; shift ;;
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
@@ -103,46 +113,53 @@ if [ "$TF_VAR_windows_admin_password" = "CHANGE_ME" ] && grep -q '"windows' "$PR
   exit 1
 fi
 
-echo "labape: rendering $(basename "$ENV_FILE") -> environment.auto.tfvars.json..." >&2
-python3 "$ROOT_DIR/scripts/lib/render_environment_tfvars.py" "$ENV_FILE" "$BACKEND_DIR"
+if [ -z "$HOSTS_FROM" ]; then
+  echo "labape: rendering $(basename "$ENV_FILE") -> environment.auto.tfvars.json..." >&2
+  python3 "$ROOT_DIR/scripts/lib/render_environment_tfvars.py" "$ENV_FILE" "$BACKEND_DIR"
 
-cd "$BACKEND_DIR"
-# `tofu init` contacts registry.opentofu.org on every run even when the
-# providers are already installed; a transient registry timeout once
-# failed two unattended runs at the same moment. Retry before giving up.
-for attempt in 1 2 3; do
-  tofu init -input=false && break
-  [ "$attempt" -eq 3 ] && { echo "labape: tofu init failed 3 times; giving up." >&2; exit 1; }
-  echo "labape: tofu init failed (attempt $attempt); retrying in $((attempt * 20))s..." >&2
-  sleep $((attempt * 20))
-done
-tofu workspace select "$ENV_INSTANCE" 2>/dev/null || tofu workspace new "$ENV_INSTANCE"
+  cd "$BACKEND_DIR"
+  # `tofu init` contacts registry.opentofu.org on every run even when the
+  # providers are already installed; a transient registry timeout once
+  # failed two unattended runs at the same moment. Retry before giving up.
+  for attempt in 1 2 3; do
+    tofu init -input=false && break
+    [ "$attempt" -eq 3 ] && { echo "labape: tofu init failed 3 times; giving up." >&2; exit 1; }
+    echo "labape: tofu init failed (attempt $attempt); retrying in $((attempt * 20))s..." >&2
+    sleep $((attempt * 20))
+  done
+  tofu workspace select "$ENV_INSTANCE" 2>/dev/null || tofu workspace new "$ENV_INSTANCE"
 
-echo "labape: planning..." >&2
-tofu plan -input=false -var-file="$PROFILE_FILE" -out=tfplan.bin
-tofu show -json tfplan.bin > tfplan.json
+  echo "labape: planning..." >&2
+  tofu plan -input=false -var-file="$PROFILE_FILE" -out=tfplan.bin
+  tofu show -json tfplan.bin > tfplan.json
 
-echo "labape: address policy check (environment.yml networks:)..." >&2
-python3 "$ROOT_DIR/scripts/lib/check_ip_policy.py" tfplan.json "$ENV_FILE"
+  echo "labape: address policy check (environment.yml networks:)..." >&2
+  python3 "$ROOT_DIR/scripts/lib/check_ip_policy.py" tfplan.json "$ENV_FILE"
 
-echo "labape: pre-flight network check (Claude_Docs/Reference_Networking.md §3)..." >&2
-python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
+  echo "labape: pre-flight network check (Claude_Docs/Reference_Networking.md §3)..." >&2
+  python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
 
-echo "labape: applying..." >&2
-# -parallelism=1: concurrent virt-install invocations race to define the
-# same libvirt "boot-scratch" scratch-storage pool (a virt-install-
-# internal TOCTOU bug, not something this repo's script can fix from the
-# outside) and one of them fails outright. Serializing VM creation avoids
-# it — slower for multi-host environments, but M1's smoke test surfaced
-# this as a 100%-reproducible failure with even two concurrent hosts.
-tofu apply -input=false -parallelism=1 tfplan.bin
-rm -f tfplan.bin tfplan.json
+  echo "labape: applying..." >&2
+  # -parallelism=1: concurrent virt-install invocations race to define the
+  # same libvirt "boot-scratch" scratch-storage pool (a virt-install-
+  # internal TOCTOU bug, not something this repo's script can fix from the
+  # outside) and one of them fails outright. Serializing VM creation avoids
+  # it — slower for multi-host environments, but M1's smoke test surfaced
+  # this as a 100%-reproducible failure with even two concurrent hosts.
+  tofu apply -input=false -parallelism=1 tfplan.bin
+  rm -f tfplan.bin tfplan.json
 
-tofu output -json hosts > hosts.json
-# A redeploy leaves untouched VMs as they were: start any that are off (host reboot).
-python3 "$ROOT_DIR/scripts/lib/start_stopped_vms.py" hosts.json
-# DHCP-addressed VMs: find their leases by MAC (a no-op when every VM is static).
-python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" hosts.json "$ENV_FILE"
+  tofu output -json hosts > hosts.json
+  # A redeploy leaves untouched VMs as they were: start any that are off (host reboot).
+  python3 "$ROOT_DIR/scripts/lib/start_stopped_vms.py" hosts.json
+  # DHCP-addressed VMs: find their leases by MAC (a no-op when every VM is static).
+  python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" hosts.json "$ENV_FILE"
+else
+  # Another host part provisioned these VMs; here only the inventory and Ansible run (design §45).
+  cd "$BACKEND_DIR"
+  cp "$HOSTS_FROM" hosts.json
+fi
+[ -z "$HOSTS_OUT" ] || cp hosts.json "$HOSTS_OUT"
 
 echo "labape: generating inventory in ${INVENTORY_DIR#"$ROOT_DIR"/}..." >&2
 LABAPE_DOMAIN_ADMIN_PASSWORD="$(python3 "$ROOT_DIR/scripts/lib/vault_get.py" "$VAULT_FILE" "$VAULT_PASS_FILE" domain_admin_password 2>/dev/null || echo '')" \

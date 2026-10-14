@@ -227,9 +227,14 @@ def ensure_template(db: Session, target: KvmHost, name: str, log) -> bool:
                 continue
             raise
     cols = {c.name for c in Template.__table__.columns} - {"id", "kvm_host_id"}
-    t = Template(kvm_host_id=target.id, **{c: getattr(src_t, c) for c in cols})
+    # A row the host had before, for a file since gone (present False), is reused: names are unique per host.
+    t = db.scalar(select(Template).where(Template.kvm_host_id == target.id, Template.name == name))
+    if t is None:
+        t = Template(kvm_host_id=target.id)
+        db.add(t)
+    for c in cols:
+        setattr(t, c, getattr(src_t, c))
     t.present, t.dirty = True, False
-    db.add(t)
     db.commit()
     log.write(f"labape: template {name} is now on {target.name} too\n")
     return True

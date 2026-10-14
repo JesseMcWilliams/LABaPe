@@ -25,7 +25,9 @@ import socket
 import subprocess
 import threading
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import yaml
 from sqlalchemy import select, text
@@ -37,6 +39,7 @@ from ..models import CatalogItem, Environment, HostNetwork, IpAllocation, Job, K
 from ..catalog import expand
 from ..files import iso_paths, roots
 from ..naming import instance_names
+from .. import spread
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, power, rotation, snapshots,
@@ -171,8 +174,9 @@ def network_catalog(db: Session, host: KvmHost) -> tuple[dict, str] | None:
 
 
 CATALOG_KEYS = ("services", "applications", "packages")
-# Start order is the power job's business (design §28.3), not OpenTofu's either.
-NOT_FOR_TOFU = CATALOG_KEYS + ("start_order", "start_wait", "start_delay_seconds")
+# Start order is the power job's business (design §28.3), not OpenTofu's either; nor which host
+# a group is on (design §45: each host's part only gets its own groups).
+NOT_FOR_TOFU = CATALOG_KEYS + ("start_order", "start_wait", "start_delay_seconds", "kvm_host_id")
 
 
 def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
@@ -209,12 +213,12 @@ def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
                                    encoding="utf-8")
 
 
-def profile_host_groups(db: Session, env: Environment) -> list[dict]:
-    """The spec's host groups, with each static group's allocated addresses."""
+def profile_host_groups(db: Session, env: Environment, only: list[dict] | None = None) -> list[dict]:
+    """The spec's host groups (or `only` these), with each static group's allocated addresses."""
     allocs = {a.vm_name: a.address for a in db.scalars(select(IpAllocation)
                                                        .where(IpAllocation.environment_id == env.id))}
     groups = []
-    for g in (env.spec or {}).get("host_groups", []):
+    for g in (env.spec or {}).get("host_groups", []) if only is None else only:
         g = {k: v for k, v in g.items() if k not in NOT_FOR_TOFU}  # Ansible's and the power job's, not OpenTofu's
         if g.get("addressing", "static") == "static":
             names = instance_names(g)
@@ -278,9 +282,11 @@ def _prepare_base(db: Session, host: KvmHost, work: Path) -> None:
                                                                                        encoding="utf-8")
 
 
-def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
+def prepare(db: Session, env: Environment, host: KvmHost, only: list[dict] | None = None) -> Path:
+    """The engine workspace for `host`'s part of the environment: the home host's is `engine`, another
+    host's `engine-h<id>` (design §45); `only` limits OpenTofu's profile to that part's groups."""
     s = get_settings()
-    work = s.data_dir / "environments" / env.name / "engine"
+    work = s.data_dir / "environments" / env.name / ("engine" if host.id == env.kvm_host_id else f"engine-h{host.id}")
     _prepare_base(db, host, work)
 
     # Profile: the environment's host groups plus per-host settings. A
@@ -296,7 +302,7 @@ def prepare(db: Session, env: Environment, host: KvmHost) -> Path:
     ]
     if spec.get("static_ip_offset_start") is not None:  # environments created before allocations
         lines.append(f"static_ip_offset_start = {_hcl(spec['static_ip_offset_start'])}")
-    lines.append(f"host_groups = {_hcl(profile_host_groups(db, env))}")
+    lines.append(f"host_groups = {_hcl(profile_host_groups(db, env, only))}")
     profile.write_text("\n".join(lines) + "\n", encoding="utf-8")
     write_catalog_inputs(db, env, work)
 
@@ -445,6 +451,79 @@ def command_for(job: Job, env: Environment | None, work: Path) -> list[str]:
     raise RuntimeError(f"unknown job type {job.type}")
 
 
+@dataclass
+class Part:
+    """One command of a job, on one KVM host (design §45: a spread environment's job has several)."""
+    host_id: int
+    work: Path
+    cmd: list[str]
+    pulls: list[str] = field(default_factory=list)       # paths to copy back from a remote host afterwards
+    groups: list[dict] | None = None                     # templates and ISOs to put on the host (None: all)
+    installers: bool = True                              # the chosen applications' installers too
+    before: Callable[[], None] | None = None             # run just before (e.g. merge the parts' hosts.json)
+    keep_going: bool = False                             # a failure doesn't stop the next parts (destroy)
+
+
+HOSTS_PART = "hosts.part.json"
+HOSTS_MERGED = "hosts.merged.json"
+
+
+def merge_hosts(sources: list[Path], dest: Path) -> None:
+    """Every part's VMs (tofu's `hosts` output, keyed by VM name) in one hosts.json."""
+    merged: dict = {}
+    for src in sources:
+        if not src.is_file():
+            raise RuntimeError(f"a part's hosts list is missing ({src.parent.name}); its host didn't finish")
+        merged.update(json.loads(src.read_text(encoding="utf-8")))
+    dest.write_text(json.dumps(merged, indent=1), encoding="utf-8")
+
+
+def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
+    """The commands an environment job runs: one, on its host; or, for an environment spread over
+    hosts (design §45), each host's OpenTofu part on that host, then Ansible (or the inventory) once
+    on the home host over every part's VMs."""
+    home = db.get(KvmHost, env.kvm_host_id)
+    if not spread.is_spread(env):
+        work = prepare(db, env, home)
+        return [Part(home.id, work, command_for(job, env, work), pulls=["ansible/inventory"])]
+    parts: list[Part] = []
+    outs: list[Path] = []
+    hosts = spread.host_ids(env)
+    for hid in hosts:
+        host = db.get(KvmHost, hid)
+        if host is None:
+            raise RuntimeError(f"KVM host {hid} (of a host group) is gone")
+        work = prepare(db, env, host, spread.groups_on(env, hid))
+        ws, envfile = spread.workspace(env, hid), ["--env-file", str(work / "environment.yml")]
+        if job.type == "environment.deploy":
+            cmd = ["bash", str(work / "scripts" / "deploy.sh"), "libvirt", ws, PROFILE, *envfile,
+                   "--no-ansible", "--hosts-out", str(work / HOSTS_PART)]
+        elif job.type == "environment.refresh_addresses":
+            cmd = ["bash", str(work / "scripts" / "refresh-addresses.sh"), "libvirt", ws, *envfile,
+                   "--hosts-out", str(work / HOSTS_PART)]
+        elif job.type == "environment.destroy":
+            cmd = ["bash", str(work / "scripts" / "destroy.sh"), "libvirt", ws, PROFILE, *envfile,
+                   "--yes", "--delete-workspace"]
+        else:
+            raise RuntimeError(f"unknown job type {job.type}")
+        (work / HOSTS_PART).unlink(missing_ok=True)
+        outs.append(work / HOSTS_PART)
+        parts.append(Part(hid, work, cmd, pulls=[HOSTS_PART], groups=spread.groups_on(env, hid),
+                          installers=False, keep_going=job.type == "environment.destroy"))
+    if job.type == "environment.destroy":
+        return parts[1:] + parts[:1] if hosts[0] == home.id else parts      # the home's part last
+    # Ansible from the home host: it reaches every part's VMs over the shared lab networks.
+    work = prepare(db, env, home, spread.groups_on(env, home.id))
+    merged = work / HOSTS_MERGED
+    cmd = ["bash", str(work / "scripts" / "deploy.sh"), "libvirt", env.name, PROFILE,
+           "--env-file", str(work / "environment.yml"), "--hosts-from", str(merged)]
+    if job.type == "environment.refresh_addresses":
+        cmd.append("--no-ansible")
+    parts.append(Part(home.id, work, cmd, pulls=["ansible/inventory"], groups=[],
+                      before=lambda: merge_hosts(outs, merged)))
+    return parts
+
+
 def run(job_id: int, worker: str) -> None:
     Session_ = session_factory()
     with Session_() as db:
@@ -472,65 +551,111 @@ def run(job_id: int, worker: str) -> None:
                 raise RuntimeError("job has no KVM host")
             if job.type.startswith("template."):
                 work = prepare_template_job(db, job, host)
+                parts = [Part(host.id, work, command_for(job, env, work), pulls=["ansible/inventory"])]
             elif env is None:
                 raise RuntimeError("job has no environment")
             else:
                 if job.type == "environment.deploy":    # a safety snapshot first, if the setting asks (§39)
                     snapshots.before_deploy(db, job, env, host, lambda m: _append(job, m))
-                work = prepare(db, env, host)
-            cmd = command_for(job, env, work)
-            remote = hostio.RemoteJob(hostio.Host(host.libvirt_uri), work, job.id) \
-                if hostio.is_remote(host.libvirt_uri) else None
+                parts = plan_parts(db, job, env)
         except Exception as exc:  # noqa: BLE001 — any setup failure fails the job, visibly
             _append(job, f"labape: could not start: {exc}\n")
             _finish(db, job, env, None)
             return
         iso_keys = _iso_keys(job, env)
-
-    with open(log_path, "ab", buffering=0) as logf:
         what = env.name if env is not None and not job.type.startswith("template.") else \
             (job.params or {}).get("name") or (job.params or {}).get("new_name", "")
-        logf.write(f"labape: job {job_id} ({job.type}) for {what} on {host.name}, worker {worker}\n".encode())
+        host_name = host.name
+        names = {pt.host_id: db.get(KvmHost, pt.host_id).name for pt in parts}
+
+    with open(log_path, "ab", buffering=0) as logf:
+        logf.write(f"labape: job {job_id} ({job.type}) for {what} on {host_name}, worker {worker}\n".encode())
+        if len(parts) > 1:
+            logf.write(f"labape: spread over {len({pt.host_id for pt in parts})} KVM hosts: "
+                       f"{len(parts)} parts (design §45)\n".encode())
         sync_home()
+        rc: int | None = 0
+        for i, part in enumerate(parts):
+            if len(parts) > 1:
+                logf.write(f"\nlabape: part {i + 1}/{len(parts)} on {names[part.host_id]}: "
+                           f"{Path(part.cmd[1]).name} {part.cmd[3]}\n".encode())
+            try:
+                if part.before is not None:
+                    part.before()
+            except Exception as exc:  # noqa: BLE001
+                logf.write(f"labape: {exc}\n".encode())
+                rc = 1
+                break
+            prc = _execute(Session_, job_id, part, iso_keys, logf, log_path)
+            if prc != 0:
+                rc = prc if rc == 0 else rc
+                if not part.keep_going:
+                    break
+            if _cancelled(Session_, job_id):
+                rc = rc or 1
+                break
+        work = parts[-1].work
+    with Session_() as db:
+        job = db.get(Job, job_id)
+        env = db.get(Environment, job.environment_id) if job.environment_id else None
+        if rc == 0 and job.type in ("template.build", "template.refresh"):
+            # The primary holds every file (design §29.5): a template built elsewhere goes there too.
+            name = (job.params or {}).get("new_name") or (job.params or {}).get("name") or ""
+            try:
+                if name:
+                    filedist.to_primary(db, db.get(KvmHost, job.kvm_host_id), name, _PathLog(log_path))
+            except Exception as exc:  # noqa: BLE001 — the template is built; only the copy failed
+                _append_path(log_path, f"labape: warning: copying {name} to the primary file host failed: {exc}\n")
+        _finish(db, job, env, rc, work=work)
+
+
+def _cancelled(Session_, job_id: int) -> bool:
+    with Session_() as db:
+        return bool(db.get(Job, job_id).cancel_requested)
+
+
+def _execute(Session_, job_id: int, part: Part, iso_keys: set[str], logf, log_path: Path) -> int | None:
+    """Run one part on its host: the files it needs from the primary, the workspace over SSH for a
+    remote host, the command (heartbeats, cancel), the results back. Returns its exit code (None: it
+    couldn't start)."""
+    with Session_() as db:
+        host = db.get(KvmHost, part.host_id)
+        job = db.get(Job, job_id)
+        uri, name = host.libvirt_uri, host.name
+        try:
+            remote = hostio.RemoteJob(hostio.Host(uri), part.work, job_id) if hostio.is_remote(uri) else None
+        except Exception as exc:  # noqa: BLE001
+            logf.write(f"labape: could not start on {name}: {exc}\n".encode())
+            return None
         run_env = job_env(host)
-        run_env["LABAPE_VAULT_PASS_FILE"] = str(work / ".vault-pass")
+        run_env["LABAPE_VAULT_PASS_FILE"] = str(part.work / ".vault-pass")
         if history_keys() and remote is None:
             run_env["ANSIBLE_SSH_COMMON_ARGS"] = " ".join(f"-i {k}" for k in history_keys())
         run_env.update(_cert_env(job_id, job.type, remote is not None))
         cert_token = run_env.get("LABAPE_CERT_TOKEN", "")
-        if remote is None:
-            # The stack's own host, when it isn't the primary file host (design §29.5): copies too.
-            with Session_() as fdb:
-                here = fdb.get(KvmHost, host.id)
-                p = filedist.primary(fdb)
-                if p is not None and p.id != here.id:
-                    try:
-                        _distribute(fdb, work, here, job_id, iso_keys, _TextLog(logf))
-                    except Exception as exc:  # noqa: BLE001
-                        logf.write(f"labape: could not get the files from the primary: {exc}\n".encode())
-                        job = fdb.get(Job, job_id)
-                        _finish(fdb, job, fdb.get(Environment, job.environment_id) if job.environment_id else None, None)
-                        return
-        if remote is not None:
-            try:
+        cmd = part.cmd
+        try:
+            # A remote host, or the stack's own host when it isn't the primary file host (design §29.5):
+            # the files from the primary (design §29.4).
+            p = filedist.primary(db)
+            if remote is not None or (p is not None and p.id != host.id):
+                _distribute(db, part.work, host, job_id, iso_keys, _TextLog(logf), part.groups, part.installers)
+            if remote is not None:
                 logf.write(f"labape: running on {remote.host.target} over SSH in {remote.root}\n".encode())
-                with Session_() as fdb:            # files from the primary (design §29.4)
-                    _distribute(fdb, work, fdb.get(KvmHost, host.id), job_id, iso_keys, _TextLog(logf))
-                secrets_dir = get_settings().secrets_dir
-                files = {"vault-pass": work / ".vault-pass"}
+                files = {"vault-pass": part.work / ".vault-pass"}
                 if ssh_key_path():   # the scripts check the key has its .pub beside it
                     files["ssh-key"] = Path(ssh_key_path())
                     files["ssh-key.pub"] = Path(ssh_key_path() + ".pub")
                 remote.push(run_env, {k: v for k, v in files.items() if v.is_file()})
                 cmd, run_env = remote.command(cmd), hostio.tool_env()
-            except Exception as exc:  # noqa: BLE001
-                logf.write(f"labape: could not start on {host.name}: {exc}\n".encode())
+        except Exception as exc:  # noqa: BLE001
+            what = "could not start on" if remote is not None else "could not get the files from the primary for"
+            logf.write(f"labape: {what} {name}: {exc}\n".encode())
+            if remote is not None:
                 remote.cleanup()
-                with Session_() as db:
-                    job = db.get(Job, job_id)
-                    _finish(db, job, db.get(Environment, job.environment_id) if job.environment_id else None, None)
-                return
-        proc = subprocess.Popen(cmd, cwd=work, env=run_env, stdin=subprocess.DEVNULL, stdout=logf,
+            return None
+    try:
+        proc = subprocess.Popen(cmd, cwd=part.work, env=run_env, stdin=subprocess.DEVNULL, stdout=logf,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         cancelled_at = None
         last_beat = 0.0
@@ -556,30 +681,21 @@ def run(job_id: int, worker: str) -> None:
                 logf.write(b"\nlabape: still running; killing (SIGKILL).\n")
                 _signal(proc, signal.SIGKILL)
                 cancelled_at = float("inf")  # don't repeat
-
-    if remote is not None:
-        try:
-            remote.pull("ansible/inventory")      # hosts.generated, credentials, inventory
-        except Exception as exc:  # noqa: BLE001
-            _append_path(log_path, f"labape: copying the results back failed: {exc}\n")
-            rc = rc or 1
-        finally:
-            remote.cleanup()
-    with Session_() as db:
-        job = db.get(Job, job_id)
-        env = db.get(Environment, job.environment_id) if job.environment_id else None
-        if rc == 0 and job.type in ("template.build", "template.refresh"):
-            # The primary holds every file (design §29.5): a template built elsewhere goes there too.
-            name = (job.params or {}).get("new_name") or (job.params or {}).get("name") or ""
+        if remote is not None:
             try:
-                if name:
-                    filedist.to_primary(db, db.get(KvmHost, job.kvm_host_id), name, _PathLog(log_path))
-            except Exception as exc:  # noqa: BLE001 — the template is built; only the copy failed
-                _append_path(log_path, f"labape: warning: copying {name} to the primary file host failed: {exc}\n")
+                for rel in part.pulls:      # hosts.generated, credentials, inventory; a part's hosts list
+                    remote.pull(rel)
+            except Exception as exc:  # noqa: BLE001
+                _append_path(log_path, f"labape: copying the results back failed: {exc}\n")
+                rc = rc or 1
+    finally:
+        if remote is not None:
+            remote.cleanup()
         if cert_token:
             from ..api.ca import token_name
-            put_secret(db, token_name(job_id), "")      # the token dies with the job
-        _finish(db, job, env, rc, work=work)
+            with Session_() as db:
+                put_secret(db, token_name(job_id), "")      # the token dies with the part
+    return rc
 
 
 class _PathLog:
@@ -632,13 +748,18 @@ def _iso_keys(job: Job, env: Environment | None) -> set[str]:
             if (g.get("image_source") or "iso_direct") == "iso_direct"}
 
 
-def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: set[str], log) -> None:
+def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: set[str], log,
+                groups: list[dict] | None = None, installers: bool = True) -> None:
     """Before a job runs on a remote host: the files it needs from the primary file host
     (design §29.4), and the workspace pointed at the host's copies. ISOs go to
     <vm storage>/.labape-isos, installers to <vm storage>/.labape-files/installers (Ansible
-    reads them there: it runs on that host), templates into the host's library."""
+    reads them there: it runs on that host), templates into the host's library. `groups`: only
+    these groups' templates and ISOs (a spread environment's part, design §45); `installers`: False
+    when Ansible runs elsewhere."""
     job = db.get(Job, job_id)
     env = db.get(Environment, job.environment_id) if job.environment_id else None
+    if groups is not None:
+        iso_keys = iso_keys & {g.get("os", "") for g in groups if (g.get("image_source") or "iso_direct") == "iso_direct"}
     path = work / "environment.yml"
     env_yml = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     iso_dir = f"{host.vm_storage_path.rstrip('/')}/.labape-isos"
@@ -653,9 +774,11 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
     path.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
     if job.type != "environment.deploy" or env is None:
         return
-    for name in sorted({g.get("template") for g in (env.spec or {}).get("host_groups", [])
+    for name in sorted({g.get("template") for g in ((env.spec or {}).get("host_groups", []) if groups is None else groups)
                         if g.get("image_source") == "packer_template" and g.get("template")}):
         filedist.ensure_template(db, host, name, log)
+    if not installers:
+        return
     # Installers of the applications chosen here (`source: local` entries of the catalog).
     catalog = yaml.safe_load((work / "ansible" / "package_catalog.yml").read_text(encoding="utf-8")) \
         if (work / "ansible" / "package_catalog.yml").is_file() else {}

@@ -31,8 +31,9 @@ export default function EnvironmentNew() {
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [name, setName] = useState("");
   const [hostId, setHostId] = useState<number | "">("");
-  const [networks, setNetworks] = useState<Network[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
+  // Each host's networks and templates, loaded as hosts are chosen (design §45: a group may go elsewhere).
+  const [netsBy, setNetsBy] = useState<Record<number, Network[]>>({});
+  const [tplsBy, setTplsBy] = useState<Record<number, Template[]>>({});
   const [resources, setResources] = useState<HostResources | undefined>();
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   useEffect(() => {
@@ -56,12 +57,20 @@ export default function EnvironmentNew() {
     });
   }, []);
 
-  // What the chosen host offers: its networks (that this user may use) and its template library.
+  // What each chosen host offers: its networks (that this user may use) and its template library.
+  const usedHosts = useMemo(() => [...new Set([hostId, ...groups.map((g) => g.kvm_host_id ?? "")])]
+    .filter((h): h is number => h !== ""), [hostId, groups]);
   useEffect(() => {
-    if (hostId === "") return;
-    api.get<Network[]>(`/api/networks?kvm_host_id=${hostId}`).then(setNetworks, (e) => setSummary(e.message));
-    api.get<Template[]>(`/api/templates?kvm_host_id=${hostId}`).then(setTemplates, () => setTemplates([]));
-  }, [hostId]);
+    usedHosts.filter((h) => !(h in netsBy)).forEach((h) => {
+      setNetsBy((m) => ({ ...m, [h]: [] }));
+      api.get<Network[]>(`/api/networks?kvm_host_id=${h}`).then((n) => setNetsBy((m) => ({ ...m, [h]: n })), (e) => setSummary(e.message));
+      api.get<Template[]>(`/api/templates?kvm_host_id=${h}`).then((t) => setTplsBy((m) => ({ ...m, [h]: t })), () => undefined);
+    });
+  }, [usedHosts, netsBy]);
+  const hostOf = (g: HostGroup) => g.kvm_host_id ?? hostId;
+  const networks = hostId === "" ? [] : netsBy[hostId] ?? [];
+  const netsOf = (g: HostGroup) => { const h = hostOf(g); return h === "" ? [] : netsBy[h] ?? []; };
+  const tplsOf = (g: HostGroup) => { const h = hostOf(g); return h === "" ? [] : tplsBy[h] ?? []; };
 
   // This environment's demand, projected onto the host's load.
   const demand = useMemo(() => ({
@@ -80,11 +89,11 @@ export default function EnvironmentNew() {
   const blocked = Boolean(resources?.assessment?.findings.some((f) => f.level === "block"));
 
   const netOf = (g: HostGroup) =>
-    networks.find((n) => n.name === g.network) ?? networks.find((n) => n.is_default) ?? networks[0];
+    netsOf(g).find((n) => n.name === g.network) ?? netsOf(g).find((n) => n.is_default) ?? netsOf(g)[0];
   const modesFor = (g: HostGroup) =>
     (netOf(g)?.addressing ?? ["static"]).filter((m) => m === "static" || !g.roles.includes("domain_controller"));
-  const templatesFor = (g: HostGroup) => templates.filter((t) => !t.os_key || t.os_key === g.os);
-  const templateOf = (g: HostGroup) => templates.find((t) => t.name === g.template);
+  const templatesFor = (g: HostGroup) => tplsOf(g).filter((t) => !t.os_key || t.os_key === g.os);
+  const templateOf = (g: HostGroup) => tplsOf(g).find((t) => t.name === g.template);
 
   const setGroup = (i: number, patch: Partial<HostGroup>) => {
     setGroups(groups.map((g, j) => {
@@ -159,6 +168,7 @@ export default function EnvironmentNew() {
         windows_core: g.os.startsWith("windows_server") ? g.windows_core : false,
         windows_datacenter: g.os.startsWith("windows_server") ? g.windows_datacenter : false,
         names: (g.names ?? []).slice(0, g.count),
+        kvm_host_id: g.kvm_host_id && g.kvm_host_id !== hostId ? g.kvm_host_id : undefined,
       }));
       const r = await api.post<{ environment: { id: number } }>("/api/environments", {
         name, kvm_host_id: hostId, host_groups,
@@ -189,7 +199,8 @@ export default function EnvironmentNew() {
       setSummary((e as Error).message);
     }
   };
-  const hostName = useMemo(() => hosts.find((h) => h.id === hostId)?.name ?? "", [hosts, hostId]);
+  const nameOf = (id: number | "") => hosts.find((h) => h.id === id)?.name ?? "";
+  const hostName = nameOf(hostId);
 
   return (
     <Stack spacing={2} component="form" onSubmit={submit} noValidate>
@@ -247,6 +258,15 @@ export default function EnvironmentNew() {
                 </ActionIconButton>
               </Stack>
               <Stack direction="row" spacing={2} useFlexGap sx={row}>
+                {hosts.length > 1 && (
+                  <Field select label="KVM host" value={g.kvm_host_id && g.kvm_host_id !== hostId ? g.kvm_host_id : ""} sx={{ minWidth: 200 }}
+                    error={err(`${at}.kvm_host_id`)} help="Another host spreads the environment (same lab network)"
+                    onChange={(e) => setGroup(i, { kvm_host_id: e.target.value === "" ? undefined : Number(e.target.value),
+                      template: "", network: undefined })}>
+                    <MenuItem value="">Same as the environment{hostName ? ` (${hostName})` : ""}</MenuItem>
+                    {hosts.filter((h) => h.id !== hostId).map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
+                  </Field>
+                )}
                 <Field select label="Image source" value={g.image_source} sx={{ minWidth: 200 }}
                   onChange={(e) => setGroup(i, { image_source: e.target.value as HostGroup["image_source"] })}>
                   <MenuItem value="packer_template">Build from template</MenuItem>
@@ -255,8 +275,8 @@ export default function EnvironmentNew() {
                 {g.image_source === "packer_template" && (
                   <Field select label="Template" value={g.template ?? ""} sx={{ minWidth: 260 }} required
                     error={err(`${at}.template`)}
-                    help={templatesFor(g).length ? `${templatesFor(g).length} on ${hostName} for ${g.os}`
-                      : `No ${g.os} template on ${hostName} yet`}
+                    help={templatesFor(g).length ? `${templatesFor(g).length} on ${nameOf(hostOf(g))} for ${g.os}`
+                      : `No ${g.os} template on ${nameOf(hostOf(g))} yet`}
                     onChange={(e) => setGroup(i, { template: e.target.value })}>
                     {templatesFor(g).map((tp) => (
                       <MenuItem key={tp.id} value={tp.name}>
@@ -286,7 +306,7 @@ export default function EnvironmentNew() {
                 <Field select label="Network" value={netOf(g)?.name ?? ""} sx={{ minWidth: 200 }}
                   error={err(`${at}.network`)} help={netOf(g) ? netOf(g)!.cidr : ""}
                   onChange={(e) => setGroup(i, { network: e.target.value, addressing: "static" })}>
-                  {networks.map((n) => <MenuItem key={n.id} value={n.name}>{n.name}{n.is_default ? " (default)" : ""}</MenuItem>)}
+                  {netsOf(g).map((n) => <MenuItem key={n.id} value={n.name}>{n.name}{n.is_default ? " (default)" : ""}</MenuItem>)}
                 </Field>
                 <Field select label="Addressing" value={g.addressing} sx={{ minWidth: 150 }}
                   error={err(`${at}.addressing`)}

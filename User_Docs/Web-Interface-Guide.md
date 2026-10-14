@@ -66,6 +66,7 @@ Each host group sets:
 | Field | Notes |
 |---|---|
 | Group name | 1-12 lower-case letters and digits |
+| KVM host | Shown when there's more than one host. **Same as the environment** keeps the group with the rest; another host puts this group's VMs there (one environment spread over hosts). The group's networks and templates then come from that host. The hosts must carry the same lab network, so the VMs reach each other and the domain controller. Each VM keeps its host: power, snapshots, details and consoles go to it. |
 | Count | 1-20 VMs |
 | OS and Roles | Roles: `domain_controller`, `windows_server`, `windows_workstation`, `linux_server`, `linux_workstation` |
 | Image source | **Build from template** clones a template (minutes). **Build from ISO** installs from the OS's ISO (up to an hour or more for Windows). |
@@ -73,7 +74,7 @@ Each host group sets:
 | vCPUs, Memory, Disk | An amber warning appears when you go below the template's minimums. A disk smaller than the template's is raised to the template's size. |
 | Network, Addressing | Only the networks attached to the host that you may use, and only the modes that network allows. **Static** addresses come from the network's pool automatically; **DHCP** addresses are found after the VM boots. Domain controllers are always static. |
 | Services, Applications, Packages | Catalog items added on top of the template (see [§8](#8-the-catalog-services-applications-and-packages)). Only published items with something for this OS are offered. |
-| Host names | One box per VM. Leave a box blank for `<group><n>` (for example `web1`). Names must be unique across every environment on the same KVM host, and Windows allows at most 15 characters. |
+| Host names | One box per VM. Leave a box blank for `<group><n>` (for example `web1`). Names must be unique across every environment's VMs on the same KVM host, and Windows allows at most 15 characters. |
 
 **Load limits.** The form warns above 4 vCPUs per CPU, above 90% of the host's RAM committed, or below 15% free VM storage. It refuses an environment that would commit more than 100% of the host's RAM, and **Create and deploy** stays disabled.
 

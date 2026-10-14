@@ -11,10 +11,12 @@
 #                        ansible/inventory/<instance>/), as with deploy.sh --test
 #   --env-file <path>    the environment.yml it was deployed with
 #   --timeout <seconds>  how long to look for each DHCP VM (default 600)
+#   --hosts-out <path>   also save the VMs' hosts.json there (one host's part
+#                        of an environment spread over hosts, design §45)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: refresh-addresses.sh <backend> <environment-instance-name> [--test] [--env-file <path>] [--timeout <seconds>]"
+USAGE="usage: refresh-addresses.sh <backend> <environment-instance-name> [--test] [--env-file <path>] [--timeout <seconds>] [--hosts-out <path>]"
 
 BACKEND="${1:?$USAGE}"
 ENV_INSTANCE="${2:?$USAGE}"
@@ -23,11 +25,13 @@ shift 2
 TEST_MODE=false
 ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 TIMEOUT=600
+HOSTS_OUT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --test) TEST_MODE=true ;;
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
     --timeout) TIMEOUT="${2:?--timeout needs seconds}"; shift ;;
+    --hosts-out) HOSTS_OUT="${2:?--hosts-out needs a path}"; shift ;;
     *) echo "labape: unknown option \"$1\" — $USAGE" >&2; exit 1 ;;
   esac
   shift
@@ -73,6 +77,7 @@ tofu output -json hosts > "$hosts_json"
 export LIBVIRT_URI="${LIBVIRT_URI:-$TF_VAR_libvirt_uri}"
 
 python3 "$ROOT_DIR/scripts/lib/discover_dhcp_ips.py" "$hosts_json" "$ENV_FILE" --timeout "$TIMEOUT"
+[ -z "$HOSTS_OUT" ] || cp "$hosts_json" "$HOSTS_OUT"
 LABAPE_DOMAIN_ADMIN_PASSWORD="$(vault domain_admin_password 2>/dev/null || echo '')" \
   python3 "$ROOT_DIR/scripts/generate-inventory.py" "$hosts_json" "$ENV_FILE" "$SSH_PRIVATE_KEY_PATH" "$INVENTORY_DIR" "$WINDOWS_PASSWORD"
 chmod 600 "$INVENTORY_DIR/generated" "$INVENTORY_DIR/credentials.generated" 2>/dev/null || true

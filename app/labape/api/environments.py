@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, env_accounts, leases, quotas
+from .. import appsettings, env_accounts, leases, quotas, spread
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
@@ -58,6 +58,9 @@ class HostGroup(BaseModel):
     start_order: int | None = Field(default=None, ge=1, le=99)
     start_wait: Literal["agent", "none"] = "agent"
     start_delay_seconds: int = Field(default=0, ge=0, le=3600)
+    # Design §45 (P1b): this group on another KVM host; None = the environment's own host. The hosts
+    # must carry the group's network (bridged to the same lab segment).
+    kvm_host_id: int | None = None
 
     @field_validator("names")
     @classmethod
@@ -103,8 +106,8 @@ def _check_networks(db: Session, p: Principal, kvm_host_id: int, groups: list[di
     out = []
     for i, g in enumerate(groups):
         try:
-            _, net = resolve(db, p, kvm_host_id, g.get("network"), g.get("addressing", "static"),
-                             g.get("roles", []), g["name"])
+            _, net = resolve(db, p, g.get("kvm_host_id") or kvm_host_id, g.get("network"),
+                             g.get("addressing", "static"), g.get("roles", []), g["name"])
         except PolicyError as exc:
             field = "addressing" if exc.field == "addressing" else "network"
             raise FieldError(f"host_groups.{i}.{field}", str(exc)) from exc
@@ -115,22 +118,20 @@ def _check_networks(db: Session, p: Principal, kvm_host_id: int, groups: list[di
 def _check_names(db: Session, kvm_host_id: int, groups: list[dict], env_id: int | None = None) -> None:
     """VM names are host-wide (libvirt): refuse any name another environment
     on this KVM host already uses, or that repeats inside this one."""
-    taken: dict[str, str] = {}
-    others = db.scalars(select(Environment).where(Environment.kvm_host_id == kvm_host_id,
-                                                  Environment.status != "destroyed"))
-    for other in others:
+    taken: dict[tuple[int, str], str] = {}       # (KVM host, VM name) -> environment (design §45)
+    for other in db.scalars(select(Environment).where(Environment.status != "destroyed")):
         if other.id == env_id:
             continue
-        for og in (other.spec or {}).get("host_groups", []):
-            for n in instance_names(og):
-                taken[n.lower()] = other.name
+        for n, hid in spread.vm_host_ids(other).items():
+            taken[(hid, n.lower())] = other.name
     seen: dict[str, int] = {}
     for i, g in enumerate(groups):
+        hid = g.get("kvm_host_id") or kvm_host_id
         for j, n in enumerate(instance_names(g)):
             field = f"host_groups.{i}.names.{j}" if j < len(g.get("names") or []) and g["names"][j] else \
                 f"host_groups.{i}.name"
-            if n.lower() in taken:
-                raise FieldError(field, f"The VM name {n} is already used by environment {taken[n.lower()]} on "
+            if (hid, n.lower()) in taken:
+                raise FieldError(field, f"The VM name {n} is already used by environment {taken[(hid, n.lower())]} on "
                                         "this KVM host. VM names must be unique across the host; choose another "
                                         "name (or group name).")
             if n.lower() in seen:
@@ -153,12 +154,31 @@ def _check_capacity(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
             raise FieldError("kvm_host_id", f["message"])
 
 
+def _group_hosts(db: Session, home: int, groups: list[dict]) -> dict[int, list[dict]]:
+    """Design §45: each group's KVM host (enabled, not stack-only); a group on the environment's own
+    host drops the field, so a one-host environment's spec stays as before. Returns host -> groups."""
+    parts: dict[int, list[dict]] = {}
+    for i, g in enumerate(groups):
+        hid = g.get("kvm_host_id")
+        if hid is not None and hid != home:
+            h = db.get(KvmHost, hid)
+            if h is None or not h.enabled or h.role == "stack":
+                raise FieldError(f"host_groups.{i}.kvm_host_id", "Choose an enabled KVM host for this group.")
+        else:
+            g.pop("kvm_host_id", None)
+            hid = home
+        parts.setdefault(hid, []).append(g)
+    return parts
+
+
 def rank_hosts(db: Session, p: Principal, groups: list[dict]) -> list[dict]:
     """Best-fit placement (design §43; §15's "kvm_host: auto" for a whole environment): every enabled
     KVM host that passes the same checks as a chosen one (networks, templates, capacity), best first:
     least memory committed with this environment added, then vCPUs per CPU, then running jobs, and
     hosts that already hold the templates. Hosts that fail say why."""
     from ..engine.filedist import primary
+    free = [g for g in groups if not g.get("kvm_host_id")]           # pinned groups stay put (design §45)
+    groups = free or [{k: v for k, v in g.items() if k != "kvm_host_id"} for g in groups]
     demand = demand_of(groups)
     busy = dict(db.execute(select(Job.kvm_host_id, func.count()).where(Job.state.in_(("queued", "running")))
                            .group_by(Job.kvm_host_id)).all())
@@ -238,18 +258,25 @@ def _check_catalog(db: Session, groups: list[dict]) -> None:
 def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
     """A template must exist on the host and match the group's OS (when the
     host's template library has been synced)."""
-    known = {t.name: t for t in db.scalars(select(Template).where(Template.kvm_host_id == kvm_host_id,
-                                                                  Template.present.is_(True)))}
-    # The primary file host's templates too: the deploy copies them over (design §29.4).
     from ..engine.filedist import primary
     p = primary(db)
-    if p is not None and p.id != kvm_host_id:
-        for t in db.scalars(select(Template).where(Template.kvm_host_id == p.id, Template.present.is_(True))):
-            known.setdefault(t.name, t)
-    if not known:
-        return
+    libraries: dict[int, dict] = {}
+
+    def library(hid: int) -> dict:
+        if hid not in libraries:
+            known = {t.name: t for t in db.scalars(select(Template).where(Template.kvm_host_id == hid,
+                                                                          Template.present.is_(True)))}
+            # The primary file host's templates too: the deploy copies them over (design §29.4).
+            if p is not None and p.id != hid:
+                for t in db.scalars(select(Template).where(Template.kvm_host_id == p.id, Template.present.is_(True))):
+                    known.setdefault(t.name, t)
+            libraries[hid] = known
+        return libraries[hid]
     for i, g in enumerate(groups):
         if g.get("image_source") != "packer_template":
+            continue
+        known = library(g.get("kvm_host_id") or kvm_host_id)
+        if not known:
             continue
         t = known.get(g.get("template") or "")
         if t is None:
@@ -266,7 +293,7 @@ def _allocate(db: Session, p: Principal, e: Environment) -> None:
     for g in groups:
         if g["addressing"] != "static":
             continue
-        hn, net = resolve(db, p, e.kvm_host_id, g["network"], "static", g.get("roles", []), g["name"])
+        hn, net = resolve(db, p, spread.group_host_id(e, g), g["network"], "static", g.get("roles", []), g["name"])
         try:
             allocate(db, e.id, hn, net, instance_names(g))
         except PolicyError as exc:
@@ -329,11 +356,13 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
         if len(g.names) > g.count:
             raise FieldError(f"host_groups.{i}.names", f"{len(g.names)} names were given for {g.count} hosts.")
     raw = [g.model_dump(exclude_none=True) for g in body.host_groups]
+    parts = _group_hosts(db, host.id, raw)
     try:
         quotas.check(db, p, raw)                     # design §41
     except quotas.QuotaError as exc:
         raise FieldError("host_groups", str(exc), status_code=403) from exc
-    _check_capacity(db, host.id, raw)
+    for hid, gs in parts.items():
+        _check_capacity(db, hid, gs)
     _check_names(db, host.id, raw)
     _check_templates(db, host.id, raw)
     _check_catalog(db, raw)
@@ -556,13 +585,18 @@ def env_vms(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(c
     group and start order."""
     from ..engine.power import default_order
     e = _get(db, env_id, p)
-    row = db.scalar(select(HostStats).where(HostStats.kvm_host_id == e.kvm_host_id))
-    stats = {v["name"]: v for v in ((row.stats if row else None) or {}).get("vms", [])}
+    rows = {r.kvm_host_id: r for r in db.scalars(select(HostStats).where(
+        HostStats.kvm_host_id.in_(spread.host_ids(e) + [e.kvm_host_id])))}
+    row = rows.get(e.kvm_host_id)
+    names = {h.id: h.name for h in db.scalars(select(KvmHost).where(KvmHost.id.in_(spread.host_ids(e))))}
     out = []
     for g in (e.spec or {}).get("host_groups", []):
+        hrow = rows.get(spread.group_host_id(e, g))          # each group's own host (design §45)
+        stats = {v["name"]: v for v in ((hrow.stats if hrow else None) or {}).get("vms", [])}
         for n in instance_names(g):
             v = stats.get(n)
             out.append({"name": n, "group": g["name"], "os": g.get("os"),
+                        "kvm_host_id": spread.group_host_id(e, g), "kvm_host": names.get(spread.group_host_id(e, g), ""),
                         "start_order": g.get("start_order") or default_order(g),
                         "state": v["state"] if v else "missing", "online": bool(v and v["online"]),
                         "responding": v.get("responding") if v else None})
@@ -619,13 +653,13 @@ def vm_series(db: Session, kvm_host_id: int, vm: str, hours: int = 24) -> dict:
     return out
 
 
-def consoles(e: Environment, g: dict) -> dict:
+def consoles(e: Environment, g: dict, h: KvmHost | None = None) -> dict:
     """Which consoles a VM offers (question 119): VNC for the ones with a desktop, the serial
     console for Linux; both go through the KVM host's LABaPe access account."""
     os_ = str(g.get("os", ""))
     # Windows always has a graphical console (Server Core's is sconfig); Linux only as a workstation.
     gui = os_.startswith("windows") or "linux_workstation" in (g.get("roles") or [])
-    h = e.kvm_host
+    h = h or e.kvm_host
     ready = bool(h and h.access_status == "ready")
     return {"vnc": gui, "serial": not os_.startswith("windows"), "host_ready": ready,
             "host_id": h.id if h else None,
@@ -640,11 +674,12 @@ def vm_details(env_id: int, vm: str, db: Session = Depends(get_db), p: Principal
     from ..engine.vmaccess import _hosts, _inventory
     e = _get(db, env_id, p)
     g = _vm_group(e, vm)
-    row = db.scalar(select(HostStats).where(HostStats.kvm_host_id == e.kvm_host_id))
+    vh = db.get(KvmHost, spread.vm_host_id(e, vm))            # design §45
+    row = db.scalar(select(HostStats).where(HostStats.kvm_host_id == vh.id))
     v = next((x for x in ((row.stats if row else None) or {}).get("vms", []) if x["name"] == vm), None)
     owner = is_owner(db, p, "environment", e.id)
     host = _hosts(_inventory(db, e)).get(vm) or {} if owner else {}
-    c = consoles(e, g)
+    c = consoles(e, g, vh)
     if c["virt_viewer"]:
         c["virt_viewer"] += f" {vm}"
     return {
@@ -657,7 +692,7 @@ def vm_details(env_id: int, vm: str, db: Session = Depends(get_db), p: Principal
         "size": {k: v.get(k) for k in ("vcpus", "memory_mb", "memory_used_mb", "cpu_pct", "disk_capacity_gb",
                                        "disk_allocated_gb", "disk_read_bps", "disk_write_bps")} if v else {},
         "guest": (v or {}).get("guest_info") or {}, "guest_disk": (v or {}).get("guest_disk") or {},
-        "series": vm_series(db, e.kvm_host_id, vm),
+        "series": vm_series(db, vh.id, vm), "kvm_host": vh.name,
         "can_operate": owner and e.status == "deployed", "consoles": c,
     }
 
@@ -810,7 +845,7 @@ def _snapshot_job(db: Session, p: Principal, e: Environment, vm: str, params: di
     busy = db.scalar(select(Job).where(Job.environment_id == e.id, Job.state.in_(("queued", "running"))))
     if busy:
         raise HTTPException(status_code=409, detail=f"Job {busy.id} is already {busy.state} for this environment")
-    job = Job(type="vm.snapshot", params={"vm": vm, **params}, kvm_host_id=e.kvm_host_id, environment_id=e.id,
+    job = Job(type="vm.snapshot", params={"vm": vm, **params}, kvm_host_id=spread.vm_host_id(e, vm), environment_id=e.id,
               requested_by=p.username)
     db.add(job)
     db.commit()

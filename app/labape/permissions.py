@@ -52,6 +52,8 @@ def visible_hosts(db: Session, p: Principal) -> list[KvmHost]:
     if p.has_role("deployer", "template_editor"):
         return [h for h in hosts if h.enabled]
     ids = visible_ids(db, p, "environment") or set()
-    used = set(db.scalars(select(Environment.kvm_host_id).where(Environment.id.in_(ids or {-1}),
-                                                                Environment.status != "destroyed")))
+    from . import spread
+    used = {hid for e in db.scalars(select(Environment).where(Environment.id.in_(ids or {-1}),
+                                                              Environment.status != "destroyed"))
+            for hid in [e.kvm_host_id, *spread.host_ids(e)]}
     return [h for h in hosts if h.id in used]

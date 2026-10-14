@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import spread
 from ..db import get_db
 from ..engine import template_versions
 from ..errors import FieldError
@@ -145,9 +146,10 @@ def promote_template(body: PromoteIn, request: Request, db: Session = Depends(ge
     if group is None:
         raise FieldError("vm", f"{body.vm} isn't a VM of environment {env.name}.")
     # Domain-joined VMs are refused by the finalize step itself (template_finalize).
-    _name_free(db, env.kvm_host_id, body.name, "name")
-    return _job(db, p, request, env.kvm_host_id, "template.promote",
-                {"environment": env.name, "vm": body.vm, "name": body.name, "os_key": group.get("os", "")},
+    hid = spread.group_host_id(env, group)                   # the VM's own host and part (design §45)
+    _name_free(db, hid, body.name, "name")
+    return _job(db, p, request, hid, "template.promote",
+                {"environment": spread.workspace(env, hid), "vm": body.vm, "name": body.name, "os_key": group.get("os", "")},
                 env_id=env.id)
 
 

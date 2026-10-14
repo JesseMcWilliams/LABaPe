@@ -101,6 +101,11 @@ def test_templates_come_from_the_primary(client, monkeypatch):
         t = db.query(Template).filter_by(kvm_host_id=r.id, name="rocky9-base").one()
         assert (t.os_key, t.disk_gb, t.description, t.present) == ("rocky9", 40, "d", True)
         assert filedist.ensure_template(db, r, "rocky9-base", log) is False
+        # The file went (the row stays, not present): copying it again reuses the row (P1b's nkvm1).
+        t.present = False
+        db.commit()
+        assert filedist.ensure_template(db, r, "rocky9-base", log) is True
+        assert db.query(Template).filter_by(kvm_host_id=r.id, name="rocky9-base").one().present is True
         with pytest.raises(filedist.FileDistError, match="neither"):
             filedist.ensure_template(db, r, "nope", log)
     # The API offers the primary's templates on the other host, marked.

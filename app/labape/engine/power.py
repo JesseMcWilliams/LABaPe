@@ -23,6 +23,7 @@ from collections.abc import Callable
 from sqlalchemy.orm import Session
 
 from ..models import Environment, Job, KvmHost
+from .. import spread
 from ..naming import instance_names
 from . import hostio
 
@@ -70,36 +71,40 @@ def virsh(uri: str, *args: str, timeout: int = 60) -> subprocess.CompletedProces
 
 
 class Vms:
-    """The virsh calls the power job makes, against one KVM host."""
+    """The virsh calls the power job makes, against one KVM host, or each VM's own (`uris`, design §45)."""
 
-    def __init__(self, uri: str, run: Callable[..., subprocess.CompletedProcess] | None = None):
-        self.uri, self.run = uri, run or virsh
+    def __init__(self, uri: str, run: Callable[..., subprocess.CompletedProcess] | None = None,
+                 uris: dict[str, str] | None = None):
+        self.uri, self.run, self.uris = uri, run or virsh, uris or {}
+
+    def _u(self, name: str) -> str:
+        return self.uris.get(name, self.uri)
 
     def state(self, name: str) -> str:
-        r = self.run(self.uri, "domstate", name)
+        r = self.run(self._u(name), "domstate", name)
         if r.returncode != 0:
             raise PowerError(f"{name}: {(r.stderr or r.stdout).strip() or 'no such VM on this host'}")
         return r.stdout.strip()
 
     def start(self, name: str) -> None:
-        r = self.run(self.uri, "start", name)
+        r = self.run(self._u(name), "start", name)
         if r.returncode != 0 and "already active" not in (r.stderr or ""):
             raise PowerError(f"{name}: start failed: {(r.stderr or r.stdout).strip()}")
 
     def shutdown(self, name: str) -> None:
         # The guest agent is the cleanest; ACPI if the guest has no agent.
-        r = self.run(self.uri, "shutdown", name, "--mode", "agent,acpi")
+        r = self.run(self._u(name), "shutdown", name, "--mode", "agent,acpi")
         if r.returncode != 0 and "not running" not in (r.stderr or ""):
             raise PowerError(f"{name}: shutdown failed: {(r.stderr or r.stdout).strip()}")
 
     def destroy(self, name: str) -> None:
-        r = self.run(self.uri, "destroy", name)
+        r = self.run(self._u(name), "destroy", name)
         if r.returncode != 0 and "not running" not in (r.stderr or ""):
             raise PowerError(f"{name}: force off failed: {(r.stderr or r.stdout).strip()}")
 
     def agent(self, name: str) -> bool | None:
         """True when the guest agent answers; False when it doesn't (yet); None when the VM has no agent channel."""
-        r = self.run(self.uri, "qemu-agent-command", name, json.dumps({"execute": "guest-ping"}), timeout=15)
+        r = self.run(self._u(name), "qemu-agent-command", name, json.dumps({"execute": "guest-ping"}), timeout=15)
         if r.returncode == 0:
             return True
         return None if "not configured" in (r.stderr or "") else False
@@ -201,7 +206,9 @@ def run_job(db: Session, job: Job, run=None, sleep=time.sleep, now=time.monotoni
             beat(job.id)                   # waits can run long: keep the job from looking stale
     what = ", ".join(only) if only else f"all of {env.name}"
     log(f"labape: {action.replace('_', ' ')} {what} on {host.name}\n")
-    vms = Vms(host.libvirt_uri, run)
+    uris = {vm: h.libvirt_uri for vm, hid in spread.vm_host_ids(env).items()
+            if hid != host.id and (h := db.get(KvmHost, hid)) is not None}
+    vms = Vms(host.libvirt_uri, run, uris)
     try:
         if action == "start":
             start_all(vms, steps, log, timeout, sleep, now)
