@@ -67,7 +67,7 @@ def test_deploy_manifest_vault_and_sheet(client, tmp_path):
         v = EA.vault_overrides(db, e)
         assert v["labape_account_jdoe_password"] == get_secret(db, EA.secret_name(e.id, "jdoe"))
         sheet = EA.apply_sheet("## Windows\nUser: Administrator\nPassword: x\n", EA.sheet_section(db, e, "LABAPE"))
-        assert "User: LABAPE\\jdoe (domain)" in sheet and "User: tester (local on linux_server)" in sheet
+        assert "User: LABAPE\\jdoe (domain)" in sheet and "User: tester (local on linux_server; each VM its own password)" in sheet
         assert EA.apply_sheet(sheet, EA.sheet_section(db, e, "LABAPE")).count("## Environment accounts") == 1
         assert "## Environment accounts" not in EA.apply_sheet(sheet, "")
 
@@ -96,12 +96,15 @@ def test_rotation_policy_and_rotate(client, monkeypatch):
         log = type("L", (), {"write": lambda self, m: None})()
         assert EA.rotate(db, e, "tester", log) == "2 host(s) updated"
         assert calls == [("web1:web2", "ansible.builtin.user")]
-        new = get_secret(db, EA.secret_name(e.id, "tester"))
-        assert new != old and new in get_secret(db, f"environment/{e.id}/credentials")
+        # A2: a local account has a password of its own on each VM.
+        from labape import vm_passwords
+        new = {vm: get_secret(db, vm_passwords.name(e.id, vm, "account/tester")) for vm in ("web1", "web2")}
+        assert len(set(new.values())) == 2 and old not in new.values()
+        assert all(f"{vm}: {pw}" in get_secret(db, f"environment/{e.id}/credentials") for vm, pw in new.items())
         monkeypatch.setattr(vmaccess, "_ansible", lambda inv_, pattern, *a, **k: {h: "failed" for h in pattern.split(":")})
         with pytest.raises(vmaccess.AccessError, match="couldn't set tester"):
             EA.rotate(db, e, "tester", log)
-        assert get_secret(db, EA.secret_name(e.id, "tester")) == new          # unchanged on failure
+        assert {vm: get_secret(db, vm_passwords.name(e.id, vm, "account/tester")) for vm in new} == new   # unchanged
 
 
 def test_the_api(client):

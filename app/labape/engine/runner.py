@@ -39,7 +39,7 @@ from ..models import CatalogItem, Environment, HostNetwork, IpAllocation, Job, K
 from ..catalog import expand
 from ..files import iso_paths, roots
 from ..naming import instance_names
-from .. import spread
+from .. import spread, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
@@ -322,6 +322,9 @@ def prepare(db: Session, env: Environment, host: KvmHost, only: list[dict] | Non
     if rotated:
         overlay_vault(work, rotated)
 
+    # Each member VM's own local passwords (A2), in its host variables.
+    from .. import vm_passwords
+    vm_passwords.write_host_vars(db, env, work)
     return work
 
 
@@ -488,7 +491,7 @@ def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
     home = db.get(KvmHost, env.kvm_host_id)
     if not spread.is_spread(env):
         work = prepare(db, env, home)
-        return [Part(home.id, work, command_for(job, env, work), pulls=["ansible/inventory"])]
+        return [Part(home.id, work, command_for(job, env, work), pulls=["ansible/inventory", vm_passwords.APPLIED_DIR])]
     parts: list[Part] = []
     outs: list[Path] = []
     hosts = spread.host_ids(env)
@@ -522,7 +525,7 @@ def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
            "--env-file", str(work / "environment.yml"), "--hosts-from", str(merged)]
     if job.type == "environment.refresh_addresses":
         cmd.append("--no-ansible")
-    parts.append(Part(home.id, work, cmd, pulls=["ansible/inventory"], groups=[],
+    parts.append(Part(home.id, work, cmd, pulls=["ansible/inventory", vm_passwords.APPLIED_DIR], groups=[],
                       before=lambda: merge_hosts(outs, merged)))
     return parts
 
@@ -831,8 +834,14 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
                 _collect_outputs(db, job, env, work)
         elif job.state != "succeeded":
             env.status = "failed"
+            if job.type == "environment.deploy" and work is not None and vm_passwords.promote(db, env, work):
+                inv = get_secret(db, f"environment/{env.id}/inventory") or ""
+                if inv:
+                    put_secret(db, f"environment/{env.id}/inventory", vm_passwords.apply_to_inventory(db, env, inv))
         elif job.type == "environment.deploy":
             env.status = "deployed"
+            if work is not None:
+                vm_passwords.promote(db, env, work)
             _collect_outputs(db, job, env, work)
         elif job.type == "environment.destroy":
             env.status = "destroyed"
@@ -872,6 +881,9 @@ def _collect_outputs(db: Session, job: Job, env: Environment, work: Path | None)
                     if (work / "environment.yml").is_file() else {}
                 text = env_accounts.apply_sheet(text, env_accounts.sheet_section(
                     db, env, str((envy or {}).get("netbios_name") or "")))
+                text = vm_passwords.apply_to_sheet(db, env, text)        # each member VM's own (A2)
+            else:
+                text = vm_passwords.apply_to_inventory(db, env, text)
             put_secret(db, f"environment/{env.id}/{secret}", text)
             f.unlink()  # don't leave plaintext credentials on disk
 

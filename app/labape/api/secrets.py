@@ -206,7 +206,21 @@ def classify(name: str, envs: dict[int, Environment]) -> dict:
     if m:
         env = envs.get(int(m.group(1)))
         what = m.group(2)
-        kind = what.split("/")[-1]
+        parts = what.split("/")
+        here = {"section": "environments", "environment_id": int(m.group(1)),
+                "environment": env.name if env else f"#{m.group(1)} (gone)",
+                "environment_status": env.status if env else "gone"}
+        if parts[0] == "vm" and len(parts) >= 3:          # a VM's own (A2): vm/<vm>/<kind> or vm/<vm>/account/<name>
+            rest = "/".join(parts[2:])
+            scope = "local"
+            if rest.startswith("account/") and env is not None:
+                from .. import env_accounts
+                a = next((x for x in env_accounts.accounts(env) if x["name"] == rest.removesuffix(".pending").split("/", 1)[1]), None)
+                scope = a["kind"] if a else "local"
+            return {**here, "vms": [parts[1]], "scope": scope, "type": "password", "attempt": rest.endswith(".pending")}
+        if parts[0] == "rotation-candidate" and len(parts) >= 3:      # an attempt for one VM (A2)
+            return {**here, "vms": [parts[2]], "scope": "local", "type": "password", "attempt": True}
+        kind = parts[-1]
         account = what.startswith("account/") or kind.startswith("account-")
         if kind in ("credentials", "inventory"):
             typ = "document"

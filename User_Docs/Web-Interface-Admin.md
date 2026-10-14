@@ -159,6 +159,8 @@ A check that can't reach what it tests (a VM that's off) doesn't count as a fail
 
 **Recovery pairs.** Each environment with Windows hosts gets a second admin next to Administrator, `labape-admin2`: a domain admin (Domain Admins) when it has a domain controller, and a local admin on each member server. LABaPe keeps its password, rotates it weekly half a week apart from Administrator's, and uses it only for recovery: when Administrator's stored password stops working, `labape-admin2` sets it again, and the other way round. Environments deployed before get it on their next **Redeploy**.
 
+**A password per VM.** Each Windows member server's Administrator and `labape-admin2`, and each local account of the environment's own on each VM, has a password of its own, so one VM's password opens nothing else. A new VM starts with the environment's bootstrap password, and the deploy changes it to the VM's own; if a deploy stops part way, the next one finds the VM's new password and carries on. The credentials sheet lists them per VM, and they rotate and are checked per VM. Domain controllers use the domain's accounts. Environments deployed before get theirs on their next **Redeploy**.
+
 | Secret | Rotated by | Default |
 |---|---|---|
 | Built-in store data key | the worker | daily |

@@ -205,7 +205,8 @@
   ansible.builtin.user:
     name: "{{ item.name }}"
     password: >-
-      {{ (lookup('vars', item.password_vault_key) if item.password_vault_key is defined else default_user_password)
+      {{ ((labape_host_passwords | default({})).get(item.name)
+          or (lookup('vars', item.password_vault_key) if item.password_vault_key is defined else default_user_password))
          | password_hash('sha512') }}
     groups: "{{ item.groups | default([]) }}"
     append: true

@@ -5,6 +5,7 @@ import io
 
 import yaml
 
+from labape import vm_passwords
 from labape.db import session_factory
 from labape.engine import rotation, vmaccess
 from labape.engine.runner import claim
@@ -88,7 +89,12 @@ class FakeHosts:
             elif module.endswith("win_ping"):
                 out[h] = "ok"
             else:
-                self.pw[h] = (extra or {}).get("new_pw") if args["password"] == "{{ new_pw }}" else hv["labape_old_pw"]
+                if args["password"] == "{{ new_pw }}":
+                    self.pw[h] = (extra or {}).get("new_pw")
+                elif args["password"] == "{{ labape_new_pw }}":       # one per host (A2)
+                    self.pw[h] = hv["labape_new_pw"]
+                else:
+                    self.pw[h] = hv["labape_old_pw"]
                 out[h] = "failed" if self.fail_after_change else "changed"
         return out
 
@@ -128,12 +134,13 @@ def test_env_policies_and_rotation(client, monkeypatch):
         new = inv["all"]["hosts"]["app1"]["ansible_password"]
         assert new != "ThisIsMy_FAKE_Password6!" and len(new) == 20 and hosts.pw["app1"] == new
         assert inv["all"]["hosts"]["dc1"]["ansible_password"] == "ThisIsMy_FAKE_Password6!"   # the DC isn't a member
-        assert vmaccess.env_password_overrides(db, env_id) == {"windows_bootstrap_admin_password": new}
-        assert get_secret(db, f"environment/{env_id}/windows_admin") == new
-        assert f"Password: {new}" in get_secret(db, f"environment/{env_id}/credentials")
-        assert not get_secret(db, f"environment/{env_id}/rotation-candidate/windows_admin")
+        # A2: the member's own, per VM; the environment-wide bootstrap value isn't touched.
+        assert vmaccess.env_password_overrides(db, env_id) == {}
+        assert get_secret(db, vm_passwords.name(env_id, "app1", "windows_admin")) == new
+        assert f"app1: {new}" in get_secret(db, f"environment/{env_id}/credentials")
+        assert not get_secret(db, f"environment/{env_id}/rotation-candidate/windows_admin/app1")
     change = hosts.calls[0]
-    assert change[:2] == ("app1", "ansible.windows.win_user") and change[4] == {"async": 120, "poll": 0}
+    assert change[:2] == ("app1", "ansible.windows.win_user") and not change[4]     # same shell, not detached
     assert hosts.calls[1][1] == "ansible.windows.win_ping"
 
     # Domain admin: on the DC only, stored as domain_admin_password.
@@ -141,7 +148,7 @@ def test_env_policies_and_rotation(client, monkeypatch):
     with session_factory()() as db:
         vmaccess.rotate_env_password(db, db.get(Environment, env_id), "domain_admin", io.StringIO())
         over = vmaccess.env_password_overrides(db, env_id)
-        assert set(over) == {"windows_bootstrap_admin_password", "domain_admin_password"}
+        assert set(over) == {"domain_admin_password"}
         assert hosts.pw["dc1"] == over["domain_admin_password"]
     assert hosts.calls[0][:2] == ("dc1", "microsoft.ad.user")
 
@@ -173,15 +180,16 @@ def test_failed_change_keeps_old_password(client, monkeypatch):
             raise AssertionError("expected AccessError")
         except vmaccess.AccessError as exc:
             assert "app1" in str(exc) and "check app1 by hand" in str(exc)    # can't tell: it's unreachable
-            assert "rotation-candidate/windows_admin" in str(exc)
+            assert "rotation-candidate" in str(exc)
         inv = yaml.safe_load(get_secret(db, f"environment/{env_id}/inventory"))
         assert inv["all"]["hosts"]["app1"]["ansible_password"] == "ThisIsMy_FAKE_Password6!"
-        assert get_secret(db, f"environment/{env_id}/windows_admin") is None
-        assert len(get_secret(db, f"environment/{env_id}/rotation-candidate/windows_admin")) == 20
+        assert get_secret(db, vm_passwords.name(env_id, "app1", "windows_admin")) is None
+        assert len(get_secret(db, f"environment/{env_id}/rotation-candidate/windows_admin/app1")) == 20
     assert hosts.pw["app1"] == "ThisIsMy_FAKE_Password6!"
 
 
-def test_partial_change_is_put_back(client, monkeypatch):
+def test_each_vm_changes_on_its_own(client, monkeypatch):
+    """A2: each member VM has its own password; one VM failing doesn't undo the others."""
     env_id = _deployed_env(client)
     with session_factory()() as db:
         inv = yaml.safe_load(get_secret(db, f"environment/{env_id}/inventory"))
@@ -194,11 +202,11 @@ def test_partial_change_is_put_back(client, monkeypatch):
             vmaccess.rotate_env_password(db, db.get(Environment, env_id), "windows_admin", io.StringIO())
             raise AssertionError("expected AccessError")
         except vmaccess.AccessError as exc:
-            assert "app2" in str(exc)
+            assert "app2" in str(exc)                  # app2 takes neither: checked by hand
         inv = yaml.safe_load(get_secret(db, f"environment/{env_id}/inventory"))
-        assert inv["all"]["hosts"]["app1"]["ansible_password"] == "ThisIsMy_FAKE_Password6!"
-    assert hosts.pw["app1"] == "ThisIsMy_FAKE_Password6!"                           # put back
-    assert any(c[2].get("password") == "{{ labape_old_pw }}" for c in hosts.calls)
+        assert inv["all"]["hosts"]["app1"]["ansible_password"] == hosts.pw["app1"] != "ThisIsMy_FAKE_Password6!"
+        assert get_secret(db, vm_passwords.name(env_id, "app1", "windows_admin")) == hosts.pw["app1"]
+        assert inv["all"]["hosts"]["app2"]["ansible_password"] == "ThisIsMy_FAKE_Password6!"   # stored one unchanged
 
 
 def test_push_vm_key(client, monkeypatch, tmp_path):

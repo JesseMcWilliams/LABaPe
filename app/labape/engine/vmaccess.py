@@ -156,8 +156,8 @@ def push_vm_key(db: Session, new_key: Path, current_key: Path, history_dir: Path
 # policy; a deploy puts them over the vault's matching keys.
 ENV_PASSWORD_VAULT_KEYS = {"windows_admin": "windows_bootstrap_admin_password",
                            "domain_admin": "domain_admin_password",
-                           # A1: the recovery pair's second accounts (Ansible creates them at deploy).
-                           "windows_admin2": "labape_recovery_local_password",
+                           # A1: the domain's second admin (Ansible creates it at deploy). The members'
+                           # are per VM (A2), in each VM's host variables, not in the vault.
                            "domain_admin2": "labape_recovery_domain_password"}
 # A1 (Planning_Lists-Secrets-Settings.md): a second admin next to each Administrator, so each of the
 # pair can set the other's password again when it's lost. Same name in the domain and on members.
@@ -185,7 +185,9 @@ def clear_env_passwords(db: Session, env_id: int) -> None:
     value a rotation was trying (S2 found accounts kept after a destroy)."""
     from sqlalchemy import select
     names = {env_password_name(env_id, kind) for kind in ENV_PASSWORD_VAULT_KEYS}
-    for prefix in (f"environment/{env_id}/account/", f"environment/{env_id}/rotation-candidate/"):
+    names.add(env_password_name(env_id, "windows_admin2"))          # A1's environment-wide one, before A2
+    for prefix in (f"environment/{env_id}/account/", f"environment/{env_id}/rotation-candidate/",
+                   f"environment/{env_id}/vm/"):
         names |= set(db.scalars(select(Secret.name).where(Secret.name.startswith(prefix))))
     for name in sorted(names):
         if db.get(Secret, name) is not None:
@@ -228,18 +230,14 @@ def env_targets(env: Environment, inv: dict, kind: str) -> list[str]:
 
 
 def ensure_recovery_passwords(db: Session, env: Environment) -> list[str]:
-    """A1: passwords for the second admins before a deploy creates them: the domain's when the
-    environment has a domain controller, the members' when it has other Windows hosts."""
+    """A1: the domain's labape-admin2 password before the deploy that creates it (members' are per VM,
+    A2: vm_passwords.host_vars makes them)."""
     groups = (env.spec or {}).get("host_groups", [])
     has_dc = any("domain_controller" in (g.get("roles") or []) for g in groups)
-    has_member = any(str(g.get("os", "")).startswith("windows") and "domain_controller" not in (g.get("roles") or [])
-                     for g in groups)
-    made = []
-    for kind, need in (("domain_admin2", has_dc), ("windows_admin2", has_member)):
-        if need and not get_secret(db, env_password_name(env.id, kind)):
-            put_secret(db, env_password_name(env.id, kind), new_windows_password())
-            made.append(kind)
-    return made
+    if has_dc and not get_secret(db, env_password_name(env.id, "domain_admin2")):
+        put_secret(db, env_password_name(env.id, "domain_admin2"), new_windows_password())
+        return ["domain_admin2"]
+    return []
 
 
 def recovery_user(inv: dict, kind: str) -> str:
@@ -249,29 +247,59 @@ def recovery_user(inv: dict, kind: str) -> str:
     return RECOVERY_ADMIN
 
 
-def probe(inv: dict, hosts: list[str], user: str | None, password: str) -> Outcome:
-    """win_ping on `hosts` as `user` (None: the inventory's own) with `password`."""
-    as_ = {**inv, "all": {**inv["all"], "hosts": {h: {**_hosts(inv)[h], "ansible_password": password,
-                                                     **({"ansible_user": user} if user else {})} for h in hosts}}}
-    return _ansible(as_, ":".join(hosts), "ansible.windows.win_ping", {}, scrub=(password,), timeout=300)
+def stored_password(db: Session, env: Environment, inv: dict, kind: str, vm: str) -> str:
+    """The password LABaPe holds for `kind`'s account on `vm`: per VM for member servers' accounts (A2,
+    with the environment-wide value of before as a fallback), per environment for the domain's."""
+    from .. import vm_passwords
+    if kind == "windows_admin":
+        return (get_secret(db, vm_passwords.name(env.id, vm, "windows_admin")) or _hosts(inv)[vm].get("ansible_password", "")
+                or get_secret(db, env_password_name(env.id, kind)) or "")
+    if kind == "windows_admin2":
+        return (get_secret(db, vm_passwords.name(env.id, vm, "windows_admin2"))
+                or get_secret(db, env_password_name(env.id, kind)) or "")
+    if kind == "domain_admin":
+        return get_secret(db, env_password_name(env.id, kind)) or _hosts(inv)[vm].get("ansible_password", "")
+    return get_secret(db, env_password_name(env.id, kind)) or ""
+
+
+def store_password(db: Session, env: Environment, kind: str, vm: str, value: str) -> None:
+    from .. import vm_passwords
+    if kind in ("windows_admin", "windows_admin2"):
+        put_secret(db, vm_passwords.name(env.id, vm, kind), value)
+    else:
+        put_secret(db, env_password_name(env.id, kind), value)
+
+
+def _per_host(inv: dict, hosts: list[str], values: dict[str, dict]) -> dict:
+    """The inventory with these hosts' variables set (values: host -> vars)."""
+    return {**inv, "all": {**inv["all"], "hosts": {h: {**_hosts(inv)[h], **values.get(h, {})} for h in hosts}}}
+
+
+def probe(inv: dict, hosts: list[str], user: str | None, password: str | dict[str, str]) -> Outcome:
+    """win_ping on `hosts` as `user` (None: the inventory's own) with `password` (one, or one per host)."""
+    pw = password if isinstance(password, dict) else {h: password for h in hosts}
+    as_ = _per_host(inv, hosts, {h: {"ansible_password": pw[h], **({"ansible_user": user} if user else {})} for h in hosts})
+    return _ansible(as_, ":".join(hosts), "ansible.windows.win_ping", {}, scrub=tuple(set(pw.values())), timeout=300)
 
 
 def rotate_recovery_password(db: Session, env: Environment, kind: str, log) -> str:
-    """A1: a new password for a second admin (windows_admin2, domain_admin2), set while signed in as
-    the Administrator of the pair, so it needs no old value of its own."""
+    """A1: a new password for a second admin (windows_admin2 per member VM, A2; domain_admin2 for the
+    domain), set while signed in as the Administrator of the pair, so it needs no old value of its own."""
     if remote_env(env):
         raise AccessError("the environment is on a remote KVM host; the stack can't reach its VMs to change passwords")
     inv = _inventory(db, env)
     targets = env_targets(env, inv, kind)
     if not targets:
         return "no hosts to change in this environment"
-    new = new_windows_password()
-    candidate = f"environment/{env.id}/rotation-candidate/{kind}"
-    put_secret(db, candidate, new)
     change_on = targets[:1] if kind == "domain_admin2" else targets
+    one = new_windows_password()
+    new = {h: one if kind == "domain_admin2" else new_windows_password() for h in targets}
+    for h in change_on:
+        put_secret(db, f"environment/{env.id}/rotation-candidate/{kind}" + ("" if kind == "domain_admin2" else f"/{h}"), new[h])
     module = "microsoft.ad.user" if kind == "domain_admin2" else "ansible.windows.win_user"
-    r = _ansible(inv, ":".join(change_on), module, {"name": RECOVERY_ADMIN, "password": "{{ new_pw }}",
-                                                    "update_password": "always"}, {"new_pw": new}, scrub=(new,))
+    r = _ansible(_per_host(inv, change_on, {h: {"labape_new_pw": new[h]} for h in change_on}), ":".join(change_on), module,
+                 {"name": RECOVERY_ADMIN, "password": "{{ labape_new_pw }}", "update_password": "always"},
+                 scrub=tuple(new.values()))
     failed = [h for h in change_on if r.get(h) not in ("ok", "changed")]
     if failed:
         raise AccessError(f"couldn't set {RECOVERY_ADMIN}'s new password on {', '.join(failed)}: {why(r, failed)}")
@@ -279,39 +307,41 @@ def rotate_recovery_password(db: Session, env: Environment, kind: str, log) -> s
     bad = [h for h in targets if check.get(h) not in ("ok", "changed")]
     if bad:
         raise AccessError(f"{RECOVERY_ADMIN} doesn't sign in with the new password on {', '.join(bad)} "
-                          f"(kept in the secret store as {candidate})")
-    put_secret(db, env_password_name(env.id, kind), new)
-    put_secret(db, candidate, "")
-    log.write(f"labape: {env.name}: new {RECOVERY_ADMIN} password on {', '.join(change_on)}\n")
+                          "(the attempted value is kept in the secret store)")
+    for h in change_on:
+        store_password(db, env, kind, h, new[h])
+        put_secret(db, f"environment/{env.id}/rotation-candidate/{kind}" + ("" if kind == "domain_admin2" else f"/{h}"), "")
+    log.write(f"labape: {env.name}: new {RECOVERY_ADMIN} password{'s' if len(change_on) > 1 else ''} on "
+              f"{', '.join(change_on)}\n")
     return f"{len(change_on)} host(s) updated"
 
 
 def reset_with_pair(db: Session, env: Environment, kind: str, log) -> str:
-    """A1: set the stored password of `kind`'s account again, signed in as the other admin of its pair."""
+    """A1: set the stored password of `kind`'s account again, signed in as the other admin of its pair
+    (each member VM with its own values, A2)."""
     inv = _inventory(db, env)
     other = PAIR[kind]
     targets = env_targets(env, inv, kind)
     if not targets:
         raise AccessError("no hosts use this account")
-    stored = get_secret(db, env_password_name(env.id, kind)) or ""
-    if not stored and not kind.endswith("2"):
-        stored = _hosts(inv)[targets[0]].get("ansible_password", "")
-    if not stored:
+    change_on = targets[:1] if kind.startswith("domain") else targets
+    stored = {h: stored_password(db, env, inv, kind, h) for h in change_on}
+    if not all(stored.values()):
         raise AccessError("there's no stored password to set again")
     if other.endswith("2"):                    # Administrator lost: its second admin signs in
-        other_pw = get_secret(db, env_password_name(env.id, other)) or ""
-        if not other_pw:
+        other_pw = {h: stored_password(db, env, inv, other, h) for h in change_on}
+        if not all(other_pw.values()):
             raise AccessError(f"this environment has no {RECOVERY_ADMIN} yet (a redeploy creates it)")
-        login = {"ansible_user": recovery_user(inv, other), "ansible_password": other_pw}
-    else:                                      # the second admin lost: Administrator signs in, as the inventory has it
-        login, other_pw = {}, ""
-    change_on = targets[:1] if kind.startswith("domain") else targets
+        login = {h: {"ansible_user": recovery_user(inv, other), "ansible_password": other_pw[h]} for h in change_on}
+    else:                                      # the second admin lost: Administrator signs in, as LABaPe has it
+        other_pw = {h: stored_password(db, env, inv, other, h) for h in change_on}
+        login = {h: {"ansible_password": other_pw[h]} for h in change_on if other_pw[h]}
     account = RECOVERY_ADMIN if kind.endswith("2") else "Administrator"
     module = "microsoft.ad.user" if kind.startswith("domain") else "ansible.windows.win_user"
-    as_other = {**inv, "all": {**inv["all"], "hosts": {h: {**_hosts(inv)[h], **login} for h in change_on}}}
-    r = _ansible(as_other, ":".join(change_on), module, {"name": account, "password": "{{ new_pw }}",
-                                                        "update_password": "always"}, {"new_pw": stored},
-                 scrub=tuple(x for x in (stored, other_pw) if x))
+    values = {h: {**login.get(h, {}), "labape_new_pw": stored[h]} for h in change_on}
+    r = _ansible(_per_host(inv, change_on, values), ":".join(change_on), module,
+                 {"name": account, "password": "{{ labape_new_pw }}", "update_password": "always"},
+                 scrub=tuple(x for x in (*stored.values(), *other_pw.values()) if x))
     bad = [h for h in change_on if r.get(h) not in ("ok", "changed")]
     if bad:
         raise AccessError(f"the other admin couldn't set {account}'s password on {', '.join(bad)}: {why(r, bad)}")
@@ -346,12 +376,13 @@ def _set_password(inv: dict, hosts: list[str], module: str, args: dict, extra: d
 
     WinRM's Basic auth sends the password with every request, so a module that
     changes its own account's password fails on its next request even though
-    the change worked. The change therefore runs detached (async, poll 0), and
-    signing in decides: the new password (or `expect`, per host) first, the
-    old one if that never works."""
+    the change worked. Its result is therefore ignored, and signing in decides:
+    the new password (or `expect`, per host) first, the old one if that never
+    works. It runs in the same shell, not detached: a detached (async) process
+    lost its access to the account database once the shell closed
+    (Testing_Troubleshooting-Log.md, A2)."""
     target = expect or {h: new for h in hosts}
-    _ansible(inv, ":".join(hosts), module, args, extra, task={"async": 120, "poll": 0},
-             scrub=(*olds.values(), *target.values()))
+    _ansible(inv, ":".join(hosts), module, args, extra, scrub=(*olds.values(), *target.values()))
     state, left, deadline = {}, list(hosts), time.monotonic() + PROBE_SECONDS
     first = True
     while left:
@@ -374,6 +405,43 @@ def _set_password(inv: dict, hosts: list[str], module: str, args: dict, extra: d
     return state
 
 
+def _rotate_member_admins(db: Session, env: Environment, inv: dict, targets: list[str], log) -> str:
+    """A2: each member server's Administrator gets a new password of its own. Each VM changes or not on
+    its own; the ones that did are stored, the others keep theirs (and are reported)."""
+    from .. import vm_passwords
+    new = {h: new_windows_password() for h in targets}
+    olds = {h: stored_password(db, env, inv, "windows_admin", h) for h in targets}
+    for h in targets:                          # kept before anything changes
+        put_secret(db, f"environment/{env.id}/rotation-candidate/windows_admin/{h}", new[h])
+    state = _set_password(_per_host(inv, targets, {h: {"labape_new_pw": new[h]} for h in targets}), targets,
+                          "ansible.windows.win_user",
+                          {"name": "Administrator", "password": "{{ labape_new_pw }}", "update_password": "always"},
+                          {}, None, olds, expect=new)
+    changed = [h for h in targets if state[h] == "new"]
+    for h in changed:
+        _hosts(inv)[h]["ansible_password"] = new[h]
+        put_secret(db, vm_passwords.name(env.id, h, "windows_admin"), new[h])
+        put_secret(db, f"environment/{env.id}/rotation-candidate/windows_admin/{h}", "")
+    for h in targets:
+        if state[h] == "old":
+            put_secret(db, f"environment/{env.id}/rotation-candidate/windows_admin/{h}", "")
+    put_secret(db, f"environment/{env.id}/inventory", yaml.safe_dump(inv, sort_keys=False))
+    creds = get_secret(db, f"environment/{env.id}/credentials") or ""
+    if creds:
+        put_secret(db, f"environment/{env.id}/credentials", vm_passwords.apply_to_sheet(db, env, creds, targets))
+    if changed:
+        log.write(f"labape: {env.name}: a new Administrator password of its own on {', '.join(changed)}\n")
+    unknown = [h for h in targets if state[h] == "unknown"]
+    kept = [h for h in targets if state[h] == "old"]
+    if unknown:
+        raise AccessError(f"check {', '.join(unknown)} by hand: neither the old nor the new password signs in (the "
+                          "attempted ones are in the secret store under rotation-candidate)")
+    if kept:
+        raise AccessError(f"couldn't change it on {', '.join(kept)} (they keep theirs); changed on "
+                          f"{', '.join(changed) or 'none'}")
+    return f"{len(changed)} host(s) updated, each with its own"
+
+
 def rotate_env_password(db: Session, env: Environment, kind: str, log) -> str:
     """kind: windows_admin (local Administrator on members) or domain_admin (on a DC)."""
     if remote_env(env):
@@ -382,6 +450,8 @@ def rotate_env_password(db: Session, env: Environment, kind: str, log) -> str:
     targets = env_targets(env, inv, kind)
     if not targets:
         return "no hosts to change in this environment"
+    if kind == "windows_admin":
+        return _rotate_member_admins(db, env, inv, targets, log)
     new = new_windows_password()
     if kind == "domain_admin":
         change_on = targets[:1]               # one DC changes it for the whole domain
