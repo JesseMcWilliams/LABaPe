@@ -178,6 +178,34 @@ def prereq_libvirt(c: Ctx):
     return DONE, f"{how}; {c.user} in libvirt, kvm"
 
 
+SLEEP_TARGETS = ["sleep.target", "suspend.target", "hibernate.target", "hybrid-sleep.target",
+                 "suspend-then-hibernate.target"]
+NO_SLEEP_LOGIND = """# LABaPe: this host runs VMs or the web stack and must never sleep. The sleep
+# targets are masked too (Prereq.NoSleep), which also stops a desktop's idle
+# suspend (e.g. the GDM login screen suspends after 15 minutes on AC).
+[Login]
+IdleAction=ignore
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+"""
+
+
+def prereq_no_sleep(c: Ctx):
+    changed = c.r.write(Path("/etc/systemd/logind.conf.d/90-labape-no-sleep.conf"), NO_SLEEP_LOGIND)
+    if changed:
+        c.r.run(["systemctl", "kill", "-s", "HUP", "systemd-logind"], check=False)   # re-read, keep sessions
+    unmasked = [t for t in SLEEP_TARGETS
+                if c.r.out(["systemctl", "show", "-p", "LoadState", "--value", t]) != "masked"]
+    if unmasked:
+        c.r.run(["systemctl", "mask", *unmasked])
+    if not changed and not unmasked:
+        return DONE, "already configured"
+    return DONE, f"masked {', '.join(unmasked)}" if unmasked else "logind configured"
+
+
 # --- host networking ------------------------------------------------------------
 
 BRIDGE_NF = """# LABaPe: libvirt VMs are bridged onto the LAN. Docker loads br_netfilter,

@@ -127,3 +127,13 @@ def test_deploy_starts_vms_that_are_off(tmp_path, monkeypatch, capsys):
     assert mod.main() == 0
     assert started == ["l2dc1", "l2lin1"]                     # the domain controller first; running ones left alone
     assert "l2dc1 was shut off; started it" in capsys.readouterr().err
+
+
+def test_hosts_never_sleep():
+    # Prepare/setup masks the sleep targets (a desktop's login screen suspends after 15 idle minutes).
+    text = hostadmin.SETUP % {"account": "localadmin01", "key": "ssh-ed25519 AAAA k"}
+    assert "systemctl mask $UNMASKED" in text and "suspend.target" in text
+    w = hostadmin.warnings({"os": {"can_sleep": ["suspend.target"]}, "tools": {"smartctl": True}}, {}, None)
+    assert any("can sleep" in x["message"] and x["level"] == "warning" for x in w)
+    assert not any("can sleep" in x["message"] for x in hostadmin.warnings(
+        {"os": {"can_sleep": []}, "tools": {"smartctl": True}}, {}, None))
