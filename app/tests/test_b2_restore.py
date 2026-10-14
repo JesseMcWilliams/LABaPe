@@ -89,3 +89,9 @@ def test_the_restore_step_command(tmp_path):
     cmd = ran[0]
     assert cmd[1].replace("\\", "/").endswith("deploy/stack-restore.sh") and "--maintenance" in cmd and "--yes" in cmd
     assert cmd[cmd.index("--user") + 1] == "labape"
+
+
+def test_a_drill_points_the_ca_at_this_copy():
+    text = S.services_override({}, kvm_device=True, drill_host="director.jlm.abq")
+    assert '  labape-ca:\n    extra_hosts: ["director.jlm.abq:host-gateway"]' in text
+    assert S.services_override({}, kvm_device=True) is None
