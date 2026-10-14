@@ -9,6 +9,8 @@ export default function Environments() {
   const { me } = useAuth();
   const [envs, setEnvs] = useState<Environment[]>([]);
   const [error, setError] = useState("");
+  const [quota, setQuota] = useState<{ limits: Record<string, number | null | string> | null; usage: Record<string, number> } | null>(null);
+  useEffect(() => { api.get<typeof quota>("/api/quotas/me").then(setQuota, () => setQuota(null)); }, [envs.length]);
 
   useEffect(() => {
     const load = () => api.get<Environment[]>("/api/environments").then(setEnvs, (e) => setError(e.message));
@@ -21,6 +23,14 @@ export default function Environments() {
     <Stack spacing={2}>
       <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h5">Environments</Typography>
+        {quota?.limits && (
+          <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1, ml: 2 }} title={`Your quota comes from ${quota.limits.source}`}>
+            Your quota: {[["max_environments", "environments", "environments"], ["max_vcpus", "vcpus", "vCPUs"],
+              ["max_memory_mb", "memory_mb", "MB memory"], ["max_disk_gb", "disk_gb", "GB disk"]]
+              .filter(([k]) => quota.limits![k] !== null)
+              .map(([k, u, l]) => `${quota.usage[u]} of ${quota.limits![k]} ${l}`).join(" · ") || "no limits"}
+          </Typography>
+        )}
         {hasRole(me, "deployer", "template_editor") && (
           <Button variant="contained" component={RouterLink} to="/environments/new"
             title="New environment: opens the form; nothing is created until you confirm there">

@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Quotas (Admin → Quotas): limits on vCPUs, memory, VM disk and environments
+  per user, group or everyone, checked when an environment is created or
+  deployed again; users see theirs on the Environments page.
 - Environment leases (off until an admin turns them on): reminder emails
   before the end, the VMs shut down at the end, destroyed (or kept) after a
   grace period; owners extend, admins set any end or none.

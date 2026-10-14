@@ -591,3 +591,20 @@ class VmSnapshot(Base):
     state: Mapped[str] = mapped_column(String(16), default="")        # the VM's state when it was taken
     parent: Mapped[str] = mapped_column(String(63), default="")
     current: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Quota(Base):
+    """Limits on a user's environments (design §41): for a user, a group, or everyone (`default`).
+    None is no limit."""
+
+    __tablename__ = "quotas"
+    __table_args__ = (UniqueConstraint("principal_type", "principal"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    principal_type: Mapped[str] = mapped_column(String(16))           # user | group | default
+    principal: Mapped[str] = mapped_column(String(255), default="")
+    max_vcpus: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_memory_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_disk_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_environments: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
