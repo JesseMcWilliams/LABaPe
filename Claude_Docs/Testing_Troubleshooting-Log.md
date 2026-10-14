@@ -550,3 +550,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 ## Alert handling (M2, 2026-10-14)
 
 1. **The kept-open syslog connection reconnected on every event over TLS (fine over TCP):** `SSLContext.wrap_socket(raw)` *detaches* `raw` (its file descriptor moves to the TLS socket), so the liveness check's `select([raw], ...)` raised and every check said "closed". Select on, and close, the TLS socket; `raw.close()` is then a no-op. The unit test only used plain TCP, so a TLS variant with a throwaway certificate was added.
+
+## Full-stack backup (B1, 2026-10-14)
+
+1. **The archive check said "empty file" and every file was missing:** `cmd | python3 - args <<'PY'` gives Python the here-document as its program *on stdin*, so the piped archive never reached it (and the unsealer died with a broken pipe). The checker is written to a file in the work folder and run as `python3 check.py`.
+2. **`mkdir /data/backups`: permission denied:** the data root is root's and the service user has no passwordless sudo. It is in the `docker` group, so the script makes the folder in a root container with the parent mounted and chowns it to the service user.

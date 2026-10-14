@@ -7,12 +7,11 @@
 ## Order of work (agreed 2026-10-14)
 
 Items 3-9 of the 2026-10-14 review plus the earlier deferred work, in the order to build them. Each
-batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31). Questions 146-150 in
+batch gets a plan section when it starts, and its line moves out of here. Done: 1 M2 (design §31), 2 B1 (§32). Questions 146-150 in
 Planning_Questions.md.
 
 | # | Batch | What | Why here |
 |---|---|---|---|
-| 2 | B1 Full-stack backup | Today's backup is only LABaPe's database (`engine/maintenance.py`). Add Authentik's database, OpenBao's data, the platform CA, the bootstrap secrets, `.env`, the answer file and the syslog collector's certificates, as one encrypted archive (the key kept apart from it), with a scheduled restore check that the archive opens and the dumps load. | Nothing below is safe without it. |
 | 3 | B2 Install from backup | `deploy/install.sh --from-backup FILE`: a fresh host becomes the same stack (same names, CA, secrets, Authentik users). Tested live by rebuilding the Pi's stack on a VM. Replaces Authentik high availability (too complex and fragile for a lab). | The recovery path for a dead stack host. |
 | 4 | L1 Stack link | One stack issues a one-time link code; the other enters it; each then holds a client certificate from the other's platform CA. A read-only summary API (hosts, environments, jobs, open alerts, capacity) behind that certificate. A stack that stops answering shows its last data, marked stale, plus M1's peer alert. | Needed by L2 and B3. |
 | 5 | L2 Overall dashboard | On every linked stack (question 148): totals across all stacks, one card per stack with its alerts; a card opens that stack's own dashboard. View-only (question 147). | |

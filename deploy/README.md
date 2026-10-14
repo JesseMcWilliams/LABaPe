@@ -129,6 +129,10 @@ Remote hosts work the way design §22.4 describes: jobs for a `qemu+ssh` host ru
 
 Re-running the installer is how a host's own setup is updated: it reads the saved answers and asks only new questions. `Stack.UpdateAgent` (`InstallUpdateAgent`) sets up the host-side update agent for the service user (lingering, a user systemd path unit). The web interface's Check now then offers signed releases and a one-step rollback (design §23.2). Release signers are listed in `deploy/allowed_signers`, copied to `~/.config/labape/allowed_signers`. Until a key is listed there, every update is refused. To go back more than one version: `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
 
+## Full-stack backups
+
+`deploy/stack-backup.sh` writes the whole stack (every database, OpenBao, the platform CA, the configuration and the bootstrap secrets) into one archive encrypted with the backup key, `~/.config/labape/backup.key`, which it makes on its first run. Keep a copy of that key somewhere other than the host: no archive opens without it. The update agent runs the script daily and on Settings → Full stack backups → Back up now; it can also be run by hand as the service user (`deploy/stack-backup.sh --help`). Design §32.
+
 ## Changing the web interface's host name
 
 To move from an address to a DNS name (or between names), set the new name and re-run the steps that use it:

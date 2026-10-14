@@ -8,6 +8,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Full-stack backups: the update agent writes the whole stack (every
+  database, OpenBao, the platform CA, configuration and bootstrap secrets)
+  into one archive encrypted with a backup key kept apart from it, checks
+  it (hashes, test-loads the LABaPe and Authentik databases), daily and on
+  demand, listed and downloadable in Settings, watched by monitoring.
 - Alert handling: acknowledge an alert, silence its condition for a while
   (with a reason), no alert announcements during maintenance mode (they go
   out when it ends if still open), and an alert when alert emails can't be

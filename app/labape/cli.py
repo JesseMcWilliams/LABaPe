@@ -172,6 +172,28 @@ def cmd_restore(args) -> int:
     return restore_database(_P(args.file), sys.stderr)
 
 
+def cmd_seal(args) -> int:
+    """stdin -> stdout, encrypted (or decrypted) with the backup key (design §32): the host's
+    agent pipes the full-stack backup's tar stream through this, so the host needs no crypto tools."""
+    import sys
+    from pathlib import Path as _P
+    from . import seal
+    try:
+        key = seal.parse_key(_P(args.key_file).read_text(encoding="utf-8"))
+        (seal.unseal if args.open else seal.seal)(sys.stdin.buffer, sys.stdout.buffer, key)
+    except (OSError, seal.SealError) as exc:
+        print(f"labape: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.buffer.flush()
+    return 0
+
+
+def cmd_backup_key(_args) -> int:
+    from . import seal
+    print(seal.new_key())
+    return 0
+
+
 def cmd_health(args) -> int:
     """Exit 0 when the stack is healthy: database and layout, worker heartbeat, CA (design §23.2)."""
     import datetime as _dt
@@ -441,6 +463,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file")
     p.add_argument("--yes", action="store_true")
     p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("seal", help="encrypt stdin to stdout with a backup key (--open decrypts)")
+    p.add_argument("--key-file", required=True)
+    p.add_argument("--open", action="store_true")
+    p.set_defaults(func=cmd_seal)
+    sub.add_parser("backup-key", help="print a new random backup key").set_defaults(func=cmd_backup_key)
 
     p = sub.add_parser("rewrap-master", help="re-wrap the secret store's data keys to a new master key")
     p.add_argument("--from", dest="from_file", required=True)

@@ -15,6 +15,8 @@
 #   containers only read (design §24, phase R3): maintenance on -> new value ->
 #   apply -> recreate the containers using it -> health checks (the CA check
 #   signs a test request) -> maintenance off; everything put back on failure.
+# full_backup: the whole stack in one sealed archive (deploy/stack-backup.sh,
+#   design §32); no maintenance mode, nothing stops.
 # The engine's own secrets (vault password, VM key) are rotated by the worker,
 # in the platform store (design §26, S2/S3); the agent's file-based rotation of
 # them (phase R2) was removed on 2026-10-12, once every install had moved.
@@ -205,6 +207,22 @@ rotate() {
   status succeeded done "rotated $kind" "$kind"
   finish
 }
+
+if [ "$ACTION" = full_backup ]; then
+  status running backup "backing up the whole stack"
+  args=(--repo "$REPO" --dest "$(field "$U/processing.json" dest)" --keep-days "$(field "$U/processing.json" keep_days)")
+  [ "$(field "$U/processing.json" syslog)" = False ] && args+=(--no-syslog)
+  [ "$(field "$U/processing.json" recordings)" = True ] && args+=(--recordings)
+  out="$(bash "$REPO/deploy/stack-backup.sh" "${args[@]}")"; rc=$?
+  last="${out##*$'\n'}"
+  case $rc in
+    0) status succeeded done "backed up the stack to $(basename "$last")" ;;
+    3) status failed check "wrote $(basename "$last"), but its check failed; see the backup list" ;;
+    *) status failed backup "the stack backup failed (exit $rc); see agent.log" ;;
+  esac
+  finish
+  exit 0
+fi
 
 if [ "$ACTION" = rotate ]; then
   case "$TARGET" in
