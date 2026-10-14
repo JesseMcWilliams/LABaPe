@@ -1477,3 +1477,16 @@ losing a stack host and its own disks doesn't lose its backups.
 | UI | Settings → Full stack backups: a chip per link with what it was last sent (or that it failed and will retry), and a table of the copies this stack keeps for others (peer, archive, size, taken, host and path). `tools/helpers/live/stack_backup.py` prints both. |
 | Verified | pytest 231. Live, kvm1 and the Pi linked: the Pi's newest archive went to kvm1 and is kept on kvm1 (its own primary) under `/data/VMs/LABaPe/.labape-files/linked-backups/director.jlm.abq/`; kvm1's (56 MB) went to the Pi, whose primary is garagepc, and is kept there under `/data/VMs/LABaPe/.labape-files/linked-backups/172.21.20.11/` (job `backup.store_linked` succeeded). kvm1's first try got 405 because the Pi wasn't updated yet; the retry 10 minutes later went through. |
 
+## 37. API tokens (A1, built 2026-10-14)
+
+Batch 7 of the order in Planning_Backlog.md (review item 7): scripts and CI call the API with a token
+instead of a browser sign-in.
+
+| Area | As built |
+|---|---|
+| Kinds | **Personal** (`lpat_…`), any signed-in user: acts as its owner, with the roles chosen for it (none chosen: all of the owner's), but never more than the owner has when it's used (`owner roles ∩ token roles`), so a lost group takes effect with the owner's next sign-in. **Service** (`lpst_…`), admins only: exactly the roles the admin gave it, acting as `svc:<name>`, not tied to anyone's groups (A2's metrics scraper). |
+| Storage and lifetime | `api_tokens` (migration `0015`): only the SHA-256 and the first 12 characters (to recognise it in lists); the secret is shown once. Every token expires, 1 to 365 days (default 90). Revoking is immediate. A token can't make tokens, and neither can a break-glass session. |
+| Use | `Authorization: Bearer <token>`; `current_principal` checks it before the session cookie, so every existing endpoint and role check works unchanged (`Principal.via_token`). Expired, revoked or unknown: 401. The token's last use and address are kept (written at most once a minute). Every write made with a token (any method but GET/HEAD/OPTIONS) is an audit event, `token.use`, with the method and path, besides the endpoint's own audit; making and revoking are `token.create` and `token.revoke`. Reads aren't audited one by one (a metrics scrape every 15 seconds would flood the log). |
+| API and UI | `GET /api/tokens` (mine; admins `?all=true`: everyone's and the service tokens), `POST /api/tokens`, `DELETE /api/tokens/{id}` (own personal tokens, or any for admins). The user menu's **API tokens** page: the list (name, owner, kind, roles, prefix, expiry, last use, state), New token (name, kind for admins, roles, expiry) and Revoke. `tools/helpers/live/tokens.py`. |
+| Verified | pytest 234. Live on kvm1 (`tokens.py roundtrip`): a personal token read the API without a session (200, admin settings too as labape-admin is admin), couldn't make another token (403), was refused at once after revoking (401); the audit log has the create, the token's write attempt and the revoke. |
+

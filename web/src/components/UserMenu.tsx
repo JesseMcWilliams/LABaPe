@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import {
   Box, Button, Chip, Divider, Popover, Stack, Typography,
 } from "@mui/material";
@@ -47,6 +48,8 @@ export default function UserMenu({ me, onLogout }: { me: Me; onLogout: () => voi
             {row("Account since", fmtTime(me.member_since))}
           </Stack>
           <Divider sx={{ my: 1.5 }} />
+          <Button size="small" component={RouterLink} to="/tokens" onClick={() => setAnchor(null)} sx={{ mb: 1 }}
+            title="Tokens for scripts and CI to call the LABaPe API">API tokens</Button>
           <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
             <ActionButton variant="outlined" startIcon={<RefreshIcon />} disabled={!canReload} allowInMaintenance
               tip="Re-read your groups from Authentik so permission changes apply now"

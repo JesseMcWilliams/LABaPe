@@ -26,6 +26,7 @@ class Principal:
     groups: list[str] = field(default_factory=list)
     roles: set[str] = field(default_factory=set)
     breakglass: bool = False
+    via_token: bool = False          # signed in with an API token (design §37), not a session
 
     @property
     def is_admin(self) -> bool:
@@ -59,7 +60,28 @@ def start_session(request: Request, user: User, *, breakglass: bool = False, min
     )
 
 
+def _token_principal(request: Request, db: Session, secret: str) -> Principal:
+    """An API token instead of a session (design §37)."""
+    from . import tokens
+    t = tokens.find(db, secret)
+    owner = db.get(User, t.user_id) if t else None
+    if t is None or owner is None:
+        raise HTTPException(status_code=401, detail="Invalid, expired or revoked API token")
+    ip = client_ip(request)
+    tokens.touch(db, t, ip)
+    roles = tokens.effective_roles(t, resolve_roles(db, owner.username, owner.groups or []))
+    name = owner.username if t.kind == "personal" else f"svc:{t.name}"
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        audit(db, name, "token.use", object_type="api_token", object_id=t.id,
+              detail={"token": t.name, "method": request.method, "path": request.url.path}, source_ip=ip)
+    return Principal(owner.id, name, f"{t.name} (API token)", (owner.groups or []) if t.kind == "personal" else [],
+                     roles, via_token=True)
+
+
 def current_principal(request: Request, db: Session = Depends(get_db)) -> Principal:
+    auth = request.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer " and auth[7:].strip().startswith(("lpat_", "lpst_")):
+        return _token_principal(request, db, auth[7:].strip())
     sess = request.session
     uid, exp = sess.get("uid"), sess.get("exp", 0)
     if not uid or utcnow().timestamp() > exp:

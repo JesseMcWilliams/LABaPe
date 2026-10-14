@@ -30,6 +30,7 @@ import Sessions from "./pages/Sessions";
 import VmDetail from "./pages/VmDetail";
 import Syslog from "./pages/Syslog";
 import Links from "./pages/Links";
+import Tokens from "./pages/Tokens";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -154,6 +155,7 @@ export default function App() {
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/syslog" element={<Syslog />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/tokens" element={<Tokens />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route path="hosts" element={<Hosts />} />
             <Route path="hosts/:id" element={<HostDetail />} />

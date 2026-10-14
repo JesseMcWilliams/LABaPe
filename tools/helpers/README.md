@@ -52,6 +52,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/dashboard_hosts.py` | lab (container) | The KVM hosts the dashboard shows |
 | `live/files_ops.py` | lab (container) | Files page through the API: a chunked tus upload, a download from a URL, list, delete |
 | `live/relay_host_to_vm.sh` | lab (worker) | Copy a file from a registered host to a test VM through the worker (restore drills); prints only size and hash |
+| `live/tokens.py` | lab (container) | API tokens: list them, or `roundtrip` (make, use, revoke a throwaway token; the secret is never printed) |
 | `live/links.py` | lab (container) | Linked stacks: list, `invite` (prints only the code), `join CODE`, `poll ID`, `remove ID`, `overall` (the dashboard's All stacks) |
 | `live/stack_backup.py` | lab (container) | Full-stack backups: list them (and what went to, or came from, linked stacks), or `run [--wait]` one through the update agent |
 | `live/monitoring.py` | lab (container) | Open and cleared alerts, silences, and each stack host's checks; `ack`/`unack`/`silence`/`end` |
