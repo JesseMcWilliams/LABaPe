@@ -251,3 +251,13 @@ nothing listening on 514/6514 (rsyslog inactive, no network inputs), so the stac
 143. ~~**Alerts:** dashboard only, or also email and syslog when a warning starts and clears?~~ **Answered (2026-10-14):** Dashboard, syslog and email.
 144. ~~**History:** the same as KVM hosts (metrics every 5 minutes, kept 7 days; SMART daily)?~~ **Answered (2026-10-14):** Yes.
 145. ~~**Access account on the stack host:** created by the installer, or through Set up access?~~ **Answered (2026-10-14):** Reuse Set up access.
+
+## Next round: linked stacks, backups, the order of work (added 2026-10-14)
+
+146. **Sign-on between stacks:** could one stack's Authentik use the other's as an LDAP source, and vice versa? Options: (a) each Authentik exposes its local users through an LDAP outpost and the other syncs them with an LDAP source (passwords are checked by the owning Authentik's bind flow; MFA doesn't carry over; the sync filter must skip users that came from the other side, or they loop back); (b) each Authentik is an OAuth/OIDC source in the other ("Sign in with kvm1"), so MFA and passwords stay with the owning stack and nothing is copied; (c) each stack keeps its own sign-in. Recommended: (b), with (a) only if a client needs plain LDAP. Open.
+147. ~~**Linked stacks' overall dashboard:** view-only, or actions on another stack too?~~ **Answered (2026-10-14):** View-only; actions by clicking through to the stack.
+148. ~~**Which stacks show the overall view:** every linked stack, or one hub?~~ **Answered (2026-10-14):** Every stack.
+149. ~~**Backups between stacks:** should linked stacks hold each other's backups?~~ **Answered (2026-10-14):** Yes: a copy on each other's primary KVM host.
+150. **Release v0.3.0:** cut it after the backup, link and API-token batches (B1-A2 in Planning_Backlog.md), as the first release a stack can be rebuilt from? Open.
+
+Also 2026-10-14: Authentik high availability (several server and worker replicas over one replicated PostgreSQL; supported, and Redis is gone since 2025.10) was judged too complex and fragile for the lab. A full-stack backup with an install-from-backup script replaces it (B1, B2).
