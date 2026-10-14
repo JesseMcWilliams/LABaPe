@@ -93,6 +93,11 @@ class Ctx:
     repo: Path
     deploy_root: Path
     force: bool = False
+    # Install from a full-stack backup (design §33): the archive, its key, and a drill's
+    # maintenance mode.
+    backup: Path | None = None
+    backup_key: Path | None = None
+    restore_drill: bool = False
 
     @property
     def user(self) -> str:
@@ -690,6 +695,19 @@ def update_agent(c: Ctx):
     c.r.run(["bash", str(c.repo / "deploy" / "update-agent" / "install.sh"), "--repo", str(c.repo)], as_user=True,
             env={"XDG_RUNTIME_DIR": f"/run/user/{c.r.out(['id', '-u', c.user]) or '1000'}"})
     return DONE, "update agent watching container/update/request.json"
+
+
+def stack_restore(c: Ctx):
+    """--from-backup: the archive's state onto the stack just installed (deploy/stack-restore.sh):
+    the same web address, CA, secrets, OpenBao, Authentik users and LABaPe data."""
+    if c.backup is None:
+        return NA, "not installing from a backup"
+    cmd = ["bash", str(c.repo / "deploy" / "stack-restore.sh"), str(c.backup), "--key-file", str(c.backup_key),
+           "--repo", str(c.repo), "--user", c.user, "--yes"]
+    if c.restore_drill:
+        cmd.append("--maintenance")
+    c.r.run(cmd)
+    return DONE, f"restored {c.backup.name}" + (" (maintenance mode on: a drill)" if c.restore_drill else "")
 
 
 def remote_authorize_worker(c: Ctx):
