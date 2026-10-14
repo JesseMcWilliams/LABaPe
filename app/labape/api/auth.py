@@ -5,7 +5,7 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -106,6 +106,33 @@ def me(request: Request, db: Session = Depends(get_db), p: Principal = Depends(c
         "member_since": user.created_at if user else None,
         "session_expires": dt.datetime.fromtimestamp(exp, dt.timezone.utc) if exp else None,
     }
+
+
+DEFAULT_PAGE_SIZE = 50
+
+
+class PreferencesIn(BaseModel):
+    page_size: int = Field(ge=5, le=1000)
+
+
+def _prefs(user: User | None) -> dict:
+    return {"page_size": DEFAULT_PAGE_SIZE, **((user.preferences if user else None) or {})}
+
+
+@router.get("/me/preferences")
+def my_preferences(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """The signed-in user's own settings (L1): the rows per page of every paged list (50 by default)."""
+    return _prefs(db.get(User, p.user_id))
+
+
+@router.put("/me/preferences")
+def set_my_preferences(body: PreferencesIn, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    user = db.get(User, p.user_id)
+    if user is None:
+        raise HTTPException(409, "Break-glass sessions have no profile to keep preferences in")
+    user.preferences = {**(user.preferences or {}), "page_size": body.page_size}
+    db.commit()
+    return _prefs(user)
 
 
 @router.post("/logout")

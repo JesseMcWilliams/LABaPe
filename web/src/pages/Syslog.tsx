@@ -8,6 +8,7 @@ import {
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { Field } from "../forms";
+import { Pager, usePageSize } from "../components/Paging";
 import { DateRangeFields, FilterBar, toQuery, useUrlFilters } from "../components/Filters";
 
 interface Msg {
@@ -20,7 +21,6 @@ interface Status {
   worker: { at?: string; certs?: string; error?: string };
 }
 
-const PAGE = 200;
 const sevColor = (s: string) => (["emerg", "alert", "crit", "err"].includes(s) ? "error" : s === "warning" ? "warning" : s === "notice" ? "info" : "default");
 
 export default function Syslog() {
@@ -28,6 +28,10 @@ export default function Syslog() {
   const [rows, setRows] = useState<Msg[]>([]);
   const [error, setError] = useState("");
   const [more, setMore] = useState(false);
+  // Pages (L1): the newest first, each page the messages older than the previous page's last.
+  const [size] = usePageSize();
+  const [page, setPage] = useState(0);
+  const starts = useRef<(number | undefined)[]>([undefined]);
   const [live, setLive] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
   const f = useUrlFilters(["host", "from_ip", "facility", "min_severity", "app", "q", "since", "until"]);
@@ -37,31 +41,28 @@ export default function Syslog() {
   useEffect(() => {
     api.get<Status>("/api/syslog/status").then(setStatus, (e) => setError(e.message));
   }, []);
-  const load = useCallback(() => {
-    api.get<Msg[]>(`/api/syslog/messages?limit=${PAGE}&${query}`).then((r) => {
-      setRows(r); setMore(r.length === PAGE); setError(""); newest.current = r[0]?.id ?? 0;
+  const fetchPage = useCallback((p: number) => {
+    const before = starts.current[p];
+    api.get<Msg[]>(`/api/syslog/messages?limit=${size}${before ? `&before_id=${before}` : ""}&${query}`).then((r) => {
+      setRows(r); setMore(r.length === size); setError(""); setPage(p);
+      if (p === 0) newest.current = r[0]?.id ?? 0;
+      if (r.length) starts.current[p + 1] = r[r.length - 1].id;
     }, (e) => setError(e.message));
-  }, [query]);
+  }, [query, size]);
+  const load = useCallback(() => { starts.current = [undefined]; fetchPage(0); }, [fetchPage]);
   useEffect(load, [load]);
   useEffect(() => {
-    if (!live) return;
+    if (!live || page !== 0) return;
     const t = setInterval(() => {
-      api.get<Msg[]>(`/api/syslog/messages?limit=${PAGE}&after_id=${newest.current}&${query}`).then((r) => {
+      api.get<Msg[]>(`/api/syslog/messages?limit=${size}&after_id=${newest.current}&${query}`).then((r) => {
         if (r.length) {
           newest.current = r[0].id;
-          setRows((cur) => [...r, ...cur].slice(0, 2000));
+          setRows((cur) => [...r, ...cur].slice(0, size));
         }
       }, () => undefined);
     }, 5000);
     return () => clearInterval(t);
-  }, [live, query]);
-  const older = () => {
-    const last = rows[rows.length - 1];
-    if (!last) return;
-    api.get<Msg[]>(`/api/syslog/messages?limit=${PAGE}&before_id=${last.id}&${query}`).then((r) => {
-      setRows((cur) => [...cur, ...r]); setMore(r.length === PAGE);
-    }, (e) => setError(e.message));
-  };
+  }, [live, query, page, size]);
 
   return (
     <Stack spacing={2}>
@@ -97,11 +98,11 @@ export default function Syslog() {
         <DateRangeFields since={f.draft.since} until={f.draft.until} onChange={f.set} />
       </FilterBar>
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-        <FormControlLabel label="Live" title="Add new messages every 5 seconds"
+        <FormControlLabel label="Live" title="Add new messages every 5 seconds (on the first page)"
           control={<Switch checked={live} onChange={(e) => setLive(e.target.checked)} />} />
         <Button size="small" onClick={load} title="Reload from the newest message">Refresh</Button>
         <Box sx={{ flexGrow: 1 }} />
-        <Typography variant="caption" color="text.secondary">{rows.length} shown</Typography>
+        <Pager total={null} page={page} more={more} onPage={fetchPage} />
       </Stack>
       <Table size="small">
         <TableHead>
@@ -135,7 +136,6 @@ export default function Syslog() {
           {rows.length === 0 && <TableRow><TableCell colSpan={7}>No messages{f.active ? " match" : " yet"}.</TableCell></TableRow>}
         </TableBody>
       </Table>
-      {more && <Stack direction="row"><Button onClick={older} title={`Load the next ${PAGE} older messages`}>Older</Button></Stack>}
     </Stack>
   );
 }

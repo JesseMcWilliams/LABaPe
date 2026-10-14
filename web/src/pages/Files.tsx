@@ -15,6 +15,7 @@ import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
 import { DateRangeFields, FilterBar, SelectFilter, useUrlFilters } from "../components/Filters";
 import { TargetChips, TargetPicker, useTargetVocabulary } from "../components/Targets";
+import { ExportButton, pageOf, Pager, usePageSize } from "../components/Paging";
 
 // File manager (design §9, §21.3): ISOs, installers, other files, and the
 // template library. Admins and file managers upload; template editors
@@ -200,7 +201,10 @@ function DownloadButton({ category }: { category: string }) {
 function FileTable({ category, canManage }: { category: string; canManage: boolean }) {
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize] = usePageSize();
   const flt = useUrlFilters(FILE_KEYS);
+  useEffect(() => setPage(0), [JSON.stringify(flt.applied), category]); // eslint-disable-line react-hooks/exhaustive-deps
   const vocab = useTargetVocabulary();
   const a = flt.applied;
   // Filtering runs in the browser: the lists are small (design §28.2).
@@ -238,9 +242,21 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
           onChange={(v) => flt.set("os", v)} />
         <DateRangeFields since={flt.draft.since} until={flt.draft.until} onChange={flt.set} />
       </FilterBar>
-      <Typography variant="body2" color="text.secondary">
-        {flt.active ? `${shown.length} of ${files.length} files match` : `${files.length} file${files.length === 1 ? "" : "s"}`}
-      </Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <Typography variant="body2" color="text.secondary">
+          {flt.active ? `${shown.length} of ${files.length} files match` : `${files.length} file${files.length === 1 ? "" : "s"}`}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <ExportButton name={category} total={shown.length} page={page}
+            fetchRows={async (offset, limit) => shown.slice(offset, offset + limit)}
+            columns={[{ header: "name", value: (x: StoredFile) => x.name },
+              { header: "os", value: (x: StoredFile) => category === "isos" ? x.os_key : (x.targets ?? []).join("; ") },
+              { header: "size_bytes", value: (x: StoredFile) => x.size }, { header: "sha256", value: (x: StoredFile) => x.sha256 },
+              { header: "description", value: (x: StoredFile) => x.description }, { header: "path", value: (x: StoredFile) => x.path },
+              { header: "added_by", value: (x: StoredFile) => x.uploaded_by }, { header: "added_at", value: (x: StoredFile) => x.uploaded_at ?? x.mtime ?? "" }]} />
+          <Pager total={shown.length} page={page} onPage={setPage} />
+        </Stack>
+      </Stack>
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -252,7 +268,7 @@ function FileTable({ category, canManage }: { category: string; canManage: boole
           </TableRow>
         </TableHead>
         <TableBody>
-          {shown.map((f) => (
+          {pageOf(shown, page, pageSize).map((f) => (
             <TableRow key={f.id}>
               <TableCell>
                 <Link component={RouterLink} to={`/files/${f.id}`}>{f.name}</Link>

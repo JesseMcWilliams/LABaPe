@@ -13,6 +13,10 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await requestWithHeaders<T>(method, path, body)).data;
+}
+
+async function requestWithHeaders<T>(method: string, path: string, body?: unknown): Promise<{ data: T; headers: Headers }> {
   const res = await fetch(path, {
     method,
     credentials: "same-origin",
@@ -31,11 +35,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     }
     throw new ApiError(res.status, detail, errors);
   }
-  return res.json() as Promise<T>;
+  return { data: (await res.json()) as T, headers: res.headers };
 }
 
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
+  /** A page of a list the API pages (L1): the rows and the matching total (X-Total-Count). */
+  getPage: async <T>(path: string) => {
+    const r = await requestWithHeaders<T[]>("GET", path);
+    return { rows: r.data, total: Number(r.headers.get("X-Total-Count") ?? r.data.length) };
+  },
   post: <T>(path: string, body: unknown = {}) => request<T>("POST", path, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
   del: <T>(path: string) => request<T>("DELETE", path),

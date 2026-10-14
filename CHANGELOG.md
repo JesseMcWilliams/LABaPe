@@ -32,6 +32,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Paged lists (Environments, Jobs, Files, Catalog, Syslog): 50 rows by
+  default, each user's own page size kept in their profile. Exports ask
+  for this page, rows from-to or all: Environments and Files as CSV, Jobs
+  as JSON or CSV. Environments have filters.
 - Files: an OS filter on every tab (the OSes that tab's files are for);
   a file's OS is given when it's uploaded or downloaded (required for
   installers), and other files can carry OS targets too. Catalog and

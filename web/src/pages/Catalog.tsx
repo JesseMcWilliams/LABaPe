@@ -11,6 +11,7 @@ import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
 import { FilterBar, SelectFilter, useUrlFilters } from "../components/Filters";
+import { pageOf, Pager, usePageSize } from "../components/Paging";
 
 // Services, applications and packages users can add to host groups, on
 // top of the template (design §21.4). Users browse and request; admins
@@ -76,6 +77,9 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
   // Filters (L2), in the browser: the catalog is small.
   const flt = useUrlFilters(ITEM_KEYS);
   const a = flt.applied;
+  const [page, setPage] = useState(0);
+  const [pageSize] = usePageSize();
+  useEffect(() => setPage(0), [JSON.stringify(a), kind]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = items.filter((i) => (has(i.name, a.name) || has(i.display_name, a.name))
     && (!a.platform || i.platforms.includes(a.platform)) && (!a.status || i.status === a.status)
     && (has(i.description, a.desc) || has(i.notes ?? "", a.desc)));
@@ -112,7 +116,10 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
         <Field label="Description" value={flt.draft.desc} sx={{ width: 200 }} help="Contains (description or notes)"
           onChange={(e) => flt.set("desc", e.target.value)} />
       </FilterBar>
-      {flt.active && <Typography variant="body2" color="text.secondary">{shown.length} of {items.length} match</Typography>}
+      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <Typography variant="body2" color="text.secondary">{flt.active ? `${shown.length} of ${items.length} match` : `${items.length} item${items.length === 1 ? "" : "s"}`}</Typography>
+        <Pager total={shown.length} page={page} onPage={setPage} />
+      </Stack>
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -122,7 +129,7 @@ function ItemList({ kind, isAdmin }: { kind: string; isAdmin: boolean }) {
           </TableRow>
         </TableHead>
         <TableBody>
-          {shown.map((i) => (
+          {pageOf(shown, page, pageSize).map((i) => (
             <TableRow key={i.id} sx={{ opacity: i.status === "retired" ? 0.5 : 1 }}>
               {isAdmin && (
                 <TableCell padding="checkbox">
