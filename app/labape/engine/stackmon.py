@@ -295,6 +295,10 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
                 add(h, "error", f"the stack at {h.stack_url} isn't answering ({p.get('error') or p.get('status')})", "peer")
             if cert_due({"expires": p.get("cert_expires"), "issued": p.get("cert_issued")}, now, cfg.cert_days):
                 add(h, "warning", f"the stack's certificate expires {p['cert_expires'][:16].replace('T', ' ')} UTC", "cert")
+    from ..models import StackLink
+    for link in db.scalars(select(StackLink)):
+        if (link.failures or 0) >= cfg.peer_failures:
+            out[f"link:{link.url}"] = (None, "error", f"linked stack {link.name} isn't answering ({link.error[:200]})")
     em = email_state(db)
     if em.get("ok") is False:
         out[EMAIL_KEY] = (None, "error", f"alert emails can't be sent: {em.get('error', '')[:300]}")
@@ -446,6 +450,8 @@ def tick(db_factory) -> None:
                         st.error = str(exc)[:1000]
                         db.merge(st)
                         db.commit()
+                from .. import links
+                links.poll_all(db, now)            # linked stacks' summaries (design §34)
                 recheck_email(db, now)
                 sync_alerts(db, evaluate(db, now), now)
         except Exception:  # noqa: BLE001

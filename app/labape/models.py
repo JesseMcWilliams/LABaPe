@@ -510,3 +510,39 @@ class Secret(Base):
     store: Mapped[str] = mapped_column(String(64), default="builtin")
     policy_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class StackLink(Base):
+    """Another LABaPe stack linked with this one (design §34). Each side holds the token it calls
+    the other with (in the secret store, `link.<id>.outbound`) and the hash of the token the other
+    calls it with; HTTPS to the peer is checked against its platform CA root, pinned at link time."""
+
+    __tablename__ = "stack_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    url: Mapped[str] = mapped_column(String(255), unique=True)
+    ca_pem: Mapped[str] = mapped_column(Text)
+    ca_fingerprint: Mapped[str] = mapped_column(String(64))
+    inbound_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_ok_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_try_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)     # the peer's last summary
+
+
+class StackLinkInvite(Base):
+    """A one-time link code this stack handed out (only its hash is kept)."""
+
+    __tablename__ = "stack_link_invites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_by: Mapped[str] = mapped_column(String(255), default="")

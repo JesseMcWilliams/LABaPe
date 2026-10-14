@@ -9,6 +9,7 @@ import KeyIcon from "@mui/icons-material/Key";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import HubIcon from "@mui/icons-material/Hub";
 import { hasRole, useAuth } from "../App";
 
 export const ADMIN_PAGES = [
@@ -19,9 +20,10 @@ export const ADMIN_PAGES = [
   { path: "audit", label: "Audit log", icon: <FactCheckIcon />, help: "Who did what, when" },
   { path: "errors", label: "User errors", icon: <ReportProblemIcon />, help: "Requests the app refused and forms the browser blocked" },
   { path: "sessions", label: "Remote sessions", icon: <ScreenShareIcon />, help: "Browser SSH/RDP sessions and their recordings" },
+  { path: "links", label: "Linked stacks", icon: <HubIcon />, help: "Other LABaPe stacks linked with this one, and their summaries" },
 ] as const;
 // Auditors (question 118) see the logs only.
-const AUDITOR_PAGES = ["audit", "sessions"];
+const AUDITOR_PAGES = ["audit", "sessions", "links"];
 
 export default function AdminLayout() {
   const { me } = useAuth();
