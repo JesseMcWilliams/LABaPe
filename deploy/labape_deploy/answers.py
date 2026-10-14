@@ -89,7 +89,10 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("DefaultNetwork", "Default network for host groups that don't name one",
            default=lambda a: (a.get("Networks") or [{}])[0].get("Name", "")),
     Answer("WebHostname", "Hostname (or IP) browsers use for the web interface", default=lambda a: _primary_ip()),
-    Answer("Tls", "HTTPS certificate: 'internal' (Caddy's own CA) or an email address for ACME", default="internal"),
+    # labape-ca: the web interface's certificate from LABaPe's platform CA, so browsers trust one root,
+    # the same one the VMs' certificates chain to (download it from the dashboard).
+    Answer("Tls", "HTTPS certificate: 'labape-ca' (LABaPe's platform CA, recommended), 'internal' (Caddy's own CA) "
+           "or an email address for ACME", default="labape-ca"),
     Answer("ContainerRuntime", "Container runtime", kind="choice", choices=("docker", "podman"), default="docker"),
     # Services the web interface's stack runs (question 140): each defaults to yes. OpenBao is
     # always installed (the update agent's login and the boot-time unseal use it).

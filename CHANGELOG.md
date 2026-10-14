@@ -16,6 +16,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   live-test scripts now check the stack's stores.
 
 ### Changed
+- New installs get the web interface's certificate from LABaPe's platform CA
+  (installer answer `Tls=labape-ca`, the default), so browsers need to
+  trust one root (Admin dashboard → download the root), the same one the
+  VMs' certificates chain to. `internal` (Caddy's own CA) and ACME remain.
 - Pages use the full width of the browser window (no 1,200 px cap), so
   wide tables and remote sessions get the room.
 - The dashboard leaves out disabled KVM hosts.

@@ -518,9 +518,12 @@ def _get_env(env_file: Path, key: str) -> str:
 
 def stack_setup(c: Ctx):
     cdir = c.repo / "container"
-    c.r.run(["bash", str(cdir / "setup.sh"), "--hostname", c.a.need("WebHostname"), "--tls", c.a.need("Tls")],
+    tls = c.a.need("Tls")
+    caddy_tls = "internal" if tls == "labape-ca" else tls      # the Caddyfile below ignores it for labape-ca
+    c.r.run(["bash", str(cdir / "setup.sh"), "--hostname", c.a.need("WebHostname"), "--tls", caddy_tls],
             as_user=True, cwd=cdir)
-    _set_env(c, cdir / ".env", {"LABAPE_HOSTNAME": c.a.need("WebHostname"), "LABAPE_TLS": c.a.need("Tls"),
+    _set_env(c, cdir / ".env", {"LABAPE_HOSTNAME": c.a.need("WebHostname"), "LABAPE_TLS": caddy_tls,
+                                "LABAPE_CADDYFILE": "Caddyfile.labape-ca" if tls == "labape-ca" else "Caddyfile",
                                 "LABAPE_DATA_ROOT": "/" + Path(c.a.need("VmStoragePath")).parts[1]})
     home = c.r.home()
     copies = [

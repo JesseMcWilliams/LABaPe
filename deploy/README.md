@@ -108,7 +108,7 @@ Nothing secret is ever written to the answers file.
 | `ManagementSource` | IP/CIDR allowed to SSH to lab VMs | this host's IP |
 | `Networks` | The VM network catalog. Each entry: `Name`, `Cidr`, `Gateway`, `DnsServers`, `Bridge`, `Nic` (to build the bridge on; empty if it exists), `HostAddress` (`dhcp`/`none`), `Addressing`, `StaticPools`, `DhcpRanges`, `Reserved`, `AllowedGroups` | prompted |
 | `DefaultNetwork` | For host groups that don't name one | the first network |
-| `WebHostname`, `Tls` | Web interface address; `internal` or an ACME email | this host's IP, `internal` |
+| `WebHostname`, `Tls` | Web interface address (browsers must use exactly this name: the certificate is for it); `labape-ca` (a certificate from LABaPe's platform CA: browsers trust its root, downloadable from the dashboard, the same root the VMs use), `internal` (Caddy's own CA, a second root to trust) or an ACME email | this host's IP, `labape-ca` |
 | `ContainerRuntime` | `docker` or `podman` | `docker` |
 | `PlatformStore` | Which store holds LABaPe's own secrets: `openbao` or `conjur` (asked only when Conjur is installed). Written to `LABAPE_PLATFORM_STORE` in `container/.env`; change it there and re-run `container/stores/stores.sh setup` to move them. | `openbao` |
 | `AuthMode` | Only when Authentik isn't installed with LABaPe: `existing`, `test-authentik` (a throwaway for the first sign-in) or `none` | `test-authentik` |
