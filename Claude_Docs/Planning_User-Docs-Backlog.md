@@ -17,6 +17,7 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
 - Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.
 - Remote access: RDP/SSH buttons and .rdp files, the session page (keys, idle close, the recorded marker), Settings → Remote access, Admin → Remote sessions, the auditor role (labape-auditors), and that Windows hosts now allow Remote Desktop (redeploy older environments).
+- The All stacks panel (§35): what the totals count (shared machines once), the card statuses, opening another stack.
 - Linked stacks (§34): making and using a link code (once, one hour, out of band), what a linked stack can read, statuses (stale, not answering), the alert, unlinking.
 - Install from a backup (§33): the command, the answers it takes from the archive and the `--set` overrides for a different machine, the version rule, a restore drill (maintenance mode, `/etc/hosts`), and what to do after (DNS, templates, turning maintenance off).
 - Full stack backups (§32): what's in an archive, the backup key (where it is, why to copy it, the "I saved it" step), the schedule and retention, the check column, downloading, the two monitoring alerts; the database-only backups still exist (and before updates).
