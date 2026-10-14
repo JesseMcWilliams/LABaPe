@@ -41,3 +41,11 @@ def test_a_destroy_clears_every_password_of_the_environment(db_reset):
         assert [get_secret(db, n) for n in ("environment/7/windows_admin", "environment/7/account/tester",
                                              "environment/7/rotation-candidate/account-tester")] == ["", "", ""]
         assert get_secret(db, "environment/8/account/tester") == "pw"          # another environment's stays
+
+
+def test_the_recovery_accounts_sections():
+    envs = {4: _env()}
+    assert classify("environment/4/domain_admin2", envs)["vms"] == ["dc1"]
+    assert classify("environment/4/domain_admin2", envs)["scope"] == "domain"
+    w2 = classify("environment/4/windows_admin2", envs)
+    assert w2["scope"] == "local" and w2["vms"] == ["app1", "app2"]

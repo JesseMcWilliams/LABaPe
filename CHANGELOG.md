@@ -37,6 +37,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Recovery pairs: environments with Windows hosts get a second admin,
+  `labape-admin2` (in the domain and on each member server), whose
+  password LABaPe keeps and rotates apart from Administrator's; each of a
+  pair sets the other's password again when it's lost, so the domain
+  Administrator is now recoverable.
 - Secrets in tabs: Stack, KVM hosts (with each host's access account) and
   Environments, whose secrets filter by environment, store, VM, local or
   domain, password or key, and last change. Cleared values (spent job

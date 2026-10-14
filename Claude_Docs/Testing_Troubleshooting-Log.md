@@ -587,3 +587,7 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 1. **Recovering the worker's key on the nested host failed: the access account's SSH was dropped right after the check ("kex_exchange_identification: Connection reset", sshd: "drop connection ... penalty: failed authentication").** OpenSSH 10 (Debian 13) has per-source penalties: a refused key login makes sshd drop every connection from that address for a while, the access account's too, since both come from the stack's address. The check now treats a dropped connection as "can't tell yet" and tries once more after 20 s; recovery uses the hosts the check found refusing (no new probes) and retries the access account's connection after a pause.
 
+## Recovery pairs (A1, 2026-10-14)
+
+1. **The domain's labape-admin2 was created and its password set, but WinRM refused `LAB\labape-admin2`:** the inventory signs in with WinRM Basic authentication, which takes no `DOMAIN\user` form. On a domain controller the plain name is the domain account (as `Administrator` is), and the domain's second admin only signs in on DCs, so it uses the plain name.
+2. **A deploy took the lab's worker down for about ten minutes:** a docstring containing a backslash followed by `u` (from `DOMAIN\user`) is an invalid escape in Python source, and the worker crash-looped on import; deploy-web.sh's health check only asks the API, which doesn't import that module at start. Run the tests (at least `ast.parse`) before deploying.

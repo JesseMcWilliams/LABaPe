@@ -186,9 +186,9 @@ def _vms_of(env: Environment, what: str) -> list[str]:
     vms = [(n, set(g.get("roles") or []), str(g.get("os", ""))) for g in groups for n in instance_names(g)]
     dcs = [n for n, r, _ in vms if "domain_controller" in r]
     kind = what.split("/")[-1]
-    if kind == "windows_admin":
+    if kind in ("windows_admin", "windows_admin2"):
         return [n for n, r, os_ in vms if os_.startswith("windows") and "domain_controller" not in r]
-    if kind == "domain_admin":
+    if kind in ("domain_admin", "domain_admin2"):
         return dcs
     if what.split("/")[0] in ("account",) or kind.startswith("account-"):
         name = kind[len("account-"):] if kind.startswith("account-") else kind
@@ -212,7 +212,7 @@ def classify(name: str, envs: dict[int, Environment]) -> dict:
             typ = "document"
         else:
             typ = "password"
-        scope = "domain" if kind == "domain_admin" else "local" if kind == "windows_admin" else ""
+        scope = "domain" if kind in ("domain_admin", "domain_admin2") else "local" if kind in ("windows_admin", "windows_admin2") else ""
         if account and env is not None:
             from .. import env_accounts
             aname = kind[len("account-"):] if kind.startswith("account-") else kind

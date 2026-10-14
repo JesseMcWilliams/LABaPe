@@ -157,6 +157,8 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 - **No**: there's no way back for LABaPe if the value is lost (the data key, the master key, the CA password, the domain Administrator, the SMTP password). The secret shows **failed**, an alert is raised (dashboard, syslog, email), and the tooltip says what a person must do.
 A check that can't reach what it tests (a VM that's off) doesn't count as a failure.
 
+**Recovery pairs.** Each environment with Windows hosts gets a second admin next to Administrator, `labape-admin2`: a domain admin (Domain Admins) when it has a domain controller, and a local admin on each member server. LABaPe keeps its password, rotates it weekly half a week apart from Administrator's, and uses it only for recovery: when Administrator's stored password stops working, `labape-admin2` sets it again, and the other way round. Environments deployed before get it on their next **Redeploy**.
+
 | Secret | Rotated by | Default |
 |---|---|---|
 | Built-in store data key | the worker | daily |

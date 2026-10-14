@@ -230,3 +230,22 @@
     - "'domain_controller' not in group_names"
     - '(groups["domain_controller"] | default([]) | length > 0) or ("\\" not in item.member)'
   tags: [directory_objects, membership]
+
+# A1: on member servers (a domain controller has no local accounts), a second local admin, only for
+# recovery: LABaPe sets Administrator's password again with it when that one is lost, and the other way
+# round. Its password is LABaPe's (labape_recovery_local_password); a deploy sets it again.
+- name: Second local admin for recovery (labape-admin2)
+  ansible.windows.win_user:
+    name: "{{ labape_recovery_admin | default('labape-admin2') }}"
+    password: "{{ labape_recovery_local_password }}"
+    update_password: always
+    password_never_expires: true
+    description: LABaPe recovery account (resets Administrator; see the Secrets page)
+    groups: [Administrators]
+    groups_action: add
+    state: present
+  no_log: true
+  when:
+    - labape_recovery_local_password | default('') | length > 0
+    - "'domain_controller' not in group_names"
+
