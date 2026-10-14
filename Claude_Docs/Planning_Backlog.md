@@ -17,7 +17,7 @@ Planning_Questions.md.
 | 15 | F1 Sign-on between stacks | Question 146 chose OIDC sources; waits on question 153 (each Authentik's TLS). | |
 | 16 | Kerberos sign-on | Question 29; waits on question 154. The logo (question 68) is done (§44). | |
 | 17 | Hyper-V parity | Waits on question 155. Questions 11-14; the order inside is in Reference_Backend-Parity.md (interface parity and `deploy.sh`, the boot-order fix, Windows, the Debian family, templates, the ownership guard); physical host or the nested `hvhost1` VM decided when it starts. | |
-| 18 | User docs | The user-docs backlog (its own list, above), then the published `.docx` guides (question 24). | |
+| 18 | User docs | The user-docs backlog is done (2026-10-14: Web-Interface-Guide.md and Web-Interface-Admin.md cover everything to §44). The published `.docx` guides wait (question 24: later). | |
 
 **Release v0.3.0:** when the user says so; proposed after batch 8 (question 150). The release key
 is in place (`deploy/allowed_signers`, 2026-10-12): tags are signed with it.
