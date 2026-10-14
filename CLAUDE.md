@@ -55,6 +55,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_Certificate-Authority.md`, `Planning_Environment-Templates.md`: proposals for the `certificate_authority` role and environment templates, not built yet (Design_System-Overview.md §19/§20). The web stack's own platform CA is built (Planning_Web-Interface-Design.md §22.5).
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Backlog.md`: agreed but deferred work (Hyper-V parity, `.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
+  - `Planning_Lists-Secrets-Settings.md`: the round of 2026-10-14 (paging and exports, filters, a stack's names and SANs, secret health, sections for Secrets and Settings), batch by batch.
   - `Planning_Operations-And-Admin-UI.md`: plan for VM power and boot order, the Admin area, filters, KVM host and VM details pages, browser SSH/RDP and consoles (batches O1-O6, questions 107-120).
   - `Archive_Planning_Stack-Syslog-Installer-File-Host.md`: built (design §29.1-§29.6); the plan for the stack's syslog collector and Syslog tab, the installer's ask-first answer file and service choices, and the primary file host (batches Y1-Y3, questions 121-141).
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.

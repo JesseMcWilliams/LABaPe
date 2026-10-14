@@ -16,5 +16,7 @@ Planning_Questions.md.
 | 17 | Hyper-V parity | Later (question 155). Questions 11-14; the order inside is in Reference_Backend-Parity.md (interface parity and `deploy.sh`, the boot-order fix, Windows, the Debian family, templates, the ownership guard); physical host or the nested `hvhost1` VM decided when it starts. | |
 | 18 | User docs | The user-docs backlog is done (2026-10-14: Web-Interface-Guide.md and Web-Interface-Admin.md cover everything to §44). The published `.docx` guides wait (question 24: later); `release.sh --docx` makes them from `User_Docs/` with pandoc when they start. | |
 
+**Next round (2026-10-14):** lists, secrets and settings, in [Planning_Lists-Secrets-Settings.md](Planning_Lists-Secrets-Settings.md) (batches L1, L2, N1, S1, S2, S3). v0.4.0 not yet (the user, 2026-10-14).
+
 **Release v0.3.0:** when the user says so; proposed after batch 8 (question 150). The release key
 is in place (`deploy/allowed_signers`, 2026-10-12): tags are signed with it.
