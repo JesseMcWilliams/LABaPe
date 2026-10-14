@@ -122,6 +122,9 @@ class SyslogForward(BaseModel):
 class FileDistributionSettings(BaseModel):
     """Copies from the primary file host (design §29.4, question 135)."""
     wait_minutes: int = Field(default=30, ge=0, le=1440)    # how long a job waits for an unreachable primary
+    # Every template on every enabled KVM host, copied daily ahead of need (design §43): placement and
+    # deploys don't wait for copies. Off by default: templates are large.
+    copy_templates_to_all: bool = False
 
 
 class MonitoringSettings(BaseModel):

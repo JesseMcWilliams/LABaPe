@@ -8,6 +8,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Best-fit placement: Suggest best host on the new-environment form ranks
+  the KVM hosts (memory, CPU, running jobs, templates there) with reasons;
+  the API places an environment created without a host on the best one.
+  Optionally, every template is copied to every KVM host daily.
 - An environment's own accounts: domain users and local users on chosen
   roles' hosts, created at deploy with generated passwords, listed on the
   credentials sheet and rotated weekly (environment page → Accounts).

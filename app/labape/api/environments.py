@@ -11,7 +11,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import appsettings, env_accounts, leases, quotas
@@ -71,7 +71,7 @@ class HostGroup(BaseModel):
 class EnvironmentIn(BaseModel):
     # Doubles as the OpenTofu workspace and VM tag; "test-" names belong to the CLI's test mode.
     name: str = Field(pattern=r"^[a-z][a-z0-9-]{2,39}$")
-    kvm_host_id: int
+    kvm_host_id: int | None = None           # None: the best fit (design §43)
     # Ignored since static addresses are allocated from the network
     # catalog (design §20.4); accepted so older clients still work.
     static_ip_offset_start: int | None = None
@@ -151,6 +151,68 @@ def _check_capacity(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
     for f in assess(row.stats, demand_of(groups))["findings"]:
         if f["level"] == "block":
             raise FieldError("kvm_host_id", f["message"])
+
+
+def rank_hosts(db: Session, p: Principal, groups: list[dict]) -> list[dict]:
+    """Best-fit placement (design §43; §15's "kvm_host: auto" for a whole environment): every enabled
+    KVM host that passes the same checks as a chosen one (networks, templates, capacity), best first:
+    least memory committed with this environment added, then vCPUs per CPU, then running jobs, and
+    hosts that already hold the templates. Hosts that fail say why."""
+    from ..engine.filedist import primary
+    demand = demand_of(groups)
+    busy = dict(db.execute(select(Job.kvm_host_id, func.count()).where(Job.state.in_(("queued", "running")))
+                           .group_by(Job.kvm_host_id)).all())
+    prim = primary(db)
+    wanted = {g.get("template") for g in groups if g.get("image_source") == "packer_template" and g.get("template")}
+    out = []
+    for h in db.scalars(select(KvmHost).where(KvmHost.enabled.is_(True)).order_by(KvmHost.name)):
+        if h.role == "stack":
+            continue
+        item = {"id": h.id, "name": h.name, "ok": False, "score": None, "reasons": []}
+        try:
+            _check_networks(db, p, h.id, groups)
+            _check_templates(db, h.id, groups)
+            _check_capacity(db, h.id, groups)
+        except (FieldError, HTTPException) as exc:
+            item["reasons"].append(getattr(exc, "detail", None) if isinstance(exc, HTTPException) else str(exc))
+            out.append(item)
+            continue
+        row = db.get(HostStats, h.id)
+        fresh = bool(row and row.stats and row.collected_at and utcnow() - (
+            row.collected_at if row.collected_at.tzinfo else row.collected_at.replace(tzinfo=dt.timezone.utc))
+            < dt.timedelta(minutes=10))
+        here = set(db.scalars(select(Template.name).where(Template.kvm_host_id == h.id, Template.present.is_(True))))
+        missing = sorted(t for t in wanted if t not in here)
+        score = 2.0 if not fresh else 0.0
+        if fresh:
+            a = assess(row.stats, demand)
+            score += a["memory_committed_ratio"] + a["vcpu_ratio"] / 16
+            item["reasons"] += [f["message"] for f in a["findings"]]
+            item["reasons"].insert(0, f"{a['memory_committed_ratio']:.0%} of memory committed with it, "
+                                      f"{a['vcpu_ratio']:.1f} vCPUs per CPU")
+        else:
+            item["reasons"].append("no recent load reading")
+        if busy.get(h.id):
+            score += 0.15 * busy[h.id]
+            item["reasons"].append(f"{busy[h.id]} job(s) queued or running")
+        if missing:
+            score += 0.1 * len(missing)
+            src = f" from {prim.name}" if prim is not None and prim.id != h.id else ""
+            item["reasons"].append(f"copies template(s) {', '.join(missing)}{src} first")
+        item.update(ok=True, score=round(score, 3))
+        out.append(item)
+    return sorted(out, key=lambda x: (not x["ok"], x["score"] if x["score"] is not None else 99, x["name"]))
+
+
+class PlacementIn(BaseModel):
+    host_groups: list[HostGroup] = Field(min_length=1, max_length=20)
+
+
+@router.post("/placement")
+def placement(body: PlacementIn, db: Session = Depends(get_db),
+              p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Where an environment like this would go: the hosts, best first, and why (nothing is created)."""
+    return {"hosts": rank_hosts(db, p, [g.model_dump(exclude_none=True) for g in body.host_groups])}
 
 
 def _check_catalog(db: Session, groups: list[dict]) -> None:
@@ -243,6 +305,13 @@ def list_envs(db: Session = Depends(get_db), p: Principal = Depends(current_prin
 @router.post("", status_code=201)
 def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_db),
                p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    if body.kvm_host_id is None:                 # best fit (design §43)
+        ranked = rank_hosts(db, p, [g.model_dump(exclude_none=True) for g in body.host_groups])
+        best = next((h for h in ranked if h["ok"]), None)
+        if best is None:
+            raise FieldError("kvm_host_id", "No KVM host can take this environment: " +
+                             "; ".join(f"{h['name']}: {h['reasons'][0] if h['reasons'] else 'not suitable'}" for h in ranked))
+        body.kvm_host_id = best["id"]
     host = db.get(KvmHost, body.kvm_host_id)
     if host is None or not host.enabled:
         raise FieldError("kvm_host_id", "Choose an enabled KVM host.")
