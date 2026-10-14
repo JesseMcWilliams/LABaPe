@@ -32,6 +32,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Secret health: each secret is checked (every quarter of its rotation
+  period, at least daily; weekly when LABaPe doesn't rotate it) and shows
+  **Recoverable** yes/no. A failed check on a recoverable secret puts a
+  working value back (an earlier value, or a new one set with another
+  credential); otherwise it raises an alert. **Check now** on Secrets.
 - A stack answers on its web name, host name, FQDN and address with one
   certificate from the platform CA carrying all of them as SANs, on the
   web interface and Authentik, renewed daily when due

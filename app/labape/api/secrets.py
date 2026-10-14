@@ -11,6 +11,7 @@ from .. import stores
 from ..db import get_db
 from ..engine.rotation import (ELEVATED_PREFIX, REGISTRY, RESTART_INTERVAL_HOURS, RotationError, ensure_policies,
                                policy_secret, request_agent, uses_agent)
+from ..engine import secret_health
 from ..errors import FieldError
 from ..models import Job, Secret, SecretPolicy
 from ..security import Principal, audit, client_ip, pinned, put_secret, require_roles
@@ -18,7 +19,8 @@ from ..security import Principal, audit, client_ip, pinned, put_secret, require_
 router = APIRouter(prefix="/api/admin", tags=["secrets"])
 FIELDS = ("id", "name", "kind", "label", "store", "secret_class", "interval_hours", "needs_restart", "enabled",
           "managed_externally", "elevated_ref", "params", "status", "last_rotated_at", "next_due_at", "last_error",
-          "notes")
+          "notes",
+          "check_status", "check_error", "last_checked_at", "next_check_at")
 
 
 def _last_jobs(db: Session) -> dict[int, Job]:
@@ -33,7 +35,8 @@ def _out(db: Session, p: SecretPolicy, last_jobs: dict[int, Job] | None = None) 
     last = (last_jobs if last_jobs is not None else _last_jobs(db)).get(p.id)
     return {**{f: getattr(p, f) for f in FIELDS}, "automatic": bool(r and r.automatic),
             "needs_elevated": bool(r and r.needs_elevated), "rotator_notes": r.notes if r else "",
-            "last_job": {"id": last.id, "state": last.state} if last else None, "secret_name": policy_secret(p)}
+            "last_job": {"id": last.id, "state": last.state} if last else None, "secret_name": policy_secret(p),
+            **secret_health.describe(p)}
 
 
 def _elevated(db: Session) -> list[str]:
@@ -121,6 +124,28 @@ def rotate_now(policy_id: int, request: Request, db: Session = Depends(get_db),
     db.add(job)
     db.commit()
     audit(db, p.username, "secret.rotate.start", object_type="secret_policy", object_id=pol.id,
+          detail={"name": pol.name, "job": job.id}, source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
+@router.post("/secrets/{policy_id}/check")
+def check_now(policy_id: int, request: Request, db: Session = Depends(get_db),
+              p: Principal = Depends(require_roles("admin"))):
+    """Check the secret now (S1): does the stored value still work; recovered if it doesn't and can be."""
+    pol = db.get(SecretPolicy, policy_id)
+    if pol is None:
+        raise FieldError("policy", "No such secret.", status_code=404)
+    if not secret_health.describe(pol)["checkable"]:
+        raise FieldError("policy", f"There's no check for {pol.label}.")
+    busy = next((j for j in db.scalars(select(Job).where(Job.type.in_(("secret.check", "secret.rotate")),
+                                                          Job.state.in_(("queued", "running"))))
+                 if (j.params or {}).get("policy_id") == pol.id), None)
+    if busy:
+        raise FieldError("policy", f"Job {busy.id} is already working on it.", status_code=409)
+    job = Job(type="secret.check", params={"policy_id": pol.id}, requested_by=p.username)
+    db.add(job)
+    db.commit()
+    audit(db, p.username, "secret.check.start", object_type="secret_policy", object_id=pol.id,
           detail={"name": pol.name, "job": job.id}, source_ip=client_ip(request))
     return {"job_id": job.id}
 

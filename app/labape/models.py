@@ -499,6 +499,11 @@ class SecretPolicy(Base):
     next_due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Health (S1, question 161): does the stored value still work; checked every quarter of the period.
+    check_status: Mapped[str] = mapped_column(String(16), default="unchecked")   # ok | failed | recovered | unchecked | none
+    check_error: Mapped[str] = mapped_column(Text, default="")
+    last_checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Secret(Base):
