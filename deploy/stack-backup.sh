@@ -56,10 +56,14 @@ envval() { grep -m1 "^$1=" "$C/.env" 2>/dev/null | cut -d= -f2- || true; }
 IMAGE="$(envval LABAPE_IMAGE)"; IMAGE="${IMAGE:-labape:local}"
 PROJECT="$(envval COMPOSE_PROJECT_NAME)"; PROJECT="${PROJECT:-labape}"
 dc() { (cd "$C" && "${COMPOSE[@]}" "$@"); }
-akc() { (cd "$AK" && "${COMPOSE[@]}" "$@"); }
+# Authentik's PostgreSQL by its compose labels: compose itself would need Authentik's .env, which an
+# installer run with sudo leaves as root's.
+AKPG="$($RT ps -q --filter label=com.docker.compose.project=authentik-test           --filter label=com.docker.compose.service=postgresql 2>/dev/null | head -1)"
+akc() { [ "$1" = exec ] && shift; [ "$1" = -T ] && shift; shift; $RT exec -i "$AKPG" "$@"; }   # akc exec -T <svc> cmd...
 running() { [ -n "$(dc ps -q --status running "$1" 2>/dev/null)" ]; }
 tool() { $RT run --rm -i --network none -v "$KEY:/k:ro" "$IMAGE" labape seal --key-file /k "$@"; }
 say() { echo "stack-backup: $*" >&2; }
+warn() { say "$*"; echo "$*" >> "$W/warnings"; }   # a part that should be there and isn't: the check fails
 
 [ -f "$C/.env" ] || { say "no stack at $C (use --repo)"; exit 1; }
 [[ "$DEST" = /* ]] || { say "--dest must be an absolute path"; exit 2; }
@@ -93,8 +97,10 @@ fi
 if running labape-conjur-db; then
   dc exec -T labape-conjur-db pg_dump -U postgres -Fc postgres > "$W/db/conjur.dump"
 fi
-if [ -f "$AK/compose.yaml" ] && [ -n "$(akc ps -q --status running postgresql 2>/dev/null)" ]; then
+if [ -n "$AKPG" ]; then
   akc exec -T postgresql pg_dump -U authentik -Fc authentik > "$W/db/authentik.dump"
+elif [ -f "$AK/.env" ]; then
+  warn "Authentik is set up here ($AK/.env) but its database isn't running: not in this backup"
 fi
 
 # --- volumes --------------------------------------------------------------------
@@ -112,7 +118,14 @@ say "copying the configuration and secrets"
 copy() {   # copy <label> <path>: a file or folder, if it exists
   [ -e "$2" ] || return 0
   mkdir -p "$W/files/$1"
-  cp -a "$2" "$W/files/$1/"
+  if [ -z "$(find "$2" ! -readable -print -quit 2>/dev/null)" ]; then
+    cp -a "$2" "$W/files/$1/"
+  else
+    # Root's files (an installer run with sudo writes Authentik's .env and its saved answers
+    # as root, 0600): read through the container runtime, like the folder above.
+    $RT run --rm --network none --user 0:0 -v "$(dirname "$2"):/s:ro" "$IMAGE" \
+      tar -C /s -cf - "$(basename "$2")" | tar -C "$W/files/$1" -xf -
+  fi
 }
 SECRETS="$(envval LABAPE_SECRETS_DIR)"
 copy container "$C/.env"
@@ -207,11 +220,11 @@ load_check() {   # load_check <label> <dump> <compose fn> <service> <user>: rest
   $fn exec -T "$svc" dropdb -U "$user" --if-exists labape_restore_check >/dev/null 2>&1 || true
 }
 LOADS="$(load_check labape "$W/db/labape.dump" dc postgres labape
-         [ -f "$AK/compose.yaml" ] && load_check authentik "$W/db/authentik.dump" akc postgresql authentik || true)"
+         [ -n "$AKPG" ] && load_check authentik "$W/db/authentik.dump" akc postgresql authentik || true)"
 
-python3 - "$W/manifest.json" "$CHECK" "$ARCHIVE" "$LOADS" "$KEY" "$(id -un)" <<'PY'
+python3 - "$W/manifest.json" "$CHECK" "$ARCHIVE" "$LOADS" "$KEY" "$(id -un)" "$W/warnings" <<'PY'
 import json, os, sys
-manifest, check, archive, loads, key, user = sys.argv[1:7]
+manifest, check, archive, loads, key, user, warnings = sys.argv[1:8]
 m = json.load(open(manifest))
 c = json.load(open(check))
 c["restores"] = {}
@@ -219,6 +232,8 @@ for line in loads.splitlines():
     if "=" in line:
         k, v = line.split("=", 1)
         c["restores"][k] = v
+if os.path.isfile(warnings):
+    c["problems"] += [w for w in open(warnings).read().splitlines() if w]
 c["ok"] = not c["problems"] and all(v.startswith("ok") for v in c["restores"].values())
 side = {k: v for k, v in m.items() if k != "files"}
 side.update(archive=os.path.basename(archive), size=os.path.getsize(archive), file_count=len(m["files"]),
