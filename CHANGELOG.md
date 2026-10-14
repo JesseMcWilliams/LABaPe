@@ -7,6 +7,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Changed
+- The user and admin guides cover everything since v0.2.0: monitoring,
+  backups and rebuilding a stack, linked stacks, quotas, leases, snapshots,
+  accounts, remote access, the syslog collector, tokens and metrics.
+
 ### Added
 - A logo (Settings → Branding): PNG, JPEG or WebP, in the top bar, on the
   sign-in page and as the tab icon.

@@ -2,35 +2,4 @@
 
 User-visible changes not yet covered in `User_Docs/`. One line each; remove a line once a user doc covers it.
 
-- Build a template: a **Datacenter** box (Windows Server; Standard otherwise); the template page shows and edits the Server SKU; the new-environment form has **Datacenter** for direct-ISO Windows Server groups; `build-template.sh --datacenter`.
-- Template refreshes install every available Windows update, not only security and critical ones.
-- OpenBao and Conjur in the stack: `Stack.Stores` / `container/stores/stores.sh` (setup, status, unseal), `stores/secrets/` backups, ports 8200/8444 on the host; Settings → Secret stores comes filled in.
-- Engine secrets in OpenBao: the command line reads the vault password and VM key from the store (Command-Line.md §5 done); admin guide: `labape engine-secrets status|check`, backing up and deleting the old `engine-secrets/` and CLI copies.
-- Bootstrap secrets in OpenBao: what happens at boot, `LABAPE_SECRETS_DIR`, changing the OIDC client secret by hand after the move, backing up `stores/secrets/` (secret zero) and deleting the old `container/secrets/`.
-- Choosing the platform store (`LABAPE_PLATFORM_STORE`, installer `PlatformStore`) and moving between OpenBao and Conjur with `stores.sh setup`.
-- Settings → Templates: versions to keep, the monthly refresh (on/off, day, time); how dated names (`<name>-YYYY.MM`) form versions.
-- Template page: Delete (refused while an environment or VM uses the template).
-- Applications marked `requires_gui` (Firefox) are skipped on Windows Server Core hosts instead of failing the deploy.
-- Catalog → Services: the **Syslog collector** service (ports, TLS and mutual TLS, `/var/log/remote/` layout, getting a client certificate with `labape ca-sign`), and the `linux.role` field.
-- The Admin area (left-hand list; Hosts and Networks are admin pages now), the filters on Jobs, Audit log and User errors (kept in the URL), the User errors export, and Catalog → Requests → New request.
-- Files: tab descriptions and filters; installer targets (generic, family, specific OS), how they're inferred, and the catalog/deploy refusals.
-- Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
-- Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.
-- Remote access: RDP/SSH buttons and .rdp files, the session page (keys, idle close, the recorded marker), Settings → Remote access, Admin → Remote sessions, the auditor role (labape-auditors), and that Windows hosts now allow Remote Desktop (redeploy older environments).
-- The logo (§44): uploading, the formats and size, where it shows.
-- Placement (§43): Suggest best host and what it weighs, creating through the API without a host, the daily template copies.
-- Environment accounts (§42): adding domain and local accounts, applying them with Redeploy, where the passwords are, rotation, removing one.
-- Quotas (§41): setting them, which one applies, what counts as usage, the refusal message.
-- Environment leases (§40): turning them on, what happens and when, the reminder emails, extending, an admin's No expiry.
-- VM snapshots (§39): what a snapshot keeps (memory too), taking, reverting (what's lost) and deleting, the automatic ones before a deploy, the disk space they use, UEFI VMs.
-- Prometheus metrics (§38): a service token with the auditor role, a scrape config example, the metric list.
-- API tokens (§37): making one, personal vs service, roles and expiry, using it (curl example), revoking, what's audited.
-- Backups to linked stacks (§36): what's sent and when, where the copies are kept, restoring a lost stack from a copy (with its key).
-- The All stacks panel (§35): what the totals count (shared machines once), the card statuses, opening another stack.
-- Linked stacks (§34): making and using a link code (once, one hour, out of band), what a linked stack can read, statuses (stale, not answering), the alert, unlinking.
-- Install from a backup (§33): the command, the answers it takes from the archive and the `--set` overrides for a different machine, the version rule, a restore drill (maintenance mode, `/etc/hosts`), and what to do after (DNS, templates, turning maintenance off).
-- Full stack backups (§32): what's in an archive, the backup key (where it is, why to copy it, the "I saved it" step), the schedule and retention, the check column, downloading, the two monitoring alerts; the database-only backups still exist (and before updates).
-- Monitoring: host roles (KVM, stack, both) and the Stack section, Settings → Monitoring (email recipients, thresholds), the dashboard's Alerts panel, what's checked on a stack host and on a peer stack, and that each stack's own record needs Set up access for its containers. Alert handling (§31): Ack, Silence (how long, reason; the clear still goes out), announcements held in maintenance mode, the "alert emails can't be sent" alert.
-- Files and the primary file host: the Primary chip and setting, what other hosts get copied and where, Settings → File distribution's wait, the **Files from a share** option (mount the primary's locations at the same paths), and templates offered from the primary.
-- Syslog: the Syslog tab (filters, Live, Older), Settings → Syslog collector (retention, client certificates, forwarding to a SIEM), the audit trail's client certificate, a KVM host's **Logs to the syslog collector** switch, and how VMs and other machines send to it (UDP/TCP 514, TLS 6514 with a platform-CA client certificate).
-- VM details page: the sections, who sees what, accounts and groups on Linux and Windows (protected accounts, domain controllers), the VNC and serial consoles (need the KVM host's SSH access; Ctrl+] leaves the serial console), and the virt-viewer command.
+Nothing waiting: everything up to design §44 is in `User_Docs/` (2026-10-14).

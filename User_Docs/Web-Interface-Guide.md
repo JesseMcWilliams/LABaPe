@@ -16,6 +16,7 @@ Your organization may have renamed the app (Settings → Branding); the top bar 
 8. [The catalog: services, applications and packages](#8-the-catalog-services-applications-and-packages)
 9. [Hosts and networks](#9-hosts-and-networks)
 10. [Confirmations, tooltips and maintenance](#10-confirmations-tooltips-and-maintenance)
+11. [API tokens](#11-api-tokens)
 
 ## 1. Signing in and your roles
 
@@ -27,6 +28,7 @@ Open the address your admin gave you and choose the sign-in button (usually **Au
 | deployer | `labape-deployers` | Create, deploy, redeploy and destroy your own environments; see their credentials |
 | template_editor | `labape-template-editors` | Everything a deployer can do, plus build, refresh, promote and edit VM templates |
 | file_manager | `labape-file-managers` | Upload, download from a URL, edit and delete files |
+| auditor | `labape-auditors` | Read the audit log, the syslog messages and the remote-session log, and play session recordings; change nothing |
 | admin | `labape-admins` | Everything, including hosts, networks, the catalog, settings and secrets |
 
 Everyone signed in can browse files, the catalog, and the hosts and networks they may use.
@@ -43,6 +45,10 @@ The dashboard is the landing page; clicking the app name at the top left always 
 - **Your environments**: how many VMs are online, and for each VM its CPU, RAM, free disk space and disk activity.
 - **Download the root certificate**: the platform CA's root, for your browser (see [§4](#vm-certificates)).
 
+Admins and auditors also see:
+- **All stacks**, when this LABaPe is linked with others: totals across every linked stack (a machine two stacks both use is counted once) and a card per stack with its version, hosts, VMs, environments, jobs and open alerts. A stack that stopped answering shows its last data, marked "as of" when it last answered. A card opens that stack's own dashboard in a new tab (with its own sign-in).
+- **Alerts**: problems the monitoring found (a host running hot or nearly full, a stopped container, a missing backup, a linked stack not answering), with when each started, and the ones recently cleared. Admins can **Ack** an alert (someone is on it) or **Silence** it for a while with a reason.
+
 A VM's free space and "responding" state come from the QEMU guest agent, which LABaPe installs on every new VM. VMs built before the agent was added show "unknown" and the size of their disk file instead.
 
 ## 3. Creating an environment
@@ -52,7 +58,7 @@ Choose **Environments → New environment** (deployers and template editors). Th
 | Field | Notes |
 |---|---|
 | Name | 3-40 lower-case letters, digits and hyphens. It's also the environment's OpenTofu workspace. |
-| KVM host | Only enabled hosts are offered. The bars below show the host's load **with this environment added**. |
+| KVM host | Only enabled hosts are offered. The bars below show the host's load **with this environment added**. With more than one host, **Suggest best host** ranks them for your host groups (memory and CPU in use, running jobs, whether the templates are already there), picks the best and shows why. |
 | Host groups | One or more groups of identical VMs. **Add host group** adds another. |
 
 Each host group sets:
@@ -70,6 +76,8 @@ Each host group sets:
 | Host names | One box per VM. Leave a box blank for `<group><n>` (for example `web1`). Names must be unique across every environment on the same KVM host, and Windows allows at most 15 characters. |
 
 **Load limits.** The form warns above 4 vCPUs per CPU, above 90% of the host's RAM committed, or below 15% free VM storage. It refuses an environment that would commit more than 100% of the host's RAM, and **Create and deploy** stays disabled.
+
+**Quotas.** Your admin may limit how many environments you have and how many vCPUs, how much memory and VM disk they use together. The Environments page shows "Your quota: N of M …". An environment that would go over it is refused, with the numbers; destroy an environment, make this one smaller, or ask an admin. Destroyed environments don't count.
 
 **Create and deploy** asks you to confirm, saves the environment and starts a deploy job at once. You land on the environment's page.
 
@@ -96,6 +104,27 @@ The environment's page shows its state, its host groups with each VM's address, 
 
 Linux VMs have no admin password: Ansible signs in with an SSH key (the admin user name is an admin setting, Settings → VM accounts).
 
+**Lease.** If your admin turned leases on, a new environment expires after a set time (30 days by default), and the environment's page says when. Before the end you get reminder emails. At the end its VMs are shut down; after a grace period (7 days by default) it's destroyed, unless the admin set leases to keep it shut down. Choose **+7 days** or **+30 days** to extend it, up to the longest lease allowed from today. Extending a lease that already ended starts it again; start the VMs yourself afterwards.
+
+**VMs.** The **VMs** panel lists each VM's state and whether its guest agent answers. Owners can **Start**, **Shut down**, **Restart** and **Force off** one VM or all of them, as a job:
+- A shutdown asks the guest to shut down cleanly and waits (5 minutes by default). Tick **Force off after the timeout** to power off a VM that doesn't. **Force off** is like pulling the plug.
+- **Start order**: VMs start group by group, lowest number first (domain controllers are 1, everything else 2, unless you change it). A group can wait until each of its VMs' guest agents answers, and then a delay, before the next group starts. Shutdowns go in reverse order.
+- **RDP** opens a Remote Desktop session to a Windows VM in the browser, **.rdp** downloads a file for your own client (it asks for the password), and **SSH** opens a terminal to a Linux VM in the browser. Your admin may record these sessions (the session page says so) and closes idle ones after a while. Windows VMs deployed before Remote Desktop was turned on need a **Redeploy** first.
+
+**A VM's page.** Click a VM's name for its own page, with sections on the left:
+- **Dashboard**, **Disks and volumes**, **NICs**, **OS**: what the guest agent reports, and 24 hours of load.
+- **Accounts** and **Groups** (owners): add, change, lock and delete local accounts and groups on the VM. Built-in accounts (Administrator, root, the admin user) are protected; a domain controller has no local accounts.
+- **Console** (owners; needs the KVM host's SSH access set up by an admin): **VNC** for Windows and Linux desktops, **Serial** for Linux (press Ctrl+] to leave), and a `virt-viewer` command for your own client.
+- **Snapshots**: see below.
+
+**Snapshots.** On a VM's page → **Snapshots**, owners can **Take snapshot** (a name and a description), **Revert** to one and **Delete** one; each runs as a short job.
+- A snapshot keeps the VM's disks and, if it's running, its memory: reverting brings it back running exactly where it was. Everything since the snapshot is lost.
+- Snapshots live inside the VM's disk file, which grows by what changes afterwards. Delete the ones you no longer need.
+- VMs that boot with UEFI can't have snapshots (the page says so).
+- Your admin may have every VM snapshotted automatically before a redeploy (`auto-before-job-<n>`, the newest few kept).
+
+**Accounts.** The environment's **Accounts** panel lists accounts beyond the built-in admins: **domain** users (on the environment's domain controller) and **local** users on the hosts of chosen roles. Owners choose **Edit** to add or remove them; **Redeploy** then creates new ones on the VMs. Each gets a generated password, shown on the credentials sheet under "Environment accounts", and changed weekly. Removing an account from the list stops LABaPe managing it and forgets its password; it stays on the VMs (remove it from the VM's Accounts section).
+
 <a id="vm-certificates"></a>**VM certificates.** When the platform CA is set up, every VM deployed from the web interface gets a certificate for its short name, its full name and its address, renewed on the VM before it expires. Each VM also trusts the LABaPe root. To trust services on those VMs from your own browser, download the root certificate from the dashboard and import it.
 
 ## 5. Jobs
@@ -118,7 +147,9 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 
 ## 7. Files and templates
 
-**Files** has a tab for each location: **ISOs**, **Installers**, **Other files**, and the **Templates** library. Everyone can browse them. Admins and file managers can change them.
+**Files** has a tab for each location: **ISOs**, **Installers**, **Other files**, and the **Templates** library. Everyone can browse them. Admins and file managers can change them. Each tab says what its files are for and can be filtered (name, size, hash, description, date added; installers by target; templates by name, OS, host and description). Filters stay in the address, so a filtered list can be bookmarked.
+
+**Installer targets.** An installer says which systems it's for: any, Windows or Linux, a family (Windows Server, Windows client, RHEL family, Debian family) or exact OS versions. LABaPe sets a first guess from the file type (MSI and EXE: Windows; DEB: Debian family; RPM: RHEL family). An application whose installer doesn't target a host group's OS is refused for that group, naming the installer.
 
 **Uploading.** Choose the upload button on a tab and pick a file; LABaPe asks you to confirm.
 - Uploads resume after a dropped connection.
@@ -133,8 +164,10 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 **ISOs.** Open an ISO to set which OS it installs (LABaPe guesses from the name) and whether it's the **default** for that OS. Template builds and ISO installs use the default ISO, or else the newest one.
 
 **Templates** (template editors):
-- **Build a template** installs an OS from its ISO with Packer and saves it under a new name. Linux takes about 15 minutes, Windows up to an hour or more. For Windows Server, tick **Server Core (no desktop)** for a Core template.
-- **Refresh** clones a template, applies every OS update and saves the result under a new name. The original is left as it is.
+- **Build a template** installs an OS from its ISO with Packer and saves it under a new name. Linux takes about 15 minutes, Windows up to an hour or more. For Windows Server, tick **Server Core (no desktop)** for a Core template, and **Datacenter** for the Datacenter edition (Standard otherwise). A template's page shows its edition.
+- **Refresh** clones a template, applies every available OS update (on Windows, every update, not only security fixes) and saves the result under a new name. The original is left as it is. Your admin may run a refresh of every template monthly.
+- **Versions.** A dated name (`<name>-YYYY.MM`, such as `rocky9-base-2026.10`) makes each refresh a new version of the same template; LABaPe keeps the number of versions your admin chose.
+- **Delete** on a template's page removes it, unless an environment or a VM still uses it.
 - **Promote to template** turns a VM from an environment into a template (see [§4](#4-working-with-an-environment)).
 - Open a template to edit its description, notes, edition and minimum vCPUs and memory. The deploy form uses them for its warnings.
 - Templates are never overwritten: give each new one a new, dated name, such as `rocky9-base-2026.10`.
@@ -146,14 +179,33 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 - **Applications**: software installed through Chocolatey, apt or dnf, or from an installer in the Files tab (for example Firefox, VS Code, 7-Zip).
 - **Packages**: named groups of services, applications and other packages.
 
-If what you need isn't there, open the **Requests** tab and send a request. An admin accepts, declines or closes it with a note, which you see on the same tab.
+Applications that need a desktop (such as Firefox) are skipped on Windows Server Core hosts instead of failing the deploy. The **Syslog collector** service gives a Linux VM a syslog server: UDP and TCP 514, TLS 6514, and mutual TLS 6515 with a client certificate from the platform CA; messages land in `/var/log/remote/`.
+
+If what you need isn't there, open the **Requests** tab and choose **New request**. An admin accepts, declines or closes it with a note, which you see on the same tab.
 
 ## 9. Hosts and networks
 
-**Hosts** lists the KVM hosts you may use, with their load. **Networks** lists the networks you may deploy on. Non-admins see both read-only; admins manage them ([Web-Interface-Admin.md](Web-Interface-Admin.md)).
+The new-environment form shows the KVM hosts and networks you may use. Admins manage both under **Admin** ([Web-Interface-Admin.md](Web-Interface-Admin.md)).
 
 ## 10. Confirmations, tooltips and maintenance
 
 - Every button shows a short tooltip. Buttons that change something ask you to confirm first, in a dialog that explains what will happen; their tooltip ends with "(asks to confirm)".
 - **Maintenance mode**: while an admin or an update has LABaPe in maintenance, a banner on every page shows why, who started it and when it should end. Changes are refused and their buttons are disabled ("Unavailable during maintenance"). You can still look at everything, follow job logs, cancel a job and sign out. Running jobs finish; new ones wait until maintenance ends.
 - A banner also warns ahead of a scheduled maintenance or the weekly maintenance window.
+
+## 11. API tokens
+
+Scripts and CI can call LABaPe's API with a token instead of signing in. Open your account menu (your name at the top right) → **API tokens**:
+- **New token**: a name, the roles it may use (none chosen: all of yours) and when it expires (at most a year). The token is shown once: copy it then.
+- A token acts as you, with the roles you chose, but never more than you have when it's used. If you lose a group, the token loses that role too (at your next sign-in).
+- Send it in a header:
+
+  ```bash
+  curl -H "Authorization: Bearer lpat_…" https://labape.example/api/environments
+  ```
+
+- Everything a token changes is in the audit log. A token can't make other tokens.
+- **Revoke** stops it at once. The list shows each token's first characters, expiry and last use.
+
+Admins can also make **service tokens**, which aren't tied to a person (see [Web-Interface-Admin.md §18](Web-Interface-Admin.md#18-api-tokens-and-metrics)).
+
