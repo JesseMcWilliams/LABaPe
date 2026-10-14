@@ -48,6 +48,8 @@ def flow(url: str) -> str:
             return urljoin(base, ch["to"])
         elif comp == "ak-stage-autosubmit":
             return ch["url"]
+        elif comp == "ak-stage-access-denied":
+            raise SystemExit(f"{p.netloc} ({slug}) denied {ch.get('pending_user')}: {ch.get('error_message')}")
         else:
             raise SystemExit(f"unexpected stage at {p.netloc} ({slug}): {json.dumps(ch)[:500]}")
     raise SystemExit(f"flow {slug} at {p.netloc} didn't finish")
