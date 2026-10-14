@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ca, links
+from .. import ca, links, linksso
 from ..db import get_db
 from ..models import StackLink
 from ..security import Principal, audit, client_ip, require_roles
@@ -17,6 +17,15 @@ router = APIRouter(tags=["links"])
 
 class CodeIn(BaseModel):
     code: str = Field(min_length=10, max_length=2000)
+
+
+class SsoProviderIn(BaseModel):
+    enabled: bool
+    redirect_uri: str = Field(default="", max_length=500)
+
+
+class SignOnIn(BaseModel):
+    enabled: bool
 
 
 class JoinIn(BaseModel):
@@ -59,6 +68,21 @@ def link_summary(db: Session = Depends(get_db), authorization: str | None = Head
     return links.summary(db)
 
 
+@router.post("/api/link/sso/provider")
+def link_sso_provider(body: SsoProviderIn, request: Request, db: Session = Depends(get_db),
+                      authorization: str | None = Header(default=None)):
+    """The linked stack lets this stack's users sign in there (design §47.2): make (or remove) the
+    client its Authentik source uses."""
+    link = _peer(db, authorization)
+    try:
+        out = linksso.provide(link, body.enabled, body.redirect_uri)
+    except linksso.SsoError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    audit(db, "link", "link.sso.provider", object_type="stack_link", object_id=link.id,
+          detail={"enabled": body.enabled, "redirect_uri": body.redirect_uri}, source_ip=client_ip(request))
+    return out
+
+
 @router.post("/api/link/leave")
 def link_leave(request: Request, db: Session = Depends(get_db), authorization: str | None = Header(default=None)):
     link = _peer(db, authorization)
@@ -72,8 +96,28 @@ def link_leave(request: Request, db: Session = Depends(get_db), authorization: s
 
 @router.get("/api/admin/links")
 def list_links(db: Session = Depends(get_db), _: Principal = Depends(require_roles("auditor"))):
+    rows = list(db.scalars(select(StackLink).order_by(StackLink.name)))
+    for x in rows:
+        linksso.state(db, x)                       # picks up the agent's result
     return {"self": {"url": links.own_url(), "ca_fingerprint": links.fingerprint(ca.root_pem())},
-            "links": [links.out(x) for x in db.scalars(select(StackLink).order_by(StackLink.name))]}
+            "links": [links.out(x) for x in rows]}
+
+
+@router.put("/api/admin/links/{link_id}/sign-on")
+def set_sign_on(link_id: int, body: SignOnIn, request: Request, db: Session = Depends(get_db),
+                p: Principal = Depends(require_roles("admin"))):
+    """Let the linked stack's users sign in here with their own accounts (design §47.2; question 157:
+    per link, on each side). They keep their role groups (question 156)."""
+    link = db.get(StackLink, link_id)
+    if link is None:
+        raise HTTPException(404, "No such link")
+    try:
+        out = linksso.set_sign_on(db, link, body.enabled, p.username)
+    except linksso.SsoError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    audit(db, p.username, "link.sign_on", object_type="stack_link", object_id=link.id,
+          detail={"enabled": body.enabled}, source_ip=client_ip(request))
+    return out
 
 
 @router.post("/api/admin/links/invite")

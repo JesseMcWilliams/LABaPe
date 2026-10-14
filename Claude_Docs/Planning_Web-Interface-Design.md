@@ -1625,13 +1625,15 @@ certificate from its stack's platform CA, so a linked stack, which pins that CA 
 | Existing stacks | Set `LABAPE_OIDC_ISSUER` as above in `container/.env` and recreate `caddy`, `labape-api` and `labape-worker` (User_Docs/Web-Interface-Admin.md). |
 | Verified | pytest (the platform root added to the trust, the system roots without it). Live on kvm1: Caddy recreated with 9445; the discovery document over `https://172.21.20.11:9445`, verified against kvm1's platform root, names the HTTPS issuer; the web interface unchanged; LABaPe switched to the HTTPS issuer and the test users signed in through it; the Authentik group search worked over HTTPS. |
 
-### 47.2 F1b: OIDC sources between linked stacks (planned)
+### 47.2 F1b: OIDC sources between linked stacks (built)
 
-For each pair of linked stacks A and B where sign-on is on: on B (where the user's account lives),
-an OAuth2 provider and application `labape-link-<A>` whose redirect URI is A's
-`https://<A>:9445/source/oauth/callback/labape-link-<B>/`, with a generated client secret; on A, an
-OpenID Connect source `labape-link-<B>` ("Sign in with B") with B's HTTPS issuer and that client,
-shown on A's sign-in page. A's Authentik trusts B's platform CA root (from the link) through a CA
-bundle it reads (`REQUESTS_CA_BUNDLE`). The objects are made with `ak shell` by each host's update
-agent, on request from its stack, and the client secret travels over the link's authenticated API.
-Waits on questions 156 (the role such a user gets) and 157 (which links offer it).
+Questions 156 (b: a user keeps their role groups) and 157 (an admin turns it on per link, on each side).
+
+| Area | As built |
+|---|---|
+| Turning it on | Admin → Linked stacks → **Sign-on** → Turn on (`PUT /api/admin/links/{id}/sign-on`), on stack A for link B: B's users may then sign in to A. A asks B over the link (`POST /api/link/sso/provider`, the link's token); B's update agent makes an OAuth2 provider and application `labape-link-<A>` in B's Authentik: a **public client with PKCE** (no client secret to carry between stacks), the redirect URI A's source callback only (checked: https, A's host name, `/source/oauth/callback/`), the LABaPe provider's flows, signing key, grant types and openid/email/profile mappings (profile carries the groups). Then A's update agent makes the OpenID Connect source `labape-link-<B>` in A's Authentik and adds it to the identification stage, so A's sign-in page offers "<B>". Off removes both (B's side even if B doesn't answer). The state (setting up, on, failed with the agent's message) shows per link. |
+| Users | Named `<user>@<B>` (a source property mapping), so they never collide with A's own; enrolled once (`default-source-enrollment`), then `default-source-authentication`. `group_matching_mode=name_link`: B's `groups` claim joins them to A's groups of the same names, so B's admins are A's admins (question 156 b). |
+| Trust | A's Authentik verifies B's Authentik over HTTPS with B's platform CA root from the link: `REQUESTS_CA_BUNDLE=/labape-trust/ca-bundle.pem` in `tools/authentik-test/compose.yaml`, the image's own roots plus `trust/peers/<source>.pem` (gitignored, on the host). |
+| Host side | `tools/authentik-test/sso.sh` (the agent's action `authentik_sso`; also `--bundle-only`) writes the bundle, starts Authentik with it if needed and runs `sso.py` with `ak shell` in the worker. `deploy.sh` writes the bundle before starting Authentik and, run as root (the installer), hands `.env` and `trust/` to the checkout's owner, because the agent runs as the service user. |
+| Verified | pytest 273 (names, the HTTPS requirement, the callback check, the peer and local requests, the agent's result, a busy agent, the endpoint). Live between kvm1 (172.21.20.11) and the Pi (director.jlm.abq), both on this branch: on kvm1, sign-on from the Pi: the Pi's agent made its client, kvm1's agent the source; `live/linked_login.py` signed in to kvm1's LABaPe as the Pi's `labape-admin` (`labape-admin@director.jlm.abq`, groups `labape-admins`, role admin), first through enrollment, then through the returning-user flow. The other direction from the Pi the same way (`labape-admin@172.21.20.11`, admin). Off then on again on the Pi: the source removed and remade. Both left on. |
+| Upgrading a stack | After updating: reinstall the agent (`deploy/update-agent/install.sh`; an update doesn't replace the running agent), and in `tools/authentik-test/` as the service user `bash sso.sh --bundle-only && docker compose up -d` (if `.env` there is root's, give it to the service user first). Admin guide §9. |

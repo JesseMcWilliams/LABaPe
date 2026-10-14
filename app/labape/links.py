@@ -301,4 +301,5 @@ def out(link: StackLink, now: dt.datetime | None = None) -> dict:
     return {"id": link.id, "name": link.name, "url": link.url, "ca_fingerprint": link.ca_fingerprint,
             "created_by": link.created_by, "created_at": link.created_at, "last_ok_at": link.last_ok_at,
             "last_try_at": link.last_try_at, "failures": link.failures, "error": link.error,
-            "stale": stale(link, now), "summary": link.summary}
+            "stale": stale(link, now), "summary": link.summary,
+            "sign_on": {"enabled": bool(link.sso_in), **(link.sso_state or {})}}

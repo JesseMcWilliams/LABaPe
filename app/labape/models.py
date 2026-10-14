@@ -535,6 +535,9 @@ class StackLink(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)     # the peer's last summary
+    # Sign-on (design §47.2): this side lets the peer's users sign in ("Sign in with <peer>").
+    sso_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    sso_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class StackLinkInvite(Base):

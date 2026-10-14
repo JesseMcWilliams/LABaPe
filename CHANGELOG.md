@@ -32,6 +32,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Sign-on between linked stacks (Admin → Linked stacks → Sign-on): an
+  admin lets a linked stack's users sign in here with their own accounts,
+  per link and per side. They appear as `<user>@<stack>` and keep their
+  role groups. Each Authentik trusts the other's platform CA.
 - Move a host group to another KVM host while its VMs run (environment
   page → VMs → Move host group): live migration with the disks copied,
   then a deploy records the new host.

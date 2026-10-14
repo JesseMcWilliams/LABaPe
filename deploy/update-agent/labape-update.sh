@@ -15,6 +15,7 @@
 #   containers only read (design §24, phase R3): maintenance on -> new value ->
 #   apply -> recreate the containers using it -> health checks (the CA check
 #   signs a test request) -> maintenance off; everything put back on failure.
+# authentik_sso: sign-on between linked stacks (design §47.2): tools/authentik-test/sso.sh.
 # full_backup: the whole stack in one sealed archive (deploy/stack-backup.sh,
 #   design §32); no maintenance mode, nothing stops.
 # The engine's own secrets (vault password, VM key) are rotated by the worker,
@@ -220,6 +221,20 @@ if [ "$ACTION" = full_backup ]; then
     3) status failed check "wrote $(basename "$last"), but its check failed; see the backup list" ;;
     *) status failed backup "the stack backup failed (exit $rc); see agent.log" ;;
   esac
+  finish
+  exit 0
+fi
+
+if [ "$ACTION" = authentik_sso ]; then
+  # Sign-on between linked stacks (design §47.2): the Authentik installed with LABaPe on this host.
+  op="$(field "$U/processing.json" op)"
+  status running applying "sign-on: $op"
+  [ -f "$REPO/tools/authentik-test/.env" ] || { status failed checking "no Authentik installed with LABaPe on this host"; finish; exit 0; }
+  if out="$(bash "$REPO/tools/authentik-test/sso.sh" "$U/processing.json" 2>&1)"; then
+    status succeeded done "${out##*$'\n'}"
+  else
+    status failed applying "sign-on $op failed: ${out##*$'\n'}"
+  fi
   finish
   exit 0
 fi

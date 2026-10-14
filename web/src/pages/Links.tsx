@@ -18,6 +18,8 @@ interface Link {
   id: number; name: string; url: string; ca_fingerprint: string; created_by: string; created_at: string;
   last_ok_at: string | null; last_try_at: string | null; failures: number; error: string; stale: boolean;
   summary: Summary | null;
+  // Sign-on (design §47.2): this stack lets the peer's users sign in with their own accounts.
+  sign_on: { enabled: boolean; state?: string; message?: string };
 }
 interface LinkList { self: { url: string; ca_fingerprint: string }; links: Link[] }
 
@@ -40,6 +42,7 @@ export default function Links() {
   const [code, setCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signOnError, setSignOnError] = useState("");
 
   const load = () => api.get<LinkList>("/api/admin/links").then(setData, (e) => setError(e.message));
   useEffect(() => {
@@ -80,11 +83,12 @@ export default function Links() {
         <b>{data.self.url}</b>; its platform CA fingerprint starts {fp(data.self.ca_fingerprint)}.
       </Typography>
 
+      {signOnError && <Alert severity="error" onClose={() => setSignOnError("")}>{signOnError}</Alert>}
       <Table size="small">
         <TableHead>
           <TableRow>
             <TableCell>Stack</TableCell><TableCell>Status</TableCell><TableCell>Last answer</TableCell>
-            <TableCell>Summary</TableCell><TableCell>Linked</TableCell><TableCell />
+            <TableCell>Summary</TableCell><TableCell>Sign-on</TableCell><TableCell>Linked</TableCell><TableCell />
           </TableRow>
         </TableHead>
         <TableBody>
@@ -105,6 +109,23 @@ export default function Links() {
                   {l.summary.maintenance.active && <Chip size="small" sx={{ ml: 1, height: 18 }} label="maintenance" title={l.summary.maintenance.reason} />}
                 </> : "—"}
               </TableCell>
+              <TableCell>
+                {l.sign_on.enabled
+                  ? <Chip size="small" color={l.sign_on.state === "failed" ? "error" : l.sign_on.state === "ok" ? "success" : "default"}
+                      label={l.sign_on.state === "applying" ? "setting up" : l.sign_on.state === "failed" ? "failed" : "on"} title={l.sign_on.message} />
+                  : <Typography variant="caption" color="text.secondary">off</Typography>}
+                {admin && <ActionButton size="small" sx={{ ml: 0.5 }}
+                  tip={l.sign_on.enabled ? `Stop letting ${l.name}'s users sign in here` : `Let ${l.name}'s users sign in here with their own accounts`}
+                  confirm={l.sign_on.enabled
+                    ? { title: `Turn sign-on from ${l.name} off?`, confirmLabel: "Turn off",
+                        body: `"Sign in with ${l.name}" goes from this stack's sign-in page, and ${l.name} removes its client for this stack. Users who came from ${l.name} stay, but can't sign in that way.` }
+                    : { title: `Let ${l.name}'s users sign in here?`, confirmLabel: "Turn on",
+                        body: `This stack's sign-in page offers "${l.name}": its users sign in here with their own accounts, as <user>@${l.name}, and keep their role groups (an admin there is an admin here). ${l.name}'s admin decides the same for the other direction.` }}
+                  onClick={() => api.put(`/api/admin/links/${l.id}/sign-on`, { enabled: !l.sign_on.enabled }).then(() => { setSignOnError(""); load(); }, (e) => setSignOnError(e.message))}>
+                  {l.sign_on.enabled ? "Turn off" : "Turn on"}
+                </ActionButton>}
+                {l.sign_on.state === "failed" && <Typography variant="caption" color="error" component="div">{l.sign_on.message}</Typography>}
+              </TableCell>
               <TableCell>{fmtTime(l.created_at)}<Typography variant="caption" color="text.secondary" component="div">{l.created_by}</Typography></TableCell>
               <TableCell>
                 {admin && <Stack direction="row" spacing={0.5}>
@@ -117,7 +138,7 @@ export default function Links() {
               </TableCell>
             </TableRow>
           ))}
-          {data.links.length === 0 && <TableRow><TableCell colSpan={6}>No linked stacks yet.</TableCell></TableRow>}
+          {data.links.length === 0 && <TableRow><TableCell colSpan={7}>No linked stacks yet.</TableCell></TableRow>}
         </TableBody>
       </Table>
 

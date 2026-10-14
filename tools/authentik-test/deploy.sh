@@ -59,6 +59,11 @@ fi
 grep -q '^LABAPE_TEST_DIRECTORY_TOKEN=' .env || echo "LABAPE_TEST_DIRECTORY_TOKEN=$(gen)" >> .env
 grep -q '^LABAPE_TEST_ROTATOR_TOKEN=' .env || echo "LABAPE_TEST_ROTATOR_TOKEN=$(gen)" >> .env
 
+# The checkout's owner (the stack's service user) runs this Authentik later too: the update agent
+# sets up sign-on between linked stacks with it (design §47.2). As root (the installer), hand over.
+if [ "$(id -u)" = 0 ]; then chown "$(stat -c %u:%g .)" .env; fi
+bash ./sso.sh --bundle-only                     # the CA bundle the containers read (design §47.2)
+if [ "$(id -u)" = 0 ]; then chown -R "$(stat -c %u:%g .)" trust; fi
 $COMPOSE up -d
 echo "authentik-test: waiting for Authentik to apply the blueprint..."
 issuer="http://${PUBLIC_HOST}:9000/application/o/labape/"

@@ -11,6 +11,9 @@ x-authentik: &authentik
     AUTHENTIK_POSTGRESQL__USER: authentik
     AUTHENTIK_POSTGRESQL__NAME: authentik
     AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:?run deploy.sh}
+    # Outbound HTTPS (a linked stack's Authentik, design §47.2) trusts the usual roots plus the
+    # linked stacks' platform CAs; deploy.sh and sso.sh write the bundle before starting.
+    REQUESTS_CA_BUNDLE: /labape-trust/ca-bundle.pem
   depends_on:
     postgresql:
       condition: service_healthy
@@ -39,12 +42,14 @@ services:
       - "${AUTHENTIK_HTTPS_PORT:-9443}:9443"
     volumes:
       - ./blueprints:/blueprints/custom:ro
+      - ./trust:/labape-trust:ro
 
   worker:
     <<: *authentik
     command: worker
     volumes:
       - ./blueprints:/blueprints/custom:ro
+      - ./trust:/labape-trust:ro
 
 volumes:
   database:
