@@ -668,11 +668,13 @@ export default function Settings() {
             onChange={(e) => set("directory", { verify_tls: e.target.checked })} />} />
         </Stack>
       </Section>
-      <Typography variant="h6" sx={{ pt: 1 }}>Secret stores</Typography>
-      <Typography variant="body2" color="text.secondary">
-        External stores that can hold LABaPe's secrets besides the built-in, encrypted database store. Each store's own
-        login stays in the built-in store and is never shown again.
-      </Typography>
+      {group === "secrets" && <>
+        <Typography variant="h6" sx={{ pt: 1 }}>Secret stores</Typography>
+        <Typography variant="body2" color="text.secondary">
+          External stores that can hold LABaPe's secrets besides the built-in, encrypted database store. Each store's own
+          login stays in the built-in store and is never shown again.
+        </Typography>
+      </>}
 
       <Section title="Default store"
         intro="Where new environment secrets (inventories, credential sheets, rotated passwords) are kept. Existing secrets stay where they are; move them on the Secrets page."
