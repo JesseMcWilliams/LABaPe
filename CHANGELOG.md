@@ -7,6 +7,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
+Everything since v0.2.0: the update agent with signed releases and
+rollback, secret rotation, OpenBao and Conjur in the stack, the admin area
+and VM operations, browser SSH/RDP and consoles, the syslog collector,
+remote and ARM stack hosts, monitoring with alerts, full-stack backups with
+install from a backup, linked stacks with an overall dashboard and backup
+copies, API tokens and Prometheus metrics.
+
 ### Added
 - Prometheus metrics at `/api/metrics` (hosts, environments, jobs, alerts,
   linked stacks, backup ages), read with an auditor service token.
