@@ -28,6 +28,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | Script | Runs | What it does |
 |---|---|---|
 | `ship.sh` | locally | Commit, push, open a PR, merge, update `main` |
+| `release.sh` | locally | Cut a release: CHANGELOG section, versions, docs wording, optional `.docx` guides, then ship, signed tag and GitHub release (`release_prep.py` does the file changes) |
 | `deploy-web.sh` | locally → lab | Build and run this working tree on the lab's web stack |
 | `lab-live.sh` | locally → lab | Run one of the `live/` scripts on the lab host |
 | `lab.sh` | sourced | Shared settings for the two above |

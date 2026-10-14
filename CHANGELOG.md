@@ -20,6 +20,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   still sleep.
 
 ### Changed
+- Releases are cut with `tools/helpers/release.sh`: the CHANGELOG section,
+  the version in `app/pyproject.toml` and `web/package*.json` (both had
+  stayed at 0.2.0), the docs' "the release after" wording, optionally the
+  `.docx` guides, the signed tag and the GitHub release.
 - Authentik is served over HTTPS on port 9445 by the stack's Caddy, with
   the web interface's certificate, and LABaPe signs in through it (it used
   plain HTTP on 9000). Existing stacks: see the admin guide.
