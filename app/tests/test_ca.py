@@ -108,3 +108,22 @@ def test_ca_sign_cli(client, monkeypatch, capsys):
     with session_factory()() as db:
         row = db.query(AuditLog).filter(AuditLog.action == "ca.sign").one()
     assert row.object_id == "kvm1" and row.detail["hours"] == 48 and row.detail["ips"] == ["192.0.2.10"]
+
+
+def test_trust_adds_the_platform_root(monkeypatch):
+    # Authentik is served with a platform-CA certificate (design §47): OIDC calls trust that root too.
+    import datetime as dt
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test LABaPe Root")])
+    now = dt.datetime.now(dt.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(1).not_valid_before(now).not_valid_after(now + dt.timedelta(days=1))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True).sign(key, hashes.SHA256()))
+    pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+    monkeypatch.setattr(ca, "root_pem", lambda: pem)
+    assert any(c.get("subject") == ((("commonName", "Test LABaPe Root"),),) for c in ca.trust().get_ca_certs())
+
+    def missing():
+        raise ca.CaError("no root")
+    monkeypatch.setattr(ca, "root_pem", missing)
+    assert ca.trust() is not None                    # the system roots only

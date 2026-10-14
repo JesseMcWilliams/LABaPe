@@ -107,14 +107,17 @@ print('authentik-test: labape-token-rotator may set the directory token key and 
 if $CONFIGURE; then
   env_file=../../container/.env
   [ -f "$env_file" ] || { echo "authentik-test: run container/setup.sh first" >&2; exit 1; }
-  sed -i "s|^LABAPE_OIDC_ISSUER=.*|LABAPE_OIDC_ISSUER=${issuer}|; s|^LABAPE_OIDC_CLIENT_ID=.*|LABAPE_OIDC_CLIENT_ID=labape|" "$env_file"
+  # LABaPe and browsers use Authentik over HTTPS through the stack's Caddy (port 9445, the web
+  # interface's certificate, design §47); plain HTTP on 9000 stays for this script's own checks.
+  https_issuer="https://${LABAPE_HOSTNAME_ARG}:${LABAPE_AUTH_PORT:-9445}/application/o/labape/"
+  sed -i "s|^LABAPE_OIDC_ISSUER=.*|LABAPE_OIDC_ISSUER=${https_issuer}|; s|^LABAPE_OIDC_CLIENT_ID=.*|LABAPE_OIDC_CLIENT_ID=labape|" "$env_file"
   # set-secret.sh writes where the stack reads it: container/secrets/, or the memory
   # copy plus the platform store once the bootstrap secrets have moved (design §26.3).
   # It runs as the owner of container/ (this script usually runs as root).
   owner="$(stat -c %U ../../container)"
   as_owner=(); [ "$(id -un)" = "$owner" ] || as_owner=(runuser -u "$owner" --)
   grep '^LABAPE_TEST_CLIENT_SECRET=' .env | cut -d= -f2- | "${as_owner[@]}" bash ../../container/stores/set-secret.sh oidc_client_secret
-  echo "authentik-test: container/.env and the stack's oidc_client_secret now point at $issuer"
+  echo "authentik-test: container/.env and the stack's oidc_client_secret now point at $https_issuer"
   echo "               (recreate the LABaPe containers: $COMPOSE up -d)"
 fi
 

@@ -206,9 +206,9 @@ def test_oidc_check_client_secret(monkeypatch):
     from labape.auth import oidc
     monkeypatch.setattr(oidc.get_settings(), "oidc_issuer", "https://ak.example.test/application/o/labape/")
     answers = {"right": "invalid_grant", "wrong": "invalid_client"}
-    monkeypatch.setattr(oidc.httpx, "get", lambda url, timeout: httpx.Response(
+    monkeypatch.setattr(oidc.httpx, "get", lambda url, timeout, verify=None: httpx.Response(
         200, json={"token_endpoint": "https://ak.example.test/application/o/token/"}))
-    monkeypatch.setattr(oidc.httpx, "post", lambda url, timeout, data: httpx.Response(
+    monkeypatch.setattr(oidc.httpx, "post", lambda url, timeout, data, verify=None: httpx.Response(
         400, json={"error": answers[data["client_secret"]]}))
     oidc.check_client_secret("labape", "right")
     try:

@@ -37,4 +37,5 @@ git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; R=$L
   fi
   docker compose up -d labape-syslog-db labape-syslog >/dev/null 2>&1
   docker compose up -d --force-recreate labape-api labape-worker >/dev/null 2>&1
+  docker compose up -d caddy >/dev/null 2>&1          # picks up compose changes (ports, environment)
   sleep 15; curl -sk "$U/api/health"; echo'

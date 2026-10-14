@@ -24,6 +24,12 @@
 	}
 }
 
+# Authentik (design §47): the same name and certificate as the web interface, on port 9445.
+https://{$LABAPE_HOSTNAME}:9445 {
+	tls {$LABAPE_TLS:internal}
+	reverse_proxy {$LABAPE_AUTHENTIK_UPSTREAM}
+}
+
 # Host-only listener for `labape breakglass enable --local-only`. Compose
 # publishes it on 127.0.0.1:8443 only, so it's reachable from the host
 # itself or through an SSH tunnel to it.
