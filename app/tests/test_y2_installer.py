@@ -176,3 +176,27 @@ def test_arm_stack_host_override_and_arch(monkeypatch):
     assert A.Resolver(interactive=False).need("InstallConjur") is False      # Conjur is amd64 only
     monkeypatch.setattr(_platform, "machine", lambda: "x86_64")
     assert S.cpu_arch() == "amd64" and A.Resolver(interactive=False).need("InstallConjur") is True
+
+
+def test_no_sleep_step_masks_what_is_unmasked(tmp_path, monkeypatch):
+    ran, wrote = [], {}
+
+    class R:
+        def write(self, path, content, mode=0o644, owner=None):
+            changed = wrote.get(str(path)) != content
+            wrote[str(path)] = content
+            return changed
+
+        def run(self, cmd, **kw):
+            ran.append(cmd)
+
+        def out(self, cmd, **kw):
+            return "masked" if cmd[-1] in ("sleep.target", "hibernate.target") else "loaded"
+
+    c = S.Ctx(r=R(), a=None, repo=Path("/opt/LABaPe"), deploy_root=Path("/opt/LABaPe/deploy"))
+    status, msg = S.prereq_no_sleep(c)
+    assert status == S.DONE and msg.startswith("masked suspend.target, hybrid-sleep")
+    assert ["systemctl", "mask", "suspend.target", "hybrid-sleep.target", "suspend-then-hibernate.target"] in ran
+    assert "IdleAction=ignore" in next(iter(wrote.values()))
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Prereq.NoSleep") < names.index("Net.Validate")

@@ -7,6 +7,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Fixed
+- KVM and stack hosts never sleep. A desktop install's login screen
+  suspended kvm1 15 minutes after boot, stopping its VMs and the web stack.
+  The installer's new `Prereq.NoSleep` step and a host's access-account
+  setup mask the sleep targets (the installer also sets logind to ignore
+  idle, the suspend key and the lid), and a host's page warns when it can
+  still sleep.
+
 ### Changed
 - The user and admin guides cover everything since v0.2.0: monitoring,
   backups and rebuilding a stack, linked stacks, quotas, leases, snapshots,

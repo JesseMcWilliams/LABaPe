@@ -144,6 +144,15 @@ if ! command -v smartctl >/dev/null 2>&1; then
   fi
   command -v smartctl >/dev/null 2>&1 && echo "labape-setup: installed smartmontools" || echo "labape-setup: couldn't install smartmontools (install it for disk health)"
 fi
+# A KVM host must never sleep (a desktop's login screen suspends after 15 idle minutes): mask the sleep targets.
+UNMASKED=""
+for t in sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target; do
+  [ "$(systemctl show -p LoadState --value "$t" 2>/dev/null)" = masked ] || UNMASKED="$UNMASKED $t"
+done
+if [ -n "$UNMASKED" ]; then
+  systemctl mask $UNMASKED >/dev/null 2>&1 && echo "labape-setup: masked$UNMASKED (the host never sleeps)" \
+    || echo "labape-setup: couldn't mask$UNMASKED; the host may still sleep"
+fi
 echo "labape-setup: $ACCOUNT ready"
 '''
 
@@ -231,7 +240,9 @@ out["os"] = {"name": osr.get("PRETTY_NAME", ""), "id": osr.get("ID", ""), "versi
              "memory_mb": int(re.search(r"MemTotal:\s+(\d+)", read("/proc/meminfo")).group(1)) // 1024,
              "reboot_required": os.path.exists("/var/run/reboot-required"),
              "timesync": dict(l.split("=", 1) for l in sh("timedatectl", "show").splitlines() if "=" in l),
-             "failed_units": [l.split()[0] for l in sh("systemctl", "--failed", "--plain", "--no-legend").splitlines() if l.strip()]}
+             "failed_units": [l.split()[0] for l in sh("systemctl", "--failed", "--plain", "--no-legend").splitlines() if l.strip()],
+             "can_sleep": [t for t in ("sleep.target", "suspend.target", "hibernate.target")
+                           if sh("systemctl", "show", "-p", "LoadState", "--value", t).strip() not in ("masked", "")]}
 if shutil.which("apt"):
     out["os"]["updates"] = len([l for l in sh("apt", "list", "--upgradable", timeout=60).splitlines() if "/" in l])
 elif shutil.which("dnf"):
@@ -485,6 +496,9 @@ def warnings(facts: dict, smart: dict, latest: dict | None) -> list[dict]:
     os_ = (facts or {}).get("os", {})
     if os_.get("failed_units"):
         w.append({"level": "warning", "message": f"Failed services: {', '.join(os_['failed_units'][:6])}"})
+    if os_.get("can_sleep"):
+        w.append({"level": "warning", "message": "This host can sleep, and its VMs stop with it: mask "
+                  f"{', '.join(os_['can_sleep'])}, or set up the access account again"})
     if os_.get("reboot_required"):
         w.append({"level": "info", "message": "A reboot is required (updates installed)"})
     if (os_.get("updates") or 0) >= 20:

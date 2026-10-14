@@ -65,6 +65,7 @@ Nothing secret is ever written to the answers file.
 | `Prereq.User` | Creates the service user if missing | useradd |
 | `Prereq.Packages` | QEMU/KVM, libvirt, virt-install, xorriso, Python, NetworkManager, smartmontools (apt; dnf on the RHEL family, plus SELinux tools, `dnf-utils` and, on 9.x, Python 3.12 for Ansible) | apt, dnf |
 | `Prereq.Libvirt` | libvirt's modular daemons (sockets, where the system has them, e.g. RHEL 9+) or `libvirtd`; service user in `libvirt` and `kvm` | systemctl, usermod |
+| `Prereq.NoSleep` | The host never sleeps: masks the `sleep`, `suspend`, `hibernate`, `hybrid-sleep` and `suspend-then-hibernate` targets and writes `/etc/systemd/logind.conf.d/90-labape-no-sleep.conf` (idle, suspend key and lid ignored). Without it, a desktop install's login screen suspends the host after 15 idle minutes | systemctl |
 | `Net.Validate` | Checks the network answers: a default exists, ranges are inside their networks, static addressing has a pool | |
 | `Net.BridgeNetfilter` | Stops iptables filtering bridged VM traffic; otherwise Docker drops it (Claude_Docs/Testing_Troubleshooting-Log.md) | sysctl |
 | `Net.Bridges` | Creates each missing VM bridge on its NIC with NetworkManager. The host takes a DHCP address on it but never its default route. Refuses the NIC carrying the default route. | nmcli |
