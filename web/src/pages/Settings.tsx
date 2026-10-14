@@ -185,7 +185,7 @@ function MaintenanceNow() {
 }
 
 export default function Settings() {
-  const { setAppName } = useAuth();
+  const { setAppName, logo, setLogo } = useAuth();
   const [s, setS] = useState<AllSettings | null>(null);
   const [error, setError] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
@@ -305,10 +305,27 @@ export default function Settings() {
         </Stack>
       </Section>
 
-      <Section title="Branding" intro="The name in the top bar, the browser tab, the sign-in page and emails. A logo comes later."
+      <Section title="Branding" intro="The name and logo in the top bar, the browser tab, the sign-in page; the name in emails too. The logo: a PNG, JPEG or WebP image up to 256 KB."
         onSave={async () => { await put("branding", s.branding); setAppName(s.branding.app_name); return "Name saved."; }}>
-        <Field label="App name" value={s.branding.app_name} sx={{ maxWidth: 320 }} help="Up to 40 characters"
-          onChange={(e) => set("branding", { app_name: e.target.value })} />
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <Field label="App name" value={s.branding.app_name} sx={{ maxWidth: 320 }} help="Up to 40 characters"
+            onChange={(e) => set("branding", { app_name: e.target.value })} />
+          {logo && <img src={`/api/branding/logo?v=${logo}`} alt="The current logo" style={{ height: 40, maxWidth: 160, objectFit: "contain" }} />}
+          <Button variant="outlined" component="label" title="Upload a logo image (PNG, JPEG or WebP, up to 256 KB)">
+            {logo ? "Replace logo" : "Upload logo"}
+            <input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const r = await fetch("/api/admin/settings/branding/logo", { method: "PUT", body: f, credentials: "same-origin",
+                headers: { "Content-Type": f.type || "application/octet-stream" } });
+              const body = await r.json().catch(() => ({}));
+              if (r.ok) setLogo(body.logo); else setError(body.detail || `Upload failed (${r.status})`);
+              e.target.value = "";
+            }} />
+          </Button>
+          {logo && <Button color="error" title="Remove the logo"
+            onClick={() => api.del<{ logo: null }>("/api/admin/settings/branding/logo").then(() => setLogo(null), (e) => setError(e.message))}>Remove logo</Button>}
+        </Stack>
       </Section>
 
       <Section title="File locations" intro="Where the Files page keeps ISOs, application installers and other files (paths inside the containers)."

@@ -4,7 +4,7 @@ import { api, Provider } from "../api";
 import { useAuth } from "../App";
 
 export default function Login() {
-  const { appName } = useAuth();
+  const { appName, logo } = useAuth();
   const [providers, setProviders] = useState<Provider[] | null>(null);
   const [error, setError] = useState("");
 
@@ -15,6 +15,7 @@ export default function Login() {
   return (
     <Paper sx={{ maxWidth: 420, mx: "auto", mt: 8, p: 4 }}>
       <Stack spacing={2}>
+        {logo && <img src={`/api/branding/logo?v=${logo}`} alt="" style={{ height: 64, maxWidth: 240, objectFit: "contain", alignSelf: "center" }} />}
         <Typography variant="h5">Sign in to {appName}</Typography>
         {error && <Alert severity="error">{error}</Alert>}
         {providers?.length === 0 && (

@@ -39,10 +39,13 @@ interface AuthState {
   me: Me | null;
   refresh: () => Promise<void>;
   appName: string;                       // Settings > Branding (design §22.2)
+  logo: string | null;                   // its version, or null: no logo (design §44)
+  setLogo: (v: string | null) => void;
   setAppName: (name: string) => void;
 }
 
-const AuthContext = createContext<AuthState>({ me: null, refresh: async () => {}, appName: "LABaPe", setAppName: () => {} });
+const AuthContext = createContext<AuthState>({ me: null, refresh: async () => {}, appName: "LABaPe", setAppName: () => {},
+  logo: null, setLogo: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
 export const hasRole = (me: Me | null, ...roles: string[]) =>
@@ -52,6 +55,7 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [appName, setAppName] = useState("LABaPe");
+  const [logo, setLogo] = useState<string | null>(null);
   const location = useLocation();
   // After Reload rights the callback lands on /?reload=done (or signin-needed).
   const [reloadNotice, setReloadNotice] = useState(() => new URLSearchParams(window.location.search).get("reload"));
@@ -69,11 +73,15 @@ export default function App() {
 
   useEffect(() => {
     refresh();
-    api.get<{ app_name: string }>("/api/branding").then((b) => setAppName(b.app_name), () => undefined);
+    api.get<{ app_name: string; logo: string | null }>("/api/branding").then((b) => { setAppName(b.app_name); setLogo(b.logo); }, () => undefined);
   }, [refresh]);
   useEffect(() => {
     document.title = appName;
   }, [appName]);
+  useEffect(() => {                       // the logo as the tab's icon too
+    const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+    if (link && logo) link.href = `/api/branding/logo?v=${logo}`;
+  }, [logo]);
 
   if (loading) {
     return (
@@ -94,13 +102,14 @@ export default function App() {
   };
 
   return (
-    <AuthContext.Provider value={{ me, refresh, appName, setAppName }}>
+    <AuthContext.Provider value={{ me, refresh, appName, setAppName, logo, setLogo }}>
       <MaintenanceProvider signedIn={Boolean(me)}>
       {me && (
         <AppBar position="static">
           <Toolbar sx={{ gap: 1 }}>
             <Typography variant="h6" component={RouterLink} to="/" title="Dashboard: load, environments and platform health"
-              sx={{ mr: 2, color: "inherit", textDecoration: "none" }}>
+              sx={{ mr: 2, color: "inherit", textDecoration: "none", display: "flex", alignItems: "center", gap: 1 }}>
+              {logo && <img src={`/api/branding/logo?v=${logo}`} alt="" style={{ height: 28, maxWidth: 120, objectFit: "contain" }} />}
               {appName}
             </Typography>
             <Button color="inherit" component={RouterLink} to="/environments" title="Your lab environments: create, deploy, destroy">
