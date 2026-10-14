@@ -31,6 +31,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Set up access.
 
 ### Fixed
+- A service the installer left out (e.g. Conjur) could still be started by
+  its own compose profile: the override now replaces the profiles.
 - Changing the web interface's host name (e.g. from an address to its DNS
   name) works by re-running the installer's steps: the platform CA adds the
   new name, the stack's Authentik updates its redirect URI, and Stack.Setup
@@ -58,6 +60,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   turning verification off. TLS 1.2 is the minimum.
 
 ### Added
+- Monitoring for the hosts that run a LABaPe stack, and the stacks
+  watching each other: a role per host (KVM, stack or both) with matching
+  sections, containers, volumes, backups, certificates and database sizes,
+  peer stacks probed every minute, and alerts that start and clear on the
+  dashboard, to syslog and by email (Settings → Monitoring).
 - The web stack runs on ARM (arm64, e.g. a Raspberry Pi 5): the image
   builds there, Conjur is left out (no arm64 image), Debian 12 and an
   existing Docker CE install are handled.
