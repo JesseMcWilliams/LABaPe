@@ -73,3 +73,6 @@ deploy/answers.*.json
 
 # The update agent's shared folder (requests, status, log; design §23.2)
 container/update/
+
+# Sign-on between linked stacks (design §47.2): the CA bundle Authentik reads, made on the host.
+tools/authentik-test/trust/

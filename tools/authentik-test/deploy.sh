@@ -59,6 +59,7 @@ fi
 grep -q '^LABAPE_TEST_DIRECTORY_TOKEN=' .env || echo "LABAPE_TEST_DIRECTORY_TOKEN=$(gen)" >> .env
 grep -q '^LABAPE_TEST_ROTATOR_TOKEN=' .env || echo "LABAPE_TEST_ROTATOR_TOKEN=$(gen)" >> .env
 
+bash ./sso.sh --bundle-only                     # the CA bundle the containers read (design §47.2)
 $COMPOSE up -d
 echo "authentik-test: waiting for Authentik to apply the blueprint..."
 issuer="http://${PUBLIC_HOST}:9000/application/o/labape/"
