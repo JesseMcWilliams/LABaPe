@@ -47,6 +47,7 @@ interface StackBackupList {
 }
 interface AllSettings {
   vm_snapshots: { auto_before_deploy: boolean; keep_auto: number };
+  leases: { enabled: boolean; default_days: number; max_days: number; remind_days: number[]; grace_days: number; after_grace: string };
   backup: Backup; stack_backup: StackBackup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
@@ -206,7 +207,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "stack_backup" | "vm_snapshots" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
+  const put = async <K extends "backup" | "stack_backup" | "vm_snapshots" | "leases" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -329,6 +330,27 @@ export default function Settings() {
             onChange={(e) => set("downloads", { allow_http: e.target.checked })} />} />
           <Field label="Proxy" value={s.downloads.proxy} sx={{ minWidth: 320 }} help="e.g. http://proxy.example:3128; empty: direct"
             onChange={(e) => set("downloads", { proxy: e.target.value })} />
+        </Stack>
+      </Section>
+
+      <Section title="Environment leases" intro="Environments expire unless their owners extend them: reminder emails before the end, the VMs shut down at the end, and after the grace period the environment is destroyed (or kept shut down). New environments get the default lease; existing ones have none until someone sets it."
+        onSave={async () => { await put("leases", s.leases); return "Lease settings saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Leases on" control={<Checkbox checked={s.leases.enabled}
+            onChange={(e) => set("leases", { enabled: e.target.checked })} />} />
+          <Field label="New environments (days)" type="number" value={s.leases.default_days} sx={{ width: 190 }}
+            onChange={(e) => set("leases", { default_days: num(e.target.value) })} />
+          <Field label="Longest from now (days)" type="number" value={s.leases.max_days} sx={{ width: 190 }} help="How far owners can extend"
+            onChange={(e) => set("leases", { max_days: num(e.target.value) })} />
+          <Field label="Remind (days before)" value={s.leases.remind_days.join(", ")} sx={{ width: 180 }} help="e.g. 7, 1"
+            onChange={(e) => set("leases", { remind_days: e.target.value.split(",").map((x) => Number(x.trim())).filter((x) => x > 0) })} />
+          <Field label="Grace (days)" type="number" value={s.leases.grace_days} sx={{ width: 130 }} help="Shut down, then this long"
+            onChange={(e) => set("leases", { grace_days: num(e.target.value) })} />
+          <Field select label="After the grace" value={s.leases.after_grace} sx={{ width: 190 }}
+            onChange={(e) => set("leases", { after_grace: e.target.value })}>
+            <MenuItem value="destroy">Destroy it</MenuItem>
+            <MenuItem value="keep">Keep it shut down</MenuItem>
+          </Field>
         </Stack>
       </Section>
 

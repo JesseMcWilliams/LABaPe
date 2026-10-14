@@ -49,6 +49,23 @@ class StackBackupSettings(BaseModel):
         return v.rstrip("/") or "/"
 
 
+class LeaseSettings(BaseModel):
+    """Environment leases (design §40). Off by default: the end of a lease can destroy VMs."""
+    enabled: bool = False
+    default_days: int = Field(default=30, ge=1, le=3650)
+    max_days: int = Field(default=180, ge=1, le=3650)
+    remind_days: list[int] = Field(default_factory=lambda: [7, 1])
+    grace_days: int = Field(default=7, ge=0, le=365)
+    after_grace: str = Field(default="destroy", pattern="^(destroy|keep)$")
+
+    @field_validator("remind_days")
+    @classmethod
+    def _remind(cls, v: list[int]) -> list[int]:
+        if any(d < 1 or d > 365 for d in v) or len(v) > 5:
+            raise ValueError("up to 5 reminders, each 1-365 days before the end")
+        return sorted(set(v), reverse=True)
+
+
 class VmSnapshotSettings(BaseModel):
     """VM snapshots (design §39): automatic ones before a deploy changes existing VMs."""
     auto_before_deploy: bool = False
@@ -228,6 +245,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "stack_backup": StackBackupSettings,
     "vm_snapshots": VmSnapshotSettings,
+    "leases": LeaseSettings,
     "retention": RetentionSettings,
     "syslog": SyslogSettings,
     "smtp": SmtpSettings,

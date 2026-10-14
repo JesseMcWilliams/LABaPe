@@ -788,6 +788,10 @@ def serve(slots: int | None = None) -> None:
                     if maintenance.schedule_backup(db):
                         log.info("queued the daily backup")
                 with session_factory()() as db:
+                    from .. import leases
+                    for what in leases.tick(db):           # environment leases (§40)
+                        log.info("lease: %s", what)
+                with session_factory()() as db:
                     if stackbackup.schedule(db):
                         log.info("asked the update agent for the daily full-stack backup")
                 with session_factory()() as db:

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings
+from .. import appsettings, leases
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
@@ -93,6 +93,7 @@ def _out(db: Session, e: Environment, owner: bool) -> dict:
         "id": e.id, "name": e.name, "status": e.status, "kvm_host": e.kvm_host.name if e.kvm_host else None,
         "spec": e.spec, "created_by": e.created_by, "created_at": e.created_at, "updated_at": e.updated_at,
         "is_owner": owner, "inventory": e.inventory if owner else "", "addresses": addresses,
+        "lease": leases.out(db, e),
     }
 
 
@@ -266,7 +267,8 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
     groups = _check_networks(db, p, host.id, raw)
     # The Linux admin account comes from Settings > VM accounts, fixed per environment.
     spec = {"host_groups": groups, "linux_admin_user": appsettings.get(db, "vm_accounts").linux_admin_user}
-    e = Environment(name=body.name, kvm_host_id=host.id, spec=spec, created_by=p.username)
+    e = Environment(name=body.name, kvm_host_id=host.id, spec=spec, created_by=p.username,
+                    expires_at=leases.default_expiry(db))
     db.add(e)
     db.commit()
     add_owner(db, "environment", e.id, p.username)
@@ -303,6 +305,9 @@ def redeploy(env_id: int, request: Request, db: Session = Depends(get_db),
     e = _get(db, env_id, p)
     if not is_owner(db, p, "environment", e.id):
         raise HTTPException(status_code=403, detail="Only the environment's owners can deploy it")
+    if e.status in ("destroyed", "new"):
+        # A fresh deploy starts a fresh lease (design §40): an old, ended one would shut it down at once.
+        e.expires_at, e.lease_state = leases.default_expiry(db), {}
     job = _queue(db, e, "environment.deploy", p)
     audit(db, p.username, "environment.deploy", object_type="environment", object_id=e.id, detail={"job": job.id},
           source_ip=client_ip(request))
@@ -626,6 +631,33 @@ def vm_manage_accounts(env_id: int, vm: str, body: VmManageIn, request: Request,
     audit(db, p.username, f"vm.{body.op}", object_type="environment", object_id=e.id, detail=detail,
           source_ip=client_ip(request))
     return {"ok": True}
+
+
+# --- the lease (design §40) -------------------------------------------------------------------------
+
+class LeaseIn(BaseModel):
+    days: int | None = Field(default=None, ge=1, le=3650)
+    until: dt.datetime | None = None                     # admins
+    clear: bool = False                                  # admins: no expiry
+
+
+@router.post("/{env_id}/lease")
+def set_lease(env_id: int, body: LeaseIn, request: Request, db: Session = Depends(get_db),
+              p: Principal = Depends(current_principal)):
+    """Extend (owners) or set or remove (admins) the environment's lease."""
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "extend its lease")
+    if e.status in ("destroying", "destroyed"):
+        raise HTTPException(status_code=409, detail="The environment is being destroyed or gone")
+    before = e.expires_at
+    try:
+        leases.set_lease(db, e, days=body.days, until=body.until, clear=body.clear, admin=p.is_admin)
+    except leases.LeaseError as exc:
+        raise FieldError("days", str(exc)) from exc
+    audit(db, p.username, "environment.lease", object_type="environment", object_id=e.id,
+          detail={"from": before.isoformat() if before else None,
+                  "to": e.expires_at.isoformat() if e.expires_at else None}, source_ip=client_ip(request))
+    return leases.out(db, e)
 
 
 # --- VM snapshots (design §39) --------------------------------------------------------------------

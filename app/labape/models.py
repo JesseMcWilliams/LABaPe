@@ -137,6 +137,9 @@ class Environment(Base):
     created_by: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    # The lease (design §40): when it ends (None: never), and what it has done (reminded, stopped, destroy job).
+    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     kvm_host: Mapped[KvmHost] = relationship()
 

@@ -80,6 +80,27 @@ export default function EnvironmentDetail() {
         </Typography>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
+      {env.lease && (env.lease.enabled || env.lease.expires_at) && env.status !== "destroyed" && (
+        <Alert severity={env.lease.phase === "ended" || env.lease.phase === "destroying" ? "error" : env.lease.phase === "expiring" ? "warning" : "info"}
+          icon={false}
+          action={env.is_owner && env.status !== "destroying" && (
+            <Stack direction="row" spacing={0.5}>
+              {[7, 30].map((d) => (
+                <Button key={d} size="small" title={`Push the end ${d} days later (at most ${env.lease.max_days} days from now)`}
+                  onClick={() => api.post(`/api/environments/${id}/lease`, { days: d }).then(load, (e) => setError(e.message))}>+{d} days</Button>
+              ))}
+              {hasRole(me, "admin") && env.lease.expires_at && (
+                <Button size="small" title="Admins: this environment never expires"
+                  onClick={() => api.post(`/api/environments/${id}/lease`, { clear: true }).then(load, (e) => setError(e.message))}>No expiry</Button>
+              )}
+            </Stack>
+          )}>
+          {!env.lease.expires_at ? "This environment doesn't expire."
+            : env.lease.phase === "destroying" ? "The lease ended and the grace period is over: it's being destroyed."
+            : env.lease.phase === "ended" ? <>The lease ended {fmtTime(env.lease.expires_at)}: its VMs were shut down.{env.lease.destroy_at ? <> It's destroyed {fmtTime(env.lease.destroy_at)} unless the lease is extended.</> : " Extend the lease to use it again."}</>
+            : <>The lease ends {fmtTime(env.lease.expires_at)}: then its VMs are shut down{env.lease.destroy_at ? <>, and it's destroyed {fmtTime(env.lease.destroy_at)}</> : ""}.</>}
+        </Alert>
+      )}
       {env.is_owner && (
         <Stack direction="row" spacing={2}>
           <ActionButton variant="contained" disabled={busy} onClick={() => act("deploy")}

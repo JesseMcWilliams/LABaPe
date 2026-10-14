@@ -1515,3 +1515,16 @@ Batch 9 of the order in Planning_Backlog.md (review item 3).
 | UI | VM page → **Snapshots**: the list (name, taken, the VM's state then, by, description, current and automatic marks), "as of" with Refresh, Take snapshot (name, description), Revert (confirms what's lost) and Delete. Settings → VM snapshots. `tools/helpers/live/snapshots.py`. |
 | Verified | pytest 238 (a fake virsh). Live on a throwaway Debian VM on kvm1: took `before-marker`, wrote a file, reverted: the file was gone and the VM was running with its uptime kept (memory restored); the list showed libvirt's time, "running" and current; with the setting on, a re-deploy took `auto-before-job-130` first; destroying the environment with two snapshots failed (fixed above) and then succeeded. |
 
+## 40. Environment leases (E1, built 2026-10-14)
+
+Batch 10 of the order in Planning_Backlog.md (review item 4).
+
+| Area | As built |
+|---|---|
+| Off by default | Settings → Environment leases. The end of a lease can destroy VMs, so nothing expires until an admin turns leases on; then new environments get the default lease (30 days) and existing ones have none until an owner or admin sets one. A fresh deploy of a destroyed or new environment starts a fresh lease (an old, ended one would shut it down at once). |
+| The lifecycle | The worker, every loop outside maintenance mode (`leases.tick`): reminder emails to the owners (the creator and user grants with owner level that have an email) at each "days before" (7 and 1 by default; each once); at the end, an `environment.power` shutdown of every VM (force off after 5 minutes), requested by `lease`; after the grace period (7 days), an `environment.destroy` job, or, with "keep it shut down", nothing more. Each step is recorded in `environments.lease_state` and mailed. An environment with a job running waits for the next pass. |
+| Extending | Owners: +7 or +30 days from the later of now and the current end, at most "longest from now" (180 days) ahead; extending an ended lease starts it again (the VMs stay off until someone starts them). Admins: any end, or no expiry (`POST /api/environments/{id}/lease` with `days`, `until` or `clear`), audited as `environment.lease`. |
+| Data and API | `environments.expires_at` and `lease_state` (migration `0018`); each environment's `lease` in the API: enabled, expires_at, phase (none, active, expiring inside the first reminder, ended, destroying), destroy_at, max_days. |
+| UI | Environment page: a lease line (ends when, then what; ended; being destroyed) with +7 days, +30 days and, for admins, No expiry. Environments list: an Expires column. Settings → Environment leases. `tools/helpers/live/leases.py`. |
+| Verified | pytest 242. Live on kvm1 with a throwaway environment: leases on with grace 0 and destroy, its lease set to end 3 minutes later: the reminder was recorded, at the end job 136 shut its VMs down (requested by `lease`), then job 137 destroyed it. Leases were turned off again afterwards (the lab's environments have no expiry). |
+

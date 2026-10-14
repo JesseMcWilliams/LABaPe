@@ -204,7 +204,16 @@ export interface Environment {
   is_owner: boolean;
   inventory: string;
   addresses: Record<string, string>;
+  lease: Lease;
 }
+
+/** An environment's lease (design §40). */
+export interface Lease {
+  enabled: boolean; expires_at: string | null; phase: "none" | "active" | "expiring" | "ended" | "destroying";
+  destroy_at: string | null; max_days: number; state: Record<string, unknown>;
+}
+
+export const LEASE_COLOR = { none: "default", active: "success", expiring: "warning", ended: "error", destroying: "error" } as const;
 
 export interface Job {
   id: number;

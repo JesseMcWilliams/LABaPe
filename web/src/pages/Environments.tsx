@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { Alert, Button, Link, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
-import { api, Environment, fmtTime } from "../api";
+import { Alert, Button, Chip, Link, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { api, Environment, fmtTime, LEASE_COLOR } from "../api";
 import { hasRole, useAuth } from "../App";
 import { StateChip } from "../components";
 
@@ -37,6 +37,7 @@ export default function Environments() {
             <TableCell>KVM host</TableCell>
             <TableCell>Hosts</TableCell>
             <TableCell>Created by</TableCell>
+            <TableCell>Expires</TableCell>
             <TableCell>Updated</TableCell>
           </TableRow>
         </TableHead>
@@ -56,12 +57,16 @@ export default function Environments() {
                 {e.spec.host_groups.map((g) => `${g.name}×${g.count ?? 1} (${g.os})`).join(", ")}
               </TableCell>
               <TableCell>{e.created_by}</TableCell>
+              <TableCell>{e.lease?.expires_at
+                ? <Chip size="small" variant="outlined" color={LEASE_COLOR[e.lease.phase]} label={fmtTime(e.lease.expires_at)}
+                    title={e.lease.phase === "ended" ? "The lease ended: its VMs were shut down" : `Lease: ${e.lease.phase}`} />
+                : "never"}</TableCell>
               <TableCell>{fmtTime(e.updated_at)}</TableCell>
             </TableRow>
           ))}
           {envs.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6}>No environments you can see yet.</TableCell>
+              <TableCell colSpan={7}>No environments you can see yet.</TableCell>
             </TableRow>
           )}
         </TableBody>
