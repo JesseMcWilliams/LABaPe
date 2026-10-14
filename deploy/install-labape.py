@@ -107,6 +107,8 @@ STEPS = [
      "OpenBao (and Conjur if chosen) in the stack: initialize, unseal at boot, connect LABaPe (design §26)"),
     ("Stack.UpdateAgent", S.update_agent, ["InstallWebUi", "ServiceUser", "InstallUpdateAgent"], agent,
      "Host-side update agent (user systemd unit, lingering) for updates from the web interface"),
+    ("Stack.Restore", S.stack_restore, ["InstallWebUi", "ServiceUser"], web,
+     "--from-backup only: put the backup's state onto this stack (deploy/stack-restore.sh)"),
     ("Stack.Bootstrap", S.stack_bootstrap,
      ["InstallWebUi", "KvmHostName", "Networks", "DefaultNetwork", "VmStoragePath", "TemplateStoragePath",
       "AdminGroups", "ContainerRuntime", "IsoPath"], web, "Register this KVM host and its networks in the web interface"),
@@ -145,6 +147,12 @@ def parse_args(argv):
     ap.add_argument("--force", action="store_true", help="redo work a step would skip (rewrite environment.yml, reinstall tools)")
     ap.add_argument("--non-interactive", action="store_true", help="never prompt; fail if an answer is missing")
     ap.add_argument("--fresh", action="store_true", help="ignore the saved answers file and ask again")
+    ap.add_argument("--from-backup", metavar="ARCHIVE",
+                    help="install the stack a full-stack backup (deploy/stack-backup.sh) was taken of: its answers, "
+                         "then its state (Stack.Restore). Templates aren't built (TemplatesToBuild=[])")
+    ap.add_argument("--backup-key-file", metavar="FILE", help="the backup key, with --from-backup")
+    ap.add_argument("--restore-drill", action="store_true",
+                    help="with --from-backup: leave maintenance mode on, so the copy runs no jobs against real hosts")
     return ap.parse_args(argv)
 
 
@@ -206,12 +214,28 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     a = Resolver(interactive=sys.stdin.isatty() and not args.non_interactive)
 
-    # Precedence: --set, then --config-file, then saved answers (partial runs).
+    # Precedence: --set, then --config-file, then a backup's answers, then saved answers (partial runs).
     a.add(parse_sets(args.set))
     if args.profile:
         a.add({"Profile": args.profile})
     from_config = state.read_answer_file(Path(args.config_file)) if args.config_file else {}
     a.add(from_config)
+    if args.from_backup:
+        if not args.backup_key_file:
+            raise SystemExit("error: --from-backup needs --backup-key-file")
+        from labape_deploy import restore
+        try:
+            from_backup, manifest = restore.archive_answers(REPO, Path(args.from_backup), Path(args.backup_key_file))
+        except StepError as exc:
+            raise SystemExit(f"error: {exc}") from exc
+        print(f"Installing from {manifest.get('name', args.from_backup)} (taken {manifest.get('created_at', '?')} "
+              f"on {manifest.get('host', '?')}, LABaPe {manifest.get('version', '?')})")
+        if not from_backup:
+            print("The backup has no installer answers (that stack wasn't installed with this installer): "
+                  "give them with --config-file/--set or at the prompts.")
+        a.add({"TemplatesToBuild": []})            # templates aren't in a backup; build them later
+        a.add(from_backup)
+        from_config = {**from_backup, **from_config}
     instance = pick_instance(args, {**from_config, **a.answers})
     a.add({"InstanceName": instance})
     answers_path = state.state_path(DEPLOY_ROOT, instance, "answers")
@@ -285,7 +309,10 @@ def main(argv=None) -> int:
     print(f"Answers saved to {answers_path} (reuse with --config-file, or --resume after a failure).")
 
     runner = Runner(args.dry_run, a.answers.get("ServiceUser"))
-    ctx = S.Ctx(r=runner, a=a, repo=REPO, deploy_root=DEPLOY_ROOT, force=args.force)
+    ctx = S.Ctx(r=runner, a=a, repo=REPO, deploy_root=DEPLOY_ROOT, force=args.force,
+                backup=Path(args.from_backup).resolve() if args.from_backup else None,
+                backup_key=Path(args.backup_key_file).resolve() if args.backup_key_file else None,
+                restore_drill=args.restore_drill)
     results = []
     for name, fn, _, cond, _ in selected:
         print(f"\n=== Step: {name} ===", flush=True)

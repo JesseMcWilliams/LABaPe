@@ -148,9 +148,9 @@ VERSION="$(git -C "$REPO" describe --tags --always 2>/dev/null || echo unknown)"
 COMMIT="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
 REV="$(dc exec -T labape-api labape db-status 2>/dev/null | awk '/^database:/{print $2}' || true)"
 NAME="labape-stack-$(hostname -s)-$(date -u +%Y%m%d-%H%M%S)"
-python3 - "$W" "$NAME" "$VERSION" "$COMMIT" "${REV:-}" "$(envval LABAPE_HOSTNAME)" "$SYSLOG" "$RECORDINGS" <<'PY'
-import datetime, hashlib, json, os, socket, sys
-w, name, version, commit, rev, web, syslog, rec = sys.argv[1:9]
+python3 - "$W" "$NAME" "$VERSION" "$COMMIT" "${REV:-}" "$(envval LABAPE_HOSTNAME)" "$SYSLOG" "$RECORDINGS" "$REPO" <<'PY'
+import datetime, getpass, hashlib, json, os, socket, sys
+w, name, version, commit, rev, web, syslog, rec, repo = sys.argv[1:10]
 files = []
 for root, dirs, names in os.walk(w):
     dirs.sort()
@@ -166,6 +166,8 @@ for root, dirs, names in os.walk(w):
 m = {"format": 1, "name": name, "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
      "host": socket.gethostname(), "web_hostname": web, "version": version, "commit": commit, "db_revision": rev,
      "includes": {"syslog": syslog == "1", "recordings": rec == "1"},
+     # Where it came from, so a restore on another host can fix paths (deploy/stack-restore.sh).
+     "service_user": getpass.getuser(), "uid": os.getuid(), "home": os.path.expanduser("~"), "repo": repo,
      "parts": sorted({f["path"].split("/")[0] + "/" + f["path"].split("/")[1] for f in files if f["path"].count("/")}),
      "files": files}
 json.dump(m, open(os.path.join(w, "manifest.json"), "w"), indent=1)

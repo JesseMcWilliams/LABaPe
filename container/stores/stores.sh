@@ -137,6 +137,13 @@ unseal() {
       | bao_api PUT sys/unseal >/dev/null || die "unsealing OpenBao failed"
     say "OpenBao unsealed"
   fi
+  # Raft takes a moment after the unseal to make this node active; until then writes fail with
+  # "cannot write to readonly storage" (HTTP 500). sys/health is 200 only on the active node.
+  for i in $(seq 1 60); do
+    [ "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$TLS/root.crt" --max-time 5 "$BAO/v1/sys/health")" = 200 ] && return 0
+    sleep 2
+  done
+  die "OpenBao didn't become active within 2 minutes of the unseal (docker compose logs labape-openbao)"
 }
 enable_kv() {   # enable_kv <mount>
   root_api GET sys/mounts < /dev/null | grep -q "\"$1/\"" \
