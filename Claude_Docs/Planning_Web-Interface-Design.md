@@ -1490,3 +1490,14 @@ instead of a browser sign-in.
 | API and UI | `GET /api/tokens` (mine; admins `?all=true`: everyone's and the service tokens), `POST /api/tokens`, `DELETE /api/tokens/{id}` (own personal tokens, or any for admins). The user menu's **API tokens** page: the list (name, owner, kind, roles, prefix, expiry, last use, state), New token (name, kind for admins, roles, expiry) and Revoke. `tools/helpers/live/tokens.py`. |
 | Verified | pytest 234. Live on kvm1 (`tokens.py roundtrip`): a personal token read the API without a session (200, admin settings too as labape-admin is admin), couldn't make another token (403), was refused at once after revoking (401); the audit log has the create, the token's write attempt and the revoke. |
 
+## 38. Prometheus metrics (A2, built 2026-10-14)
+
+Batch 8 of the order in Planning_Backlog.md (review item 9), the last before release v0.3.0
+(question 150).
+
+| Area | As built |
+|---|---|
+| Endpoint | `GET /api/metrics`, Prometheus text format 0.0.4, auditors and admins, so normally read with an admin's **service token** with the auditor role (§37): `Authorization: Bearer lpst_…` (Prometheus `authorization: {credentials_file: …}`). Gauges only, from what LABaPe already collects: a scrape runs no probes and costs a few queries. Written by hand (no new dependency); integers exactly, label values escaped. |
+| Metrics | `labape_info{version}`, `labape_maintenance`; per KVM host (`host`, `role` labels): `labape_host_enabled`, `labape_host_up` (load read in the last 10 minutes without an error), `_cpus`, `_cpu_percent`, `_memory_bytes`, `_memory_used_bytes`, `_vm_disk_bytes`, `_vm_disk_free_bytes`, `_vms_running`, `_vms_defined`, `_collected_timestamp_seconds`; `labape_environments{status}`, `labape_jobs{state}` (queued, running), `labape_jobs_failed_24h`, `labape_alerts_open{level}`; per linked stack `labape_link_up{stack}` and `labape_link_last_ok_timestamp_seconds`; `labape_backup_last_timestamp_seconds{kind="stack"|"database"}` and `labape_backup_last_check_ok{kind="stack"}`. |
+| Verified | pytest 235 (every line parses; a viewer token gets 403, none 401). Live on kvm1 with a throwaway auditor service token (`tokens.py scrape`, revoked afterwards): 100 lines, kvm1's 56 CPUs, memory, VM storage and 4 of 5 VMs running, environments by status. |
+

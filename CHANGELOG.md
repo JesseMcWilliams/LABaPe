@@ -8,6 +8,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Prometheus metrics at `/api/metrics` (hosts, environments, jobs, alerts,
+  linked stacks, backup ages), read with an auditor service token.
 - API tokens: personal tokens (act as you, never with more than your current
   roles) and admins' service tokens, with an expiry of at most a year, for
   scripts and CI (`Authorization: Bearer`); writes made with a token are
