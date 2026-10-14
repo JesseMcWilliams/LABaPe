@@ -46,6 +46,7 @@ interface StackBackupList {
   copies: Record<string, { archive: string; size: number; created_at: string | null; received_at: string; host: string; path: string }[]>;
 }
 interface AllSettings {
+  vm_snapshots: { auto_before_deploy: boolean; keep_auto: number };
   backup: Backup; stack_backup: StackBackup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
@@ -205,7 +206,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "stack_backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
+  const put = async <K extends "backup" | "stack_backup" | "vm_snapshots" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -328,6 +329,16 @@ export default function Settings() {
             onChange={(e) => set("downloads", { allow_http: e.target.checked })} />} />
           <Field label="Proxy" value={s.downloads.proxy} sx={{ minWidth: 320 }} help="e.g. http://proxy.example:3128; empty: direct"
             onChange={(e) => set("downloads", { proxy: e.target.value })} />
+        </Stack>
+      </Section>
+
+      <Section title="VM snapshots" intro="Snapshots of an environment's VMs before a deploy changes them (a re-deploy, added applications or services). Owners take, revert and delete snapshots on each VM's page."
+        onSave={async () => { await put("vm_snapshots", s.vm_snapshots); return "VM snapshot settings saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Snapshot every VM before a deploy changes it" control={<Checkbox checked={s.vm_snapshots.auto_before_deploy}
+            onChange={(e) => set("vm_snapshots", { auto_before_deploy: e.target.checked })} />} />
+          <Field label="Keep (automatic, per VM)" type="number" value={s.vm_snapshots.keep_auto} sx={{ width: 200 }} help="1-20; older ones are deleted"
+            onChange={(e) => set("vm_snapshots", { keep_auto: num(e.target.value) })} />
         </Stack>
       </Section>
 

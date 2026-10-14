@@ -33,7 +33,11 @@ safe_undefine() {
   # every LABaPe VM is today (windows_11 uses os_variant win10 to avoid
   # UEFI, see tofu/backends/libvirt/main.tf), kept so a hand-made or
   # older UEFI leftover can't wedge a destroy.
-  virsh --connect "$uri" undefine "$name" --nvram
+  # --snapshots-metadata: a VM with snapshots (design §39) is refused
+  # otherwise ("cannot delete inactive domain with N snapshots"). Only
+  # libvirt's records go; the internal snapshots live in the VM's own
+  # qcow2, which is removed below with the rest of its disks.
+  virsh --connect "$uri" undefine "$name" --nvram --snapshots-metadata
 
   # libvirtd creates these with dynamic_ownership (libvirt-qemu:kvm) in
   # a root-owned, non-world-writable directory — plain `rm` as this

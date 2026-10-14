@@ -562,3 +562,9 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 1. **A restore drill's install stopped at Stack.Up (no /api/health for 3 minutes):** Caddy gets the web certificate from the platform CA over ACME, and the CA checks the http-01 challenge by resolving the web address, which DNS still sends to the real Pi; containers don't read the VM's `/etc/hosts`. A drill (`--restore-drill`) now adds `extra_hosts: [<web address>:host-gateway]` to the CA in the installer's `compose.override.yaml`. A real restore doesn't need it: DNS points at the new machine.
 2. **Stack.Stores failed on a fresh OpenBao with HTTP 500, "cannot write to readonly storage":** with raft storage the node needs a moment after the unseal to become active, and `stores.sh` enabled the first mount straight away (the Pi's install was lucky). `unseal()` now waits until `sys/health` answers 200 (active), up to 2 minutes.
 
+## VM snapshots (V1, 2026-10-14)
+
+1. **The snapshot list stayed empty in the web interface ("the VM isn't on its KVM host"):** the API container has no libvirt socket and no SSH key to the hosts; only the worker does. The worker now reads the list back after every snapshot job (and on Refresh) into `vm_snapshots`, and the API serves that.
+2. **`virsh snapshot-dumpxml … --no-domain`: "doesn't support option --no-domain"** (libvirt 11.3): dropped; the full XML parses the same, reading only the snapshot's own top-level elements.
+3. **Destroying an environment with snapshots failed: "cannot delete inactive domain with 2 snapshots".** `safe_undefine` adds `--snapshots-metadata`.
+

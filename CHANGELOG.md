@@ -7,6 +7,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- VM snapshots: take, revert and delete on the VM page (internal libvirt
+  snapshots with memory, BIOS VMs), and optionally a snapshot of every VM
+  before a deploy changes an environment (Settings → VM snapshots).
+
+### Fixed
+- Destroying an environment whose VMs had snapshots failed: the teardown
+  now drops libvirt's snapshot records with the VM.
+
 ## [0.3.0] - 2026-10-14
 
 Everything since v0.2.0: the update agent with signed releases and

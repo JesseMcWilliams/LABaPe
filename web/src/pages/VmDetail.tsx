@@ -3,9 +3,10 @@
 // and groups are read live (owners and admins); consoles go through the KVM host.
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import {
-  Alert, Box, Chip, List, ListItemButton, ListItemText, Paper, Stack, Table, TableBody, TableCell, TableHead,
-  TableRow, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Link, List, ListItemButton, ListItemText,
+  Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { DetailHeader, Facts } from "../components/PageParts";
@@ -27,8 +28,88 @@ interface VmView {
 const SECTIONS = [
   { key: "dashboard", label: "Dashboard" }, { key: "disks", label: "Disks and volumes" }, { key: "nics", label: "NICs" },
   { key: "os", label: "OS" }, { key: "accounts", label: "Accounts" }, { key: "groups", label: "Groups" },
-  { key: "console", label: "Console" },
+  { key: "console", label: "Console" }, { key: "snapshots", label: "Snapshots" },
 ] as const;
+
+interface Snap { name: string; state: string; parent: string; created: string | null; description: string; current: boolean; created_by: string; auto: boolean }
+interface SnapList { snapshots: Snap[]; synced_at: string | null; supported: boolean; reason: string; can_operate: boolean }
+
+/** VM snapshots (design §39): libvirt's internal snapshots, with memory when the VM runs. */
+function Snapshots({ view }: { view: VmView }) {
+  const base = `/api/environments/${view.environment_id}/vms/${view.name}/snapshots`;
+  const [data, setData] = useState<SnapList | null>(null);
+  const [error, setError] = useState("");
+  const [job, setJob] = useState<number | null>(null);
+  const [taking, setTaking] = useState(false);
+  const [form, setForm] = useState({ name: "", description: "" });
+  const load = useCallback(() => { api.get<SnapList>(base).then(setData, (e) => setError(e.message)); }, [base]);
+  useEffect(() => { load(); }, [load]);
+  const started = (r: { job_id: number }) => { setJob(r.job_id); setTimeout(load, 5000); };
+  const take = () => api.post<{ job_id: number }>(base, form).then((r) => { setTaking(false); setForm({ name: "", description: "" }); started(r); },
+    (e) => setError(e.message));
+  if (error) return <Alert severity="error" onClose={() => setError("")}>{error}</Alert>;
+  if (!data) return null;
+  const refresh = data.can_operate && <Button size="small" title="Read the VM's snapshots from its KVM host again (a quick job)"
+    onClick={() => api.post<{ job_id: number }>(`${base}/refresh`).then(started, (e) => setError(e.message))}>Refresh</Button>;
+  if (!data.supported) return <Alert severity="info" action={refresh}>No snapshots for this VM: {data.reason}.</Alert>;
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+        <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+          A snapshot keeps the disks, and the memory of a running VM, inside its disk file, which grows by what changes afterwards.
+        </Typography>
+        <Typography variant="caption" color="text.secondary">{data.synced_at ? `As of ${fmtTime(data.synced_at)}` : "Not read yet"}</Typography>
+        {refresh}
+        {data.can_operate && <Button variant="contained" onClick={() => setTaking(true)} title="Take a snapshot now (a job)">Take snapshot</Button>}
+      </Stack>
+      {job && <Alert severity="info" onClose={() => setJob(null)}>Started <Link component={RouterLink} to={`/jobs/${job}`}>job {job}</Link>; the list refreshes when it's done.{" "}
+        <Button size="small" onClick={load}>Refresh</Button></Alert>}
+      <Table size="small">
+        <TableHead>
+          <TableRow><TableCell>Name</TableCell><TableCell>Taken</TableCell><TableCell>VM was</TableCell><TableCell>By</TableCell><TableCell>Description</TableCell><TableCell /></TableRow>
+        </TableHead>
+        <TableBody>
+          {data.snapshots.map((s) => (
+            <TableRow key={s.name}>
+              <TableCell>{s.name}{s.current && <Chip size="small" sx={{ ml: 1, height: 18 }} label="current" title="The snapshot the VM last came from or was taken at" />}
+                {s.auto && <Chip size="small" sx={{ ml: 1, height: 18 }} label="automatic" />}</TableCell>
+              <TableCell>{s.created ? fmtTime(s.created) : "—"}</TableCell>
+              <TableCell>{s.state}</TableCell>
+              <TableCell>{s.created_by || "—"}</TableCell>
+              <TableCell>{s.description}</TableCell>
+              <TableCell>
+                {data.can_operate && <Stack direction="row" spacing={0.5}>
+                  <ActionButton size="small" tip="Put the VM back to this snapshot"
+                    confirm={{ title: `Revert ${view.name} to ${s.name}?`, confirmLabel: "Revert",
+                      body: `Everything on ${view.name} since ${s.created ? fmtTime(s.created) : "then"} is lost. The VM comes back ${s.state === "running" ? "running, as it was" : "in the state it was in"}.` }}
+                    onClick={() => api.post<{ job_id: number }>(`${base}/${encodeURIComponent(s.name)}/revert`).then(started, (e) => setError(e.message))}>Revert</ActionButton>
+                  <ActionButton size="small" color="error" tip="Delete the snapshot (the VM stays as it is)"
+                    confirm={{ title: `Delete snapshot ${s.name}?`, confirmLabel: "Delete", body: "The VM keeps its current state; only this restore point goes." }}
+                    onClick={() => api.del<{ job_id: number }>(`${base}/${encodeURIComponent(s.name)}`).then(started, (e) => setError(e.message))}>Delete</ActionButton>
+                </Stack>}
+              </TableCell>
+            </TableRow>
+          ))}
+          {data.snapshots.length === 0 && <TableRow><TableCell colSpan={6}>No snapshots.</TableCell></TableRow>}
+        </TableBody>
+      </Table>
+      <Dialog open={taking} onClose={() => setTaking(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Take a snapshot of {view.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              helperText="Letters, digits, dots, dashes, underscores" placeholder="before-patching" />
+            <TextField label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTaking(false)}>Cancel</Button>
+          <Button variant="contained" disabled={!/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(form.name)} onClick={take}>Take snapshot</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}
 
 const gb = (b?: number | null) => (b == null ? "—" : `${(b / 2 ** 30).toFixed(1)} GB`);
 const rate = (v: number) => (v >= 2 ** 20 ? `${(v / 2 ** 20).toFixed(1)} MB/s` : `${(v / 1024).toFixed(0)} KB/s`);
@@ -263,6 +344,7 @@ export default function VmDetail() {
     if (section === "os") return <Os view={view} />;
     if (section === "accounts" || section === "groups") return <Accounts key={section} view={view} which={section} />;
     if (section === "console") return <Console view={view} onError={setError} />;
+    if (section === "snapshots") return <Snapshots view={view} />;
     return <Dashboard view={view} />;
   };
   return (
