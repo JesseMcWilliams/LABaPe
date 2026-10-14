@@ -7,14 +7,14 @@ import {
   Alert, Checkbox, Chip, FormControlLabel, Link, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, Typography,
 } from "@mui/material";
-import { api, fmtTime, HostGroup } from "../api";
+import { api, fmtTime, HostGroup, KvmHost } from "../api";
 import { Field } from "../forms";
 import { ActionButton } from "./Confirm";
 import { ConnectButton, RdpFileLink } from "./Connect";
 
 interface VmRow {
   name: string; group: string; os: string; start_order: number; state: string; online: boolean;
-  responding: boolean | null; kvm_host?: string;
+  responding: boolean | null; kvm_host?: string; kvm_host_id?: number;
 }
 type Action = "start" | "shutdown" | "restart" | "force_off";
 
@@ -37,6 +37,21 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
   })));
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  // Moving a host group to another KVM host while it runs (design §46).
+  const [hosts, setHosts] = useState<KvmHost[]>([]);
+  const [moveGroup, setMoveGroup] = useState("");
+  const [moveTo, setMoveTo] = useState<number | "">("");
+  useEffect(() => {
+    api.get<KvmHost[]>("/api/hosts").then((h) => setHosts(h.filter((x) => x.enabled)), () => setHosts([]));
+  }, []);
+  const groupHost = (g: string) => vms.find((v) => v.group === g)?.kvm_host_id;
+  const move = async () => {
+    setError("");
+    try {
+      const r = await api.post<{ job_id: number }>(`/api/environments/${envId}/move`, { group: moveGroup, kvm_host_id: moveTo });
+      navigate(`/jobs/${r.job_id}`);
+    } catch (e) { setError((e as Error).message); }
+  };
 
   const load = useCallback(() => {
     api.get<{ vms: VmRow[]; collected_at: string | null; can_operate: boolean }>(`/api/environments/${envId}/vms`)
@@ -137,6 +152,26 @@ export default function VmPower({ envId, envName, groups, isOwner, onSaved }: {
         <Typography variant="caption" color="text.secondary">
           States are from the KVM host's last check{collected ? ` (${fmtTime(collected)})` : ""}, every few minutes.
         </Typography>
+        {canOperate && hosts.length > 1 && (
+          <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap", pt: 1 }}>
+            <Field select label="Move host group" value={moveGroup} sx={{ minWidth: 180 }}
+              help="Its running VMs move with their disks"
+              onChange={(e) => { setMoveGroup(e.target.value); setMoveTo(""); }}>
+              {groups.map((g) => <MenuItem key={g.name} value={g.name}>{g.name}</MenuItem>)}
+            </Field>
+            <Field select label="To KVM host" value={moveTo} sx={{ minWidth: 180 }} disabled={!moveGroup}
+              help="It must carry the group's network"
+              onChange={(e) => setMoveTo(Number(e.target.value))}>
+              {hosts.filter((h) => h.id !== groupHost(moveGroup)).map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
+            </Field>
+            <ActionButton sx={{ mt: 1 }} disabled={!moveGroup || moveTo === ""} onClick={move}
+              tip="Live-migrate the group's VMs to that host, then redeploy to record it"
+              confirm={{ title: `Move ${moveGroup} to ${hosts.find((h) => h.id === moveTo)?.name ?? ""}?`, confirmLabel: "Move",
+                body: "Each VM keeps running while its memory and disks are copied to the other host; large disks take a while. VMs must be running and have no snapshots. A deploy follows to record the new host and run Ansible." }}>
+              Move
+            </ActionButton>
+          </Stack>
+        )}
         {isOwner && (
           <>
             <Typography variant="subtitle2" sx={{ pt: 1 }}>Start order</Typography>

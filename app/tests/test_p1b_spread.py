@@ -28,7 +28,7 @@ def test_the_helpers():
     assert spread.host_ids(one) == [1] and not spread.is_spread(one)
     away = Environment(id=7, name="lab7", kvm_host_id=1, created_by="t",
                        spec={"host_groups": [{**WEB, "kvm_host_id": 2}]})
-    assert spread.host_ids(away) == [2] and spread.is_spread(away)     # the home only runs Ansible
+    assert spread.host_ids(away) == [1, 2] and spread.is_spread(away)  # the home keeps a part (§46)
 
 
 def test_create_keeps_a_group_on_its_host_and_names_are_per_host(client):

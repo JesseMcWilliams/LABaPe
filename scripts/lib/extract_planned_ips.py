@@ -13,10 +13,25 @@ Prints one IP per line. DHCP-mode hosts have a null ip_address
 (Claude_Docs/Design_System-Overview.md §17.4) and are silently skipped, not an error here.
 """
 import json
+import os
 import re
+import subprocess
 import sys
 
 _VM_MODULE_RE = re.compile(r'^module\.vm\["([^"]+)"\]\.')
+
+
+def _ours_running(name: str, workspace: str) -> bool:
+    """A VM already running on this host with this workspace's tag: the create adopts it
+    (existing-domain.sh), e.g. a VM moved here from another host (design §46). Its address
+    answers because it is that VM."""
+    uri = os.environ.get("LIBVIRT_URI") or os.environ.get("TF_VAR_libvirt_uri") or "qemu:///system"
+    try:
+        state = subprocess.run(["virsh", "--connect", uri, "domstate", name], capture_output=True, text=True, timeout=30)
+        desc = subprocess.run(["virsh", "--connect", uri, "desc", name], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return state.returncode == 0 and state.stdout.strip() == "running" and desc.stdout.strip() == f"labape-workspace={workspace}"
 
 
 def main() -> int:
@@ -55,8 +70,9 @@ def main() -> int:
         if m:
             creating.add(m.group(1))
 
+    workspace = os.environ.get("LABAPE_WORKSPACE", "")
     for name, host in hosts.items():
-        if name not in creating:
+        if name not in creating or (workspace and _ours_running(name, workspace)):
             continue
         ip = host.get("ip_address")
         if ip:

@@ -42,7 +42,7 @@ from ..naming import instance_names
 from .. import spread
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, power, rotation, snapshots,
+from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation, snapshots,
                stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
@@ -511,7 +511,7 @@ def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
         parts.append(Part(hid, work, cmd, pulls=[HOSTS_PART], groups=spread.groups_on(env, hid),
                           installers=False, keep_going=job.type == "environment.destroy"))
     if job.type == "environment.destroy":
-        return parts[1:] + parts[:1] if hosts[0] == home.id else parts      # the home's part last
+        return parts[1:] + parts[:1]                  # the home's part last
     # Ansible from the home host: it reaches every part's VMs over the shared lab networks.
     work = prepare(db, env, home, spread.groups_on(env, home.id))
     merged = work / HOSTS_MERGED
@@ -536,7 +536,7 @@ def run(job_id: int, worker: str) -> None:
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
-                  "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job,
+                  "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
                   "files.sync_templates": filedist.run_sync_templates}
         if job.type in system:
             try:

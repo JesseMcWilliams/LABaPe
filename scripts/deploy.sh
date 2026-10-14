@@ -137,7 +137,7 @@ if [ -z "$HOSTS_FROM" ]; then
   python3 "$ROOT_DIR/scripts/lib/check_ip_policy.py" tfplan.json "$ENV_FILE"
 
   echo "labape: pre-flight network check (Claude_Docs/Reference_Networking.md §3)..." >&2
-  python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
+  LABAPE_WORKSPACE="$ENV_INSTANCE" python3 "$ROOT_DIR/scripts/lib/extract_planned_ips.py" tfplan.json | "$ROOT_DIR/scripts/check-network.sh"
 
   echo "labape: applying..." >&2
   # -parallelism=1: concurrent virt-install invocations race to define the

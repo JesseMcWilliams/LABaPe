@@ -917,3 +917,44 @@ def set_start_order(env_id: int, body: StartOrderIn, request: Request, db: Sessi
           detail={"groups": [g.model_dump() for g in body.groups]}, source_ip=client_ip(request))
     return {"host_groups": [{k: g.get(k) for k in ("name", "start_order", "start_wait", "start_delay_seconds")}
                             for g in groups]}
+
+
+class MoveIn(BaseModel):
+    group: str = Field(pattern=r"^[a-z][a-z0-9]{0,11}$")
+    kvm_host_id: int
+
+
+@router.post("/{env_id}/move")
+def move_group(env_id: int, body: MoveIn, request: Request, db: Session = Depends(get_db),
+               p: Principal = Depends(current_principal)):
+    """Move a host group's running VMs to another KVM host (design §46, P2): live migration with
+    the disks copied, then a deploy reconciles. The checks a new group on that host gets apply."""
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "move its VMs")
+    if e.status != "deployed":
+        raise HTTPException(status_code=409, detail="Only a deployed environment's VMs can move")
+    g = next((x for x in (e.spec or {}).get("host_groups", []) if x["name"] == body.group), None)
+    if g is None:
+        raise FieldError("group", f"{e.name} has no host group {body.group}.")
+    if spread.group_host_id(e, g) == body.kvm_host_id:
+        raise FieldError("kvm_host_id", f"Group {body.group} is on that host already.")
+    _group_hosts(db, e.kvm_host_id, [{"kvm_host_id": body.kvm_host_id}])       # enabled, not stack-only
+    moved = {**{k: v for k, v in g.items() if k != "kvm_host_id"}, "kvm_host_id": body.kvm_host_id}
+    try:
+        _check_networks(db, p, e.kvm_host_id, [moved])
+    except FieldError as exc:
+        raise FieldError("kvm_host_id", str(exc)) from exc
+    _check_names(db, e.kvm_host_id, [moved], env_id=e.id)
+    _check_capacity(db, body.kvm_host_id, [moved])
+    if (g.get("image_source") or "iso_direct") == "packer_template":
+        _check_templates(db, e.kvm_host_id, [moved])
+    busy = db.scalar(select(Job).where(Job.environment_id == e.id, Job.state.in_(("queued", "running"))))
+    if busy:
+        raise HTTPException(status_code=409, detail=f"Job {busy.id} is already {busy.state} for this environment")
+    job = Job(type="environment.move", params={"group": body.group, "to_host_id": body.kvm_host_id},
+              kvm_host_id=body.kvm_host_id, environment_id=e.id, requested_by=p.username)
+    db.add(job)
+    db.commit()
+    audit(db, p.username, "environment.move", object_type="environment", object_id=e.id,
+          detail={"job": job.id, "group": body.group, "to_host_id": body.kvm_host_id}, source_ip=client_ip(request))
+    return {"job_id": job.id}

@@ -275,8 +275,9 @@ locals {
   clone_is_windows  = local.os_family == "windows"
   # Fixed per environment + VM so cloud-init can match the NIC by MAC:
   # its sysconfig renderer (Rocky) can't do name globs (Testing_Troubleshooting-Log.md).
-  # 52:54:00 is QEMU/KVM's locally administered prefix.
-  clone_mac_hex = md5("${terraform.workspace}/${var.name}")
+  # 52:54:00 is QEMU/KVM's locally administered prefix. The environment's name, not another
+  # host's part (<name>--h<id>, design §45): a VM moved between hosts (§46) keeps its MAC.
+  clone_mac_hex = md5("${replace(terraform.workspace, "/--h[0-9]+$/", "")}/${var.name}")
   clone_mac     = format("52:54:00:%s:%s:%s", substr(local.clone_mac_hex, 0, 2), substr(local.clone_mac_hex, 2, 2), substr(local.clone_mac_hex, 4, 2))
 
   clone_linux_files = local.is_template && !local.clone_is_windows && local.os_meta != null ? {
