@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- An environment's own accounts: domain users and local users on chosen
+  roles' hosts, created at deploy with generated passwords, listed on the
+  credentials sheet and rotated weekly (environment page → Accounts).
 - Quotas (Admin → Quotas): limits on vCPUs, memory, VM disk and environments
   per user, group or everyone, checked when an environment is created or
   deployed again; users see theirs on the Environments page.

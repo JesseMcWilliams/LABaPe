@@ -1541,3 +1541,17 @@ Batch 11 of the order in Planning_Backlog.md (review item 5).
 | API and UI | `GET /api/quotas/me` (anyone: limits, where they come from, usage); `GET/POST /api/admin/quotas`, `DELETE /api/admin/quotas/{id}` (admins; a POST creates or replaces the quota for that user, group or the default), audited as `quota.save`, `quota.delete`. Admin → **Quotas**; the Environments page shows "Your quota: N of M …". `tools/helpers/live/quotas.py`. |
 | Verified | pytest 245. Live on kvm1: labape-dev (a deployer with one environment) given 0 environments saw it in `/api/quotas/me`, and creating another was refused, "2 of 0 environments"; the quota was removed afterwards. |
 
+## 42. An environment's own accounts (E3, built 2026-10-14)
+
+Batch 12 of the order in Planning_Backlog.md (question 113): accounts beyond the built-in admins,
+created at deploy, on the credentials sheet, rotatable.
+
+| Area | As built |
+|---|---|
+| What | The environment's spec gets `accounts`: **domain** users (on its domain controller, in `CN=Users,<domain>` unless an OU is given; needs a DC in the environment) and **local** users on the hosts of chosen roles (Windows and Linux; not domain controllers, which have no local accounts). Names: a lowercase letter, then letters, digits, `.`, `-`, `_`, up to 20 (the Windows limit), not a built-in one (Administrator, root, labape, …). Groups are optional. `app/labape/env_accounts.py`. |
+| Passwords | Each gets a generated 20-character password (Windows complexity) when added, kept as `environment/<id>/account/<name>` in the secret store; taking an account off the list forgets its password (the account stays on the VMs: the VM page's Accounts can remove it). |
+| Deploy | The job's directory manifest (the engine's directory objects, Design_Directory-Objects.md) gets the accounts added to the global one's (`domain_users`, `local_users`, each with `password_vault_key: labape_account_<name>_password`), and the passwords are laid over the job's vault copy next to the R4 ones, so the existing `domain_directory`, `windows_common` and `linux_common` tasks create them. After the deploy the credentials sheet gets an **Environment accounts** section (domain ones as `NETBIOS\name`). |
+| Rotation | A policy per account, `env.<id>.account.<name>` (kind `env_account`, weekly by default, in Admin → Secrets like the R4 admin accounts): a new password set on the account's VMs (`microsoft.ad.user` on the first DC for a domain account, `ansible.windows.win_user` or `ansible.builtin.user` with a SHA-512 hash for local ones), stored and put on the sheet only once every host took it; the attempt is kept as a rotation candidate meanwhile. |
+| API and UI | `GET/PUT /api/environments/{id}/accounts` (owners change it; audited as `environment.accounts`), applied by the next deploy. Environment page: an **Accounts** panel (the list; Edit: name, kind, the roles' hosts for local ones, groups). `tools/helpers/live/env_accounts.py`. |
+| Verified | pytest 249. Live on a throwaway Debian environment: a local account `tester` on linux_server was added and the environment redeployed: `id tester` on the VM, a SHA-512 hash in `/etc/shadow`, and the sheet's Environment accounts section; Rotate now changed the stored password and `/etc/shadow` on the VM. The domain path (it needs a Windows DC) is covered by the unit tests and reuses the engine's `domain_directory` task as it is. |
+

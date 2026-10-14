@@ -17,6 +17,7 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment page → VMs: power actions, Force off after the timeout, and the start order (what it means, the defaults, the agent wait and delay).
 - Admin → KVM hosts → a host: the sections, Set up access (what the account can do, why the password isn't stored, key-only sshd), Prepare this host (Debian only, the answers, bridges), accounts and groups.
 - Remote access: RDP/SSH buttons and .rdp files, the session page (keys, idle close, the recorded marker), Settings → Remote access, Admin → Remote sessions, the auditor role (labape-auditors), and that Windows hosts now allow Remote Desktop (redeploy older environments).
+- Environment accounts (§42): adding domain and local accounts, applying them with Redeploy, where the passwords are, rotation, removing one.
 - Quotas (§41): setting them, which one applies, what counts as usage, the refusal message.
 - Environment leases (§40): turning them on, what happens and when, the reminder emails, extending, an admin's No expiry.
 - VM snapshots (§39): what a snapshot keeps (memory too), taking, reverting (what's lost) and deleting, the automatic ones before a deploy, the disk space they use, UEFI VMs.
