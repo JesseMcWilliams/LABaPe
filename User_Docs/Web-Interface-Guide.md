@@ -111,6 +111,7 @@ Linux VMs have no admin password: Ansible signs in with an SSH key (the admin us
 - A shutdown asks the guest to shut down cleanly and waits (5 minutes by default). Tick **Force off after the timeout** to power off a VM that doesn't. **Force off** is like pulling the plug.
 - **Start order**: VMs start group by group, lowest number first (domain controllers are 1, everything else 2, unless you change it). A group can wait until each of its VMs' guest agents answers, and then a delay, before the next group starts. Shutdowns go in reverse order.
 - **RDP** opens a Remote Desktop session to a Windows VM in the browser, **.rdp** downloads a file for your own client (it asks for the password), and **SSH** opens a terminal to a Linux VM in the browser. Your admin may record these sessions (the session page says so) and closes idle ones after a while. Windows VMs deployed before Remote Desktop was turned on need a **Redeploy** first.
+- **Move host group** (with more than one KVM host): moves a group's VMs to another host while they run; memory and disks are copied, so a big disk takes a while. The VMs must be running and have no snapshots, and the other host must carry the group's network. A deploy follows on its own to record the new host. The VMs list shows each VM's KVM host when they're on more than one.
 
 **A VM's page.** Click a VM's name for its own page, with sections on the left:
 - **Dashboard**, **Disks and volumes**, **NICs**, **OS**: what the guest agent reports, and 24 hours of load.

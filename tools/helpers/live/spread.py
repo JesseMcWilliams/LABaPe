@@ -4,6 +4,7 @@ Usage: spread.py create NAME HOME_HOST_ID OTHER_HOST_ID [TEMPLATE]   (one Debian
        spread.py vms ENV_ID                                         (each VM's host and state)
        spread.py power ENV_ID ACTION                                (start|shutdown|restart|force_off; waits)
        spread.py job ENV_ID deploy|destroy|refresh                   (waits; prints the part lines)
+       spread.py move ENV_ID GROUP HOST_ID                          (live-migrates the group, waits for the move and its deploy)
 Signs in as labape-admin.
 """
 import sys
@@ -51,6 +52,17 @@ elif what == "power":
     if r.status_code != 200:
         raise SystemExit(f"refused: {r.status_code} {r.text[:300]}")
     wait(r.json()["job_id"])
+elif what == "move":                         # spread.py move ENV_ID GROUP HOST_ID: the move, then its deploy
+    r = c.post(f"{LABAPE}/api/environments/{args[0]}/move", json={"group": args[1], "kvm_host_id": int(args[2])})
+    if r.status_code != 200:
+        raise SystemExit(f"refused: {r.status_code} {r.text[:300]}")
+    job = r.json()["job_id"]
+    wait(job)
+    print("\n".join(x for x in job_log(c, job).splitlines() if x.startswith("labape:"))[-1500:])
+    follow = [j for j in c.get(f"{LABAPE}/api/jobs?type=environment.deploy&limit=20").json()
+              if (j.get("params") or {}).get("after_move") == job or j["id"] > job and j.get("environment_id") == int(args[0])]
+    if follow:
+        wait(follow[-1]["id"])
 elif what == "log":                          # spread.py log JOB_ID [LINES]: the end of a job's log
     print("\n".join(job_log(c, args[0]).splitlines()[-int(args[1] if len(args) > 1 else 40):]))
 elif what == "job":

@@ -16,20 +16,19 @@ def group_host_id(env, g: dict) -> int:
 
 
 def host_ids(env) -> list[int]:
-    """The hosts this environment's VMs are on: the home first, then the others in group order."""
+    """The home first, then the other hosts with groups, in group order. The home always has a part,
+    even with no groups left there: its OpenTofu state then forgets VMs that moved away (§46), and
+    a destroy deletes its workspace."""
     out = [env.kvm_host_id]
     for g in (env.spec or {}).get("host_groups", []):
         h = group_host_id(env, g)
         if h not in out:
             out.append(h)
-    if not any(group_host_id(env, g) == env.kvm_host_id for g in (env.spec or {}).get("host_groups", [])) \
-            and len(out) > 1:
-        out.remove(env.kvm_host_id)      # every group elsewhere: the home has no part (Ansible still runs there)
     return out
 
 
 def is_spread(env) -> bool:
-    return host_ids(env) != [env.kvm_host_id]
+    return len(host_ids(env)) > 1
 
 
 def groups_on(env, host_id: int) -> list[dict]:

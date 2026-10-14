@@ -25,6 +25,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Move a host group to another KVM host while its VMs run (environment
+  page → VMs → Move host group): live migration with the disks copied,
+  then a deploy records the new host.
 - One environment over several KVM hosts: each host group can name its
   own KVM host on the new-environment form. Each host's part runs on that
   host in its own OpenTofu workspace, then Ansible runs once over all the
