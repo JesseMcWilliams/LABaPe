@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings
+from .. import appsettings, ca
 from ..config import get_settings
 from ..db import get_db
 from ..errors import FieldError
@@ -37,7 +37,7 @@ def authentik_groups(cfg, token: str, q: str, timeout: float = 5.0) -> list[str]
     r = httpx.get(f"{api_base(cfg)}/api/v3/core/groups/",
                   params={"search": q, "page_size": LIMIT, "ordering": "name", "include_users": "false"},
                   headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-                  timeout=timeout, verify=cfg.verify_tls)
+                  timeout=timeout, verify=ca.trust() if cfg.verify_tls else False)
     r.raise_for_status()
     return [g["name"] for g in r.json().get("results", [])]
 

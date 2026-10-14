@@ -184,9 +184,14 @@ services:
     environment:
       LABAPE_HOSTNAME: ${LABAPE_HOSTNAME}
       LABAPE_TLS: ${LABAPE_TLS:-internal}
+      # Authentik on this host (tools/authentik-test), served on 9445 with the web interface's
+      # certificate (design §47); the browser and linked stacks sign in there.
+      LABAPE_AUTHENTIK_UPSTREAM: ${LABAPE_AUTHENTIK_UPSTREAM:-host.docker.internal:9000}
+    extra_hosts: ["host.docker.internal:host-gateway"]
     ports:
       - "${LABAPE_HTTPS_PORT:-443}:443"
       - "${LABAPE_HTTP_PORT:-80}:80"
+      - "${LABAPE_AUTH_PORT:-9445}:9445"
       # Break-glass host-only listener: bound to the host's loopback only.
       - "127.0.0.1:8443:8443"
     volumes:

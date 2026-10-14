@@ -15,6 +15,7 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
+from .. import ca
 from ..config import get_settings
 from ..db import session_factory
 from ..security import get_secret, put_secret
@@ -48,8 +49,9 @@ def check_client_secret(client_id: str, secret: str, timeout: float = 15) -> Non
     a made-up code with the right secret gets invalid_grant, with a wrong one
     invalid_client. Raises RuntimeError when it isn't accepted."""
     s = get_settings()
-    meta = httpx.get(s.oidc_issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=timeout).json()
-    r = httpx.post(meta["token_endpoint"], timeout=timeout, data={
+    meta = httpx.get(s.oidc_issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=timeout,
+                     verify=ca.trust()).json()
+    r = httpx.post(meta["token_endpoint"], timeout=timeout, verify=ca.trust(), data={
         "grant_type": "authorization_code", "code": "labape-secret-check",
         "redirect_uri": s.public_url.rstrip("/") + "/api/auth/oidc/callback",
         "client_id": client_id, "client_secret": secret})
@@ -68,7 +70,7 @@ def _client():
             server_metadata_url=s.oidc_issuer.rstrip("/") + "/.well-known/openid-configuration",
             client_id=s.oidc_client_id,
             client_secret=s.oidc_client_secret,
-            client_kwargs={"scope": s.oidc_scopes, "code_challenge_method": "S256"},
+            client_kwargs={"scope": s.oidc_scopes, "code_challenge_method": "S256", "verify": ca.trust()},
         )
     with session_factory()() as db:                     # a rotation may have changed it
         _oauth.oidc.client_secret = client_secret(db)
@@ -114,7 +116,7 @@ class OidcProvider(AuthProvider):
     async def test_connection(self) -> tuple[bool, str]:
         url = get_settings().oidc_issuer.rstrip("/") + "/.well-known/openid-configuration"
         try:
-            async with httpx.AsyncClient(timeout=5, verify=True) as c:
+            async with httpx.AsyncClient(timeout=5, verify=ca.trust()) as c:
                 r = await c.get(url)
             return r.status_code == 200, f"HTTP {r.status_code} from {url}"
         except httpx.HTTPError as exc:

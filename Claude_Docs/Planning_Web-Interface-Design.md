@@ -1609,3 +1609,29 @@ Batch 14 of the order in Planning_Backlog.md (decision 23, question 152: after P
 | API and UI | `POST /api/environments/{id}/move` {group, kvm_host_id} (owners of a deployed environment; the destination gets the checks a new group there would: enabled, network, VM names, capacity, template). Environment page, VMs: **Move host group** (group, destination, Move, with a confirmation). |
 | Verified | pytest 265 (the destination definition, a move's commands and the files created and removed, the refusals, the job naming the new host and queueing the deploy). Live with kvm1 and the nested host nkvm1 (§45), environment `movetest`: `sph1` moved kvm1 → nkvm1 in 40 s (job 158) and back in 70 s (161), up the whole time (booted 16:54, up 13 minutes after both moves); each follow-up deploy adopted it (0 changed in Ansible); the old files were gone; the destroy left nothing. |
 | Not yet | Moving a shut-off VM (copy the disk, define it there); moving a VM with snapshots; a single VM out of a group. |
+
+## 47. Sign-on between linked stacks (F1; F1a built 2026-10-14)
+
+Batch 15 of the order in Planning_Backlog.md. Question 146 chose OIDC sources (each stack's Authentik
+offers "Sign in with <the other stack>"); question 153 chose (a): each Authentik served with a
+certificate from its stack's platform CA, so a linked stack, which pins that CA (§34), can verify it.
+
+### 47.1 F1a: Authentik over HTTPS (built)
+
+| Area | As built |
+|---|---|
+| Serving | The stack's Caddy serves Authentik on port 9445 (`LABAPE_AUTH_PORT`) under the web interface's name and with its certificate: from the platform CA with `Caddyfile.labape-ca`, Caddy's own otherwise. It proxies to `LABAPE_AUTHENTIK_UPSTREAM` (default `host.docker.internal:9000`, Authentik's plain-HTTP port on the same host, through `host-gateway`). A new port, not Authentik's own 9443, so a stack whose Authentik isn't restarted by an update doesn't lose its web interface to a port clash. Authentik sees `X-Forwarded-Proto: https` from a private address (a trusted proxy by default) and publishes an HTTPS issuer. |
+| LABaPe's sign-in | `LABAPE_OIDC_ISSUER=https://<web name>:9445/application/o/labape/` (`tools/authentik-test/deploy.sh --configure-labape` writes it for new installs). The OIDC client (discovery, token, test connection, the client-secret check) and the Authentik group search verify TLS with the system roots plus the stack's platform CA root (`ca.trust()`). Browsers sign in over HTTPS; before, sign-in went over plain HTTP on 9000. |
+| Existing stacks | Set `LABAPE_OIDC_ISSUER` as above in `container/.env` and recreate `caddy`, `labape-api` and `labape-worker` (User_Docs/Web-Interface-Admin.md). |
+| Verified | pytest (the platform root added to the trust, the system roots without it). Live on kvm1: Caddy recreated with 9445; the discovery document over `https://172.21.20.11:9445`, verified against kvm1's platform root, names the HTTPS issuer; the web interface unchanged; LABaPe switched to the HTTPS issuer and the test users signed in through it; the Authentik group search worked over HTTPS. |
+
+### 47.2 F1b: OIDC sources between linked stacks (planned)
+
+For each pair of linked stacks A and B where sign-on is on: on B (where the user's account lives),
+an OAuth2 provider and application `labape-link-<A>` whose redirect URI is A's
+`https://<A>:9445/source/oauth/callback/labape-link-<B>/`, with a generated client secret; on A, an
+OpenID Connect source `labape-link-<B>` ("Sign in with B") with B's HTTPS issuer and that client,
+shown on A's sign-in page. A's Authentik trusts B's platform CA root (from the link) through a CA
+bundle it reads (`REQUESTS_CA_BUNDLE`). The objects are made with `ak shell` by each host's update
+agent, on request from its stack, and the client secret travels over the link's authenticated API.
+Waits on questions 156 (the role such a user gets) and 157 (which links offer it).

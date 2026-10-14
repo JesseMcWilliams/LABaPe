@@ -23,6 +23,18 @@
 	}
 }
 
+# Authentik (design §47): the same name and certificate as the web interface, on port 9445, so
+# browsers and linked stacks (which trust this platform CA) reach it over HTTPS.
+https://{$LABAPE_HOSTNAME}:9445 {
+	tls {
+		issuer acme {
+			dir https://labape-ca:9000/acme/acme/directory
+			trusted_roots /labape-ca/certs/root_ca.crt
+		}
+	}
+	reverse_proxy {$LABAPE_AUTHENTIK_UPSTREAM}
+}
+
 https://localhost:8443 {
 	tls internal
 	reverse_proxy labape-api:8000 {

@@ -20,6 +20,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   still sleep.
 
 ### Changed
+- Authentik is served over HTTPS on port 9445 by the stack's Caddy, with
+  the web interface's certificate, and LABaPe signs in through it (it used
+  plain HTTP on 9000). Existing stacks: see the admin guide.
 - The user and admin guides cover everything since v0.2.0: monitoring,
   backups and rebuilding a stack, linked stacks, quotas, leases, snapshots,
   accounts, remote access, the syslog collector, tokens and metrics.

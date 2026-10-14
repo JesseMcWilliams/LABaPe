@@ -9,6 +9,7 @@ before anything is signed. VMs renew directly against step-ca (mTLS).
 from __future__ import annotations
 
 import ipaddress
+import ssl
 import subprocess
 import tempfile
 from pathlib import Path
@@ -36,6 +37,17 @@ def root_pem() -> str:
     if not s.ca_root.is_file():
         raise CaError("the platform CA isn't set up (no root certificate)")
     return s.ca_root.read_text(encoding="ascii")
+
+
+def trust() -> ssl.SSLContext:
+    """TLS verification with the system's roots plus this stack's platform CA root, when it's set up:
+    Authentik is served with a platform-CA certificate (design §47)."""
+    ctx = ssl.create_default_context()
+    try:
+        ctx.load_verify_locations(cadata=root_pem())
+    except (CaError, OSError, ValueError, ssl.SSLError):
+        pass
+    return ctx
 
 
 def csr_names(csr_pem: str) -> tuple[str, set[str], set[str]]:

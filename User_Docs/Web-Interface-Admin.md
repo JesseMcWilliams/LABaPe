@@ -238,6 +238,7 @@ Admins see every host and environment on the dashboard, plus a platform panel:
 - **Rollback** returns to the previous version only, restoring the pre-update backup when the database layout changed. After a rollback nothing is on standby.
 - **Further back**: on the host, `deploy/labape-rollback.sh --to vX.Y.Z [--restore-backup FILE]`.
 - **No agent installed**: the dialog shows the commands to run by hand instead. The installer sets the agent up (step `Stack.UpdateAgent`); see [deploy/README.md § Updates](../deploy/README.md#updates).
+- **Sign-in over HTTPS (from the release after v0.3.0).** Authentik installed with LABaPe is now served by the stack's web server on port **9445**, with the web interface's certificate, and LABaPe signs in through it. A new install does this by itself. On a stack installed before, after the update, as the stack's service user in the `container/` folder of the LABaPe checkout: set `LABAPE_OIDC_ISSUER=https://<the web interface's name>:9445/application/o/labape/` in `.env`, then run `docker compose up -d caddy` and `docker compose up -d --force-recreate labape-api labape-worker`. Port 9445 must be open to browsers. Linked stacks sign in to each other there too (once sign-on between stacks is set up).
 
 ## 10. Audit log and user errors
 
