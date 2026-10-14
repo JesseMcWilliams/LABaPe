@@ -48,6 +48,13 @@ LABAPE_TEST_USER_PASSWORD=$(gen)
 LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG
 EOF
 fi
+# LABaPe's host name can change (e.g. from an address to its DNS name): the blueprint's redirect
+# URI follows it; `up -d` below recreates the containers when it changed.
+if ! grep -qx "LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG" .env; then
+  sed -i '/^LABAPE_HOSTNAME=/d' .env
+  echo "LABAPE_HOSTNAME=$LABAPE_HOSTNAME_ARG" >> .env
+  echo "authentik-test: LABaPe's host name is now $LABAPE_HOSTNAME_ARG"
+fi
 # Added later: keep an older .env working.
 grep -q '^LABAPE_TEST_DIRECTORY_TOKEN=' .env || echo "LABAPE_TEST_DIRECTORY_TOKEN=$(gen)" >> .env
 grep -q '^LABAPE_TEST_ROTATOR_TOKEN=' .env || echo "LABAPE_TEST_ROTATOR_TOKEN=$(gen)" >> .env
