@@ -157,6 +157,56 @@ def backup_now(request: Request, db: Session = Depends(get_db), p: Principal = D
     return {"job_id": job.id}
 
 
+# --- full-stack backups (design §32) --------------------------------------------------
+
+@router.get("/backups/stack")
+def list_stack_backups(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
+    from .. import update
+    from ..engine import stackbackup
+    cfg = appsettings.get(db, "stack_backup")
+    files = stackbackup.archives(cfg.directory)
+    agent = update._read("agent.json") or {}
+    st = update.status()
+    return {"directory": cfg.directory, "archives": files,
+            "agent": {"installed": update.agent_installed(), "user": agent.get("user", ""), "home": agent.get("home", "")},
+            "status": st if st.get("action") == "full_backup" or st.get("pending") else None,
+            "requested": stackbackup._setting(db, stackbackup.REQUESTED_KEY),
+            "key_saved": stackbackup.key_saved(db),
+            "key_file": next((f["key_file"] for f in files if f.get("key_file")), ""),
+            "service_user": next((f["service_user"] for f in files if f.get("service_user")), agent.get("user", ""))}
+
+
+@router.post("/backups/stack")
+def stack_backup_now(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    from ..engine import stackbackup
+    try:
+        req = stackbackup.request(db, p.username)
+    except stackbackup.Busy as exc:
+        raise FieldError("backup", str(exc), status_code=409) from exc
+    audit(db, p.username, "backup.stack.run", detail={"request": req["id"]}, source_ip=client_ip(request))
+    return {"request": req["id"]}
+
+
+@router.post("/backups/stack/key-saved")
+def stack_backup_key_saved(request: Request, db: Session = Depends(get_db),
+                           p: Principal = Depends(require_roles("admin"))):
+    from ..engine import stackbackup
+    v = stackbackup.mark_key_saved(db, p.username)
+    audit(db, p.username, "backup.stack.key_saved", source_ip=client_ip(request))
+    return v
+
+
+@router.get("/backups/stack/{name}")
+def download_stack_backup(name: str, request: Request, db: Session = Depends(get_db),
+                          p: Principal = Depends(require_roles("admin"))):
+    from ..engine import stackbackup
+    f = Path(appsettings.get(db, "stack_backup").directory) / name
+    if not stackbackup.ARCHIVE_NAME.match(name) or not f.is_file():
+        raise FieldError("name", "No such backup.", status_code=404)
+    audit(db, p.username, "backup.stack.download", detail={"name": name}, source_ip=client_ip(request))
+    return FileResponse(f, filename=name, media_type="application/octet-stream")
+
+
 @router.get("/backups/{name}")
 def download_backup(name: str, request: Request, db: Session = Depends(get_db),
                     p: Principal = Depends(require_roles("admin"))):

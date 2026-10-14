@@ -173,6 +173,12 @@ def self_checks(db: Session) -> dict:
     newest = max((p.stat().st_mtime for p in d.glob("*") if p.is_file()), default=None) if d.is_dir() else None
     out["backup"] = {"enabled": cfg.enabled,
                      "newest": dt.datetime.fromtimestamp(newest, dt.timezone.utc).isoformat() if newest else None}
+    from . import stackbackup
+    sb = appsettings.get(db, "stack_backup")
+    last = stackbackup.newest(db)
+    out["stack_backup"] = {"enabled": sb.enabled, "newest": last.get("created_at") if last else None,
+                           "archive": last.get("archive") if last else None,
+                           "ok": bool(last and (last.get("check") or {}).get("ok"))}
     for name, fn in (("web", lambda: served_cert(s.public_url)),
                      ("ca intermediate", lambda: _file_cert(s.ca_root.with_name("intermediate_ca.crt"))),
                      ("syslog collector", lambda: _file_cert(s.syslog_tls_dir / "server.crt"))):
@@ -271,6 +277,13 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
                 newest = dt.datetime.fromisoformat(b["newest"]) if b.get("newest") else None
                 if newest is None or now - newest > dt.timedelta(hours=cfg.backup_hours):
                     add(h, "warning", f"no backup in the last {cfg.backup_hours} hours", "backup")
+            sb = me.get("stack_backup") or {}
+            if sb.get("enabled"):
+                newest = dt.datetime.fromisoformat(sb["newest"]) if sb.get("newest") else None
+                if newest is None or now - newest > dt.timedelta(hours=cfg.backup_hours):
+                    add(h, "warning", f"no full stack backup in the last {cfg.backup_hours} hours", "stack-backup")
+                elif not sb.get("ok"):
+                    add(h, "error", f"the latest full stack backup ({sb.get('archive')}) failed its check", "stack-backup-check")
             for name, c in (me.get("certs") or {}).items():
                 if cert_due(c, now, cfg.cert_days):
                     expired = dt.datetime.fromisoformat(c["expires"]) <= now

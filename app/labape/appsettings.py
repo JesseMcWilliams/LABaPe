@@ -29,6 +29,24 @@ class BackupSettings(BaseModel):
         return v
 
 
+class StackBackupSettings(BaseModel):
+    """The full-stack backup (design §32): the update agent runs deploy/stack-backup.sh on the host.
+    `directory` is a host path the containers see at the same path (under the data root)."""
+    enabled: bool = True
+    time_of_day: str = Field(default="03:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")   # UTC
+    retention_days: int = Field(default=14, ge=1, le=3650)
+    directory: str = "/data/backups/stack"
+    include_syslog: bool = True
+    include_recordings: bool = False
+
+    @field_validator("directory")
+    @classmethod
+    def _abs(cls, v: str) -> str:
+        if not os.path.isabs(v):
+            raise ValueError("use an absolute path")
+        return v.rstrip("/") or "/"
+
+
 class RetentionSettings(BaseModel):
     job_logs_days: int = Field(default=90, ge=1, le=3650)
     audit_days: int = Field(default=0, ge=0, le=36500)      # 0 = keep forever
@@ -200,6 +218,7 @@ class RemoteSettings(BaseModel):
 
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
+    "stack_backup": StackBackupSettings,
     "retention": RetentionSettings,
     "syslog": SyslogSettings,
     "smtp": SmtpSettings,

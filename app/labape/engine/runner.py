@@ -39,7 +39,8 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import downloads, engine_secrets, filedist, hostadmin, hostio, stackmon, maintenance, power, rotation, template_versions
+from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, power, rotation, stackbackup,
+               stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -782,6 +783,9 @@ def serve(slots: int | None = None) -> None:
                 with session_factory()() as db:
                     if maintenance.schedule_backup(db):
                         log.info("queued the daily backup")
+                with session_factory()() as db:
+                    if stackbackup.schedule(db):
+                        log.info("asked the update agent for the daily full-stack backup")
                 with session_factory()() as db:
                     rotation.ensure_policies(db)
                     for jid in rotation.schedule(db):

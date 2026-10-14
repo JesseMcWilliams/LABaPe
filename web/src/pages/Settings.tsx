@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import {
-  Alert, Button, Checkbox, FormControlLabel, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow,
+  Alert, Button, Checkbox, Chip, FormControlLabel, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow,
   Typography,
 } from "@mui/material";
 import { api, fmtTime } from "../api";
@@ -33,8 +33,18 @@ interface Directory { enabled: boolean; api_url: string; verify_tls: boolean; ha
 interface StoreBase { enabled: boolean; url: string; verify_tls: boolean; ca_bundle: string }
 interface OpenBao extends StoreBase { mount: string; path_prefix: string; auth_mount: string; role_id: string; namespace: string; has_secret_id: boolean }
 interface Conjur extends StoreBase { account: string; login: string; authenticator: string; branch: string; has_api_key: boolean }
+interface StackBackup { enabled: boolean; time_of_day: string; retention_days: number; directory: string; include_syslog: boolean; include_recordings: boolean }
+interface StackArchive {
+  archive: string; size: number; created_at: string; version: string; db_revision: string; file_count: number; parts: string[];
+  check: { ok: boolean; problems: string[]; restores: Record<string, string> };
+}
+interface StackBackupList {
+  directory: string; archives: StackArchive[]; agent: { installed: boolean; user: string; home: string };
+  status: { state: string; step?: string; message?: string; action?: string; pending?: boolean } | null;
+  key_saved: { by: string; at: string } | null; key_file: string; service_user: string;
+}
 interface AllSettings {
-  backup: Backup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
+  backup: Backup; stack_backup: StackBackup; retention: Retention; syslog: Syslog; smtp: Smtp; directory: Directory; branding: Branding; downloads: Downloads; maintenance_window: MaintenanceWindow; vm_accounts: VmAccounts; templates: Templates;
   store_openbao: OpenBao; store_conjur: Conjur; secret_stores: { default_environment_store: string };
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   syslog_collector: Collector;
@@ -180,17 +190,20 @@ export default function Settings() {
   const [baoSecretId, setBaoSecretId] = useState("");
   const [conjurKey, setConjurKey] = useState("");
   const [backups, setBackups] = useState<BackupList | null>(null);
+  const [stackBackups, setStackBackups] = useState<StackBackupList | null>(null);
 
   const loadBackups = () => api.get<BackupList>("/api/admin/backups").then(setBackups, () => setBackups(null));
+  const loadStackBackups = () => api.get<StackBackupList>("/api/admin/backups/stack").then(setStackBackups, () => setStackBackups(null));
   useEffect(() => {
     api.get<AllSettings>("/api/admin/settings").then(setS, (e) => setError(e.message));
     loadBackups();
+    loadStackBackups();
   }, []);
   if (!s) return error ? <Alert severity="error">{error}</Alert> : null;
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
+  const put = async <K extends "backup" | "stack_backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -316,7 +329,72 @@ export default function Settings() {
         </Stack>
       </Section>
 
-      <Section title="Backups" intro="A daily pg_dump of the LABaPe database (custom format; restore with pg_restore). Times are UTC."
+      <Section title="Full stack backups" intro="The whole stack in one encrypted archive, taken on the host by the update agent: every database (LABaPe, Authentik, the syslog collector, Conjur), OpenBao, the platform CA, the configuration and the bootstrap secrets. Each archive is opened again afterwards and its LABaPe and Authentik databases are test-loaded. Rebuilding a stack from one needs the backup key. Times are UTC."
+        onSave={async () => { await put("stack_backup", s.stack_backup); return "Full backup settings saved."; }}
+        extra={<ActionButton variant="outlined" tip="Ask the update agent for a full backup now"
+          disabled={!stackBackups?.agent.installed}
+          confirm={{ title: "Back up the whole stack now?", confirmLabel: "Back up",
+            body: `The update agent writes an encrypted archive of the whole stack to ${s.stack_backup.directory} and checks it. Nothing stops while it runs.` }}
+          onClick={() => api.post("/api/admin/backups/stack").then(loadStackBackups, (e) => setError(fromApiError(e).summary))}>Back up now</ActionButton>}>
+        {stackBackups && !stackBackups.agent.installed && (
+          <Alert severity="warning">The update agent isn't installed on the stack host, and it takes the full backups.</Alert>
+        )}
+        {stackBackups && stackBackups.key_file && !stackBackups.key_saved && (
+          <Alert severity="warning" action={<Button size="small" title="Record that the key is kept somewhere other than this host"
+            onClick={() => api.post("/api/admin/backups/stack/key-saved").then(loadStackBackups)}>I saved it</Button>}>
+            Copy the backup key somewhere other than this host (a password manager): without it no archive can be opened.
+            On the stack host run <code>sudo -u {stackBackups.service_user || "<service user>"} cat {stackBackups.key_file}</code>
+          </Alert>
+        )}
+        {stackBackups?.key_saved && (
+          <Typography variant="caption" color="text.secondary">
+            Backup key copy recorded by {stackBackups.key_saved.by} on {fmtTime(stackBackups.key_saved.at)}.
+          </Typography>
+        )}
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Daily full backup" control={<Checkbox checked={s.stack_backup.enabled}
+            onChange={(e) => set("stack_backup", { enabled: e.target.checked })} />} />
+          <Field label="Time (UTC)" value={s.stack_backup.time_of_day} sx={{ width: 120 }} help="HH:MM"
+            onChange={(e) => set("stack_backup", { time_of_day: e.target.value })} />
+          <Field label="Keep (days)" type="number" value={s.stack_backup.retention_days} sx={{ width: 130 }} help="1-3650; the newest always stays"
+            onChange={(e) => set("stack_backup", { retention_days: num(e.target.value) })} />
+          <Field label="Directory" value={s.stack_backup.directory} sx={{ minWidth: 300 }} help="Absolute path on the host, under the data root"
+            onChange={(e) => set("stack_backup", { directory: e.target.value })} />
+          <FormControlLabel label="Syslog messages" title="The syslog collector's stored messages (can be large)" control={<Checkbox checked={s.stack_backup.include_syslog}
+            onChange={(e) => set("stack_backup", { include_syslog: e.target.checked })} />} />
+          <FormControlLabel label="Session recordings" title="Recorded SSH/RDP sessions (can be very large)" control={<Checkbox checked={s.stack_backup.include_recordings}
+            onChange={(e) => set("stack_backup", { include_recordings: e.target.checked })} />} />
+        </Stack>
+        {stackBackups?.status && (
+          <Alert severity={stackBackups.status.state === "succeeded" ? "success" : stackBackups.status.state === "running" || stackBackups.status.pending ? "info" : "error"}
+            action={<Button size="small" onClick={loadStackBackups} title="Reload the backup list">Refresh</Button>}>
+            {stackBackups.status.pending && stackBackups.status.state !== "running" ? "Waiting for the update agent to start…" : stackBackups.status.message}
+          </Alert>
+        )}
+        {stackBackups && (
+          <Table size="small">
+            <TableHead>
+              <TableRow><TableCell>Archive</TableCell><TableCell>Size</TableCell><TableCell>Taken</TableCell><TableCell>Version</TableCell><TableCell>Check</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {stackBackups.archives.map((a) => (
+                <TableRow key={a.archive}>
+                  <TableCell><a href={`/api/admin/backups/stack/${a.archive}`}>{a.archive}</a></TableCell>
+                  <TableCell>{mb(a.size)}</TableCell>
+                  <TableCell>{fmtTime(a.created_at)}</TableCell>
+                  <TableCell>{a.version}</TableCell>
+                  <TableCell title={[...Object.entries(a.check?.restores ?? {}).map(([k, v]) => `${k}: ${v}`), ...(a.check?.problems ?? [])].join("\n")}>
+                    {a.check?.ok ? <Chip size="small" color="success" label={`ok · ${a.file_count} files`} /> : <Chip size="small" color="error" label="failed" />}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {stackBackups.archives.length === 0 && <TableRow><TableCell colSpan={5}>No full backups yet.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
+
+      <Section title="Database backups" intro="A daily pg_dump of the LABaPe database only (custom format; restore with pg_restore), also taken before every update. Times are UTC."
         onSave={async () => { await put("backup", s.backup); return "Backup settings saved."; }}
         extra={<ActionButton variant="outlined" tip="Dump the database now, as a job"
           confirm={{ title: "Back up now?", confirmLabel: "Back up",

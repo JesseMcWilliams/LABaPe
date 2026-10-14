@@ -48,8 +48,9 @@ fi
 sed "s#@REPO@#$REPO#g" "$HERE/labape-update.path" > "$HOME/.config/systemd/user/labape-update.path"
 sed "s#@REPO@#$REPO#g" "$HERE/labape-update.service" > "$HOME/.config/systemd/user/labape-update.service"
 python3 - "$REPO/container/update/agent.json" <<'PY'
-import datetime, json, socket, sys
-json.dump({"installed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "host": socket.gethostname()},
+import datetime, getpass, json, os, socket, sys
+json.dump({"installed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "host": socket.gethostname(),
+           "user": getpass.getuser(), "home": os.path.expanduser("~")},
           open(sys.argv[1], "w"), indent=2)
 PY
 systemctl --user daemon-reload
