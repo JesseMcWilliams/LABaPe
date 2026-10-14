@@ -568,3 +568,23 @@ class ApiToken(Base):
     last_used_ip: Mapped[str] = mapped_column(String(64), default="")
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by: Mapped[str] = mapped_column(String(255), default="")
+
+
+class VmSnapshot(Base):
+    """A snapshot libvirt keeps (design §39), as the worker last read it after a snapshot job or a
+    refresh (the API can't reach libvirt), with LABaPe's notes: who took it, why, automatic."""
+
+    __tablename__ = "vm_snapshots"
+    __table_args__ = (UniqueConstraint("environment_id", "vm", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    environment_id: Mapped[int] = mapped_column(ForeignKey("environments.id"), index=True)
+    vm: Mapped[str] = mapped_column(String(63))
+    name: Mapped[str] = mapped_column(String(63))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    auto: Mapped[bool] = mapped_column(Boolean, default=False)
+    state: Mapped[str] = mapped_column(String(16), default="")        # the VM's state when it was taken
+    parent: Mapped[str] = mapped_column(String(63), default="")
+    current: Mapped[bool] = mapped_column(Boolean, default=False)

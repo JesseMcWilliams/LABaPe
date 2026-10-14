@@ -49,6 +49,12 @@ class StackBackupSettings(BaseModel):
         return v.rstrip("/") or "/"
 
 
+class VmSnapshotSettings(BaseModel):
+    """VM snapshots (design §39): automatic ones before a deploy changes existing VMs."""
+    auto_before_deploy: bool = False
+    keep_auto: int = Field(default=3, ge=1, le=20)
+
+
 class RetentionSettings(BaseModel):
     job_logs_days: int = Field(default=90, ge=1, le=3650)
     audit_days: int = Field(default=0, ge=0, le=36500)      # 0 = keep forever
@@ -221,6 +227,7 @@ class RemoteSettings(BaseModel):
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "stack_backup": StackBackupSettings,
+    "vm_snapshots": VmSnapshotSettings,
     "retention": RetentionSettings,
     "syslog": SyslogSettings,
     "smtp": SmtpSettings,

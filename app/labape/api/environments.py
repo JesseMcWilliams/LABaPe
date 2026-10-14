@@ -628,6 +628,78 @@ def vm_manage_accounts(env_id: int, vm: str, body: VmManageIn, request: Request,
     return {"ok": True}
 
 
+# --- VM snapshots (design §39) --------------------------------------------------------------------
+
+class SnapshotIn(BaseModel):
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
+    description: str = Field(default="", max_length=500)
+
+
+@router.get("/{env_id}/vms/{vm}/snapshots")
+def vm_snapshots(env_id: int, vm: str, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """The VM's snapshots as the worker last read them from libvirt (after each snapshot job, or a
+    Refresh), with LABaPe's notes. `synced_at` is null until the first read."""
+    from ..engine import snapshots
+    from ..models import VmSnapshot
+    e = _get(db, env_id, p)
+    _vm_group(e, vm)
+    st = snapshots.read_state(db, e.id, vm)
+    rows = db.scalars(select(VmSnapshot).where(VmSnapshot.environment_id == e.id, VmSnapshot.vm == vm)
+                      .order_by(VmSnapshot.created_at))
+    items = [{"name": s.name, "created": s.created_at, "state": s.state, "parent": s.parent, "current": s.current,
+              "description": s.description, "created_by": s.created_by, "auto": s.auto} for s in rows]
+    return {"snapshots": items, "synced_at": st.get("synced_at"), "supported": st.get("supported", True),
+            "reason": st.get("reason", ""),
+            "can_operate": is_owner(db, p, "environment", e.id) and e.status == "deployed"}
+
+
+def _snapshot_job(db: Session, p: Principal, e: Environment, vm: str, params: dict, request: Request) -> dict:
+    _owner_or_403(db, p, e, "take, revert or delete its VMs' snapshots")
+    _vm_group(e, vm)
+    if e.status != "deployed":
+        raise HTTPException(status_code=409, detail="Only a deployed environment's VMs have snapshots")
+    busy = db.scalar(select(Job).where(Job.environment_id == e.id, Job.state.in_(("queued", "running"))))
+    if busy:
+        raise HTTPException(status_code=409, detail=f"Job {busy.id} is already {busy.state} for this environment")
+    job = Job(type="vm.snapshot", params={"vm": vm, **params}, kvm_host_id=e.kvm_host_id, environment_id=e.id,
+              requested_by=p.username)
+    db.add(job)
+    db.commit()
+    audit(db, p.username, f"vm.snapshot.{params['action']}", object_type="environment", object_id=e.id,
+          detail={"job": job.id, "vm": vm, "name": params["name"]}, source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
+@router.post("/{env_id}/vms/{vm}/snapshots")
+def vm_snapshot_create(env_id: int, vm: str, body: SnapshotIn, request: Request, db: Session = Depends(get_db),
+                       p: Principal = Depends(current_principal)):
+    e = _get(db, env_id, p)
+    return _snapshot_job(db, p, e, vm, {"action": "create", "name": body.name, "description": body.description},
+                         request)
+
+
+@router.post("/{env_id}/vms/{vm}/snapshots/refresh")
+def vm_snapshot_refresh(env_id: int, vm: str, request: Request, db: Session = Depends(get_db),
+                        p: Principal = Depends(current_principal)):
+    """Read the VM's snapshots from libvirt again (a quick job)."""
+    e = _get(db, env_id, p)
+    return _snapshot_job(db, p, e, vm, {"action": "sync", "name": ""}, request)
+
+
+@router.post("/{env_id}/vms/{vm}/snapshots/{name}/revert")
+def vm_snapshot_revert(env_id: int, vm: str, name: str, request: Request, db: Session = Depends(get_db),
+                       p: Principal = Depends(current_principal)):
+    e = _get(db, env_id, p)
+    return _snapshot_job(db, p, e, vm, {"action": "revert", "name": name}, request)
+
+
+@router.delete("/{env_id}/vms/{vm}/snapshots/{name}")
+def vm_snapshot_delete(env_id: int, vm: str, name: str, request: Request, db: Session = Depends(get_db),
+                       p: Principal = Depends(current_principal)):
+    e = _get(db, env_id, p)
+    return _snapshot_job(db, p, e, vm, {"action": "delete", "name": name}, request)
+
+
 class StartOrderGroup(BaseModel):
     name: str
     start_order: int = Field(ge=1, le=99)

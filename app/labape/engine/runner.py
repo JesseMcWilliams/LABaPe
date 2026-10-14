@@ -39,8 +39,8 @@ from ..files import iso_paths, roots
 from ..naming import instance_names
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, power, rotation, stackbackup,
-               stackmon, template_versions)
+from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, power, rotation, snapshots,
+               stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -454,7 +454,7 @@ def run(job_id: int, worker: str) -> None:
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
-                  "backup.store_linked": stackbackup.store_linked}
+                  "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -471,6 +471,8 @@ def run(job_id: int, worker: str) -> None:
             elif env is None:
                 raise RuntimeError("job has no environment")
             else:
+                if job.type == "environment.deploy":    # a safety snapshot first, if the setting asks (§39)
+                    snapshots.before_deploy(db, job, env, host, lambda m: _append(job, m))
                 work = prepare(db, env, host)
             cmd = command_for(job, env, work)
             remote = hostio.RemoteJob(hostio.Host(host.libvirt_uri), work, job.id) \
