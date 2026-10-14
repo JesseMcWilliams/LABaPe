@@ -1,7 +1,8 @@
-import { ReactNode, useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
-  Alert, Button, Checkbox, Chip, FormControlLabel, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow,
-  Typography,
+  Alert, Button, Checkbox, Chip, FormControlLabel, List, ListItemButton, ListItemText, MenuItem, Paper, Stack, Table,
+  TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
@@ -69,10 +70,34 @@ const FACILITIES = ["local0", "local1", "local2", "local3", "local4", "local5", 
 const row = { alignItems: "flex-start", flexWrap: "wrap" } as const;
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
 
-/** One settings card: its own Save button, result and field errors. */
+// Sections (S3, question 162): each card belongs to one, and the page shows one at a time.
+const GROUPS = [
+  { key: "signin", label: "Sign-in", help: "Group search in the directory; the admin account on new Linux VMs" },
+  { key: "stack", label: "Stack", help: "Maintenance, monitoring, branding, email, syslog and the collector, history" },
+  { key: "backups", label: "Updates and backups", help: "Full stack backups and database backups" },
+  { key: "environments", label: "Environments", help: "Leases, snapshots before deploys, template versions" },
+  { key: "files", label: "Files", help: "Where files live, copies to other hosts, downloads" },
+  { key: "secrets", label: "Secrets", help: "The default store and the external stores" },
+  { key: "remote", label: "Remote access", help: "Browser SSH and RDP sessions and their recording" },
+] as const;
+type Group = typeof GROUPS[number]["key"];
+const GROUP_OF: Record<string, Group> = {
+  "Directory (group search)": "signin", "VM accounts": "signin",
+  "Maintenance window": "stack", "Monitoring": "stack", "Branding": "stack", "History": "stack",
+  "Syslog (audit trail)": "stack", "Email (SMTP)": "stack", "Syslog collector": "stack",
+  "Full stack backups": "backups", "Database backups": "backups",
+  "Environment leases": "environments", "VM snapshots": "environments", "Templates": "environments",
+  "File distribution": "files", "File locations": "files", "Downloads": "files",
+  "Default store": "secrets", "OpenBao / HashiCorp Vault": "secrets", "CyberArk Conjur": "secrets",
+  "Remote access": "remote",
+};
+const GroupContext = createContext<Group>("stack");
+
+/** One settings card: its own Save button, result and field errors. Shown in its section only (S3). */
 function Section({ title, intro, onSave, children, extra }: {
   title: string; intro: string; onSave: () => Promise<string>; children: ReactNode; extra?: ReactNode;
 }) {
+  const group = useContext(GroupContext);
   const [problem, setProblem] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [ok, setOk] = useState("");
   const save = async () => {
@@ -84,6 +109,7 @@ function Section({ title, intro, onSave, children, extra }: {
       setProblem(fromApiError(e));
     }
   };
+  if ((GROUP_OF[title] ?? "stack") !== group) return null;
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={1.5}>
@@ -195,6 +221,8 @@ export default function Settings() {
   const [conjurKey, setConjurKey] = useState("");
   const [backups, setBackups] = useState<BackupList | null>(null);
   const [stackBackups, setStackBackups] = useState<StackBackupList | null>(null);
+  const [params, setParams] = useSearchParams();
+  const group = (GROUPS.find((g) => g.key === params.get("section"))?.key ?? "signin") as Group;
 
   const loadBackups = () => api.get<BackupList>("/api/admin/backups").then(setBackups, () => setBackups(null));
   const loadStackBackups = () => api.get<StackBackupList>("/api/admin/backups/stack").then(setStackBackups, () => setStackBackups(null));
@@ -228,8 +256,21 @@ export default function Settings() {
   return (
     <Stack spacing={2}>
       <Typography variant="h5">Settings</Typography>
+      <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ alignItems: "flex-start" }}>
+      <Paper variant="outlined" sx={{ width: { xs: "100%", md: 220 }, flexShrink: 0 }}>
+        <List dense disablePadding>
+          {GROUPS.map((g) => (
+            <ListItemButton key={g.key} selected={g.key === group} title={g.help}
+              onClick={() => setParams({ section: g.key }, { replace: true })}>
+              <ListItemText primary={g.label} />
+            </ListItemButton>
+          ))}
+        </List>
+      </Paper>
+      <GroupContext.Provider value={group}>
+      <Stack spacing={2} sx={{ flexGrow: 1, minWidth: 0 }}>
 
-      <MaintenanceNow />
+      {group === "stack" && <MaintenanceNow />}
 
       <Section title="Maintenance window" intro="A weekly window (UTC) for work that restarts services, such as some secret rotations. A banner gives notice before it starts."
         onSave={async () => { await put("maintenance_window", s.maintenance_window); return "Maintenance window saved."; }}>
@@ -705,6 +746,9 @@ export default function Settings() {
         </Stack>
       </Section>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
+      </Stack>
+      </GroupContext.Provider>
+      </Stack>
     </Stack>
   );
 }

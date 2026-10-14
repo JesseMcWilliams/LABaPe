@@ -1702,3 +1702,7 @@ Question 161: checks every quarter of the rotation period, at least daily, none 
 | Fix | A destroy cleared the Administrator passwords, sheet and inventory but not the environment's own accounts or kept rotation attempts; `clear_env_passwords` now clears everything under `environment/<id>/account/` and `rotation-candidate/` too. |
 | Verified | pytest (sections, environment details per kind, a destroy clearing every password of its environment only). Live on kvm1: 80 cleared rows hidden of 104; the environment rows show lab2's domain admin on `l2dc1` (domain), its Administrator on `l2win1` (local), sheets and inventories with every VM. Found a destroyed environment's (accttest1) account password still stored from before the fix. |
 
+### 48.7 S3: Settings in sections (built)
+
+Question 162. Settings shows one section at a time, chosen from a list on its left (`?section=`): Sign-in (Directory, VM accounts), Stack (Maintenance window and Maintenance now, Monitoring, Branding, History, Syslog (audit trail), Email, Syslog collector), Updates and backups (Full stack backups, Database backups), Environments (Environment leases, VM snapshots, Templates), Files (File distribution, File locations, Downloads), Secrets (Default store, OpenBao, Conjur), Remote access. Each card's section comes from `GROUP_OF` (by title) through a React context; the cards and their saves are unchanged. Verified: the UI built; every card's title is in the map (checked by script).
+

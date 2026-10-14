@@ -23,6 +23,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   still sleep.
 
 ### Changed
+- Settings is in sections with a list on the left: Sign-in, Stack, Updates
+  and backups, Environments, Files, Secrets, Remote access.
 - Releases are cut with `tools/helpers/release.sh`: the CHANGELOG section,
   the version in `app/pyproject.toml` and `web/package*.json` (both had
   stayed at 0.2.0), the docs' "the release after" wording, optionally the

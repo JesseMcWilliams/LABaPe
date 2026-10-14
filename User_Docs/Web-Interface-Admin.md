@@ -110,7 +110,7 @@ The definitions use the shapes in [Planning_Web-Interface-Design.md §21.4](../C
 
 ## 6. Settings
 
-Each section saves on its own and asks you to confirm.
+Settings is in sections, listed on the left: **Sign-in** (directory group search, VM accounts), **Stack** (maintenance, monitoring, branding, email, the audit trail's syslog, the syslog collector, history), **Updates and backups** (full stack and database backups), **Environments** (leases, VM snapshots, templates), **Files** (file locations and distribution, downloads), **Secrets** (the default store, OpenBao, Conjur) and **Remote access**. Each card saves on its own and asks you to confirm.
 
 | Section | What it sets |
 |---|---|
