@@ -10,11 +10,13 @@ import FactCheckIcon from "@mui/icons-material/FactCheck";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import HubIcon from "@mui/icons-material/Hub";
+import SpeedIcon from "@mui/icons-material/Speed";
 import { hasRole, useAuth } from "../App";
 
 export const ADMIN_PAGES = [
   { path: "hosts", label: "KVM hosts", icon: <DnsIcon />, help: "Register KVM hosts; their load, storage and networks" },
   { path: "networks", label: "Networks", icon: <LanIcon />, help: "The networks VMs may use, their pools and who may deploy on them" },
+  { path: "quotas", label: "Quotas", icon: <SpeedIcon />, help: "Limits on what each user's environments may use" },
   { path: "settings", label: "Settings", icon: <SettingsIcon />, help: "Branding, files, backups, history, syslog, email, directory, stores" },
   { path: "secrets", label: "Secrets", icon: <KeyIcon />, help: "Internal secrets, stored secrets and their rotation" },
   { path: "audit", label: "Audit log", icon: <FactCheckIcon />, help: "Who did what, when" },

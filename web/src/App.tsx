@@ -31,6 +31,7 @@ import VmDetail from "./pages/VmDetail";
 import Syslog from "./pages/Syslog";
 import Links from "./pages/Links";
 import Tokens from "./pages/Tokens";
+import Quotas from "./pages/Quotas";
 import UserMenu from "./components/UserMenu";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
@@ -168,6 +169,7 @@ export default function App() {
             <Route path="errors" element={<Errors />} />
             <Route path="sessions" element={<Sessions />} />
             <Route path="links" element={<Links />} />
+            <Route path="quotas" element={<Quotas />} />
           </Route>
           <Route path="/remote/:id" element={<RemoteSession />} />
           {["/hosts", "/networks", "/settings", "/secrets", "/audit", "/errors"].map((p) => (

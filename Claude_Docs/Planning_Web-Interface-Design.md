@@ -1528,3 +1528,16 @@ Batch 10 of the order in Planning_Backlog.md (review item 4).
 | UI | Environment page: a lease line (ends when, then what; ended; being destroyed) with +7 days, +30 days and, for admins, No expiry. Environments list: an Expires column. Settings → Environment leases. `tools/helpers/live/leases.py`. |
 | Verified | pytest 242. Live on kvm1 with a throwaway environment: leases on with grace 0 and destroy, its lease set to end 3 minutes later: the reminder was recorded, at the end job 136 shut its VMs down (requested by `lease`), then job 137 destroyed it. Leases were turned off again afterwards (the lab's environments have no expiry). |
 
+## 41. Quotas (E2, built 2026-10-14)
+
+Batch 11 of the order in Planning_Backlog.md (review item 5).
+
+| Area | As built |
+|---|---|
+| What a quota is | Limits on vCPUs, memory (MB), VM disk (GB) and the number of environments, each optional (empty: no limit), for a **user**, a **group**, or **everyone** (the default). `quotas` (migration `0019`). |
+| Which applies | A user's own quota; else the most generous of their groups' quotas, limit by limit (no limit wins); else the default; else none. Admins have none. |
+| Usage | What the user's environments ask for, counting every environment they created that isn't destroyed: their host groups' count times CPUs, memory and disk (`demand_of`, the same sums as the host capacity check), and how many there are. |
+| When it's checked | Creating an environment (after the host is chosen, before capacity) and deploying a destroyed one again: 403 with "Over your quota (where it comes from): this would use N of M …". Environment specs aren't edited after creation, so those are the only two points. |
+| API and UI | `GET /api/quotas/me` (anyone: limits, where they come from, usage); `GET/POST /api/admin/quotas`, `DELETE /api/admin/quotas/{id}` (admins; a POST creates or replaces the quota for that user, group or the default), audited as `quota.save`, `quota.delete`. Admin → **Quotas**; the Environments page shows "Your quota: N of M …". `tools/helpers/live/quotas.py`. |
+| Verified | pytest 245. Live on kvm1: labape-dev (a deployer with one environment) given 0 environments saw it in `/api/quotas/me`, and creating another was refused, "2 of 0 environments"; the quota was removed afterwards. |
+

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, leases
+from .. import appsettings, leases, quotas
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
@@ -260,6 +260,10 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
         if len(g.names) > g.count:
             raise FieldError(f"host_groups.{i}.names", f"{len(g.names)} names were given for {g.count} hosts.")
     raw = [g.model_dump(exclude_none=True) for g in body.host_groups]
+    try:
+        quotas.check(db, p, raw)                     # design §41
+    except quotas.QuotaError as exc:
+        raise FieldError("host_groups", str(exc), status_code=403) from exc
     _check_capacity(db, host.id, raw)
     _check_names(db, host.id, raw)
     _check_templates(db, host.id, raw)
@@ -305,6 +309,12 @@ def redeploy(env_id: int, request: Request, db: Session = Depends(get_db),
     e = _get(db, env_id, p)
     if not is_owner(db, p, "environment", e.id):
         raise HTTPException(status_code=403, detail="Only the environment's owners can deploy it")
+    if e.status == "destroyed":
+        # Back from destroyed, it counts against the quota again (design §41).
+        try:
+            quotas.check(db, p, (e.spec or {}).get("host_groups", []), exclude_env=e.id)
+        except quotas.QuotaError as exc:
+            raise FieldError("host_groups", str(exc), status_code=403) from exc
     if e.status in ("destroyed", "new"):
         # A fresh deploy starts a fresh lease (design §40): an old, ended one would shut it down at once.
         e.expires_at, e.lease_state = leases.default_expiry(db), {}
