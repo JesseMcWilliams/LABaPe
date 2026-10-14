@@ -1449,3 +1449,17 @@ copies.
 | Unlinking | Unlink (`DELETE /api/admin/links/{id}`) tells the peer first (`POST /api/link/leave` with the token; best effort) so it drops its side too, then removes the link and its token. Linking again takes a new code. |
 | UI | Admin → Linked stacks (admins; auditors read): this stack's address and CA fingerprint, each link's status (ok, stale, not answering, not reached yet), last answer, a one-line summary, Check and Unlink; Create link code (shown once, with Copy) and Link with a stack. `tools/helpers/live/links.py`. All link actions are audited (`link.invite`, `link.add`, `link.join`, `link.leave`, `link.remove`). |
 | Verified | pytest 228. Live: kvm1 made a code; the Pi linked with it (the code went from one to the other in a shell variable, never shown). Each side then read the other's summary over TLS pinned to the other's CA: kvm1 sees the Pi's hosts director, garagepc and kvm1 and its environment; the Pi sees kvm1's four hosts. The link stays for L2. |
+
+## 35. The overall dashboard (L2, built 2026-10-14)
+
+Batch 5 of the order in Planning_Backlog.md (review item 12, questions 147 and 148): on every linked
+stack, the dashboard's **All stacks** panel above the alerts, for admins and auditors, shown once a
+stack has a link (§34).
+
+| Area | As built |
+|---|---|
+| What it shows | Totals across every stack (how many answer, distinct hosts, CPUs, memory used of total, VM disk free of total, VMs running of defined, environments, running and queued jobs, open alerts), then a card per stack: its name (opening that stack's own dashboard in a new tab, with its own sign-in; this stack's opens here), answering / stale / not answering / not reached yet, maintenance, version, hosts, VMs, environments, jobs (running, queued, failed today), open alerts with the first two. A stack that stopped answering shows its last summary "as of" when it last answered. View-only (question 147); actions are on each stack. Every stack shows it (question 148): each polls its own links. |
+| API | `GET /api/dashboard/stacks` (auditors and admins): this stack's summary read live plus each link's last one, with its status, and the totals; `{"stacks": [], "totals": null}` without links. |
+| Shared hosts | Two stacks can both have a record for the same machine (kvm1 is a KVM host of the Pi's stack too). Each host in a summary now carries `machine`: its own host name from its facts (§28.4), else its libvirt address, else this stack's host for `qemu:///system`. The totals count each machine once, with its newest reading, and only enabled ones add capacity. A record without facts keyed by address (kvm1's old, disabled `kvm1-ssh`) still counts as a separate host; it adds no capacity. |
+| Verified | pytest 229. Live, kvm1 and the Pi linked: 2 of 2 answering, 4 machines, 60 CPUs (kvm1's 56 and garagepc's 4, kvm1 counted once although both stacks list it), 3 environments; each card with its version and counts. |
+

@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- All stacks on the dashboard: totals across every linked stack (a machine
+  two stacks share counted once) and a card per stack that opens its own
+  dashboard; stacks that stopped answering show their last data.
 - Linked stacks: Admin → Linked stacks links two LABaPe stacks with a
   one-time code (the other stack's CA is checked against it); each reads
   the other's summary every minute (hosts, environments, jobs, alerts),
