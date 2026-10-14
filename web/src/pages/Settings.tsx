@@ -39,6 +39,7 @@ interface AllSettings {
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   syslog_collector: Collector;
   file_distribution: { wait_minutes: number };
+  monitoring: { email_to: string[]; syslog: boolean; disk_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number };
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -189,7 +190,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution">(k: K, body: object) => {
+  const put = async <K extends "backup" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -236,6 +237,20 @@ export default function Settings() {
         <Field label="Linux admin user" value={s.vm_accounts.linux_admin_user} sx={{ maxWidth: 320 }}
           help="Lower case letters, digits, _ and -; up to 32 characters"
           onChange={(e) => set("vm_accounts", { linux_admin_user: e.target.value })} />
+      </Section>
+
+      <Section title="Monitoring" intro="Alerts about hosts and stacks (stack hosts' containers, disks, temperatures, certificates, backups; other stacks that stop answering): on the dashboard, and when one starts or clears, to syslog and by email."
+        onSave={async () => { await put("monitoring", s.monitoring); return "Monitoring settings saved."; }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <Field label="Email alerts to" value={s.monitoring.email_to.join(", ")} sx={{ minWidth: 300 }} help="Comma-separated; uses Email (SMTP) below"
+            onChange={(e) => set("monitoring", { email_to: e.target.value.split(/[\s,;]+/).filter(Boolean) })} />
+          <FormControlLabel label="Send to syslog" control={<Checkbox checked={s.monitoring.syslog} onChange={(e) => set("monitoring", { syslog: e.target.checked })} />} />
+          {([["disk_pct", "Disk full at (%)"], ["temp_c", "Hot at (°C)"], ["cert_days", "Certificate days left"], ["backup_hours", "Backup older than (hours)"],
+            ["peer_failures", "Missed probes"]] as const).map(([k, label]) => (
+            <Field key={k} label={label} type="number" value={s.monitoring[k]} sx={{ width: 170 }}
+              onChange={(e) => set("monitoring", { [k]: Number(e.target.value) })} />
+          ))}
+        </Stack>
       </Section>
 
       <Section title="File distribution" intro="The primary file host (Admin → KVM hosts) holds every file; a job on another host gets copies of the ones it needs. While the primary can't be reached, a job waits this long before it fails (a host that already has the file doesn't wait)."

@@ -244,3 +244,10 @@ an answer file that updates reuse, and asks which services to deploy (each defau
 Also 2026-10-13: separating the web stack from the primary KVM host needs a careful design (e.g. the web stack on a
 Raspberry Pi driving KVM on a larger PC or server); test it with a VM deployed as the separate stack host. kvm1 has
 nothing listening on 514/6514 (rsyslog inactive, no network inputs), so the stack collector can bind there.
+
+## Monitoring the web stack host (added and answered 2026-10-14)
+
+142. ~~**Scope:** only the stack host's own health, or also an outside check (the LABaPe stacks watching each other)?~~ **Answered (2026-10-14):** Yes, both; add a role to the hosts (runs a stack, stack only, KVM only), with separate sections per role.
+143. ~~**Alerts:** dashboard only, or also email and syslog when a warning starts and clears?~~ **Answered (2026-10-14):** Dashboard, syslog and email.
+144. ~~**History:** the same as KVM hosts (metrics every 5 minutes, kept 7 days; SMART daily)?~~ **Answered (2026-10-14):** Yes.
+145. ~~**Access account on the stack host:** created by the installer, or through Set up access?~~ **Answered (2026-10-14):** Reuse Set up access.

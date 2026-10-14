@@ -70,6 +70,10 @@ class KvmHost(Base):
     # locations at the same paths through a share their admin mounted.
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     files_from_share: Mapped[bool] = mapped_column(Boolean, default=False)
+    # What runs on it (design §30, question 142): kvm, stack (a LABaPe web stack only) or both;
+    # a stack's https address, so the stacks can watch each other.
+    role: Mapped[str] = mapped_column(String(8), default="kvm")
+    stack_url: Mapped[str] = mapped_column(String(255), default="")
 
 
 class Network(Base):
@@ -313,6 +317,34 @@ class RemoteSession(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StackStatus(Base):
+    """The latest checks of a host that runs a LABaPe stack (design §30): its containers and volumes
+    (over the access account), and either this stack's own checks (backups, certificates, database
+    sizes) or, for another stack, how its health address answered."""
+
+    __tablename__ = "stack_status"
+
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), primary_key=True)
+    checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+
+class MonitorAlert(Base):
+    """A warning that started (and maybe cleared): what the dashboard lists and what was sent to
+    syslog and email (design §30, question 143). `key` identifies the condition."""
+
+    __tablename__ = "monitor_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), index=True)
+    kvm_host_id: Mapped[int | None] = mapped_column(ForeignKey("kvm_hosts.id"), nullable=True)
+    level: Mapped[str] = mapped_column(String(8))                        # warning | error
+    message: Mapped[str] = mapped_column(Text)
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    cleared_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class HostFacts(Base):

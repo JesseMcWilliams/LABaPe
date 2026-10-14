@@ -19,14 +19,77 @@ type Any = any;
 export interface AdminView {
   host: KvmHost; collected_at: string | null; smart_at: string | null; error: string;
   facts: Any; smart: Any; latest: Any; warnings: { level: "error" | "warning" | "info"; message: string }[];
-  series: Record<string, (number | null)[]> & { t: string[] }; resources: Any;
+  series: Record<string, (number | null)[]> & { t: string[] }; resources: Any; stack?: Any;
 }
 
 export const SECTIONS = [
   { key: "dashboard", label: "Dashboard" }, { key: "drives", label: "Drives and volumes" }, { key: "nics", label: "NICs" },
   { key: "os", label: "OS" }, { key: "accounts", label: "Accounts" }, { key: "groups", label: "Groups" },
-  { key: "vms", label: "VMs" }, { key: "access", label: "SSH access" }, { key: "settings", label: "Settings" },
+  { key: "vms", label: "VMs" }, { key: "stack", label: "Stack" }, { key: "access", label: "SSH access" },
+  { key: "settings", label: "Settings" },
 ] as const;
+
+/** The sections a host's role calls for (design §30): VMs for KVM hosts, Stack for stack hosts. */
+export const sectionsFor = (role: string | undefined) =>
+  SECTIONS.filter((x) => (x.key !== "vms" || role !== "stack") && (x.key !== "stack" || role === "stack" || role === "both"));
+
+const ago2 = (iso?: string | null) => (iso ? fmtTime(iso) : "—");
+
+/** A stack host (design §30): containers, volumes, and this stack's own checks or another stack's probe. */
+export function StackSection({ view }: { view: AdminView }) {
+  const st = view.stack;
+  if (!st) return <Alert severity="info">This host doesn&apos;t run a LABaPe stack (Settings → Role).</Alert>;
+  const s = st.status ?? {};
+  const containers: Any[] = s.containers ?? [];
+  const me = s.self;
+  const peer = s.peer;
+  return (
+    <Stack spacing={2}>
+      {(st.alerts ?? []).map((a: Any, i: number) => <Alert key={i} severity={a.level === "error" ? "error" : "warning"}>{a.message} (since {fmtTime(a.started_at)})</Alert>)}
+      {st.error && <Alert severity="warning">Last check failed: {st.error}</Alert>}
+      <Typography variant="body2" color="text.secondary">
+        {st.self ? "The stack this page comes from." : view.host.stack_url ? `Another stack, at ${view.host.stack_url}.` : "A stack host."}
+        {" "}Containers are read every 5 minutes through the SSH access account, volumes hourly{st.self ? "; backups and certificates every minute" : "; the stack's health address every minute"}.
+      </Typography>
+      {peer && (
+        <Facts rows={[
+          ["Health address", peer.ok ? <Chip key="ok" size="small" color="success" label={`answers (${peer.ms} ms)`} /> : <Chip key="no" size="small" color="error" label={`not answering ×${peer.failures}`} />],
+          ["Last probe", ago2(peer.at)], ["Certificate expires", ago2(peer.cert_expires)], ["Problem", peer.error || "—"],
+        ]} />
+      )}
+      {me && (
+        <Facts rows={[
+          ["Newest backup", me.backup?.enabled ? ago2(me.backup?.newest) : "backups turned off"],
+          ...Object.entries(me.certs ?? {}).map(([k, v]: [string, Any]) => [`${k} certificate`, v.expires ? `expires ${fmtTime(v.expires)}` : v.error] as [string, string]),
+          ...Object.entries(me.databases ?? {}).map(([k, v]: [string, Any]) => [`${k} database`, gb(v as number)] as [string, string]),
+        ]} />
+      )}
+      {containers.length > 0 ? (
+        <Table size="small">
+          <TableHead><TableRow><TableCell>Container</TableCell><TableCell>State</TableCell><TableCell>Health</TableCell><TableCell>Restarts</TableCell><TableCell>Image</TableCell></TableRow></TableHead>
+          <TableBody>
+            {containers.map((c) => (
+              <TableRow key={c.name}>
+                <TableCell sx={{ fontFamily: "monospace" }}>{c.name}</TableCell>
+                <TableCell><Chip size="small" label={c.state} color={c.state === "running" ? "success" : "error"} /></TableCell>
+                <TableCell>{c.health || "—"}</TableCell><TableCell>{c.restarts}</TableCell>
+                <TableCell sx={{ fontSize: 12 }}>{c.image}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : <Typography variant="body2" color="text.secondary">{view.host.access_status === "ready" ? "Containers not read yet." : "Set up SSH access to read its containers, disks and temperatures."}</Typography>}
+      {(s.volumes ?? []).length > 0 && (
+        <Table size="small">
+          <TableHead><TableRow><TableCell>Volume</TableCell><TableCell>Size</TableCell><TableCell>Used by</TableCell></TableRow></TableHead>
+          <TableBody>
+            {(s.volumes as Any[]).map((v) => <TableRow key={v.name}><TableCell sx={{ fontFamily: "monospace" }}>{v.name}</TableCell><TableCell>{v.size}</TableCell><TableCell>{v.links}</TableCell></TableRow>)}
+          </TableBody>
+        </Table>
+      )}
+    </Stack>
+  );
+}
 
 const gb = (b?: number | null) => (b == null ? "—" : b >= 2 ** 40 ? `${(b / 2 ** 40).toFixed(2)} TB` : `${(b / 2 ** 30).toFixed(1)} GB`);
 const rate = (v: number) => (v >= 2 ** 20 ? `${(v / 2 ** 20).toFixed(1)} MB/s` : `${(v / 1024).toFixed(0)} KB/s`);
@@ -462,7 +525,7 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
           </Stack>
         </Stack>
       </Paper>
-      <Paper variant="outlined" sx={{ p: 2 }}>
+      {host.role !== "stack" && <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Prepare this host</Typography>
           <Typography variant="body2" color="text.secondary">
@@ -515,7 +578,7 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
             </ActionButton>
           </Stack>
         </Stack>
-      </Paper>
+      </Paper>}
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>

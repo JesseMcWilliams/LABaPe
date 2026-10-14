@@ -44,6 +44,9 @@ class HostIn(BaseModel):
     # Files (design §29.4): the primary holds them all; a host with a share sees them at the same paths.
     is_primary: bool = False
     files_from_share: bool = False
+    # What runs on it (design §30): kvm, stack or both; a stack's https address.
+    role: str = Field(default="kvm", pattern=r"^(kvm|stack|both)$")
+    stack_url: str = Field(default="", pattern=r"^(https://[A-Za-z0-9.:\[\]-]+/?)?$", max_length=255)
 
 
 def _out(h: KvmHost) -> dict:
@@ -51,7 +54,7 @@ def _out(h: KvmHost) -> dict:
                                        "bridge", "concurrency_limit", "enabled", "ssh_address", "ssh_port",
                                        "ssh_user", "access_status", "access_error", "access_at", "log_forward",
                                        "log_forward_until", "log_forward_error", "is_primary",
-                                       "files_from_share")}
+                                       "files_from_share", "role", "stack_url")}
 
 
 def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
@@ -137,7 +140,8 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
         raise HTTPException(status_code=404, detail="No such host")
     _check_uri(body.libvirt_uri)
     data = body.model_dump()
-    for k in ("ssh_address", "ssh_port", "ssh_user", "is_primary", "files_from_share"):   # kept unless sent
+    for k in ("ssh_address", "ssh_port", "ssh_user", "is_primary", "files_from_share", "role",
+              "stack_url"):                                   # kept unless sent
         if k not in body.model_fields_set:
             data.pop(k)
     if data.get("is_primary") is False and h.is_primary:
@@ -287,7 +291,21 @@ def host_admin(host_id: int, hours: int = 24, db: Session = Depends(get_db),
             "latest": {"at": latest.at, **(latest.data or {})} if latest else None,
             "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None),
             "series": hostadmin.series(db, h, min(max(hours, 1), 168)),
-            "resources": _resources(db, h.id)}
+            "resources": _resources(db, h.id), "stack": _stack(db, h)}
+
+
+def _stack(db: Session, h: KvmHost) -> dict | None:
+    """The host's Stack section (design §30): its containers and volumes, this stack's own checks
+    or another stack's probe, and its open alerts."""
+    from ..engine import stackmon
+    from ..models import MonitorAlert, StackStatus
+    if not stackmon.runs_stack(h):
+        return None
+    st = db.get(StackStatus, h.id)
+    alerts = db.scalars(select(MonitorAlert).where(MonitorAlert.kvm_host_id == h.id, MonitorAlert.cleared_at.is_(None)))
+    return {"self": stackmon.is_self(h), "checked_at": st.checked_at if st else None, "error": st.error if st else "",
+            "status": (st.data if st else {}) or {},
+            "alerts": [{"level": a.level, "message": a.message, "started_at": a.started_at} for a in alerts]}
 
 
 @router.post("/{host_id}/admin/refresh")

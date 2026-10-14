@@ -43,6 +43,7 @@ export default function Hosts() {
                 {isAdmin && <TableCell>{h.concurrency_limit}</TableCell>}
                 <TableCell>
                   <Chip size="small" label={h.enabled ? "enabled" : "disabled"} color={h.enabled ? "success" : "default"} />
+                  {h.role && h.role !== "kvm" && <Chip size="small" label={h.role === "stack" ? "stack" : "KVM + stack"} sx={{ ml: 0.5 }} title={h.stack_url || "Runs a LABaPe stack"} />}
                   {h.is_primary && <Chip size="small" label="primary" color="primary" sx={{ ml: 0.5 }} title="Holds every file; other hosts get copies when a job needs them" />}
                   {h.files_from_share && <Chip size="small" label="share" sx={{ ml: 0.5 }} title="Reads the primary's files through a share" />}
                 </TableCell>

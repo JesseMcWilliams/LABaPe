@@ -313,3 +313,10 @@ async def admin_health(db: Session = Depends(get_db), _: Principal = Depends(req
 def check_updates(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
     version.check(db)
     return version.status(db)
+
+
+@router.get("/monitoring")
+def monitoring(db: Session = Depends(get_db), _: Principal = Depends(require_roles("auditor"))):
+    """Alerts (open and recently cleared) and the stacks being watched (design §30)."""
+    from ..engine import stackmon
+    return stackmon.view(db)
