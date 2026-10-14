@@ -8,6 +8,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Install from a backup: `install-labape.py --from-backup ARCHIVE
+  --backup-key-file KEY` makes a new machine the stack that was backed up
+  (same address, CA, secrets, OpenBao, Authentik users, data);
+  `deploy/stack-restore.sh` puts a backup back onto an installed stack.
+  `--restore-drill` keeps the copy in maintenance mode.
 - Full-stack backups: the update agent writes the whole stack (every
   database, OpenBao, the platform CA, configuration and bootstrap secrets)
   into one archive encrypted with a backup key kept apart from it, checks
@@ -46,6 +51,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   Set up access.
 
 ### Fixed
+- The stores' setup could fail on a fresh OpenBao ("cannot write to
+  readonly storage"): it now waits for the node to become active after the
+  unseal.
 - A service the installer left out (e.g. Conjur) could still be started by
   its own compose profile: the override now replaces the profiles.
 - Changing the web interface's host name (e.g. from an address to its DNS

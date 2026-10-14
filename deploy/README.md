@@ -133,6 +133,10 @@ Re-running the installer is how a host's own setup is updated: it reads the save
 
 `deploy/stack-backup.sh` writes the whole stack (every database, OpenBao, the platform CA, the configuration and the bootstrap secrets) into one archive encrypted with the backup key, `~/.config/labape/backup.key`, which it makes on its first run. Keep a copy of that key somewhere other than the host: no archive opens without it. The update agent runs the script daily and on Settings → Full stack backups → Back up now; it can also be run by hand as the service user (`deploy/stack-backup.sh --help`). Design §32.
 
+## Installing from a backup
+
+`sudo deploy/install-labape.py --from-backup ARCHIVE --backup-key-file KEY` makes this machine the stack the archive was taken of: it installs with the answers saved in the archive (override any with `--set`, e.g. `--set SyslogBind=0.0.0.0` when the old machine's address isn't this one's), then `Stack.Restore` runs `deploy/stack-restore.sh` to put back the configuration, secrets, volumes and databases. Check out a version at least as new as the backup's. `--restore-drill` leaves maintenance mode on, for a test copy next to the real stack. Design §33.
+
 ## Changing the web interface's host name
 
 To move from an address to a DNS name (or between names), set the new name and re-run the steps that use it:
