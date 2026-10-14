@@ -42,8 +42,8 @@ from ..naming import instance_names
 from .. import spread
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation, snapshots,
-               stackbackup, stackmon, template_versions)
+from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
+               secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -537,6 +537,7 @@ def run(job_id: int, worker: str) -> None:
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
                   "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
+                  "secret.check": secret_health.run_job,
                   "files.sync_templates": filedist.run_sync_templates}
         if job.type in system:
             try:
@@ -936,6 +937,8 @@ def serve(slots: int | None = None) -> None:
                     rotation.ensure_policies(db)
                     for jid in rotation.schedule(db):
                         log.info("queued secret rotation job %s", jid)
+                    for jid in secret_health.schedule(db):     # S1: is each secret still good
+                        log.info("queued secret check job %s", jid)
                 with session_factory()() as db:
                     for jid in template_versions.schedule_refresh(db):
                         log.info("queued monthly template refresh job %s", jid)

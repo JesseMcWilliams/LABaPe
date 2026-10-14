@@ -299,6 +299,8 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
     for link in db.scalars(select(StackLink)):
         if (link.failures or 0) >= cfg.peer_failures:
             out[f"link:{link.url}"] = (None, "error", f"linked stack {link.name} isn't answering ({link.error[:200]})")
+    from .secret_health import alerts as secret_alerts      # S1: secrets that failed their check
+    out.update(secret_alerts(db))
     em = email_state(db)
     if em.get("ok") is False:
         out[EMAIL_KEY] = (None, "error", f"alert emails can't be sent: {em.get('error', '')[:300]}")

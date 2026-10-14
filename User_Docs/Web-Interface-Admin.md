@@ -152,6 +152,11 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 
 **Secrets** lists every internal secret: what it is, which store holds it, its class, rotation interval, last and next rotation, and status. Open one to change its interval, turn scheduled rotation off, choose an elevated account or add notes; **Rotate now** rotates it at once. Every rotation and every change is audited.
 
+**Health and recovery.** LABaPe checks that each stored secret still works (a sign-in, an API call, a key that opens what it locks): every quarter of its rotation period, at least daily; not at all for one that rotates every day (each rotation proves it); weekly for one LABaPe doesn't rotate. **Health** shows the result (ok, recovered, failed, not in use) with the last and next check; **Check now** checks at once. **Recoverable** says what happens when a check fails:
+- **Yes**: LABaPe puts a working value back by itself, with an earlier value it kept or a new one set with another credential it holds (the rotation, the update agent, a host's access account), then checks again. The tooltip says how.
+- **No**: there's no way back for LABaPe if the value is lost (the data key, the master key, the CA password, the domain Administrator, the SMTP password). The secret shows **failed**, an alert is raised (dashboard, syslog, email), and the tooltip says what a person must do.
+A check that can't reach what it tests (a VM that's off) doesn't count as a failure.
+
 | Secret | Rotated by | Default |
 |---|---|---|
 | Built-in store data key | the worker | daily |

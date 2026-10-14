@@ -16,6 +16,7 @@
 #   apply -> recreate the containers using it -> health checks (the CA check
 #   signs a test request) -> maintenance off; everything put back on failure.
 # authentik_sso: sign-on between linked stacks (design §47.2): tools/authentik-test/sso.sh.
+# stores_setup: stores/stores.sh setup (secret health, S1: new store logins for LABaPe).
 # full_backup: the whole stack in one sealed archive (deploy/stack-backup.sh,
 #   design §32); no maintenance mode, nothing stops.
 # The engine's own secrets (vault password, VM key) are rotated by the worker,
@@ -221,6 +222,19 @@ if [ "$ACTION" = full_backup ]; then
     3) status failed check "wrote $(basename "$last"), but its check failed; see the backup list" ;;
     *) status failed backup "the stack backup failed (exit $rc); see agent.log" ;;
   esac
+  finish
+  exit 0
+fi
+
+if [ "$ACTION" = stores_setup ]; then
+  # Secret health (S1): LABaPe's login to a store stopped working; stores.sh setup gives it a new one
+  # with the stores' root credentials kept on this host (and changes nothing that works).
+  status running applying "stores.sh setup: new logins for LABaPe where needed"
+  if out="$(bash "$C/stores/stores.sh" setup 2>&1)"; then
+    status succeeded done "stores.sh setup: ${out##*$'\n'}"
+  else
+    status failed applying "stores.sh setup failed: ${out##*$'\n'}"
+  fi
   finish
   exit 0
 fi

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, Table, TableBody, TableCell,
-  TableHead, TableRow, Tooltip,
+  TableHead, TableRow, Tooltip, Typography,
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { ListHeader } from "../components/PageParts";
@@ -17,6 +17,36 @@ export interface SecretPolicy {
   params: Record<string, string>; status: string; last_rotated_at: string | null; next_due_at: string | null;
   last_error: string; notes: string; automatic: boolean; needs_elevated: boolean; rotator_notes: string;
   last_job: { id: number; state: string } | null; secret_name: string | null;
+  // Health (S1, question 161).
+  check_status: string; check_error: string; last_checked_at: string | null; next_check_at: string | null;
+  recoverable: boolean; recovery: string; checkable: boolean; check_every_hours: number | null;
+}
+
+const HEALTH_COLOR: Record<string, "success" | "error" | "warning" | "default"> = {
+  ok: "success", recovered: "success", failed: "error", recovering: "warning",
+};
+
+/** Whether the stored value still works, when it was checked, and how often (S1). */
+export function HealthCell({ p, onCheck }: { p: SecretPolicy; onCheck?: () => void }) {
+  if (!p.checkable) return <Typography variant="caption" color="text.secondary">no check</Typography>;
+  const when = p.check_every_hours === null ? "Not checked: it rotates at least daily, which proves it"
+    : `Checked every ${interval(p.check_every_hours)}`;
+  return (
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+      <Tooltip title={<>{p.check_error || (p.check_status === "unchecked" ? "Not checked yet" : "")}<br />{p.last_checked_at ? `Last ${fmtTime(p.last_checked_at)}. ` : ""}{when}.{p.next_check_at ? ` Next ${fmtTime(p.next_check_at)}.` : ""}</>}>
+        <Chip size="small" color={HEALTH_COLOR[p.check_status] ?? "default"} label={p.check_status === "none" ? "not in use" : p.check_status} />
+      </Tooltip>
+      {onCheck && <Button size="small" onClick={onCheck} title="Check now that the stored value works (recovered if it doesn't and can be)">Check now</Button>}
+    </Stack>
+  );
+}
+
+export function RecoverableCell({ p }: { p: SecretPolicy }) {
+  return (
+    <Tooltip title={p.recovery || "No check for this kind of secret"}>
+      <Chip size="small" variant="outlined" color={p.recoverable ? "success" : "warning"} label={p.recoverable ? "Yes" : "No"} />
+    </Tooltip>
+  );
 }
 
 export const interval = (h: number) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hours`);
@@ -95,7 +125,7 @@ export default function Secrets() {
           <TableRow>
             <TableCell>Secret</TableCell><TableCell>Class</TableCell><TableCell>Store</TableCell>
             <TableCell>Every</TableCell><TableCell>Last rotated</TableCell><TableCell>Next</TableCell>
-            <TableCell>Status</TableCell>
+            <TableCell>Status</TableCell><TableCell>Recoverable</TableCell><TableCell>Health</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -114,6 +144,8 @@ export default function Secrets() {
                 <StatusChip p={p} />
                 {p.status === "failed" && <Tooltip title={p.last_error}><Chip size="small" variant="outlined" color="error" label="why?" sx={{ ml: 0.5 }} /></Tooltip>}
               </TableCell>
+              <TableCell><RecoverableCell p={p} /></TableCell>
+              <TableCell><HealthCell p={p} onCheck={() => api.post(`/api/admin/secrets/${p.id}/check`).then(load, (e) => setError(e.message))} /></TableCell>
             </TableRow>
           ))}
         </TableBody>
