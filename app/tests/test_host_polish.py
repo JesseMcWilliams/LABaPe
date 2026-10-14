@@ -97,7 +97,8 @@ def test_dashboard_leaves_out_disabled_hosts(client):
 
 
 def test_setup_script_installs_smart_tools():
-    assert "smartmontools" in hostadmin.SETUP and "command -v smartctl" in hostadmin.SETUP
+    assert "smartctl:smartmontools:smartmontools" in hostadmin.SETUP
+    assert "sensors:lm-sensors:lm_sensors" in hostadmin.SETUP          # temperatures too (D1)
     # The script is %-formatted: it must still format cleanly.
     assert "smartctl" in hostadmin.SETUP % {"account": "localadmin01", "key": "ssh-ed25519 AAAA k"}
 

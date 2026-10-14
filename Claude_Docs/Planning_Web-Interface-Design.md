@@ -1659,3 +1659,11 @@ Questions 156 (b: a user keeps their role groups) and 157 (an admin turns it on 
 | Environments | Filters: name, status, KVM host, OS (a host group runs it), created by, created since/until; in the address. |
 | Verified | pytest 276 (the preference's default, change and limits; Jobs pages and totals). Live on kvm1: the UI built (type-check); `labape-dev`'s page size 50 → 25 → back; Jobs `limit=50&offset=50` gave 50 rows of 166, starting below the first page. |
 
+### 48.3 D1: loop devices and sensors (built)
+
+| Area | As built |
+|---|---|
+| Drives | Disks and partitions leave out `loop` devices; **Show loop devices (n)** (shown when there are any) brings them back. |
+| Sensors | The access-account setup script installs `lm-sensors` (apt) / `lm_sensors` (dnf) next to smartmontools, when `sensors` is missing; the installer's `Prereq.Packages` lists them for both families. The host page notes a missing `sensors` (only the kernel's thermal zones then). |
+| Verified | pytest (the setup script installs both). Live: access setup on nkvm1 installed `sensors` (it had none) and its page had no warnings; the Pi showed the new note until lm-sensors was installed; installing smartmontools on kvm1 showed its first SMART reading: `/dev/sdc` (in `md10`, `/data`) has 76 reallocated and 4032 pending sectors, reported to the user. |
+

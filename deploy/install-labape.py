@@ -71,7 +71,7 @@ def agent(a: Resolver) -> bool:
 STEPS = [
     ("Prereq.Os", S.prereq_os, ["Profile"], None, "Root, Debian, /dev/kvm (KVM profiles)"),
     ("Prereq.User", S.prereq_user, ["ServiceUser"], None, "Service user that owns the repo, vault and SSH keys"),
-    ("Prereq.Packages", S.prereq_packages, [], None, "apt packages: QEMU/KVM, libvirt, virt-install, xorriso, Python, smartmontools"),
+    ("Prereq.Packages", S.prereq_packages, [], None, "apt packages: QEMU/KVM, libvirt, virt-install, xorriso, Python, smartmontools, lm-sensors"),
     ("Prereq.Libvirt", S.prereq_libvirt, ["ServiceUser"], kvm, "libvirtd running; service user in libvirt and kvm"),
     ("Prereq.NoSleep", S.prereq_no_sleep, [], None, "Never sleep: mask the sleep targets, logind ignores idle and the suspend key"),
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
