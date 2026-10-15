@@ -631,26 +631,38 @@ OPTIONAL_SERVICES = {
     "InstallSyslog": ("labape-syslog-db", "labape-syslog"),
     "InstallRemoteAccess": ("labape-guacd",),
 }
+# Services whose output container/compose.yaml sends to the stack syslog collector (design §53.2): all but the collector.
+LOGGED_SERVICES = ("postgres", "labape-mailpit", "labape-ca", "labape-api", "labape-worker", "labape-guacd", "caddy",
+                   "labape-openbao", "labape-conjur-db", "labape-conjur", "labape-conjur-tls")
 OVERRIDE_HEADER = "# Written by deploy/install-labape.py (Stack.Services). Don't edit: re-run the installer.\n"
 
 
-def services_override(answers: dict, kvm_device: bool = True, drill_host: str = "") -> str | None:
+def services_override(answers: dict, kvm_device: bool = True, drill_host: str = "", runtime: str = "docker") -> str | None:
     """compose.override.yaml parking the services not chosen in a profile nobody enables (Compose
     merges the file by itself, so the update agent and every `compose up` honour it), and, on a
     host without /dev/kvm (a web stack on a Raspberry Pi), the worker without that device: Docker
     won't start a container whose device is missing. A restore drill (design §33) gives the CA
     `drill_host` -> this host: the web address still points at the real stack in DNS, so the CA's
-    ACME check of Caddy would go there. None: nothing to override."""
+    ACME check of Caddy would go there. The containers' logs go to the stack syslog through Docker's
+    syslog driver; where that is unavailable (Podman: journald) or there is no collector (json-file)
+    the services log locally instead. None: nothing to override."""
     off = [svc for key, svcs in OPTIONAL_SERVICES.items() if not answers.get(key, True) for svc in svcs]
-    if not off and kvm_device and not drill_host:
+    local = "journald" if runtime == "podman" else ("json-file" if not answers.get("InstallSyslog", True) else "")
+    if not off and kvm_device and not drill_host and not local:
         return None
-    # !override: Compose merges a service's `profiles` with the override's, so the stores' own
-    # "stores" profile would still start a parked Conjur.
-    body = "".join(f"  {svc}:\n    profiles: !override [\"off\"]\n" for svc in off)
+    # One block per service. !override: Compose merges a service's `profiles` with the override's, so the
+    # stores' own "stores" profile would still start a parked Conjur; `logging` would merge options too.
+    blocks: dict[str, str] = {}
+    for svc in off:
+        blocks[svc] = blocks.get(svc, "") + "    profiles: !override [\"off\"]\n"
+    if local:
+        for svc in LOGGED_SERVICES:
+            blocks[svc] = blocks.get(svc, "") + f"    logging: !override\n      driver: {local}\n"
     if not kvm_device:
-        body += "  labape-worker:\n    devices: !reset []     # no /dev/kvm here: template builds run on the KVM hosts\n"
+        blocks["labape-worker"] = blocks.get("labape-worker", "") + "    devices: !reset []     # no /dev/kvm here: template builds run on the KVM hosts\n"
     if drill_host:
-        body += f"  labape-ca:\n    extra_hosts: [\"{drill_host}:host-gateway\"]     # restore drill: ACME checks reach this copy\n"
+        blocks["labape-ca"] = blocks.get("labape-ca", "") + f"    extra_hosts: [\"{drill_host}:host-gateway\"]     # restore drill: ACME checks reach this copy\n"
+    body = "".join(f"  {svc}:\n{text}" for svc, text in blocks.items())
     note = f"# Services not installed: {', '.join(off)}\n" if off else ""
     return f"{OVERRIDE_HEADER}{note}services:\n{body}"
 
@@ -661,7 +673,8 @@ def stack_services(c: Ctx):
     if c.a.need("InstallConjur") and cpu_arch() == "arm64":
         raise StepError("Conjur has no arm64 image: answer InstallConjur=false on this machine (OpenBao is installed)")
     text = services_override(c.a.answers, kvm_device=Path("/dev/kvm").exists(),
-                             drill_host=c.a.need("WebHostname") if c.restore_drill else "")
+                             drill_host=c.a.need("WebHostname") if c.restore_drill else "",
+                             runtime=c.a.need("ContainerRuntime"))
     if text is None:
         if override.is_file() and override.read_text(encoding="utf-8").startswith(OVERRIDE_HEADER):
             c.r.run(["rm", "-f", str(override)])

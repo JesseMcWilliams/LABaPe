@@ -1884,3 +1884,13 @@ Questions 167-173. Built batch by batch.
 | Reboot | Waits (up to 12 h) until no other job is running on the host; meanwhile `runner.claim` starts nothing else there (a running `host.reboot` blocks its host). Then `shutdown -r +1`. Another host: waits for it to go down and return (15 min) and refreshes the facts. The stack's own host (`stackmon.is_self`): the job ends once the reboot is scheduled, since the worker goes down with it. Allowed on the primary file host and the stack host (the user, 2026-10-15). |
 | From the OS | **Not built.** The user asked (2026-10-15) that a reboot issued on the host wait for a running job. A systemd inhibitor lock (`systemd-inhibit --mode=block`, taken through sudo because the access account gets "Access denied") shows up in logind, but `sudo systemctl reboot` is root and ignores it (tried on Director: it rebooted). It would only stop non-root and desktop sessions. Open question 174. |
 | Page | KVM host -> Dashboard: **Update** and **Reboot**, each with a confirmation (the reboot's in red), then to the job. |
+
+### 53.2 Every stack item logs to the stack syslog (S4, built)
+
+| Area | As built |
+|---|---|
+| Containers | `container/compose.yaml` gives every service but the collector (`labape-syslog`, `labape-syslog-db`) the Docker `syslog` log driver: `udp://${LABAPE_SYSLOG_BIND:-127.0.0.1}:514`, tag `{{.Name}}`, `syslog-format: rfc5424micro` (the default format leaves the host name out, so the collector showed the bridge address). UDP so a collector that is down or missing never keeps a container from starting; `docker logs` still works (Docker keeps a local copy). The throwaway Authentik (`tools/authentik-test/compose.yaml`) does the same. |
+| Installer | `Stack.Services` (`services_override`) writes `logging: !override {driver: journald}` for the services on Podman (no syslog driver) and `json-file` when `InstallSyslog` is no (one block per service, so no duplicate keys with the parked-profile blocks). `LOGGED_SERVICES` mirrors the compose file; a test compares them. |
+| The hosts' own logs | Already built for KVM hosts (§29.1, `host.log_forwarding`, on by default at install). The stack host registered as `pi1` (Director) wasn't forwarding; turned on 2026-10-15 (`tools/helpers/live/host_logs.py`). |
+| Deploy | A changed log driver recreates every container. `deploy-web.sh` now runs a plain `compose up -d` and then `stores.sh unseal` (a recreated OpenBao is sealed); the update agent already does both (§53.1 fix). |
+| Verified | OZ: all 12 containers (and Authentik) on the syslog driver; the collector holds their messages with the host name `OZ`. |
