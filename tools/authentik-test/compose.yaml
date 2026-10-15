@@ -2,9 +2,18 @@
 # Based on Authentik's published compose file; not for production use.
 name: authentik-test
 
+# Output goes to the LABaPe stack's syslog collector on this host (design §53.2); same as container/compose.yaml.
+x-logging: &logging
+  driver: syslog
+  options:
+    syslog-address: "udp://${LABAPE_SYSLOG_BIND:-127.0.0.1}:514"
+    tag: "{{.Name}}"
+    syslog-format: rfc5424micro        # carries the host name (the default format leaves it out)
+
 x-authentik: &authentik
   image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.3}
   restart: unless-stopped
+  logging: *logging
   env_file: .env
   environment:
     AUTHENTIK_POSTGRESQL__HOST: postgresql
@@ -22,6 +31,7 @@ services:
   postgresql:
     image: docker.io/library/postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_PASSWORD: ${PG_PASS:?run deploy.sh}
       POSTGRES_USER: authentik

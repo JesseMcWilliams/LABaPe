@@ -37,7 +37,9 @@ git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; R=$L
   fi
   docker compose up -d labape-syslog-db labape-syslog labape-mailpit >/dev/null 2>&1
   docker compose up -d --force-recreate labape-api labape-worker >/dev/null 2>&1
-  docker compose up -d caddy >/dev/null 2>&1          # picks up compose changes (ports, environment)
+  docker compose up -d >/dev/null 2>&1                # every service whose compose configuration changed (ports, environment, logging)
+  # A recreated OpenBao starts sealed: unseal it the way the boot unit does (and start the stack with its secrets).
+  if grep -q "^LABAPE_SECRETS_DIR=." .env 2>/dev/null; then bash stores/stores.sh unseal >/dev/null 2>&1 || echo "stores.sh unseal failed"; fi
   # The Caddyfile is bind-mounted and tar replaced it (a new inode): the container still has the old one, and a
   # reload re-reads that. Recreate Caddy when the file it sees differs.
   CF="$(grep -m1 "^LABAPE_CADDYFILE=" .env | cut -d= -f2-)"; CF="${CF:-Caddyfile}"

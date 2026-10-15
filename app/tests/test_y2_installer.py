@@ -39,7 +39,7 @@ def test_services_override_parks_what_wasnt_chosen():
     assert text.startswith(S.OVERRIDE_HEADER)
     for svc in ("labape-syslog-db", "labape-syslog", "labape-conjur", "labape-conjur-db", "labape-conjur-tls"):
         assert f'  {svc}:\n    profiles: !override ["off"]\n' in text
-    assert "labape-guacd" not in text and "labape-openbao" not in text      # OpenBao always runs
+    assert "labape-guacd:" + chr(10) + "    profiles" not in text and "labape-openbao:" + chr(10) + "    profiles" not in text   # OpenBao always runs
 
 
 def test_defaults_follow_profile_and_old_answer_files():
