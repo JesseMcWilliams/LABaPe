@@ -55,6 +55,8 @@ desktop.ini
 
 # Container stack: generated settings and secrets (container/setup.sh)
 container/.env
+container/.env.bak*
+container/compose.override.yaml        # written by deploy/install-labape.py (Stack.Services)
 container/secrets/
 container/config/
 container/engine-secrets/

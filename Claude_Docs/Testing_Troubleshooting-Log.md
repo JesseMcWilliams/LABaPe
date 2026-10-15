@@ -621,6 +621,10 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 1. **The Windows helper didn't install ("Destination directory ... LabapeSecret ... does not exist"):** `win_copy` to a file path doesn't create its folder. The role creates `C:\Program Files\WindowsPowerShell\Modules\LabapeSecret` first.
 2. **`sudo labape-secret get ...` said "command not found" on Rocky:** sudo's `secure_path` there is `/sbin:/bin:/usr/sbin:/usr/bin`, without `/usr/local/bin`. The role links `/usr/bin/labape-secret` to it.
 
+## Updating a Pi install (2026-10-15)
+
+1. **Update failed at "checking": "the checkout at /opt/LABaPe has local changes":** `git status --porcelain` listed the installer's untracked `container/compose.override.yaml` (and a `.env.bak-*`). OZ never showed it because its stack has no override file. The files are git-ignored now and the agent uses `--untracked-files=no`; a checkout that predates this needs the two names in `.git/info/exclude` once.
+
 ## The stack's mail server (2026-10-15)
 
 1. **The API couldn't write Mailpit's options ("/var/lib/labape-mailpit: no such file") although the volume was listed in the compose file:** `labape-api` and `labape-worker` each define their own `volumes:` list, which replaces the shared one from the YAML anchor (a merge doesn't merge lists). The mount is on `labape-api` itself.
