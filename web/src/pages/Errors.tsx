@@ -8,6 +8,7 @@ import { api, FieldProblem, fmtTime } from "../api";
 import { Field } from "../forms";
 import { ActionButton } from "../components/Confirm";
 import { DateRangeFields, FilterBar, SelectFilter, toQuery, useUrlFilters } from "../components/Filters";
+import { Pager, usePageSize } from "../components/Paging";
 
 interface UserError {
   id: number;
@@ -28,19 +29,24 @@ const KEYS = ["username", "path", "message", "origin", "status", "since", "until
 // log's, kept in the URL (design §28, O1).
 export default function Errors() {
   const [rows, setRows] = useState<UserError[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [size] = usePageSize();
   const [retention, setRetention] = useState(90);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const f = useUrlFilters(KEYS);
   const query = toQuery(f.applied).toString();
 
+  useEffect(() => { setPage(0); }, [query]);
   useEffect(() => {
-    api.get<{ retention_days: number; errors: UserError[] }>(`/api/admin/errors?limit=500&${query}`).then((r) => {
+    api.get<{ retention_days: number; errors: UserError[]; total: number }>(`/api/admin/errors?limit=${size}&offset=${page * size}&${query}`).then((r) => {
       setRows(r.errors);
+      setTotal(r.total);
       setRetention(r.retention_days);
       setError("");
     }, (e) => setError(e.message));
-  }, [query]);
+  }, [query, page, size]);
 
   const saveRetention = async () => {
     setError("");
@@ -81,10 +87,7 @@ export default function Errors() {
         <DateRangeFields since={f.draft.since} until={f.draft.until} onChange={f.set} />
       </FilterBar>
       <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          {rows.length} error{rows.length === 1 ? "" : "s"}{f.active ? " match" : ""}
-        </Typography>
-        <Box sx={{ flexGrow: 1 }} />
+        <Box sx={{ flexGrow: 1, mt: 1 }}><Pager total={total} page={page} onPage={setPage} /></Box>
         <Field label="Keep (days)" type="number" value={retention} sx={{ width: 140 }}
           onChange={(e) => setRetention(Number(e.target.value))} help="1-3650" />
         <ActionButton onClick={saveRetention} sx={{ mt: 0.25 }} tip="Keep user errors this many days"
@@ -128,6 +131,7 @@ export default function Errors() {
           )}
         </TableBody>
       </Table>
+      <Pager total={total} page={page} onPage={setPage} />
     </Stack>
   );
 }

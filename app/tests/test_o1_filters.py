@@ -81,3 +81,20 @@ def test_user_error_filters_and_export(client):
     assert client.get("/api/admin/errors").status_code == 403
     assert client.get("/api/admin/errors/export").status_code == 403
     client.app.dependency_overrides.clear()
+
+
+def test_audit_and_errors_page(client):
+    _admin_session(client)
+    with session_factory()() as db:
+        db.add_all([UserError(username=f"u{i}", method="POST", path="/api/x", status=422, message="m", origin="server")
+                    for i in range(7)])
+        db.commit()
+    r = client.get("/api/admin/errors?limit=3&offset=2").json()
+    assert r["total"] >= 7 and len(r["errors"]) == 3
+    assert [e["id"] for e in r["errors"]] == sorted((e["id"] for e in r["errors"]), reverse=True)
+    first = client.get("/api/admin/errors?limit=3&offset=0").json()["errors"]
+    assert first[2]["id"] == r["errors"][0]["id"]
+    for _ in range(3):
+        client.get("/api/admin/errors/export")                      # each export is audited
+    a = client.get("/api/admin/audit?limit=2&offset=1")
+    assert int(a.headers["X-Total-Count"]) >= 3 and len(a.json()) == 2

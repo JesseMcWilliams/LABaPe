@@ -20,3 +20,13 @@ Planning_Questions.md.
 
 **Release v0.3.0:** when the user says so; proposed after batch 8 (question 150). The release key
 is in place (`deploy/allowed_signers`, 2026-10-12): tags are signed with it.
+
+## Operations round (added 2026-10-15; the user agreed all of it, in this order)
+
+| # | Item | What |
+|---|---|---|
+| P1 | Audit log and User errors paging | The existing pager (`Paging.tsx`, the user's rows-per-page): `offset`, `X-Total-Count` (audit) and `total` (errors). |
+| H2 | KVM host: Update and Reboot | On the KVM dashboard, each with a confirmation. Update = `apt-get update` + `upgrade` (not `dist-upgrade`), the pending packages in the confirmation, output in a job log. Reboot also on the primary file host and the stack host; the confirmation warns about running VMs and jobs. **A reboot issued from the OS waits for a running job to finish** (the user, 2026-10-15): a systemd inhibitor lock (`block`) held while LABaPe runs a job on the host. |
+| S4 | All stack logs to the stack syslog | Every stack container (not the collector's own) through Docker's syslog log driver to the collector, and the **host's own logs** (journald/rsyslog) too. |
+| C1 | Container admin links on the stack detail page | A link per container with a web UI (Mailpit, OpenBao, Authentik); a popup says how to sign in; the page opens in a new tab. Containers without a UI (Postgres, guacd, syslog, CA) show none. |
+| D1 | Drive Pools tab | Between Drives and Volumes/NICs, for KVM hosts and stack hosts, shown only when mdadm, ZFS or LVM is found. First version: pool list (type, level, state, size, used, mounts), pool detail (members and roles, rebuild/resync progress, UUID), Monitoring alerts (degraded, failed, rebuilding), and the safe actions with confirmation (scrub/check, mark faulty and remove, add a spare, stop/restart a resync). Create, destroy, grow and re-level: later. A state-change history: later. |
