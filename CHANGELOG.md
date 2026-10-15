@@ -7,10 +7,6 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-10-15
-
-The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and forwarding to real inboxes; alerts default to its inbox. The project is licensed AGPL-3.0-only, the Python dependencies are locked with hashes, and the software bill of materials is regenerated on every release. Updates now recreate Caddy when its bind-mounted Caddyfile changed.
-
 ### Added
 - The Authentik administrator's (akadmin) password is on the Secrets page (Stack): kept in the secret store, checked by signing in, rotated through the Authentik API with an elevated account (monthly), and shown to admins with **Reveal** (audited). `labape authentik-admin-import` stores an existing one; `deploy.sh` does it for a new stack and grants the rotation account its permission.
 - A **Drive Pools** section on a host's page (shown when the host has a Linux RAID array, ZFS pool or LVM volume group): state, size, drives, rebuild and check progress, with confirmed actions (check/scrub, stop, repair, take a drive out, add a drive, ZFS offline/online). A degraded, failed or rebuilding pool raises a Monitoring alert.
@@ -18,6 +14,16 @@ The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and 
 - Every stack container (and the throwaway Authentik) sends its output to the stack's syslog collector through Docker's syslog log driver; Podman installs and installs without the collector log locally instead (the installer's `compose.override.yaml`). `deploy-web.sh` unseals OpenBao after recreating services.
 - KVM host Dashboard: **Update** (apt or dnf upgrade) and **Reboot**, each after a confirmation, run as jobs. A reboot waits for the host's running jobs and keeps new ones off it.
 - The Audit log and User errors pages are paged like the other lists (rows per page from your profile, previous/next, the total); the API takes `offset` and returns the total (`X-Total-Count` on the audit log, `total` in the errors).
+
+### Fixed
+- A web update that recreated OpenBao left it sealed: the API answered 503 to its login, the worker restarted forever, the health check failed and the rollback failed the same way. The update agent now runs `stores.sh unseal` after it brings the stack up (and after a rollback does).
+- An install made by `install-labape.py` could never update from the web interface: the update agent called its checkout dirty because of the installer's own `container/compose.override.yaml` (and `.env` backups). Those files are now git-ignored and the agent looks at tracked changes only.
+
+## [0.5.0] - 2026-10-15
+
+The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and forwarding to real inboxes; alerts default to its inbox. The project is licensed AGPL-3.0-only, the Python dependencies are locked with hashes, and the software bill of materials is regenerated on every release. Updates now recreate Caddy when its bind-mounted Caddyfile changed.
+
+### Added
 - A stack's monitoring alerts go to a Mailpit inbox (`alerts@<host name>`) until real recipients are set, and Settings → Email and Monitoring link to the Mailpit page.
 - Every stack runs its own mail server, Mailpit, in the base install. Settings →
   Email is set to it the first time the stack starts (unless you had set up
@@ -53,8 +59,6 @@ The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and 
 LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs between them, signs people in across linked stacks, and makes secrets something people and tests can use: every secret is checked and recovered where it can be, Windows VMs get a password of their own per account, environment secrets are on their page and in OpenBao (with its own sign-in), and the browser connects as any of the environment's accounts, RDP, SSH, xrdp or VNC. Environments can have a lab mail server (Mailpit); Catalog → Updates downloads new .NET, Chrome, KeePassXC and PuTTY versions weekly for offline installs; Claude Code is in the catalog; each KVM host keeps its files beside its VMs; and every list pages, filters and exports.
 
 ### Fixed
-- A web update that recreated OpenBao left it sealed: the API answered 503 to its login, the worker restarted forever, the health check failed and the rollback failed the same way. The update agent now runs `stores.sh unseal` after it brings the stack up (and after a rollback does).
-- An install made by `install-labape.py` could never update from the web interface: the update agent called its checkout dirty because of the installer's own `container/compose.override.yaml` (and `.env` backups). Those files are now git-ignored and the agent looks at tracked changes only.
 - A changed Caddyfile reaches the running Caddy: the file is bind-mounted, so
   replacing it (git, or `deploy-web.sh`) left the container on the old one.
   The update agent and `deploy-web.sh` now recreate Caddy when they differ.
