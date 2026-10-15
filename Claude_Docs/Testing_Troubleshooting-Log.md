@@ -610,3 +610,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 1. **SSH as domain user `jesse` to `l2lin1` failed ("Failed password for invalid user jesse"):** LABaPe sent the bare name. sssd uses fully qualified names (`jesse@labape.test`), and the domain's name isn't on each host in the stored inventory but in its `all: vars:` (`domain_name`, `netbios_name`). `remote._as_account` now reads them there.
 2. **RDP to a Linux VM through xrdp as a domain account: authentication succeeded, then "pam_sss(xrdp-sesman:account): Access denied ... Permission denied", while SSH worked:** sssd's AD access control (GPO) maps known PAM services to logon rights (sshd is remote interactive) and denies the ones it doesn't know. `linux_remote_desktop` adds `ad_gpo_map_remote_interactive = +xrdp-sesman` on domain-joined VMs and restarts sssd.
+
+## The mail server (M1, 2026-10-14)
+
+1. **Mailpit's release didn't download on a lab VM ("Request failed: <urlopen error timed out>"):** from the lab, GitHub's `releases/latest/download` redirect alone took 5.5 s and the whole download about 11 s, over `unarchive`'s 10-second fetch timeout. The role downloads with `get_url` (`timeout: 120`, three tries), then unpacks the local file.
+2. **Then "Unable to find required 'gtar' or 'tar' binary":** the minimal Rocky image has no `tar`. The role installs it first.

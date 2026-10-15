@@ -203,7 +203,7 @@
   become: true
   gather_facts: true
   vars:
-    labape_service_roles_allowed: [syslog_collector]
+    labape_service_roles_allowed: [syslog_collector, mailpit]
     labape_service_roles: >-
       {{ (labape_services | default({})).values() | selectattr('linux', 'defined')
          | map(attribute='linux') | selectattr('role', 'defined') | map(attribute='role')

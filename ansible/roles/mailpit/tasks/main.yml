@@ -1,0 +1,134 @@
+---
+# Mailpit catching the environment's mail (M1, question 169; design §50.6): SMTP on 25 (STARTTLS with
+# the platform certificate), the web UI and API on 8025 (HTTPS, user mailpit), messages kept in
+# /var/lib/mailpit. Forwards only when LABaPe passes labape_mailpit_relay (Settings → Lab mail relay).
+
+- name: Mailpit's own user
+  ansible.builtin.user:
+    name: mailpit
+    system: true
+    home: "{{ mailpit_dir }}"
+    create_home: true
+    shell: /sbin/nologin
+
+- name: tar, to unpack the release (minimal images lack it)
+  ansible.builtin.package:
+    name: tar
+    state: present
+
+# Downloaded first with a long timeout: GitHub's redirect alone took over 5 s from the lab, and
+# unarchive's own fetch gives up after 10 (Testing_Troubleshooting-Log.md).
+- name: Mailpit's release (the latest)
+  ansible.builtin.get_url:
+    url: "{{ mailpit_release }}/mailpit-linux-{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}.tar.gz"
+    dest: "{{ mailpit_dir }}/mailpit-release.tar.gz"
+    mode: "0644"
+    timeout: 120
+  register: mailpit_download
+  retries: 3
+  delay: 10
+  until: mailpit_download is succeeded
+
+- name: Mailpit's binary
+  ansible.builtin.unarchive:
+    src: "{{ mailpit_dir }}/mailpit-release.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [mailpit]
+    mode: "0755"
+  notify: Restart mailpit
+
+- name: Mailpit's configuration folder
+  ansible.builtin.file:
+    path: "{{ mailpit_conf }}"
+    state: directory
+    owner: root
+    group: mailpit
+    mode: "0750"
+
+- name: The platform certificate?
+  ansible.builtin.stat:
+    path: "{{ mailpit_platform_tls_dir }}/host.crt"
+  register: mailpit_cert
+
+- name: Mailpit's copy of the certificate and key
+  ansible.builtin.copy:
+    src: "{{ mailpit_platform_tls_dir }}/{{ item }}"
+    dest: "{{ mailpit_conf }}/{{ item }}"
+    remote_src: true
+    owner: root
+    group: mailpit
+    mode: "0640"
+  loop: [host.crt, host.key]
+  when: mailpit_cert.stat.exists
+  notify: Restart mailpit
+
+- name: The web UI's sign-in (user mailpit)
+  ansible.builtin.copy:
+    dest: "{{ mailpit_conf }}/ui-auth"
+    content: "{{ labape_mailpit_ui_auth }}\n"
+    owner: root
+    group: mailpit
+    mode: "0640"
+  no_log: true
+  when: labape_mailpit_ui_auth | length > 0
+  notify: Restart mailpit
+
+- name: The relay (Settings → Lab mail relay)
+  ansible.builtin.copy:
+    dest: "{{ mailpit_conf }}/relay.yaml"
+    content: |
+      host: {{ labape_mailpit_relay.host | to_json }}
+      port: {{ labape_mailpit_relay.port }}
+      starttls: {{ labape_mailpit_relay.starttls | bool | lower }}
+      auth: {{ 'plain' if labape_mailpit_relay.username else 'none' }}
+      username: {{ labape_mailpit_relay.username | to_json }}
+      password: {{ labape_mailpit_relay.password | to_json }}
+      allowed-recipients: {{ labape_mailpit_relay.matching | to_json }}
+    owner: root
+    group: mailpit
+    mode: "0640"
+  no_log: true
+  when: labape_mailpit_relay | length > 0
+  notify: Restart mailpit
+
+- name: No relay when it's off
+  ansible.builtin.file:
+    path: "{{ mailpit_conf }}/relay.yaml"
+    state: absent
+  when: labape_mailpit_relay | length == 0
+  notify: Restart mailpit
+
+- name: Mailpit's service
+  ansible.builtin.template:
+    src: mailpit.service.j2
+    dest: /etc/systemd/system/mailpit.service
+    mode: "0644"
+  notify: Restart mailpit
+
+- name: Mailpit runs
+  ansible.builtin.systemd:
+    name: mailpit
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Which firewall is running?
+  ansible.builtin.service_facts:
+
+- name: Open SMTP and the web UI (firewalld)
+  ansible.builtin.command: "firewall-cmd --permanent --add-port={{ item }}/tcp"
+  loop: ["{{ mailpit_smtp_port }}", "{{ mailpit_ui_port }}"]
+  register: mailpit_fw
+  changed_when: "'ALREADY_ENABLED' not in mailpit_fw.stderr"
+  when: ansible_facts.services['firewalld.service'].state | default('') == 'running'
+
+- name: Load the firewalld rules
+  ansible.builtin.command: firewall-cmd --reload
+  when: mailpit_fw is changed
+
+- name: Open SMTP and the web UI (ufw)
+  ansible.builtin.command: "ufw allow {{ item }}/tcp"
+  loop: ["{{ mailpit_smtp_port }}", "{{ mailpit_ui_port }}"]
+  changed_when: false
+  when: ansible_facts.services['ufw.service'].state | default('') == 'running'

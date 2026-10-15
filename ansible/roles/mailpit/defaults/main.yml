@@ -1,0 +1,13 @@
+---
+# Mail server (catalog service "mail_server", Claude_Docs/Planning_Web-Interface-Design.md §50.6).
+# Set by LABaPe per VM (app/labape/mail_server.py): the web UI's htpasswd line and the relay
+# ({} = catch everything, forward nothing).
+labape_mailpit_ui_auth: ""
+labape_mailpit_relay: {}
+mailpit_smtp_port: 25
+mailpit_ui_port: 8025
+mailpit_release: https://github.com/axllent/mailpit/releases/latest/download
+mailpit_dir: /var/lib/mailpit
+mailpit_conf: /etc/mailpit
+# The VM's platform certificate (labape_cert role); without it (a CLI deploy) no TLS.
+mailpit_platform_tls_dir: /etc/labape/tls

@@ -40,6 +40,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/openbao_people.py` | lab (container) | People in OpenBao (V1b): sync now, or sign a test user in with OIDC and try reads and writes (statuses only) |
 | `live/desktops.py` | lab (container) | xrdp/VNC on an environment's Linux host groups (E3) |
 | `live/host_files.py` | lab (container) | A KVM host's files path and free-space alert; change the path and wait for the move job |
+| `live/mail_check.sh` | lab host | The environment's mail server: send a test message over STARTTLS and read it back through Mailpit's API |
 | `live/job_log.py` | lab (container) | A finished job's log, or only one host's lines with their task names |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
