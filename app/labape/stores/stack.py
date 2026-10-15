@@ -41,6 +41,13 @@ def configure(db: Session, wanted: dict[str, dict], credentials: dict[str, str])
         if model != cur:
             appsettings.put(db, section, model)
             changes.append(f"{name}: settings for {model.url}")
+        if name == "openbao" and not cur.enabled:
+            # The stack's OpenBao, newly connected, also takes new environments' secrets (where people
+            # and VMs reach them, design §49); later runs leave an admin's choice alone.
+            stores_cfg = appsettings.get(db, "secret_stores")
+            if stores_cfg.default_environment_store == "builtin":
+                appsettings.put(db, "secret_stores", stores_cfg.model_copy(update={"default_environment_store": "openbao"}))
+                changes.append("new environments' secrets: OpenBao")
         if credentials.get(name):
             put_secret(db, credential_secret(name), credentials[name])
             changes.append(f"{name}: login set")

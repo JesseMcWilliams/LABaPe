@@ -275,7 +275,12 @@ def test_stack_stores_configure(db_reset):
         stack.configure(db, want, {"openbao": "sid-1", "conjur": "key-1"})
         assert stack.needs(db, want) == {"openbao": False, "conjur": False}
         assert get_secret(db, credential_secret("openbao")) == "sid-1"
+        from labape import appsettings
+        assert appsettings.get(db, "secret_stores").default_environment_store == "openbao"   # newly connected
+        appsettings.put(db, "secret_stores", appsettings.get(db, "secret_stores").model_copy(
+            update={"default_environment_store": "builtin"}))                           # an admin's choice
         stack.configure(db, want, {})                      # a re-run keeps the rotated login
         assert get_secret(db, credential_secret("conjur")) == "key-1"
+        assert appsettings.get(db, "secret_stores").default_environment_store == "builtin"   # and that choice
         moved = {**want, "openbao": {"url": "https://other:8200"}}
         assert stack.needs(db, moved)["openbao"] is True    # another address: a new login is needed

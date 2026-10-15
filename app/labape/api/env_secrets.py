@@ -84,7 +84,7 @@ def _openbao(db: Session, e: Environment) -> dict | None:
         return None
     cfg = appsettings.get(db, "store_openbao", cached=True)
     url = cfg.people_url.rstrip("/")
-    return {"url": f"{url}/ui/", "mount": cfg.mount, "path": f"env/{e.name}",
+    return {"url": f"{url}/ui/vault/auth?with=oidc%2F", "address": url, "mount": cfg.mount, "path": f"env/{e.name}",
             "cli": f"BAO_ADDR={url} bao login -method=oidc; bao kv list -mount={cfg.mount} env/{e.name}/accounts"}
 
 

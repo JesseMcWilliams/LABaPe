@@ -29,7 +29,7 @@ env = next(e for e in admin.get(f"{LABAPE}/api/environments").json() if e["name"
 info = admin.get(f"{LABAPE}/api/environments/{env['id']}/secrets").json()["openbao"]
 if not info:
     raise SystemExit("this environment has no OpenBao access (people access off, or its secrets aren't in OpenBao)")
-bao = info["url"].removesuffix("/ui/")
+bao = info["address"]
 mount = info["mount"]
 c = httpx.Client(verify=False, follow_redirects=False, timeout=30)
 redirect = "http://localhost:8250/oidc/callback"

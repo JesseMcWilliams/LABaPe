@@ -10,6 +10,8 @@ listener "tcp" {
   address       = "0.0.0.0:8200"
   tls_cert_file = "/openbao/tls/server.crt"
   tls_key_file  = "/openbao/tls/server.key"
+  # Don't ask clients for a certificate: browsers then offer the user's (a smart card on Windows).
+  tls_disable_client_certs = true
 }
 
 api_addr      = "https://labape-openbao:8200"

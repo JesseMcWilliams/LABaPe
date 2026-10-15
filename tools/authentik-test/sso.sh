@@ -56,5 +56,5 @@ for _ in $(seq 1 30); do $COMPOSE exec -T worker true 2>/dev/null && break; slee
 SSO_CLIENT_SECRET="$(f client_secret)" SSO_REDIRECT_URIS="$(f redirect_uris)" \
 $COMPOSE exec -T -e SSO_OP="$OP" -e SSO_CLIENT_ID="$(f client_id)" -e SSO_NAME="$(f name)" \
   -e SSO_REDIRECT_URI="$(f redirect_uri)" -e SSO_SLUG="$(f slug)" -e SSO_ISSUER="$(f issuer)" \
-  -e SSO_AUTH_BASE="$(f auth_base)" -e SSO_CLIENT_SECRET -e SSO_REDIRECT_URIS worker ak shell < sso.py 2>&1 | grep '^sso:' | tail -1 | grep . \
+  -e SSO_AUTH_BASE="$(f auth_base)" -e SSO_LAUNCH_URL="$(f launch_url)" -e SSO_CLIENT_SECRET -e SSO_REDIRECT_URIS worker ak shell < sso.py 2>&1 | grep '^sso:' | tail -1 | grep . \
   || { echo "sso: $OP failed in Authentik (see: $COMPOSE logs worker)" >&2; exit 1; }

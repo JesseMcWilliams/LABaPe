@@ -249,8 +249,9 @@ PY
 # (and LABAPE_OPENBAO_OIDC_ISSUER when its issuer isn't LABAPE_OIDC_ISSUER).
 PEOPLE="$(envget LABAPE_OPENBAO_PEOPLE)"; PEOPLE="${PEOPLE:-no}"
 people_url() { if [ "$PEOPLE" = yes ]; then echo "https://$(envget LABAPE_HOSTNAME):$BPORT"; fi; }
-redirect_uris() {   # OpenBao's UI at each name the certificate carries, and `bao login -method=oidc`
-  names | grep -v '^labape-' | while read -r n; do printf 'https://%s:%s/ui/vault/auth/oidc/oidc/callback\n' "$n" "$BPORT"; done
+redirect_uris() {   # OpenBao's UI at each name the certificate carries (LABAPE_HOSTNAME first), and `bao login -method=oidc`
+  { envget LABAPE_HOSTNAME; names; } | grep -v '^labape-' | awk 'NF && !seen[$0]++' \
+    | while read -r n; do printf 'https://%s:%s/ui/vault/auth/oidc/oidc/callback\n' "$n" "$BPORT"; done
   echo "http://localhost:8250/oidc/callback"
 }
 configure_people() {
@@ -264,10 +265,12 @@ configure_people() {
     client=labape-openbao
     [ -s "$S/openbao_oidc_secret" ] || sput openbao_oidc_secret "$(gen)"
     req="$S/openbao-client.json"
-    (umask 077; python3 - "$S/openbao_oidc_secret" "$(redirect_uris)" > "$req" <<'PY'
+    # Authentik's library tile opens OpenBao's sign-in page with OIDC chosen, at LABAPE_HOSTNAME.
+    (umask 077; python3 - "$S/openbao_oidc_secret" "$(redirect_uris)" "$(people_url)/ui/vault/auth?with=oidc%2F" > "$req" <<'PY'
 import json, sys
 print(json.dumps({"op": "client_add", "client_id": "labape-openbao", "name": "LABaPe: OpenBao",
-                  "client_secret": open(sys.argv[1]).read().strip(), "redirect_uris": sys.argv[2]}))
+                  "client_secret": open(sys.argv[1]).read().strip(), "redirect_uris": sys.argv[2],
+                  "launch_url": sys.argv[3]}))
 PY
 )
     if ! out="$(cd "$ak" && bash ./sso.sh "$req" 2>&1)"; then rm -f "$req"; die "making OpenBao's client in Authentik failed: ${out##*$'\n'}"; fi

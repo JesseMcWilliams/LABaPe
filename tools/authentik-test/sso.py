@@ -5,7 +5,7 @@
 #   provider_add    SSO_CLIENT_ID SSO_NAME SSO_REDIRECT_URI: the client a linked stack's source uses
 #                   (public, PKCE, that one redirect; the LABaPe provider's flows and mappings)
 #   provider_remove SSO_CLIENT_ID
-#   client_add      SSO_CLIENT_ID SSO_NAME SSO_CLIENT_SECRET SSO_REDIRECT_URIS (one per line): a confidential
+#   client_add      SSO_CLIENT_ID SSO_NAME SSO_CLIENT_SECRET SSO_REDIRECT_URIS (one per line) SSO_LAUNCH_URL: a confidential
 #                   client, for OpenBao's own sign-in (design §49.2, V1b; stores/stores.sh); the secret
 #                   arrives in the environment only
 #   source_add      SSO_SLUG SSO_NAME SSO_CLIENT_ID SSO_ISSUER SSO_AUTH_BASE: "Sign in with <name>",
@@ -52,8 +52,10 @@ elif op == "client_add":
         "signing_key": base.signing_key,
     })
     p.property_mappings.set(base.property_mappings.all())
-    Application.objects.update_or_create(slug=E["SSO_CLIENT_ID"], defaults={"name": E["SSO_NAME"], "provider": p})
-    print(f"sso: client {p.client_id} ({E['SSO_NAME']}), {len(uris)} redirect(s)")
+    # The library tile opens SSO_LAUNCH_URL; without one Authentik guesses from the first redirect.
+    Application.objects.update_or_create(slug=E["SSO_CLIENT_ID"], defaults={
+        "name": E["SSO_NAME"], "provider": p, "meta_launch_url": E.get("SSO_LAUNCH_URL", "")})
+    print(f"sso: client {p.client_id} ({E['SSO_NAME']}), {len(uris)} redirect(s), opens {E.get('SSO_LAUNCH_URL') or '-'}")
 elif op == "provider_remove":
     Application.objects.filter(slug=E["SSO_CLIENT_ID"]).delete()
     n = OAuth2Provider.objects.filter(client_id=E["SSO_CLIENT_ID"]).delete()[0]

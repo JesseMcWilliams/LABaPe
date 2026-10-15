@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Fixed
+- OpenBao's web UI no longer asks for a client certificate (a smart card
+  prompt on Windows), and its tile in Authentik opens OpenBao's sign-in at
+  the stack's host name instead of `localhost`.
 - Rotating a Windows Administrator password no longer depends on a
   detached change finishing in its first second: a detached process lost
   its access to the account database once WinRM closed the shell that
@@ -27,6 +30,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   still sleep.
 
 ### Changed
+- `stores/stores.sh setup` makes the stack's OpenBao the default store for
+  new environments' secrets when it first connects LABaPe to it (a later
+  choice in Settings → Secret stores stays).
 - Settings is in sections with a list on the left: Sign-in, Stack, Updates
   and backups, Environments, Files, Secrets, Remote access.
 - Releases are cut with `tools/helpers/release.sh`: the CHANGELOG section,
