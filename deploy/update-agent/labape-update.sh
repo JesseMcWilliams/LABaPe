@@ -314,7 +314,8 @@ fi
 
 # --- update ------------------------------------------------------------------
 status running checking "checking $TARGET"
-[ -z "$(git -C "$REPO" status --porcelain)" ] || fail checking "the checkout at $REPO has local changes; not switching versions"
+# Tracked changes only: files the installer writes (compose.override.yaml, .env backups) are untracked.
+[ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || fail checking "the checkout at $REPO has local changes; not switching versions"
 git -C "$REPO" fetch -q --tags origin || echo "labape-update: fetch failed (offline?); using local tags"
 git -C "$REPO" rev-parse -q --verify "refs/tags/$TARGET" >/dev/null || fail checking "no tag $TARGET"
 [ -s "$SIGNERS" ] || fail checking "no allowed signers file at $SIGNERS"
