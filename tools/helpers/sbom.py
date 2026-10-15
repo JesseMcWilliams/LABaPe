@@ -85,7 +85,7 @@ TOOLS = [
     ("OpenTofu", "1.12.6", "Creates the VMs (libvirt and Hyper-V backends)", "MPL-2.0", "Downloaded in the image build; SHA-256 checked (`TOFU_VERSION`)."),
     ("Packer", "1.16.1", "Builds VM templates", "BUSL-1.1", "Downloaded in the image build; SHA-256 checked (`PACKER_VERSION`). Business Source License: read its terms before offering LABaPe as a service."),
     ("step CLI", "0.30.2", "Talks to the platform CA", "Apache-2.0", "Downloaded in the image build; SHA-256 pinned for amd64 and arm64."),
-    ("ansible-core", "2.21.4", "Configures VMs", "GPL-3.0-or-later", "pip, in the image build (`ANSIBLE_CORE_VERSION`)."),
+    ("ansible-core", "2.21.4", "Configures VMs", "GPL-3.0-or-later", "pip, from container/requirements.in (locked with hashes)."),
 ]
 COLLECTIONS = [  # (name, constraint, license, role)
     ("ansible.windows", "==3.8.0", "GPL-3.0", "Windows modules (win_package, win_user, ...)"),
@@ -132,6 +132,12 @@ def norm(name: str) -> str:
 
 def purl_npm(name: str, version: str) -> str:
     return f"pkg:npm/{quote(name, safe='')}@{version}" if not name.startswith("@") else f"pkg:npm/%40{quote(name[1:], safe='/')}@{version}"
+
+
+def load_lock():
+    """container/requirements.txt: {normalised name: locked version}."""
+    text = (ROOT / "container" / "requirements.txt").read_text(encoding="utf-8")
+    return {norm(m.group(1)): m.group(2) for m in re.finditer(r"^([A-Za-z0-9_.\-]+)==([^\s;\\]+)", text, re.M)}
 
 
 def load_npm():
@@ -323,7 +329,7 @@ def document(bom, snap, npm, direct, py, declared, version):
 |---|---|
 | Version | LABaPe {version} (`app/pyproject.toml`, `web/package.json`) |
 | Captured | {snap['captured']}, from {snap['captured_from']}. A release captures it from a clean `main` (`tools/helpers/release.sh`) |
-| Python | **Exact versions come from the built image**: `app/pyproject.toml` declares only lower bounds, and the repository has no lock file for Python, so a rebuild can install newer ones. {len(py)} packages ({len(deb_py)} from Debian, {len(py) - len(deb_py)} from pip) |
+| Python | **Locked**: `container/requirements.txt` pins every package the image installs, with hashes (`tools/helpers/lock-python.sh`; `app/pyproject.toml` declares only lower bounds). The "installed" versions below are what the lab image has; {len(py)} packages ({len(deb_py)} from Debian, {len(py) - len(deb_py)} from pip) |
 | Web (npm) | `web/package-lock.json`: {len(npm)} packages, every version and integrity hash ({len(runtime)} are bundled into the UI, {len(devs)} are build tooling only; the image carries just the built files) |
 | Images, tools | Pins from `container/Dockerfile`, `container/compose.yaml` and `tools/authentik-test/compose.yaml`; image digests as pulled on the lab |
 | Licenses | As the packages and projects declare them (Python and npm metadata; the images' upstream projects). **Debian packages' licenses aren't recorded here**: each package's is in `/usr/share/doc/<package>/copyright`. Not a legal review, and **not a vulnerability scan**: feed the CycloneDX file to a scanner (Grype, Trivy, OSV-Scanner) for that |
@@ -355,13 +361,20 @@ engine's tools. Everything else is a separate container from a public image (sec
 Direct dependencies, as declared in `app/pyproject.toml`, and the two the image adds for the engine:
 """]
     rows = []
+    lock = load_lock()
     for k in list(declared) + ["ansible-core", "pywinrm"]:
         n = norm(k)
         if n in py:
             p = py[n]
-            rows.append((p["name"], declared.get(k, "").strip() or ("==" + p["version"] if k == "ansible-core" else "(unpinned)"),
-                         p["version"], p["license"], PY_PURPOSE.get(p["name"]) or PY_PURPOSE.get(k) or p["summary"]))
-    parts.append(md_table(["Package", "Declared", "Installed", "License", "What it is for"], rows))
+            rows.append((p["name"], declared.get(k, "").strip() or ("==" + lock.get(n, p["version"]) if k == "ansible-core" else "(none)"),
+                         lock.get(n, "(not locked)"), p["version"], p["license"],
+                         PY_PURPOSE.get(p["name"]) or PY_PURPOSE.get(k) or p["summary"]))
+    parts.append(md_table(["Package", "Declared", "Locked", "In the lab image", "License", "What it is for"], rows))
+    behind = sorted(f"{py[n]['name']} {py[n]['version']} (lock: {v})" for n, v in lock.items() if n in py and py[n]["version"] != v)
+    outside = sorted(p["name"] for n, p in py.items() if n not in lock)
+    parts.append("\n\n" + (f"The lab image predates the lock for: {', '.join(behind)}. A rebuild installs the locked versions.\n" if behind
+                         else "The lab image has exactly the locked versions.\n")
+                 + (f"Outside the lock (Debian packages the venv sees, not LABaPe's dependencies): {', '.join(outside)}.\n" if outside else ""))
     parts.append("\n\nAll installed packages, direct and transitive "
                  "(`origin`: **pip** = installed by the image build, **deb** = a Debian package the venv sees through `--system-site-packages`):\n")
     parts.append("<details><summary>" + f"{len(py)} Python packages" + "</summary>\n")
@@ -452,7 +465,7 @@ Admins can add sources of their own, so this list grows with use; the Updates ta
 
 ## 10. Gaps and things to know
 
-1. **Python isn't locked.** Add a constraints file (`pip freeze` of a good build, or `uv lock`) and install with it, so builds repeat and this SBOM can come from the repository alone.
+1. **Python is locked** (`container/requirements.txt`, hash-checked at build), but only the worker image uses it: the installer's `ansible-core` venv on KVM hosts installs by range (it must cope with older Pythons).
 2. **Packer's Business Source License (BUSL-1.1)** applies from 1.10 on; OpenTofu is the open-source fork of Terraform for the same reason. Fine for internal use; check before offering LABaPe to others as a service.
 3. **Floating tags**: `caddy:2`, `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
 4. **Unpinned downloads on VMs**: Mailpit's latest release, `claude-code`, Chocolatey and distribution packages are whatever is current at deploy time.

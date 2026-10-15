@@ -74,12 +74,12 @@
   },
   {
    "name": "certifi",
-   "version": "2025.1.31",
+   "version": "2026.7.22",
    "license": "MPL-2.0",
    "summary": "Python package for providing Mozilla's CA Bundle.",
    "home": "https://github.com/certifi/python-certifi",
    "requires": [],
-   "origin": "debian"
+   "origin": "pip"
   },
   {
    "name": "cffi",
@@ -103,12 +103,12 @@
   },
   {
    "name": "charset-normalizer",
-   "version": "3.4.2",
+   "version": "3.5.2",
    "license": "MIT",
    "summary": "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet.",
    "home": "",
    "requires": [],
-   "origin": "debian"
+   "origin": "pip"
   },
   {
    "name": "click",
@@ -133,7 +133,7 @@
   },
   {
    "name": "fastapi",
-   "version": "0.143.1",
+   "version": "0.143.2",
    "license": "MIT",
    "summary": "FastAPI framework, high performance, easy to learn, fast to code, ready for production",
    "home": "",
@@ -193,12 +193,12 @@
   },
   {
    "name": "idna",
-   "version": "3.10",
-   "license": "BSD License",
+   "version": "3.20",
+   "license": "BSD-3-Clause",
    "summary": "Internationalized Domain Names in Applications (IDNA)",
    "home": "",
    "requires": [],
-   "origin": "debian"
+   "origin": "pip"
   },
   {
    "name": "itsdangerous",
@@ -234,7 +234,7 @@
   {
    "name": "labape",
    "version": "0.4.0",
-   "license": "unknown",
+   "license": "AGPL-3.0-only",
    "summary": "LABaPe web application: UI, REST API and job runner for lab environments",
    "home": "",
    "requires": [
@@ -443,17 +443,17 @@
   },
   {
    "name": "requests",
-   "version": "2.32.3",
+   "version": "2.34.2",
    "license": "Apache-2.0",
    "summary": "Python HTTP for Humans.",
-   "home": "https://requests.readthedocs.io",
+   "home": "",
    "requires": [
     "charset_normalizer<4,>=2",
     "idna<4,>=2.5",
-    "urllib3<3,>=1.21.1",
-    "certifi>=2017.4.17"
+    "urllib3<3,>=1.26",
+    "certifi>=2023.5.7"
    ],
-   "origin": "debian"
+   "origin": "pip"
   },
   {
    "name": "requests_ntlm",
@@ -522,12 +522,12 @@
   },
   {
    "name": "urllib3",
-   "version": "2.3.0",
-   "license": "MIT License",
+   "version": "2.8.0",
+   "license": "MIT",
    "summary": "HTTP library with thread-safe connection pooling, file post, and more.",
    "home": "",
    "requires": [],
-   "origin": "debian"
+   "origin": "pip"
   },
   {
    "name": "uvicorn",
@@ -584,7 +584,7 @@
  "apt": [
   "bash\t5.2.37-2+b10\tamd64",
   "ca-certificates\t20250419\tall",
-  "curl\t8.14.1-2+deb13u5\tamd64",
+  "curl\t8.14.1-2+deb13u7\tamd64",
   "unzip\t6.0-29+deb13u1\tamd64",
   "git\t1:2.47.3-0+deb13u1\tamd64",
   "openssh-client\t1:10.0p1-7+deb13u4\tamd64",
@@ -602,15 +602,26 @@
  ],
  "os": "Debian GNU/Linux 13 (trixie)",
  "dpkg_total": 266,
- "syslog_image": {
-  "packages": [
-   "rsyslog\t8.2504.0-1+deb13u2",
-   "rsyslog-pgsql\t8.2504.0-1+deb13u2",
-   "rsyslog-openssl\t8.2504.0-1+deb13u2",
-   "ca-certificates\t20250419",
-   "procps\t2:4.0.4-9"
-  ],
-  "dpkg_total": 116
+ "tools": {
+  "OpenTofu": "1.12.6",
+  "Packer": "1.16.1",
+  "step CLI": "0.30.2"
+ },
+ "collections": {
+  "ansible.windows": "3.8.0",
+  "chocolatey.chocolatey": "1.6.0",
+  "community.general": "13.4.0",
+  "community.library_inventory_filtering_v1": "1.1.5",
+  "microsoft.ad": "1.12.1"
+ },
+ "providers": {
+  "dmacvicar/libvirt": "0.9.9",
+  "hashicorp/local": "2.9.1",
+  "hashicorp/null": "3.3.2"
+ },
+ "plugins": {
+  "hashicorp/ansible": "1.1.6",
+  "hashicorp/qemu": "1.1.7"
  },
  "images": {
   "caddy:2": "sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772",
@@ -623,27 +634,17 @@
   "postgres:17-alpine": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
   "smallstep/step-ca:0.30.2": "sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270"
  },
+ "syslog_image": {
+  "packages": [
+   "ca-certificates\t20250419",
+   "procps\t2:4.0.4-9",
+   "rsyslog\t8.2504.0-1+deb13u2",
+   "rsyslog-openssl\t8.2504.0-1+deb13u2",
+   "rsyslog-pgsql\t8.2504.0-1+deb13u2"
+  ],
+  "dpkg_total": 116
+ },
+ "image_version": "v0.4.0-12-gd502a74-dirty",
  "captured": "2026-10-15",
- "captured_from": "the lab stack's worker container (labape:local at v0.4.0 + V2) and the images it runs",
- "tools": {
-  "OpenTofu": "1.12.6",
-  "Packer": "1.16.1",
-  "step CLI": "0.30.2"
- },
- "collections": {
-  "ansible.windows": "3.8.0",
-  "microsoft.ad": "1.12.1",
-  "community.general": "13.4.0",
-  "chocolatey.chocolatey": "1.6.0",
-  "community.library_inventory_filtering_v1": "1.1.5"
- },
- "providers": {
-  "dmacvicar/libvirt": "0.9.9",
-  "hashicorp/local": "2.9.1",
-  "hashicorp/null": "3.3.2"
- },
- "plugins": {
-  "hashicorp/qemu": "1.1.7",
-  "hashicorp/ansible": "1.1.6"
- }
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.4.0-12-gd502a74-dirty) and the images it runs"
 }

@@ -28,6 +28,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | Script | Runs | What it does |
 |---|---|---|
 | `ship.sh` | locally | Commit, push, open a PR, merge, update `main` |
+| `lock-python.sh` | locally | Refresh `container/requirements.txt`, the hash-pinned list of every Python package the worker image installs (`--upgrade` moves them all to the newest allowed). Needs uv. Then rebuild (`deploy-web.sh`), test, refresh the SBOM |
 | `sbom.py` | locally | Write the software bill of materials: `Claude_Docs/Reference_SBOM.md` and `sbom/labape.cdx.json` (CycloneDX). `--check` says whether they're stale; a test fails when they are |
 | `sbom_snapshot.py` | locally → lab | Take the worker image's inventory (`sbom/image-snapshot.json`) over SSH (`LABAPE_LAB_SSH`); `sbom_probe.py` is the part that runs inside the worker. `release.sh` runs it |
 | `release.sh` | locally | Cut a release: CHANGELOG section, versions, docs wording, the SBOM (needs the lab's worker image built from this clean main: `deploy-web.sh` first), optional `.docx` guides, then ship, signed tag and GitHub release with the SBOM attached (`release_prep.py` does the file changes) |

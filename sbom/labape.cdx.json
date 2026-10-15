@@ -210,11 +210,11 @@
    ]
   },
   {
-   "bom-ref": "pypi:certifi@2025.1.31",
+   "bom-ref": "pypi:certifi@2026.7.22",
    "type": "library",
    "name": "certifi",
-   "version": "2025.1.31",
-   "purl": "pkg:pypi/certifi@2025.1.31",
+   "version": "2026.7.22",
+   "purl": "pkg:pypi/certifi@2026.7.22",
    "licenses": [
     {
      "license": {
@@ -230,7 +230,7 @@
     },
     {
      "name": "labape:installed-by",
-     "value": "Debian package"
+     "value": "pip"
     },
     {
      "name": "labape:direct",
@@ -297,11 +297,11 @@
    ]
   },
   {
-   "bom-ref": "pypi:charset-normalizer@3.4.2",
+   "bom-ref": "pypi:charset-normalizer@3.5.2",
    "type": "library",
    "name": "charset-normalizer",
-   "version": "3.4.2",
-   "purl": "pkg:pypi/charset-normalizer@3.4.2",
+   "version": "3.5.2",
+   "purl": "pkg:pypi/charset-normalizer@3.5.2",
    "licenses": [
     {
      "license": {
@@ -317,7 +317,7 @@
     },
     {
      "name": "labape:installed-by",
-     "value": "Debian package"
+     "value": "pip"
     },
     {
      "name": "labape:direct",
@@ -382,11 +382,11 @@
    ]
   },
   {
-   "bom-ref": "pypi:fastapi@0.143.1",
+   "bom-ref": "pypi:fastapi@0.143.2",
    "type": "library",
    "name": "fastapi",
-   "version": "0.143.1",
-   "purl": "pkg:pypi/fastapi@0.143.1",
+   "version": "0.143.2",
+   "purl": "pkg:pypi/fastapi@0.143.2",
    "licenses": [
     {
      "license": {
@@ -527,15 +527,15 @@
    ]
   },
   {
-   "bom-ref": "pypi:idna@3.10",
+   "bom-ref": "pypi:idna@3.20",
    "type": "library",
    "name": "idna",
-   "version": "3.10",
-   "purl": "pkg:pypi/idna@3.10",
+   "version": "3.20",
+   "purl": "pkg:pypi/idna@3.20",
    "licenses": [
     {
      "license": {
-      "name": "BSD License"
+      "id": "BSD-3-Clause"
      }
     }
    ],
@@ -547,7 +547,7 @@
     },
     {
      "name": "labape:installed-by",
-     "value": "Debian package"
+     "value": "pip"
     },
     {
      "name": "labape:direct",
@@ -1163,11 +1163,11 @@
    ]
   },
   {
-   "bom-ref": "pypi:requests@2.32.3",
+   "bom-ref": "pypi:requests@2.34.2",
    "type": "library",
    "name": "requests",
-   "version": "2.32.3",
-   "purl": "pkg:pypi/requests@2.32.3",
+   "version": "2.34.2",
+   "purl": "pkg:pypi/requests@2.34.2",
    "licenses": [
     {
      "license": {
@@ -1183,7 +1183,7 @@
     },
     {
      "name": "labape:installed-by",
-     "value": "Debian package"
+     "value": "pip"
     },
     {
      "name": "labape:direct",
@@ -1366,11 +1366,11 @@
    ]
   },
   {
-   "bom-ref": "pypi:urllib3@2.3.0",
+   "bom-ref": "pypi:urllib3@2.8.0",
    "type": "library",
    "name": "urllib3",
-   "version": "2.3.0",
-   "purl": "pkg:pypi/urllib3@2.3.0",
+   "version": "2.8.0",
+   "purl": "pkg:pypi/urllib3@2.8.0",
    "licenses": [
     {
      "license": {
@@ -1386,7 +1386,7 @@
     },
     {
      "name": "labape:installed-by",
-     "value": "Debian package"
+     "value": "pip"
     },
     {
      "name": "labape:direct",
@@ -8806,11 +8806,11 @@
    ]
   },
   {
-   "bom-ref": "deb:curl@8.14.1-2+deb13u5",
+   "bom-ref": "deb:curl@8.14.1-2+deb13u7",
    "type": "library",
    "name": "curl",
-   "version": "8.14.1-2+deb13u5",
-   "purl": "pkg:deb/debian/curl@8.14.1-2%2Bdeb13u5?arch=amd64&distro=debian-13",
+   "version": "8.14.1-2+deb13u7",
+   "purl": "pkg:deb/debian/curl@8.14.1-2%2Bdeb13u7?arch=amd64&distro=debian-13",
    "scope": "required",
    "properties": [
     {
@@ -9016,11 +9016,11 @@
    ]
   },
   {
-   "bom-ref": "deb-syslog:rsyslog@8.2504.0-1+deb13u2",
+   "bom-ref": "deb-syslog:ca-certificates@20250419",
    "type": "library",
-   "name": "rsyslog",
-   "version": "8.2504.0-1+deb13u2",
-   "purl": "pkg:deb/debian/rsyslog@8.2504.0-1%2Bdeb13u2?arch=amd64&distro=debian-13",
+   "name": "ca-certificates",
+   "version": "20250419",
+   "purl": "pkg:deb/debian/ca-certificates@20250419?arch=amd64&distro=debian-13",
    "scope": "required",
    "properties": [
     {
@@ -9030,11 +9030,25 @@
    ]
   },
   {
-   "bom-ref": "deb-syslog:rsyslog-pgsql@8.2504.0-1+deb13u2",
+   "bom-ref": "deb-syslog:procps@2:4.0.4-9",
    "type": "library",
-   "name": "rsyslog-pgsql",
+   "name": "procps",
+   "version": "2:4.0.4-9",
+   "purl": "pkg:deb/debian/procps@2%3A4.0.4-9?arch=amd64&distro=debian-13",
+   "scope": "required",
+   "properties": [
+    {
+     "name": "labape:group",
+     "value": "Debian packages (syslog image)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "deb-syslog:rsyslog@8.2504.0-1+deb13u2",
+   "type": "library",
+   "name": "rsyslog",
    "version": "8.2504.0-1+deb13u2",
-   "purl": "pkg:deb/debian/rsyslog-pgsql@8.2504.0-1%2Bdeb13u2?arch=amd64&distro=debian-13",
+   "purl": "pkg:deb/debian/rsyslog@8.2504.0-1%2Bdeb13u2?arch=amd64&distro=debian-13",
    "scope": "required",
    "properties": [
     {
@@ -9058,25 +9072,11 @@
    ]
   },
   {
-   "bom-ref": "deb-syslog:ca-certificates@20250419",
+   "bom-ref": "deb-syslog:rsyslog-pgsql@8.2504.0-1+deb13u2",
    "type": "library",
-   "name": "ca-certificates",
-   "version": "20250419",
-   "purl": "pkg:deb/debian/ca-certificates@20250419?arch=amd64&distro=debian-13",
-   "scope": "required",
-   "properties": [
-    {
-     "name": "labape:group",
-     "value": "Debian packages (syslog image)"
-    }
-   ]
-  },
-  {
-   "bom-ref": "deb-syslog:procps@2:4.0.4-9",
-   "type": "library",
-   "name": "procps",
-   "version": "2:4.0.4-9",
-   "purl": "pkg:deb/debian/procps@2%3A4.0.4-9?arch=amd64&distro=debian-13",
+   "name": "rsyslog-pgsql",
+   "version": "8.2504.0-1+deb13u2",
+   "purl": "pkg:deb/debian/rsyslog-pgsql@8.2504.0-1%2Bdeb13u2?arch=amd64&distro=debian-13",
    "scope": "required",
    "properties": [
     {
@@ -9716,7 +9716,7 @@
     "pypi:ansible-core@2.21.4",
     "pypi:authlib@1.9.1",
     "pypi:cryptography@50.0.2",
-    "pypi:fastapi@0.143.1",
+    "pypi:fastapi@0.143.2",
     "pypi:httpx@0.28.1",
     "pypi:itsdangerous@2.2.0",
     "pypi:psycopg@3.3.6",
@@ -9777,7 +9777,7 @@
    "dependsOn": []
   },
   {
-   "ref": "deb:curl@8.14.1-2+deb13u5",
+   "ref": "deb:curl@8.14.1-2+deb13u7",
    "dependsOn": []
   },
   {
@@ -11103,7 +11103,7 @@
   {
    "ref": "pypi:anyio@4.15.1",
    "dependsOn": [
-    "pypi:idna@3.10",
+    "pypi:idna@3.20",
     "pypi:typing-extensions@4.16.0"
    ]
   },
@@ -11115,7 +11115,7 @@
    ]
   },
   {
-   "ref": "pypi:certifi@2025.1.31",
+   "ref": "pypi:certifi@2026.7.22",
    "dependsOn": []
   },
   {
@@ -11129,7 +11129,7 @@
    "dependsOn": []
   },
   {
-   "ref": "pypi:charset-normalizer@3.4.2",
+   "ref": "pypi:charset-normalizer@3.5.2",
    "dependsOn": []
   },
   {
@@ -11144,7 +11144,7 @@
    ]
   },
   {
-   "ref": "pypi:fastapi@0.143.1",
+   "ref": "pypi:fastapi@0.143.2",
    "dependsOn": [
     "pypi:annotated-doc@0.0.5",
     "pypi:opentelemetry-api@1.45.1",
@@ -11161,7 +11161,7 @@
   {
    "ref": "pypi:httpcore@1.0.9",
    "dependsOn": [
-    "pypi:certifi@2025.1.31",
+    "pypi:certifi@2026.7.22",
     "pypi:h11@0.16.0"
    ]
   },
@@ -11173,13 +11173,13 @@
    "ref": "pypi:httpx@0.28.1",
    "dependsOn": [
     "pypi:anyio@4.15.1",
-    "pypi:certifi@2025.1.31",
+    "pypi:certifi@2026.7.22",
     "pypi:httpcore@1.0.9",
-    "pypi:idna@3.10"
+    "pypi:idna@3.20"
    ]
   },
   {
-   "ref": "pypi:idna@3.10",
+   "ref": "pypi:idna@3.20",
    "dependsOn": []
   },
   {
@@ -11286,7 +11286,7 @@
    "ref": "pypi:pywinrm@0.5.0",
    "dependsOn": [
     "pypi:requests-ntlm@1.3.0",
-    "pypi:requests@2.32.3",
+    "pypi:requests@2.34.2",
     "pypi:xmltodict@1.0.4"
    ]
   },
@@ -11299,16 +11299,16 @@
    "dependsOn": [
     "pypi:cryptography@50.0.2",
     "pypi:pyspnego@0.12.4",
-    "pypi:requests@2.32.3"
+    "pypi:requests@2.34.2"
    ]
   },
   {
-   "ref": "pypi:requests@2.32.3",
+   "ref": "pypi:requests@2.34.2",
    "dependsOn": [
-    "pypi:certifi@2025.1.31",
-    "pypi:charset-normalizer@3.4.2",
-    "pypi:idna@3.10",
-    "pypi:urllib3@2.3.0"
+    "pypi:certifi@2026.7.22",
+    "pypi:charset-normalizer@3.5.2",
+    "pypi:idna@3.20",
+    "pypi:urllib3@2.8.0"
    ]
   },
   {
@@ -11339,7 +11339,7 @@
    ]
   },
   {
-   "ref": "pypi:urllib3@2.3.0",
+   "ref": "pypi:urllib3@2.8.0",
    "dependsOn": []
   },
   {

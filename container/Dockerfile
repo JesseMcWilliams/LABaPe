@@ -19,7 +19,6 @@ FROM debian:trixie-slim
 
 ARG TOFU_VERSION=1.12.6
 ARG PACKER_VERSION=1.16.1
-ARG ANSIBLE_CORE_VERSION=2.21.4
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/opt/labape/venv/bin:$PATH \
@@ -78,8 +77,12 @@ RUN set -eux; cd /tmp; arch="$(dpkg --print-architecture)"; \
 # Galaxy is flaky: one build hit a corrupted response cache ("Missing
 # expected 'results'"), another a download timeout. So: no cache, a
 # longer timeout, and three attempts.
+# Every Python package is pinned with hashes in container/requirements.txt (tools/helpers/lock-python.sh):
+# ansible-core and pywinrm for the engine, and LABaPe's own dependencies. LABaPe itself then goes in
+# without resolving anything.
+COPY container/requirements.txt /opt/labape/requirements.txt
 RUN python3 -m venv --system-site-packages /opt/labape/venv \
- && pip install --no-cache-dir "ansible-core==${ANSIBLE_CORE_VERSION}" pywinrm \
+ && pip install --no-cache-dir --require-hashes -r /opt/labape/requirements.txt \
  && for attempt in 1 2 3; do \
       ansible-galaxy collection install --no-cache --timeout 120 -p /usr/share/ansible/collections \
         ansible.windows:==3.8.0 microsoft.ad:==1.12.1 community.general:==13.4.0 chocolatey.chocolatey:==1.6.0 \
@@ -88,7 +91,7 @@ RUN python3 -m venv --system-site-packages /opt/labape/venv \
     done
 COPY app/pyproject.toml /opt/labape/src/app/pyproject.toml
 COPY app/labape /opt/labape/src/app/labape
-RUN pip install --no-cache-dir /opt/labape/src/app
+RUN pip install --no-cache-dir --no-deps /opt/labape/src/app
 
 # The engine: the same scripts the CLI runs, copied as a snapshot.
 COPY scripts /opt/labape/engine/scripts
