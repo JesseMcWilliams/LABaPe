@@ -61,6 +61,9 @@ class HostGroup(BaseModel):
     # Design §45 (P1b): this group on another KVM host; None = the environment's own host. The hosts
     # must carry the group's network (bridged to the same lab segment).
     kvm_host_id: int | None = None
+    # E3 (question 168): desktop sessions on a Linux group's VMs: xrdp (RDP for every account) and/or
+    # VNC (a display per local account).
+    remote_desktop: list[Literal["xrdp", "vnc"]] = Field(default=[], max_length=2)
 
     @field_validator("names")
     @classmethod
@@ -917,6 +920,39 @@ def set_start_order(env_id: int, body: StartOrderIn, request: Request, db: Sessi
           detail={"groups": [g.model_dump() for g in body.groups]}, source_ip=client_ip(request))
     return {"host_groups": [{k: g.get(k) for k in ("name", "start_order", "start_wait", "start_delay_seconds")}
                             for g in groups]}
+
+
+class DesktopGroup(BaseModel):
+    name: str
+    remote_desktop: list[Literal["xrdp", "vnc"]] = Field(default=[], max_length=2)
+
+
+class DesktopsIn(BaseModel):
+    groups: list[DesktopGroup] = Field(min_length=1, max_length=20)
+
+
+@router.put("/{env_id}/desktops")
+def set_desktops(env_id: int, body: DesktopsIn, request: Request, db: Session = Depends(get_db),
+                 p: Principal = Depends(current_principal)):
+    """E3 (question 168): xrdp and/or VNC on Linux host groups; the next Redeploy sets them up."""
+    e = _get(db, env_id, p)
+    _owner_or_403(db, p, e, "change its desktop sessions")
+    spec = dict(e.spec or {})
+    groups = [dict(g) for g in spec.get("host_groups", [])]
+    by_name = {g["name"]: g for g in groups}
+    for i, item in enumerate(body.groups):
+        g = by_name.get(item.name)
+        if g is None:
+            raise FieldError(f"groups.{i}.name", f"There's no host group {item.name} in this environment.")
+        if str(g.get("os", "")).startswith("windows") and item.remote_desktop:
+            raise FieldError(f"groups.{i}.remote_desktop", f"{item.name} is Windows: it has RDP already.")
+        g["remote_desktop"] = list(dict.fromkeys(item.remote_desktop))
+    spec["host_groups"] = groups
+    e.spec = spec
+    db.commit()
+    audit(db, p.username, "environment.desktops", object_type="environment", object_id=e.id,
+          detail={"groups": [g.model_dump() for g in body.groups]}, source_ip=client_ip(request))
+    return {"host_groups": [{"name": g["name"], "remote_desktop": g.get("remote_desktop", [])} for g in groups]}
 
 
 class MoveIn(BaseModel):

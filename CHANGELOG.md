@@ -53,6 +53,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Desktop sessions on Linux VMs: a host group can have **xrdp** (a desktop
+  over RDP for every account, local or domain) and **VNC** (a desktop of
+  its own for each local account), set when creating the environment or on
+  its page (then Redeploy). The Secrets panel's **Connect** offers them.
 - **Connect as an account**: on the environment's Secrets panel, an
   account's **Connect** opens RDP or SSH in the browser signed in as that
   account (a local account on its VM; a domain account on the member

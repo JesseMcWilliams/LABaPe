@@ -130,16 +130,28 @@ def account_targets(env: Environment, rest: str) -> list[dict]:
     acc = account_of(env, rest)
     if acc is None:
         return []
+    from . import linux_desktop
     kinds = _vm_kinds(env)
+
+    def linux(vm: str, local_user: str = "") -> list[dict]:
+        # SSH always; RDP where xrdp runs; VNC on a local account's own display (E3).
+        have = linux_desktop.desktops(env, vm)
+        out = [{"vm": vm, "protocol": "ssh"}] + ([{"vm": vm, "protocol": "rdp"}] if "xrdp" in have else [])
+        if local_user and linux_desktop.vnc_display(env, vm, local_user):
+            out.append({"vm": vm, "protocol": "vnc"})
+        return out
+
     if acc["scope"] == "local":
         os_, _ = kinds.get(acc["vm"], ("", False))
-        return [{"vm": acc["vm"], "protocol": "rdp" if os_ == "windows" else "ssh"}] if os_ else []
+        if os_ == "windows":
+            return [{"vm": acc["vm"], "protocol": "rdp"}]
+        return linux(acc["vm"], acc["user"]) if os_ else []
     out = []
     for vm, (os_, dc) in kinds.items():
         if os_ == "windows" and (not dc or acc["admin"]):
             out.append({"vm": vm, "protocol": "rdp"})
         elif os_ == "linux":
-            out.append({"vm": vm, "protocol": "ssh"})
+            out += linux(vm)
     return out
 
 
@@ -159,7 +171,7 @@ def _as_account(db: Session, env: Environment, vm: str, rest: str, protocol: str
     inv = _inventory(db, env)
     every = [host, (inv.get("all") or {}).get("vars") or {}, *_hosts(inv).values()]
     name_of = lambda key: next((str(h[key]) for h in every if h.get(key)), "")  # noqa: E731
-    if protocol == "rdp":
+    if protocol == "rdp" and _vm_kinds(env).get(vm, ("",))[0] == "windows":
         return {"username": acc["user"], "domain": name_of("netbios_name"), "password": password}
     domain = name_of("domain_name")
     return {"username": f"{acc['user']}@{domain}" if domain else acc["user"], "domain": "", "password": password}
@@ -179,8 +191,14 @@ def vm_target(db: Session, env: Environment, vm: str, account: str = "", protoco
     address = str(host["ansible_host"])
     windows = str(groups[vm].get("os", "")).startswith("windows")
     if account:
-        who = _as_account(db, env, vm, account, protocol or ("rdp" if windows else "ssh"), host)
-        if windows:
+        protocol = protocol or ("rdp" if windows else "ssh")
+        who = _as_account(db, env, vm, account, protocol, host)
+        if protocol == "vnc":                     # E3: the account's own TigerVNC display
+            from . import linux_desktop
+            display = linux_desktop.vnc_display(env, vm, account_of(env, account)["user"])
+            return {"protocol": "vnc", "address": address, "params": {
+                "hostname": address, "port": str(linux_desktop.VNC_BASE + display), "password": who["password"]}}
+        if protocol == "rdp":                     # Windows, or a Linux VM with xrdp (E3)
             return {"protocol": "rdp", "address": address, "params": {
                 "hostname": address, "port": "3389", **who, "security": "any", "ignore-cert": "true",
                 "resize-method": "display-update", "enable-font-smoothing": "true", "disable-audio": "true"}}

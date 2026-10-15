@@ -1,0 +1,165 @@
+---
+# Desktop sessions on a Linux VM (E3, question 168; Claude_Docs/Planning_Web-Interface-Design.md
+# §50.5). LABaPe sets, per VM, in its host variables:
+#   labape_remote_desktop: [xrdp, vnc]   what this host group asked for
+#   labape_vnc_users: [{name, display, password}]   the local accounts that get a VNC display
+# xrdp signs in through PAM, so local and domain accounts take RDP like Windows; each account in
+# labape_vnc_users gets its own TigerVNC display (:1, :2, ...) with its own password as the VNC
+# password. Both start an XFCE session, installed here when the VM has no desktop.
+
+- name: XFCE, the session both start (RHEL family, from EPEL)
+  ansible.builtin.dnf:
+    name: [epel-release]
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: XFCE packages (RHEL family)
+  ansible.builtin.dnf:
+    name: ["@Xfce", dbus-x11]
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: XFCE packages (Debian family)
+  ansible.builtin.apt:
+    name: [xfce4, xfce4-terminal, dbus-x11]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Start XFCE in every X session (RHEL family's Xclients reads this)
+  ansible.builtin.copy:
+    dest: /etc/sysconfig/desktop
+    content: "PREFERRED=/usr/bin/startxfce4\n"
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'RedHat'
+
+# --- xrdp ------------------------------------------------------------------------------------
+- name: xrdp
+  ansible.builtin.package:
+    name: xrdp
+    state: present
+  when: "'xrdp' in labape_remote_desktop"
+
+- name: xrdp starts at boot
+  ansible.builtin.service:
+    name: xrdp
+    state: started
+    enabled: true
+  when: "'xrdp' in labape_remote_desktop"
+
+# On a domain-joined VM, sssd's AD access control (GPO) denies PAM services it has no mapping for;
+# sshd is mapped as remote interactive, xrdp isn't. Map xrdp the same way, so domain accounts sign in
+# over RDP under the same rules as SSH.
+- name: Is the VM in the domain (sssd)?
+  ansible.builtin.stat:
+    path: /etc/sssd/sssd.conf
+  register: labape_sssd_conf
+  when: "'xrdp' in labape_remote_desktop"
+
+- name: Domain sign-in over xrdp, like SSH (sssd's GPO service map)
+  ansible.builtin.lineinfile:
+    path: /etc/sssd/sssd.conf
+    regexp: '^ad_gpo_map_remote_interactive\s*='
+    line: ad_gpo_map_remote_interactive = +xrdp-sesman
+    insertafter: '^\[domain/'
+  register: labape_sssd_xrdp
+  when:
+    - "'xrdp' in labape_remote_desktop"
+    - labape_sssd_conf.stat.exists | default(false)
+
+- name: Restart sssd for it
+  ansible.builtin.service:
+    name: sssd
+    state: restarted
+  when: labape_sssd_xrdp is changed
+
+# --- VNC: one display per account ----------------------------------------------------------
+- name: TigerVNC server
+  ansible.builtin.package:
+    name: "{{ 'tigervnc-server' if ansible_facts['os_family'] == 'RedHat' else ['tigervnc-standalone-server', 'tigervnc-common'] }}"
+    state: present
+  when: "'vnc' in labape_remote_desktop"
+
+- name: Each account's display (/etc/tigervnc/vncserver.users)
+  ansible.builtin.copy:
+    dest: /etc/tigervnc/vncserver.users
+    content: |
+      # LABaPe (E3): display = account
+      {% for u in labape_vnc_users | default([]) %}
+      :{{ u.display }}={{ u.name }}
+      {% endfor %}
+    mode: "0644"
+  when: "'vnc' in labape_remote_desktop"
+
+- name: Every display reachable on the network, password sign-in, XFCE
+  ansible.builtin.copy:
+    dest: /etc/tigervnc/vncserver-config-mandatory
+    content: |
+      # LABaPe (E3): reached from the stack's guacd, signed in with the account's VNC password.
+      session=xfce
+      localhost=no
+      securitytypes=VncAuth
+    mode: "0644"
+  when: "'vnc' in labape_remote_desktop"
+
+- name: Each account's VNC password folders
+  ansible.builtin.file:
+    path: "~{{ item.0.name }}/{{ item.1 }}"
+    state: directory
+    owner: "{{ item.0.name }}"
+    mode: "0700"
+  loop: "{{ (labape_vnc_users | default([])) | product(['.vnc', '.config', '.config/tigervnc']) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1 }}"
+  when: "'vnc' in labape_remote_desktop"
+
+- name: Each account's VNC password (its own password)
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    printf '%s\n' "$VNC_PW" | vncpasswd -f > ~{{ item.0.name }}/{{ item.1 }}/passwd &&
+    chown {{ item.0.name }} ~{{ item.0.name }}/{{ item.1 }}/passwd && chmod 0600 ~{{ item.0.name }}/{{ item.1 }}/passwd
+  args:
+    executable: /bin/bash
+  environment:
+    VNC_PW: "{{ item.0.password }}"
+  loop: "{{ (labape_vnc_users | default([])) | product(['.vnc', '.config/tigervnc']) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1 }}"
+  no_log: true
+  changed_when: true
+  when: "'vnc' in labape_remote_desktop"
+
+- name: Each display starts at boot
+  ansible.builtin.systemd:
+    name: "{{ ('vncserver@:' if ansible_facts['os_family'] == 'RedHat' else 'tigervncserver@:') ~ item.display }}"
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  loop: "{{ labape_vnc_users | default([]) }}"
+  loop_control:
+    label: ":{{ item.display }} {{ item.name }}"
+  when: "'vnc' in labape_remote_desktop"
+
+# --- the firewall ----------------------------------------------------------------------------
+- name: Which firewall is running?
+  ansible.builtin.service_facts:
+
+- name: Open the desktop ports (firewalld)
+  ansible.builtin.command: "firewall-cmd --permanent --add-port={{ item }}/tcp"
+  loop: "{{ labape_desktop_ports }}"
+  register: labape_desktop_fw
+  changed_when: "'ALREADY_ENABLED' not in labape_desktop_fw.stderr"
+  when: ansible_facts.services['firewalld.service'].state | default('') == 'running'
+
+- name: Load the firewalld rules
+  ansible.builtin.command: firewall-cmd --reload
+  when: labape_desktop_fw is changed
+
+- name: Open the desktop ports (ufw)
+  ansible.builtin.command: "ufw allow {{ item }}/tcp"
+  loop: "{{ labape_desktop_ports }}"
+  changed_when: false
+  when: ansible_facts.services['ufw.service'].state | default('') == 'running'

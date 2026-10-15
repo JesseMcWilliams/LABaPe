@@ -160,6 +160,17 @@
     - windows_rdp
   tags: [remote_access]
 
+- name: Desktop sessions on Linux hosts (Claude_Docs/Planning_Web-Interface-Design.md §50.5)
+  # Only where the host group asked for xrdp or VNC (labape_remote_desktop, set by LABaPe); after
+  # the local accounts exist (VNC displays are theirs).
+  hosts: linux_server:linux_workstation
+  become: true
+  gather_facts: true
+  roles:
+    - role: linux_remote_desktop
+      when: (labape_remote_desktop | default([])) | length > 0
+  tags: [remote_access]
+
 # --- Platform certificates (Claude_Docs/Planning_Web-Interface-Design.md §22.5) ---
 # Web-interface deploys only: every host trusts the platform root and gets
 # a certificate signed by the platform CA, renewed on the host. No-op from
