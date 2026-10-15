@@ -28,16 +28,18 @@ NA = "NotApplicable"
 APT_PACKAGES = [
     "qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "virtinst", "xorriso",
     "python3-yaml", "python3-venv", "python3-libvirt", "git", "curl", "unzip", "openssl", "iputils-ping",
-    "network-manager", "perl", "smartmontools", "lm-sensors",
+    "network-manager", "perl", "smartmontools", "lm-sensors", "ethtool",
 ]
 # A web-only install (--profile web): the container image carries the engine's tools.
-WEB_PACKAGES = ["python3-yaml", "python3-venv", "git", "curl", "unzip", "openssl", "iputils-ping", "perl"]
+# Monitoring (question 173): disk health, temperatures and NIC details on every host the stack watches.
+WEB_PACKAGES = ["python3-yaml", "python3-venv", "git", "curl", "unzip", "openssl", "iputils-ping", "perl",
+                "smartmontools", "lm-sensors", "ethtool"]
 # RHEL family (Rocky, Alma; question 128), kvm profile: the same tools under their dnf names, plus
 # SELinux's labelling tool and needs-restarting. ansible-core needs Python 3.12 (Rocky 9's own is 3.9).
 RPM_PACKAGES = [
     "qemu-kvm", "qemu-img", "libvirt", "libvirt-client", "virt-install", "xorriso", "python3-pyyaml",
     "python3-libvirt", "git", "curl", "unzip", "openssl", "iputils", "NetworkManager", "perl", "smartmontools",
-    "lm_sensors", "policycoreutils-python-utils", "dnf-utils",
+    "lm_sensors", "ethtool", "policycoreutils-python-utils", "dnf-utils",
 ]
 
 
@@ -145,7 +147,25 @@ def _installed(c: Ctx, pkg: str) -> bool:
     return c.r.out(["dpkg-query", "-W", "-f=${Status}", pkg]) == "install ok installed"
 
 
+SENSORS_DONE = Path("/var/lib/labape/sensors-detected")
+
+
+def detect_sensors(c: Ctx) -> str:
+    """lm-sensors' own probe, once (question 173): it loads the drivers for the chips it finds, so
+    `sensors` shows temperatures without anyone answering its questions."""
+    if SENSORS_DONE.exists() or not shutil.which("sensors-detect"):
+        return ""
+    c.r.run(["sensors-detect", "--auto"], check=False)
+    c.r.write(SENSORS_DONE, "lm-sensors' sensors-detect --auto ran (LABaPe Prereq.Packages)\n")
+    return "; sensors detected"
+
+
 def prereq_packages(c: Ctx):
+    status, note = _prereq_install(c)
+    return status, note + detect_sensors(c)
+
+
+def _prereq_install(c: Ctx):
     if os_family() == "rhel":
         missing = [p for p in rpm_packages() if not _installed(c, p)]
         if not missing:

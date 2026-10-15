@@ -1750,3 +1750,15 @@ Questions 163-166; plan in Planning_Lists-Secrets-Settings.md. Built in parts: V
 | In step | The worker syncs every 5 minutes (`openbao_people.schedule`), and an admin can sync now (`POST /api/admin/openbao-people/sync`, audited). A sync also adopts secrets people store directly in OpenBao (`env/<name>/user/`, `vm/<vm>/`) into the catalog, so the environment page lists them, and forgets ones deleted there. A destroyed environment, or one moved out of OpenBao, loses its policy and group at the next sync. |
 | Page | The Secrets panel shows OpenBao's address, mount and folder and the `bao` command, when people access is on and the environment's secrets are in OpenBao; its link opens OpenBao's sign-in with OIDC chosen (`/ui/vault/auth?with=oidc%2F`), as does Authentik's library tile (`meta_launch_url`). The listener doesn't ask for client certificates (`tls_disable_client_certs`; browsers offered smart cards). A newly connected stack OpenBao becomes the default store for new environments (`stack.configure`). |
 | Verified | pytest (the sync keeps owners, reuses an entity OpenBao made, maps groups by name, never sends `policies`, asks the agent only when the set differs, adopts and forgets; LABaPe's policy grants no policy rights; the template's paths and name check). Live on kvm1: the setup made the Authentik client and the OIDC mount; the agent wrote lab2's policy and group; signed in with OIDC (`live/openbao_people.py`, the `bao login -method=oidc` flow) `labape-admin` got `labape-env-admins` (read lab2: 200; the platform's engine vault password: 403); `labape-dev`, made an owner of lab2 for the test, got `labape-env-lab2` (read 200, write `user/` 200, write `accounts/` 403, platform 403); the secret it wrote was adopted and then deleted through LABaPe; with the grant removed and a sync, the next sign-in had `default` only (403 everywhere). Found on the way: a single-address bind (OpenBao sealed for two minutes, fixed by `0.0.0.0` and a check), list values in `allowed_parameters`, Authentik's per-application issuer (Testing_Troubleshooting-Log.md). |
+
+## 50. Access, mail, updates and files (the round of Planning_Access-Mail-Updates-Files.md)
+
+Questions 167-173. Built batch by batch.
+
+### 50.1 H1: monitoring tools on every host (built)
+
+| Area | As built |
+|---|---|
+| Installer | `Prereq.Packages` installs `smartmontools`, `lm-sensors` and `ethtool` on every profile (the web-only profile, a stack host such as the Pi, had none of them; the RHEL family gets `lm_sensors` and `ethtool`), then runs `sensors-detect --auto` once (marker `/var/lib/labape/sensors-detected`) so `sensors` finds the chips without questions. |
+| Existing hosts | A KVM or stack host's access-account setup (`hostadmin.SETUP`, run by **Set up access** / **Prepare**) installs the same three where missing and runs the probe once, so existing hosts get them without reinstalling. |
+| Verified | pytest (both package lists and the setup script). Live: access setup on nkvm1 (host record 2) left `smartctl`, `sensors` and `ethtool` installed and the probe marker written. kvm1 and the Pi get them at their next access setup or Prepare. |
