@@ -7,6 +7,21 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- The release script (`tools/helpers/release.sh`) also takes the lab image's inventory, regenerates the software bill of materials for the new version
+  and attaches the CycloneDX file to the GitHub release.
+- A software bill of materials: `Claude_Docs/Reference_SBOM.md` lists every
+  Python and npm package, container image, engine tool, Ansible collection,
+  provider and plugin LABaPe uses, with versions, licenses and what each is
+  for, and `sbom/labape.cdx.json` is the same in CycloneDX form for scanners.
+  `tools/helpers/sbom.py` regenerates both, and a test fails when they're
+  out of date.
+- VMs read their own secrets: a VM signs in to OpenBao with its platform
+  certificate and reads the secrets its owners stored for it, and the
+  shared ones whose VM list names it (`sudo labape-secret get NAME` on
+  Linux, `Get-LabapeSecret NAME` on Windows). Each shared secret's VM list
+  is set on the environment's Secrets panel; other VMs can't read it.
+
 ## [0.4.0] - 2026-10-15
 
 LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs between them, signs people in across linked stacks, and makes secrets something people and tests can use: every secret is checked and recovered where it can be, Windows VMs get a password of their own per account, environment secrets are on their page and in OpenBao (with its own sign-in), and the browser connects as any of the environment's accounts, RDP, SSH, xrdp or VNC. Environments can have a lab mail server (Mailpit); Catalog → Updates downloads new .NET, Chrome, KeePassXC and PuTTY versions weekly for offline installs; Claude Code is in the catalog; each KVM host keeps its files beside its VMs; and every list pages, filters and exports.
@@ -59,19 +74,6 @@ LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs b
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
-- The release script (`tools/helpers/release.sh`) also takes the lab image's inventory, regenerates the software bill of materials for the new version
-  and attaches the CycloneDX file to the GitHub release.
-- A software bill of materials: `Claude_Docs/Reference_SBOM.md` lists every
-  Python and npm package, container image, engine tool, Ansible collection,
-  provider and plugin LABaPe uses, with versions, licenses and what each is
-  for, and `sbom/labape.cdx.json` is the same in CycloneDX form for scanners.
-  `tools/helpers/sbom.py` regenerates both, and a test fails when they're
-  out of date.
-- VMs read their own secrets: a VM signs in to OpenBao with its platform
-  certificate and reads the secrets its owners stored for it, and the
-  shared ones whose VM list names it (`sudo labape-secret get NAME` on
-  Linux, `Get-LabapeSecret NAME` on Windows). Each shared secret's VM list
-  is set on the environment's Secrets panel; other VMs can't read it.
 - New catalog applications: .NET 8 and 10 (runtime, hosting bundle, SDK),
   Google Chrome, KeePassXC, PuTTY and Claude Code. On Windows they install
   from the newest copy Catalog → Updates downloaded (offline), or from
