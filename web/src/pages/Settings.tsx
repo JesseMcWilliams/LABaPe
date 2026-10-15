@@ -311,6 +311,7 @@ export default function Settings() {
               onChange={(e) => set("monitoring", { [k]: Number(e.target.value) })} />
           ))}
         </Stack>
+        <Typography variant="body2"><a href="/mail/" target="_blank" rel="noreferrer">Open Mailpit</a> to read what the stack has sent (admins).</Typography>
       </Section>
 
       <Section title="File distribution" intro="The primary file host (Admin → KVM hosts) holds every file; a job on another host gets copies of the ones it needs. While the primary can't be reached, a job waits this long before it fails (a host that already has the file doesn't wait)."
@@ -621,6 +622,7 @@ export default function Settings() {
           <TestButton label="Send test email" tip="Send a test email to the recipient beside it"
             confirmBody={`A test email goes to ${testTo || "(no recipient yet)"} through ${s.smtp.host || "the saved server"}, using the saved settings (save first if you changed them).`} run={() =>
             api.post<{ message: string }>("/api/admin/settings/smtp/test", { to: testTo }).then((r) => r.message)} />
+          <Typography variant="body2"><a href="/mail/" target="_blank" rel="noreferrer">Open Mailpit</a> to read what the stack has sent (admins).</Typography>
         </>}>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Enabled" control={<Checkbox checked={s.smtp.enabled}

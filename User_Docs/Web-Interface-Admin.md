@@ -140,7 +140,7 @@ Every stack runs its own mail server, Mailpit, and Settings → Email is set to 
 
 - **Reading mail.** Everything LABaPe sent is in Mailpit's page, whether or not it was forwarded.
 - **Forwarding to real inboxes.** On the Mail page, give Mailpit an SMTP server to forward through (server, port, security, sign-in, and the password, which is kept encrypted), then say which recipients it forwards: only the addresses and `@domain`s you list, or every recipient. Anything else stays in Mailpit. Forwarding off (the default) sends nothing outside. A server that only accepts its own sender needs **Replace the From address**. Saving restarts Mailpit within seconds; its messages are kept.
-- **Alerts** go to the addresses in Settings → Monitoring ("Email alerts to"); with none set nothing is emailed. Put your address there and list it (or its domain) for forwarding.
+- **Alerts** go to the addresses in Settings → Monitoring ("Email alerts to"). A new stack sets it to `alerts@<host name>`, which only exists in Mailpit's inbox, so alerts are readable there from the start. To get them in a real inbox, put your address there and list it (or its domain) for forwarding. Settings → Email and Monitoring have an **Open Mailpit** link.
 - **Test.** **Send test** emails an address the way LABaPe sends its own.
 - **If Email points elsewhere** the page offers **Use this server** to point it back.
 - **Retention.** Mailpit keeps 5000 messages or 30 days by default; both are on the page.

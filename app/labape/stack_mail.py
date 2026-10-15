@@ -123,10 +123,14 @@ def applied_revision() -> str:
         return ""
 
 
+def mail_domain() -> str:
+    host = urlsplit(os.environ.get("LABAPE_PUBLIC_URL", "")).hostname or ""
+    return host if host and not re.fullmatch(r"[0-9.:]+", host) else "labape.local"
+
+
 def email_defaults(current: appsettings.SmtpSettings) -> appsettings.SmtpSettings:
     """Settings -> Email pointed at the stack's Mailpit (keeping the From address and the job-mail switch)."""
-    host = urlsplit(os.environ.get("LABAPE_PUBLIC_URL", "")).hostname or ""
-    domain = host if host and not re.fullmatch(r"[0-9.:]+", host) else "labape.local"
+    domain = mail_domain()
     return current.model_copy(update={
         "enabled": True, "host": os.environ.get("LABAPE_MAIL_HOST", "labape-mailpit"),
         "port": int(os.environ.get("LABAPE_MAIL_PORT", "1025")), "security": "none", "username": "",
@@ -148,6 +152,10 @@ def startup(db: Session) -> list[str]:
     if not smtp.enabled and not smtp.host:
         appsettings.put(db, "smtp", email_defaults(smtp))
         done.append("Settings -> Email now sends through the stack's Mailpit")
+        mon = appsettings.get(db, "monitoring")
+        if not mon.email_to:                      # alerts land in Mailpit's inbox until someone names real recipients
+            appsettings.put(db, "monitoring", mon.model_copy(update={"email_to": [f"alerts@{mail_domain()}"]}))
+            done.append("Monitoring alerts go to the Mailpit inbox")
     try:
         if apply(db):
             done.append("Mailpit's options written")

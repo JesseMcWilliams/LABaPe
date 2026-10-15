@@ -8,6 +8,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- A stack's monitoring alerts go to a Mailpit inbox (`alerts@<host name>`) until real recipients are set, and Settings → Email and Monitoring link to the Mailpit page.
 - Every stack runs its own mail server, Mailpit, in the base install. Settings →
   Email is set to it the first time the stack starts (unless you had set up
   Email yourself), so alerts and job emails are caught and can be read with
