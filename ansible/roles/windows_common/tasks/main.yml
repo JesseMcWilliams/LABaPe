@@ -164,11 +164,75 @@
     path: >-
       {{ item.spec.url if item.spec.source == 'url'
          else 'C:\\Windows\\Temp\\' + (item.spec.path | basename) }}
-    product_id: "{{ item.spec.product_id }}"
+    # A local MSI's product code is read from the file (Catalog → Updates' newest, P1).
+    product_id: "{{ item.spec.product_id | default(omit) }}"
     state: present
   loop: "{{ windows_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'msi') | list }}"
   loop_control:
     label: "{{ item.name }}"
+
+# --- Install: custom .exe installers (P1: the .NET runtime, hosting bundle and SDK) ---
+# Their own silent arguments; installing what's there already is quick and harmless for these.
+- name: Install custom .exe installers (URL or local)
+  ansible.windows.win_package:
+    path: >-
+      {{ item.spec.url if item.spec.source == 'url'
+         else 'C:\\Windows\\Temp\\' + (item.spec.path | basename) }}
+    arguments: "{{ item.spec.args | default(omit) }}"
+    product_id: "{{ item.spec.product_id | default(omit) }}"
+    creates_path: "{{ item.spec.creates | default(omit) }}"
+    expected_return_code: [0, 3010, 1638]
+    state: present
+  loop: "{{ windows_common_package_entries | selectattr('spec.type', 'defined') | selectattr('spec.type', 'equalto', 'exe') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- npm packages (P1: Claude Code), system-wide in Node.js' own folder, updated weekly ---
+- name: The npm packages chosen
+  ansible.builtin.set_fact:
+    windows_common_npm: >-
+      {{ windows_common_raw_packages | unique | select('string') | select('in', packages)
+         | map('extract', packages) | selectattr('npm', 'defined') | map(attribute='npm') | list }}
+
+- name: Node.js (LTS) for them
+  chocolatey.chocolatey.win_chocolatey:
+    name: nodejs-lts
+    state: present
+  when: windows_common_npm | length > 0
+
+- name: Git for Windows (Claude Code needs its bash)
+  chocolatey.chocolatey.win_chocolatey:
+    name: git
+    state: present
+  when: "'@anthropic-ai/claude-code' in windows_common_npm"
+
+# Through PowerShell: npm is a .cmd (win_command can't start one), and Node.js was installed in this
+# same run, so the machine PATH is read again.
+- name: Install them for every user (in C:\Program Files\nodejs, which is on the PATH)
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    & 'C:\Program Files\nodejs\npm.cmd' install -g --prefix 'C:\Program Files\nodejs' '{{ item }}'
+    if ($LASTEXITCODE -ne 0) { throw "npm install {{ item }} failed ($LASTEXITCODE)" }
+  loop: "{{ windows_common_npm }}"
+  changed_when: true
+
+# (Register-ScheduledTask: the image carries ansible.windows, not community.windows.)
+- name: Keep them up to date (a weekly task)
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Packages)
+      $ErrorActionPreference = 'Stop'
+      $action = New-ScheduledTaskAction -Execute 'C:\Program Files\nodejs\npm.cmd' `
+        -Argument "update -g --prefix `"C:\Program Files\nodejs`" $Packages"
+      $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 4am
+      $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+      Register-ScheduledTask -TaskName 'LABaPe npm updates' -Action $action -Trigger $trigger -Principal $principal `
+        -Description 'LABaPe (P1): updates the npm packages LABaPe installed' -Force | Out-Null
+    parameters:
+      Packages: "{{ windows_common_npm | join(' ') }}"
+    error_action: stop
+  when: windows_common_npm | length > 0
 
 # --- Local accounts (Claude_Docs/Design_Directory-Objects.md §5/§4/§7) — this host's
 # role only, via the for_host_group filter (ansible/filter_plugins/

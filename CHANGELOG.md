@@ -55,6 +55,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- New catalog applications: .NET 8 and 10 (runtime, hosting bundle, SDK),
+  Google Chrome, KeePassXC, PuTTY and Claude Code. On Windows they install
+  from the newest copy Catalog → Updates downloaded (offline), or from
+  Chocolatey until there is one; on Linux from the vendors' repositories.
+  Claude Code installs through npm for every user and updates itself
+  weekly. Catalog applications can also be EXE installers and npm packages.
 - Catalog → **Updates**: download sites checked weekly (and on demand);
   new versions land in Files → Installers with the vendor's hash checked,
   and only the newest few of each are kept. Sources can be Microsoft's .NET

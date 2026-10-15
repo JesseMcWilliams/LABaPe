@@ -101,6 +101,45 @@
   loop_control:
     label: "{{ item }}"
 
+# --- npm packages (P1: Claude Code), system-wide, updated weekly --------------------------
+- name: The npm packages chosen
+  ansible.builtin.set_fact:
+    linux_common_npm: >-
+      {{ linux_common_raw_packages | unique | select('string') | select('in', packages)
+         | map('extract', packages) | selectattr('npm', 'defined') | map(attribute='npm') | list }}
+
+- name: Node.js 22 for them (RHEL family's module stream; the default one is too old)
+  ansible.builtin.shell: dnf -y module reset nodejs && dnf -y module enable nodejs:22
+  args:
+    creates: /usr/bin/node
+  when:
+    - linux_common_npm | length > 0
+    - ansible_facts['pkg_mgr'] == 'dnf'
+
+- name: Node.js and npm
+  ansible.builtin.package:
+    name: [nodejs, npm]
+    state: present
+  when: linux_common_npm | length > 0
+
+- name: Install them for every user
+  community.general.npm:
+    name: "{{ item }}"
+    global: true
+    state: present
+  loop: "{{ linux_common_npm }}"
+  when: linux_common_npm | length > 0
+
+- name: Keep them up to date (weekly)
+  ansible.builtin.copy:
+    dest: /etc/cron.weekly/labape-npm-update
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # LABaPe (P1): updates the npm packages LABaPe installed.
+      npm update -g {{ linux_common_npm | join(' ') }} >/dev/null 2>&1
+  when: linux_common_npm | length > 0
+
 # --- §8: locally-sourced installers — copy before install ---
 
 - name: Copy locally-sourced installer files to the target

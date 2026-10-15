@@ -203,7 +203,7 @@ def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
     packages = dict((base or {}).get("packages") or {})
     for item in db.scalars(select(CatalogItem).where(CatalogItem.kind == "application",
                                                      CatalogItem.status == "published")):
-        packages[item.name] = item.definition
+        packages[item.name] = resolve_update_installers(db, item.definition)
     catalog_file.write_text("# Written by the LABaPe job runner: the repository catalog plus the web UI's\n"
                             "# published applications (design §21.4).\n"
                             + yaml.safe_dump({"packages": packages}, sort_keys=False), encoding="utf-8")
@@ -211,6 +211,30 @@ def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
     gv.mkdir(parents=True, exist_ok=True)
     (gv / "labape.yml").write_text(yaml.safe_dump({"software_store_path": roots(db)["installers"]}),
                                    encoding="utf-8")
+
+
+def resolve_update_installers(db: Session, definition: dict) -> dict:
+    """P1: an installer with `source: update` becomes the newest file Catalog → Updates downloaded for
+    its source (a local installer); with none downloaded yet, the installer is left out and the
+    package manager entry (Chocolatey, dnf, apt) installs instead."""
+    from ..models import StoredFile, UpdateSource
+    d = dict(definition or {})
+    for plat in ("windows", "linux"):
+        inst = d.get(plat)
+        if not isinstance(inst, dict) or inst.get("source") != "update":
+            continue
+        src = db.scalar(select(UpdateSource).where(UpdateSource.name == inst.get("update_source", "")))
+        newest = None
+        for h in (src.history or []) if src else []:
+            f = db.get(StoredFile, h.get("file_id") or 0)
+            if f is not None and f.present:
+                newest = f
+                break
+        if newest is None:
+            d.pop(plat)
+            continue
+        d[plat] = {**{k: v for k, v in inst.items() if k != "update_source"}, "source": "local", "path": newest.name}
+    return d
 
 
 def profile_host_groups(db: Session, env: Environment, only: list[dict] | None = None) -> list[dict]:
@@ -804,7 +828,7 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
         chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
         for app in chosen["applications"]:
             for spec in (packages.get(app) or {}).values():
-                if isinstance(spec, dict) and spec.get("source") == "local" and spec.get("path"):
+                if isinstance(spec, dict) and spec.get("source") in ("local", "update") and spec.get("path"):
                     wanted.add(spec["path"])
     store = roots(db)["installers"].rstrip("/")
     if host.is_primary or host.files_from_share:
