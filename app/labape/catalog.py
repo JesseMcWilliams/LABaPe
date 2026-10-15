@@ -23,6 +23,8 @@ items; admins create, import, publish and retire them (questions 51, 52).
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,9 +49,9 @@ def platforms(kind: str, definition: dict) -> list[str]:
     d = definition or {}
     out = set()
     if kind == "application":
-        if "chocolatey" in d or "windows" in d:
+        if "chocolatey" in d or "windows" in d or "npm" in d:
             out.add("windows")
-        if any(k in d for k in ("apt", "dnf", "zypper")) or "linux" in d:
+        if any(k in d for k in ("apt", "dnf", "zypper")) or "linux" in d or "npm" in d:
             out.add("linux")
     elif kind == "service":
         out |= {p for p in ("windows", "linux") if p in d}
@@ -59,26 +61,32 @@ def platforms(kind: str, definition: dict) -> list[str]:
 def validate(db: Session, kind: str, definition: dict) -> None:
     d = definition or {}
     if kind == "application":
-        unknown = [k for k in d if k not in PKG_MANAGERS + ("windows", "linux", "requires_gui")]
+        unknown = [k for k in d if k not in PKG_MANAGERS + ("windows", "linux", "requires_gui", "npm")]
         if unknown:
-            raise CatalogError(f"Unknown keys {unknown}; use {', '.join(PKG_MANAGERS)}, windows, linux or "
+            raise CatalogError(f"Unknown keys {unknown}; use {', '.join(PKG_MANAGERS)}, windows, linux, npm or "
                                "requires_gui.")
+        if "npm" in d and not re.fullmatch(r"(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*", str(d["npm"])):
+            raise CatalogError("npm must be an npm package name, e.g. @anthropic-ai/claude-code.")
         if "requires_gui" in d and not isinstance(d["requires_gui"], bool):
             raise CatalogError("requires_gui must be true or false.")
-        if not any(k in d for k in PKG_MANAGERS + ("windows", "linux")):
+        if not any(k in d for k in PKG_MANAGERS + ("windows", "linux", "npm")):
             raise CatalogError("Give at least one install method (a package name or an installer).")
         for plat in ("windows", "linux"):
             if plat in d:
                 inst = d[plat] or {}
                 if inst.get("type") not in INSTALLER_TYPES[plat]:
                     raise CatalogError(f"{plat}.type must be one of {', '.join(INSTALLER_TYPES[plat])}.")
-                if inst.get("source") not in ("url", "local"):
-                    raise CatalogError(f"{plat}.source must be url or local.")
+                if inst.get("source") not in ("url", "local", "update"):
+                    raise CatalogError(f"{plat}.source must be url, local or update.")
+                if inst["source"] == "update":           # P1: Catalog → Updates' newest file (U1)
+                    from .models import UpdateSource
+                    if not db.scalar(select(UpdateSource.id).where(UpdateSource.name == inst.get("update_source", ""))):
+                        raise CatalogError(f"{plat}.update_source must name a source in Catalog → Updates.")
                 if inst["source"] == "url" and not str(inst.get("url", "")).startswith(("http://", "https://")):
                     raise CatalogError(f"{plat}.url must be an http(s) URL.")
                 if inst["source"] == "local" and not inst.get("path"):
                     raise CatalogError(f"{plat}.path must name a file in the installers location.")
-                if plat == "windows" and inst.get("type") == "msi" and not inst.get("product_id"):
+                if plat == "windows" and inst.get("type") == "msi" and inst["source"] == "url" and not inst.get("product_id"):
                     raise CatalogError("windows.product_id (the MSI's product code) is needed to tell if it's installed.")
                 f = local_installer(db, inst)
                 if f is not None and not ostargets.covers_platform(f.targets or [], plat):
@@ -182,6 +190,39 @@ MAIL_SERVER = (
     "the recipients allowed there.",
     {"linux": {"role": "mailpit"}})
 
+# The round's applications (P1, question 171): Windows from Catalog → Updates' newest download (U1),
+# Chocolatey until one is there; Linux from the vendors' repositories. Claude Code through npm, kept
+# up to date weekly; none installed unless chosen. Added to existing catalogs by migration 0027.
+def _dotnet(ch: str, what: str, choco: str, linux: str) -> tuple:
+    names = {"runtime": "runtime", "hosting": "ASP.NET Core hosting bundle", "sdk": "SDK"}
+    linux_pkg = {"dnf": linux, "apt": {"package": linux, "repo": "microsoft-prod"}} if linux else {}
+    desc = {"runtime": "The .NET runtime.",
+            "hosting": "The ASP.NET Core runtime; on Windows the hosting bundle with the IIS module.",
+            "sdk": "The .NET SDK (build and run)."}[what]
+    return ("application", f"dotnet-{what}-{ch}", f".NET {ch} {names[what]}", desc,
+            {"windows": {"type": "exe", "source": "update", "update_source": f"dotnet-{ch}-{what}-win",
+                         "args": "/install /quiet /norestart"}, "chocolatey": choco, **linux_pkg})
+
+
+P1_APPS = [
+    *[_dotnet(ch, "runtime", f"dotnet-{ch}.0-runtime", f"dotnet-runtime-{ch}.0") for ch in ("8", "10")],
+    *[_dotnet(ch, "hosting", f"dotnet-{ch}.0-windowshosting", f"aspnetcore-runtime-{ch}.0") for ch in ("8", "10")],
+    *[_dotnet(ch, "sdk", f"dotnet-{ch}.0-sdk", f"dotnet-sdk-{ch}.0") for ch in ("8", "10")],
+    ("application", "chrome", "Google Chrome", "Google Chrome (enterprise MSI on Windows; Google's repository on Linux, x86-64).",
+     {"requires_gui": True, "windows": {"type": "msi", "source": "update", "update_source": "chrome-win"},
+      "chocolatey": "googlechrome", "dnf": {"package": "google-chrome-stable", "repo": "google"},
+      "apt": {"package": "google-chrome-stable", "repo": "google"}}),
+    ("application", "keepassxc", "KeePassXC", "The KeePassXC password manager.",
+     {"requires_gui": True, "windows": {"type": "msi", "source": "update", "update_source": "keepassxc-win"},
+      "chocolatey": "keepassxc", "dnf": {"package": "keepassxc", "repo": "epel"}, "apt": "keepassxc"}),
+    ("application", "putty", "PuTTY", "PuTTY, the SSH and telnet client.",
+     {"requires_gui": True, "windows": {"type": "msi", "source": "update", "update_source": "putty-win"},
+      "chocolatey": "putty", "dnf": {"package": "putty", "repo": "epel"}, "apt": "putty"}),
+    ("application", "claude-code", "Claude Code", "Anthropic's Claude Code CLI, system-wide through npm (Node.js "
+     "installed with it; Git too on Windows), updated weekly. Each person signs in with their own account.",
+     {"npm": "@anthropic-ai/claude-code"}),
+]
+
 # Starter catalog, published on first start (only when the catalog is empty).
 SEED = [
     ("service", "iis", "IIS web server", "Internet Information Services with the management console.",
@@ -200,6 +241,7 @@ SEED = [
      {"linux": {"packages": {"dnf": ["cockpit"], "apt": ["cockpit"]}, "units": ["cockpit.socket"]}}),
     SYSLOG_COLLECTOR,
     MAIL_SERVER,
+    *P1_APPS,
 ]
 
 

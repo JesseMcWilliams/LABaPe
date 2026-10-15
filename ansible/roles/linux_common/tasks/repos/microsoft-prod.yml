@@ -1,0 +1,20 @@
+---
+# Microsoft's product repository for the Debian family (P1: .NET); the RHEL family has .NET in
+# AppStream. Added once per host when a chosen package needs it.
+
+- name: Microsoft's signing key (apt/Debian family)
+  ansible.builtin.get_url:
+    url: https://packages.microsoft.com/keys/microsoft.asc
+    dest: /etc/apt/keyrings/microsoft-prod.asc
+    mode: "0644"
+  when: ansible_facts['pkg_mgr'] == 'apt'
+
+- name: Microsoft's product repo (apt/Debian family)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft-prod.asc]
+      https://packages.microsoft.com/{{ ansible_facts['distribution'] | lower }}/{{ ansible_facts['distribution_version'] if ansible_facts['distribution'] == 'Ubuntu' else ansible_facts['distribution_major_version'] }}/prod
+      {{ ansible_facts['distribution_release'] }} main
+    state: present
+    filename: microsoft-prod
+  when: ansible_facts['pkg_mgr'] == 'apt'
