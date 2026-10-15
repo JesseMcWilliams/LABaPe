@@ -8,6 +8,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- Every stack runs its own mail server, Mailpit, in the base install. Settings →
+  Email is set to it the first time the stack starts (unless you had set up
+  Email yourself), so alerts and job emails are caught and can be read with
+  nothing configured. **Admin → Mail** shows it, opens its web page (admins
+  only, at `/mail/`), sends a test email, and sets up forwarding to real inboxes
+  through an SMTP server you give it, for the addresses and domains you list.
 - The Python packages in the image are locked: `container/requirements.txt`
   pins every one (LABaPe's dependencies, Ansible and pywinrm) with hashes,
   for amd64 and arm64, and the image build installs from it, checking the
@@ -36,6 +42,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs between them, signs people in across linked stacks, and makes secrets something people and tests can use: every secret is checked and recovered where it can be, Windows VMs get a password of their own per account, environment secrets are on their page and in OpenBao (with its own sign-in), and the browser connects as any of the environment's accounts, RDP, SSH, xrdp or VNC. Environments can have a lab mail server (Mailpit); Catalog → Updates downloads new .NET, Chrome, KeePassXC and PuTTY versions weekly for offline installs; Claude Code is in the catalog; each KVM host keeps its files beside its VMs; and every list pages, filters and exports.
 
 ### Fixed
+- A changed Caddyfile reaches the running Caddy: the file is bind-mounted, so
+  replacing it (git, or `deploy-web.sh`) left the container on the old one.
+  The update agent and `deploy-web.sh` now recreate Caddy when they differ.
 - The image build retries the Packer plugin installs (a dropped connection
   made Packer crash and the build fail).
 - OpenBao's sign-in page offers **OIDC** (your LABaPe account), not only a

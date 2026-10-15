@@ -182,6 +182,39 @@ class PackageUpdateSettings(BaseModel):
     hour: int = Field(default=3, ge=0, le=23)
 
 
+class StackMailSettings(BaseModel):
+    """The stack's own mail server, Mailpit (design §52): what it keeps, and the relay that forwards mail outside.
+    Off (the default), it only catches what LABaPe sends. On, it forwards through `host` the recipients that
+    match `allow` (addresses, or @domain for a whole domain), or every recipient."""
+    relay: bool = False
+    host: str = Field(default="", max_length=253, pattern=r"^[A-Za-z0-9.-]*$")
+    port: int = Field(default=587, ge=1, le=65535)
+    security: Literal["none", "starttls", "ssl"] = "starttls"
+    verify_tls: bool = True
+    username: str = Field(default="", max_length=255)
+    auth: Literal["plain", "login"] = "plain"                       # used when there is a user name
+    forward: Literal["listed", "all"] = "listed"
+    allow: list[str] = Field(default=[], max_length=50)
+    override_from: str = Field(default="", max_length=255)          # replaces the From address (some relays need it)
+    keep_messages: int = Field(default=5000, ge=100, le=100000)
+    keep_days: int = Field(default=30, ge=1, le=3650)
+
+    @field_validator("username", "override_from")
+    @classmethod
+    def _one_line(cls, v: str) -> str:
+        if re.search(r"[\r\n\x00]", v):
+            raise ValueError("no line breaks")
+        return v.strip()
+
+    @field_validator("allow")
+    @classmethod
+    def _allow(cls, v: list[str]) -> list[str]:
+        bad = [a for a in v if not re.fullmatch(r"([A-Za-z0-9._%+-]+)?@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", a.strip())]
+        if bad:
+            raise ValueError(f"not an address or @domain: {', '.join(bad)}")
+        return sorted({a.strip().lower() for a in v})
+
+
 class LabMailRelaySettings(BaseModel):
     """M1 (question 169): the SMTP account the environments' mail servers (Mailpit) may forward through.
     Off by default; its own account, not Settings → Email's (the VMs' owners can read what's on them).
@@ -294,6 +327,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "file_distribution": FileDistributionSettings,
     "monitoring": MonitoringSettings,
     "lab_mail_relay": LabMailRelaySettings,
+    "stack_mail": StackMailSettings,
     "package_updates": PackageUpdateSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
@@ -303,6 +337,7 @@ SECRET_FIELDS = {
     "smtp": ("password", SMTP_PASSWORD_SECRET, "has_password"),
     "directory": ("token", DIRECTORY_TOKEN_SECRET, "has_token"),
     "lab_mail_relay": ("password", "settings/lab_mail_relay_password", "has_password"),
+    "stack_mail": ("password", "settings/stack_mail_password", "has_password"),
 }
 
 _cache: dict[str, tuple[float, BaseModel]] = {}

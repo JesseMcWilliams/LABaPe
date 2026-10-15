@@ -23,6 +23,7 @@ import NetworkDetail from "./pages/NetworkDetail";
 import FileDetail from "./pages/FileDetail";
 import TemplateDetail from "./pages/TemplateDetail";
 import Secrets from "./pages/Secrets";
+import Mail from "./pages/Mail";
 import SecretDetail from "./pages/SecretDetail";
 import AdminLayout, { ToAdmin } from "./pages/Admin";
 import RemoteSession from "./pages/RemoteSession";
@@ -174,6 +175,7 @@ export default function App() {
             <Route path="networks" element={<Networks />} />
             <Route path="networks/:id" element={<NetworkDetail />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="mail" element={<Mail />} />
             <Route path="secrets" element={<Secrets />} />
             <Route path="secrets/:id" element={<SecretDetail />} />
             <Route path="audit" element={<Audit />} />

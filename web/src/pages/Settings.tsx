@@ -610,7 +610,7 @@ export default function Settings() {
       <CollectorSection value={s.syslog_collector} onChange={(v) => set("syslog_collector", v)}
         onSave={async () => { await put("syslog_collector", s.syslog_collector); return "Syslog collector settings saved; the collector restarts within a minute."; }} />
 
-      <Section title="Email (SMTP)" intro="Used to email people when their jobs finish. The password is kept in the encrypted secrets store."
+      <Section title="Email (SMTP)" intro="Used to email people when their jobs finish, and by monitoring. By default this is the stack's own mail server (Admin → Mail), which keeps what it is sent and can forward it. The password is kept in the encrypted secrets store."
         onSave={async () => {
           await put("smtp", { ...s.smtp, ...(smtpPassword ? { password: smtpPassword } : {}) });
           setSmtpPassword("");

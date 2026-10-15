@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, notify, stores
+from .. import appsettings, notify, stack_mail, stores
 from ..db import get_db
 from ..errors import FieldError
 from ..files import roots
@@ -131,6 +131,11 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
     if section == "smtp" and model.enabled and (not model.host or "@" not in model.from_address):
         raise FieldError("from_address" if model.host else "host",
                          "Give the SMTP server and a From address (name@domain), or turn email off.")
+    if section == "stack_mail" and model.relay:
+        if not model.host:
+            raise FieldError("host", "Give the SMTP server Mailpit forwards through, or turn forwarding off.")
+        if model.username and not (value or get_secret(db, secret)):
+            raise FieldError("password", "Give the password for that user name, or clear the user name.")
     if section.startswith("store_") and model.enabled and not model.url:
         raise FieldError("url", "Give the store's https:// address, or turn it off.")
     if section == "secret_stores" and model.default_environment_store not in stores.available(db):
@@ -143,6 +148,8 @@ def put_settings(section: str, body: dict, request: Request, db: Session = Depen
         syslogstack.render(model)          # the collector picks it up within seconds; certificates follow in the worker
     if secret and (value or clear):
         put_secret(db, secret, "" if clear else value)
+    if section == "stack_mail":
+        stack_mail.apply(db)               # Mailpit restarts with the new options within seconds (design §52)
     detail = model.model_dump()
     if field:
         detail[f"{field}_changed"] = bool(value or clear)

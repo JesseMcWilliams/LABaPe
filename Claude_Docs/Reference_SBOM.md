@@ -10,7 +10,7 @@
 | | |
 |---|---|
 | Version | LABaPe 0.4.0 (`app/pyproject.toml`, `web/package.json`) |
-| Captured | 2026-10-15, from the lab stack's worker container (labape:local, built as v0.4.0-12-gd502a74-dirty) and the images it runs. A release captures it from a clean `main` (`tools/helpers/release.sh`) |
+| Captured | 2026-10-15, from the lab stack's worker container (labape:local, built as v0.4.0-14-g98da950-dirty) and the images it runs. A release captures it from a clean `main` (`tools/helpers/release.sh`) |
 | Python | **Locked**: `container/requirements.txt` pins every package the image installs, with hashes (`tools/helpers/lock-python.sh`; `app/pyproject.toml` declares only lower bounds). The "installed" versions below are what the lab image has; 52 packages (3 from Debian, 49 from pip) |
 | Web (npm) | `web/package-lock.json`: 208 packages, every version and integrity hash (110 are bundled into the UI, 98 are build tooling only; the image carries just the built files) |
 | Images, tools | Pins from `container/Dockerfile`, `container/compose.yaml` and `tools/authentik-test/compose.yaml`; image digests as pulled on the lab |
@@ -19,9 +19,9 @@
 | Not covered | Operating-system ISOs and VM templates you supply (Windows Server, Rocky, Debian); what runs *inside* an environment's VMs beyond section 9; the lab hosts' own operating systems |
 
 Summary: 52 Python, 208 npm, 22 explicitly installed Debian packages
-(of 266 in the worker image and 116 in the syslog image), 11 third-party images,
+(of 266 in the worker image and 116 in the syslog image), 12 third-party images,
 4 engine tools, 5 Ansible collections, 4 OpenTofu providers, 2 Packer plugins.
-CycloneDX components: 305.
+CycloneDX components: 306.
 
 ## 2. How the pieces fit
 
@@ -382,6 +382,7 @@ Licenses across all 208 locked packages: MIT 188, ISC 10, BSD-3-Clause 5, Apache
 | `smallstep/step-ca:0.30.2` | sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270 | The platform certificate authority | Apache-2.0 | container/compose.yaml |  |
 | `guacamole/guacd:1.6.0` | sha256:8974eaa9ba32f713daf311e7cc8cd7e4cdfba1edea39eed75524e78ef4b08f4f | Guacamole proxy daemon for browser RDP/SSH/VNC | Apache-2.0 | container/compose.yaml |  |
 | `postgres:17-alpine` | sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 | LABaPe's database, the syslog collector's and Conjur's | PostgreSQL | container/compose.yaml | Three separate containers. |
+| `axllent/mailpit:v1.31.5` | sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea | The stack's mail server: catches LABaPe's email, web page for admins at /mail/, optional forwarding | MIT | container/compose.yaml | Alpine-based; run through container/mailpit/supervise.sh, which restarts it when Admin → Mail changes its options. Not published on the host. |
 | `openbao/openbao:2.7.1` | sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf | The secret store (platform secrets, environment secrets, VM sign-in) | MPL-2.0 | container/compose.yaml |  |
 | `cyberark/conjur:1.27.0` | sha256:6f1af820eea9c4edd3506c7d2a61ec3097daf65196d37578b7624a9eda3f15f4 | Optional second secret store (Conjur Open Source) | LGPL-3.0 | container/compose.yaml | Optional (`LABAPE_CONJUR=no` leaves it out). |
 | `nginx:1.28-alpine` | sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236 | TLS front for Conjur | BSD-2-Clause | container/compose.yaml | Optional, with Conjur. |

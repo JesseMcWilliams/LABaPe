@@ -69,3 +69,5 @@ def _seed() -> None:
         seed(db, str(get_settings().engine_dir / "ansible" / "package_catalog.yml"))
         from .engine import package_updates
         package_updates.seed(db)                     # Catalog → Updates' first sources (U1)
+        from . import stack_mail
+        stack_mail.startup(db)                       # Settings -> Email to the stack's Mailpit, and its options (design §52)

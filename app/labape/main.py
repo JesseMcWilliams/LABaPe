@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api import (admin, auth, ca, catalog, dashboard, directory, env_secrets, environments, files, package_updates, hosts, jobs, links,
+from .api import (admin, auth, ca, catalog, dashboard, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
                   maintenance, metrics, networks, quotas, remote, reports, secrets, settings, syslog, templates, tokens,
                   update)
 from . import maintenance_mode
@@ -53,7 +53,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=s.secret_key, session_cookie="labape_session",
                        max_age=s.session_hours * 3600, same_site="lax", https_only=public.scheme == "https")
 
-    for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, env_secrets.router, package_updates.router, jobs.router,
+    for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, env_secrets.router, mail.router, package_updates.router, jobs.router,
               admin.router, reports.router, files.router, catalog.router, settings.router, directory.router,
               dashboard.router, settings.public_router, ca.router, maintenance.router, secrets.router,
               update.router, remote.router, syslog.router, links.router, tokens.router, metrics.router, quotas.router):

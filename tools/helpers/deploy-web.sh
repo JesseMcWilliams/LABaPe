@@ -35,7 +35,12 @@ git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; R=$L
   if ! docker compose build labape-syslog >> /tmp/labape-build.log 2>&1; then
     echo "syslog image build=FAILED (full log: /tmp/labape-build.log on the lab host)"; tail -20 /tmp/labape-build.log; exit 1
   fi
-  docker compose up -d labape-syslog-db labape-syslog >/dev/null 2>&1
+  docker compose up -d labape-syslog-db labape-syslog labape-mailpit >/dev/null 2>&1
   docker compose up -d --force-recreate labape-api labape-worker >/dev/null 2>&1
   docker compose up -d caddy >/dev/null 2>&1          # picks up compose changes (ports, environment)
+  # The Caddyfile is bind-mounted and tar replaced it (a new inode): the container still has the old one, and a
+  # reload re-reads that. Recreate Caddy when the file it sees differs.
+  CF="$(grep -m1 "^LABAPE_CADDYFILE=" .env | cut -d= -f2-)"; CF="${CF:-Caddyfile}"
+  docker compose exec -T caddy cat /etc/caddy/Caddyfile 2>/dev/null | cmp -s - "caddy/$CF" \
+    || docker compose up -d --force-recreate caddy >/dev/null 2>&1
   sleep 15; curl -sk "$U/api/health"; echo'
