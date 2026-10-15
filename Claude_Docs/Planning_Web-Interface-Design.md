@@ -1894,3 +1894,7 @@ Questions 167-173. Built batch by batch.
 | The hosts' own logs | Already built for KVM hosts (§29.1, `host.log_forwarding`, on by default at install). The stack host registered as `pi1` (Director) wasn't forwarding; turned on 2026-10-15 (`tools/helpers/live/host_logs.py`). |
 | Deploy | A changed log driver recreates every container. `deploy-web.sh` now runs a plain `compose up -d` and then `stores.sh unseal` (a recreated OpenBao is sealed); the update agent already does both (§53.1 fix). |
 | Verified | OZ: all 12 containers (and Authentik) on the syslog driver; the collector holds their messages with the host name `OZ`. |
+
+### 53.3 Container admin links (C1, built)
+
+`StackSection` (`HostSections.tsx`) adds an **Admin page** column. `adminPageFor` maps a container name to its page: Mailpit `https://<stack>/mail/`, OpenBao `https://<stack>:8200/ui/` (token sign-in; the root token's location, and the tunnel hint because the stores listen on 127.0.0.1 by default), Authentik `https://<stack>:9445/if/admin/` (akadmin; the bootstrap password's location), the syslog collector -> LABaPe's `/syslog`. Postgres, the CA, Caddy, Conjur (API only), guacd, API and worker have no page and show a dash. The button opens a dialog with the sign-in steps; **Open in a new tab** uses `window.open(..., "noopener,noreferrer")`. Only locations of secrets are shown, never the secrets. The stack's address is the host's stack address, or this page's own host name for the stack it runs on.

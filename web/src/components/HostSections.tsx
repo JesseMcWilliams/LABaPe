@@ -36,6 +36,64 @@ export const sectionsFor = (role: string | undefined) =>
 const ago2 = (iso?: string | null) => (iso ? fmtTime(iso) : "—");
 
 /** A stack host (design §30): containers, volumes, and this stack's own checks or another stack's probe. */
+interface AdminPage { title: string; url: string; steps: ReactNode[]; note?: string }
+
+/** The web interface some of a stack's containers have (design §53.3), by container name; none for the rest. */
+function adminPageFor(name: string, host: string): AdminPage | null {
+  if (/(^|-)mailpit(-\d+)?$/.test(name)) {
+    return { title: "Mailpit (the stack's mail server)", url: `https://${host}/mail/`, steps: [
+      "Sign in to LABaPe first, as an administrator: Mailpit has no login of its own, it is served behind LABaPe's own sign-in and only admins get through.",
+      "The page lists every message the stack sent. Admin → Mail (in LABaPe) sets what it forwards to real inboxes.",
+    ] };
+  }
+  if (/(^|-)openbao(-\d+)?$/.test(name)) {
+    return { title: "OpenBao (a secret store)", url: `https://${host}:8200/ui/`, steps: [
+      "On the sign-in page choose Method: Token.",
+      <>The root token is a file on the stack host, readable only by the service user and root: <code>container/stores/secrets/openbao_root_token</code> in the stack&apos;s folder (for example <code>sudo -u labape cat /opt/LABaPe/container/stores/secrets/openbao_root_token</code>). Don&apos;t paste it anywhere else.</>,
+      "The address is on the stack host's own network only by default (the stores listen on 127.0.0.1). From your computer, open a tunnel first: ssh -L 8200:127.0.0.1:8200 <your user>@" + host + ", then open https://127.0.0.1:8200/ui/ (the certificate comes from the platform CA).",
+    ], note: "The page is the stack's secret store: change nothing there that LABaPe manages (the secrets and policies it wrote)." };
+  }
+  if (/^authentik-test-server(-\d+)?$/.test(name)) {
+    return { title: "Authentik (sign-in provider)", url: `https://${host}:9445/if/admin/`, steps: [
+      "Sign in as the user akadmin.",
+      <>The first password is <code>AUTHENTIK_BOOTSTRAP_PASSWORD</code> in <code>tools/authentik-test/.env</code> on the stack host (not shown here). If it has been changed since, use the new one.</>,
+      "The certificate comes from the platform CA: install its root (LABaPe dashboard → Download the root certificate) to stop the browser warning.",
+    ] };
+  }
+  if (/(^|-)syslog(-\d+)?$/.test(name)) {
+    return { title: "Syslog collector", url: "/syslog", steps: [
+      "The collector has no page of its own. What it received is in LABaPe's Syslog page (admins and auditors), with search and export.",
+    ] };
+  }
+  return null;
+}
+
+function AdminPageButton({ name, host }: { name: string; host: string }) {
+  const [open, setOpen] = useState(false);
+  const page = adminPageFor(name, host);
+  if (!page) return <Typography variant="body2" color="text.secondary" title="This container has no web page">—</Typography>;
+  return (
+    <>
+      <Button size="small" onClick={() => setOpen(true)} title="How to sign in, then open its admin page in a new tab">Admin page</Button>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{page.title}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1}>
+            <Typography variant="body2">Signing in:</Typography>
+            <Box component="ol" sx={{ m: 0, pl: 3 }}>{page.steps.map((x, i) => <li key={i}><Typography variant="body2" component="span">{x}</Typography></li>)}</Box>
+            {page.note && <Alert severity="info">{page.note}</Alert>}
+            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>{page.url}</Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Close</Button>
+          <Button variant="contained" onClick={() => { window.open(page.url, "_blank", "noopener,noreferrer"); setOpen(false); }}>Open in a new tab</Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
 export function StackSection({ view }: { view: AdminView }) {
   const st = view.stack;
   if (!st) return <Alert severity="info">This host doesn&apos;t run a LABaPe stack (Settings → Role).</Alert>;
@@ -43,6 +101,9 @@ export function StackSection({ view }: { view: AdminView }) {
   const containers: Any[] = s.containers ?? [];
   const me = s.self;
   const peer = s.peer;
+  const web = (() => {                                 // the address to reach this stack's pages at
+    try { return view.host.stack_url ? new URL(view.host.stack_url).hostname : window.location.hostname; } catch { return window.location.hostname; }
+  })();
   return (
     <Stack spacing={2}>
       {(st.alerts ?? []).map((a: Any, i: number) => <Alert key={i} severity={a.level === "error" ? "error" : "warning"}>{a.message} (since {fmtTime(a.started_at)})</Alert>)}
@@ -66,7 +127,7 @@ export function StackSection({ view }: { view: AdminView }) {
       )}
       {containers.length > 0 ? (
         <Table size="small">
-          <TableHead><TableRow><TableCell>Container</TableCell><TableCell>State</TableCell><TableCell>Health</TableCell><TableCell>Restarts</TableCell><TableCell>Image</TableCell></TableRow></TableHead>
+          <TableHead><TableRow><TableCell>Container</TableCell><TableCell>State</TableCell><TableCell>Health</TableCell><TableCell>Restarts</TableCell><TableCell>Image</TableCell><TableCell>Admin page</TableCell></TableRow></TableHead>
           <TableBody>
             {containers.map((c) => (
               <TableRow key={c.name}>
@@ -74,6 +135,7 @@ export function StackSection({ view }: { view: AdminView }) {
                 <TableCell><Chip size="small" label={c.state} color={c.state === "running" ? "success" : "error"} /></TableCell>
                 <TableCell>{c.health || "—"}</TableCell><TableCell>{c.restarts}</TableCell>
                 <TableCell sx={{ fontSize: 12 }}>{c.image}</TableCell>
+                <TableCell><AdminPageButton name={c.name} host={web} /></TableCell>
               </TableRow>
             ))}
           </TableBody>

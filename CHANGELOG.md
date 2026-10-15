@@ -12,6 +12,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and forwarding to real inboxes; alerts default to its inbox. The project is licensed AGPL-3.0-only, the Python dependencies are locked with hashes, and the software bill of materials is regenerated on every release. Updates now recreate Caddy when its bind-mounted Caddyfile changed.
 
 ### Added
+- The Stack section of a stack host has an **Admin page** button per container that has a web interface (Mailpit, OpenBao, Authentik, and the syslog collector's Syslog page): a popup says how to sign in, then the page opens in a new tab.
 - Every stack container (and the throwaway Authentik) sends its output to the stack's syslog collector through Docker's syslog log driver; Podman installs and installs without the collector log locally instead (the installer's `compose.override.yaml`). `deploy-web.sh` unseals OpenBao after recreating services.
 - KVM host Dashboard: **Update** (apt or dnf upgrade) and **Reboot**, each after a confirmation, run as jobs. A reboot waits for the host's running jobs and keeps new ones off it.
 - The Audit log and User errors pages are paged like the other lists (rows per page from your profile, previous/next, the total); the API takes `offset` and returns the total (`X-Total-Count` on the audit log, `total` in the errors).
