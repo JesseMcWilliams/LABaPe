@@ -21,7 +21,7 @@ from ..db import get_db
 from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
-from ..engine import hostadmin
+from ..engine import hostadmin, hostpower
 from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
@@ -388,6 +388,50 @@ def log_forwarding(host_id: int, body: LogForwardIn, request: Request, db: Sessi
     audit(db, p.username, "host.log_forwarding", object_type="kvm_host", object_id=h.id,
           detail={"enabled": body.enabled}, source_ip=client_ip(request))
     return _out(h)
+
+
+@router.get("/{host_id}/os-updates")
+def os_updates(host_id: int, db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
+    """What the Update and Reboot confirmations show: the packages waiting (by the lists as they are now),
+    whether a reboot is already needed, the jobs running on the host, and whether this stack runs on it."""
+    from ..engine import stackmon
+    h = _host(db, host_id)
+    try:
+        out = hostpower.pending(h)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
+        raise FieldError("host", str(exc)) from exc
+    out["running_jobs"] = db.scalar(select(func.count()).select_from(Job).where(
+        Job.kvm_host_id == h.id, Job.state == "running")) or 0
+    out["is_stack_host"] = stackmon.is_self(h)
+    return out
+
+
+def _queue_host_job(db: Session, h: KvmHost, jtype: str, request: Request, p: Principal) -> dict:
+    if h.access_status != "ready":
+        raise FieldError("access", "Set up SSH access to this host first.")
+    busy = db.scalar(select(Job).where(Job.kvm_host_id == h.id, Job.type.in_(("host.update", "host.reboot")),
+                                       Job.state.in_(("queued", "running"))))
+    if busy:
+        raise HTTPException(status_code=409, detail=f"Job {busy.id} ({busy.type.removeprefix('host.')}) is already queued or running on this host")
+    job = Job(type=jtype, params={}, kvm_host_id=h.id, requested_by=p.username)
+    db.add(job)
+    db.commit()
+    audit(db, p.username, jtype, object_type="kvm_host", object_id=h.id, detail={"job": job.id}, source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
+@router.post("/{host_id}/os-update")
+def os_update(host_id: int, request: Request, db: Session = Depends(get_db),
+              p: Principal = Depends(require_roles("admin"))):
+    """Update the host's packages (apt upgrade or dnf upgrade) as a job (design §53)."""
+    return _queue_host_job(db, _host(db, host_id), "host.update", request, p)
+
+
+@router.post("/{host_id}/reboot")
+def reboot_host(host_id: int, request: Request, db: Session = Depends(get_db),
+                p: Principal = Depends(require_roles("admin"))):
+    """Reboot the host as a job: it waits for the host's running jobs, then reboots (design §53)."""
+    return _queue_host_job(db, _host(db, host_id), "host.reboot", request, p)
 
 
 class NetworkAnswer(BaseModel):

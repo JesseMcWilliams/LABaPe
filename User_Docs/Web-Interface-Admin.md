@@ -69,6 +69,11 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 
 **Roles.** Each host is a **KVM** host (runs VMs), a **stack** host (runs a LABaPe stack only, such as a Raspberry Pi), or **both**. A stack host has a **Stack address** (its web address) and a **Stack** section instead of VMs; Prepare isn't offered for stack-only hosts.
 
+**Update and Reboot.** The host's Dashboard has **Update** and **Reboot** buttons, each asking you to confirm first and then following the job.
+- **Update** runs the normal package update (`apt-get update` then `apt-get upgrade`, or `dnf upgrade`; never a release upgrade). The confirmation lists the packages waiting by the host's package lists as they are now; the job refreshes the lists first.
+- **Reboot** waits until no other job is running on that host (and no new job starts there meanwhile), then reboots about a minute later. For a KVM host, LABaPe waits for it to come back and refreshes its facts. On the host this stack runs on, LABaPe is offline until it returns. Running VMs stop with the host.
+- **A reboot from the host itself** (`reboot`, `sudo shutdown`) is not held back by LABaPe: Linux lets root reboot past any lock. Use the Reboot button when jobs may be running.
+
 **A host's page** has sections on the left: **Dashboard** (warnings such as failed disks, heat, nearly full filesystems, failed services, pending reboots; key facts; 24-hour trends), **Drives and volumes** (loop devices hidden unless you tick **Show loop devices**), **NICs**, **OS**, **Accounts**, **Groups**, **VMs** or **Stack**, **SSH access** and **Settings**.
 - **SSH access → Set up access**: give an existing admin login on the host once. LABaPe signs in with it, creates its own access account there (default `localadmin01`: key only, its password locked, passwordless sudo), checks it, and from then on reads facts hourly, metrics every 5 minutes (kept 7 days) and disk health daily. The password you typed is used once and never stored. A host whose SSH allows only keys refuses a password; turn password sign-in on for the setup, or add the key by hand.
 - **Accounts** and **Groups**: add accounts (with groups and an optional SSH key), set passwords, lock, unlock and delete; add groups and members. Root and the access account are protected. Every change is audited.

@@ -9,7 +9,7 @@ import {
 } from "@mui/material";
 import { api, fmtTime, KvmHost, Network } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
-import { ActionButton } from "./Confirm";
+import { ActionButton, useConfirm } from "./Confirm";
 import { Facts } from "./PageParts";
 import Sparkline from "./Sparkline";
 import { ConnectButton } from "./Connect";
@@ -135,6 +135,67 @@ function Collected({ view, onRefresh }: { view: AdminView; onRefresh: () => Prom
   );
 }
 
+interface OsUpdates { manager: string; packages: string[]; reboot_required: boolean; running_jobs: number; is_stack_host: boolean }
+
+/** Update (apt/dnf upgrade) and Reboot for the host, each after a confirmation that shows what will happen (design §53). */
+function PowerActions({ hostId, name }: { hostId: number; name: string }) {
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const go = async (kind: "update" | "reboot") => {
+    setError("");
+    setBusy(true);
+    try {
+      const info = await api.get<OsUpdates>(`/api/hosts/${hostId}/os-updates`);
+      const shown = info.packages.slice(0, 40);
+      const ok = await confirm(kind === "update" ? {
+        title: `Update the packages on ${name}?`, confirmLabel: "Update",
+        body: (
+          <Stack spacing={1}>
+            <Typography variant="body2">
+              Runs the normal update ({info.manager === "dnf" ? "dnf upgrade" : "apt-get update, then apt-get upgrade"}; no release upgrade) as a job you can follow.
+              {info.running_jobs > 0 && ` ${info.running_jobs} job${info.running_jobs === 1 ? " is" : "s are"} running on this host; updates can briefly slow them.`}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {info.packages.length ? `${info.packages.length} package${info.packages.length === 1 ? "" : "s"} waiting by the package lists as they are now (the job refreshes the lists first):` : "The package lists as they are now show nothing waiting; the job refreshes them first."}
+            </Typography>
+            {shown.length > 0 && <Box component="pre" sx={{ m: 0, maxHeight: 220, overflow: "auto", fontSize: 12 }}>{[...shown, ...(info.packages.length > shown.length ? [`… and ${info.packages.length - shown.length} more`] : [])].map((l) => <div key={l}>{l}</div>)}</Box>}
+          </Stack>),
+      } : {
+        title: `Reboot ${name}?`, confirmLabel: "Reboot", danger: true,
+        body: (
+          <Stack spacing={1}>
+            <Typography variant="body2">
+              The host reboots about a minute after the job gets its turn. Its running VMs stop and start again with the host (if they are set to).
+              {info.running_jobs > 0 ? ` ${info.running_jobs} job${info.running_jobs === 1 ? " is" : "s are"} running on it: the reboot waits for ${info.running_jobs === 1 ? "it" : "them"} to finish and no new job starts on this host meanwhile.` : " No job is running on it now."}
+            </Typography>
+            {info.reboot_required && <Alert severity="info">The host says a reboot is needed (for example after a kernel update).</Alert>}
+            {info.is_stack_host && <Alert severity="warning">This stack runs on this host: LABaPe is offline until it is back.</Alert>}
+          </Stack>),
+      });
+      if (!ok) return;
+      const r = await api.post<{ job_id: number }>(`/api/hosts/${hostId}/${kind === "update" ? "os-update" : "reboot"}`);
+      navigate(`/jobs/${r.job_id}`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack spacing={1}>
+      <Stack direction="row" spacing={1}>
+        <Button variant="outlined" size="small" disabled={busy} onClick={() => go("update")}
+          title="Update the host's packages (asks to confirm first)">Update</Button>
+        <Button variant="outlined" size="small" color="warning" disabled={busy} onClick={() => go("reboot")}
+          title="Reboot the host, after its running jobs (asks to confirm first)">Reboot</Button>
+      </Stack>
+      {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
+    </Stack>
+  );
+}
+
 export function DashboardSection({ view }: { view: AdminView }) {
   const os = view.facts?.os ?? {};
   const s = view.series;
@@ -150,6 +211,7 @@ export function DashboardSection({ view }: { view: AdminView }) {
         ["Up", ago(os.uptime_seconds)], ["Load", (os.load ?? []).join(" · ") || "—"],
         ["Updates", os.updates == null ? "—" : `${os.updates} available${os.reboot_required ? " · reboot required" : ""}`],
       ]} />
+      <PowerActions hostId={view.host.id} name={view.host.name} />
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="subtitle2" gutterBottom>Last 24 hours (every 5 minutes)</Typography>
         <Table size="small">
