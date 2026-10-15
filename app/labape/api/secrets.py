@@ -210,6 +210,10 @@ def classify(name: str, envs: dict[int, Environment]) -> dict:
         here = {"section": "environments", "environment_id": int(m.group(1)),
                 "environment": env.name if env else f"#{m.group(1)} (gone)",
                 "environment_status": env.status if env else "gone"}
+        if parts[0] == "user":                              # stored by the owners, shared (V1)
+            return {**here, "vms": [], "scope": "", "type": "secret", "attempt": False, "owners": True}
+        if parts[0] == "uservm" and len(parts) >= 3:          # stored by the owners for one VM (V1)
+            return {**here, "vms": [parts[1]], "scope": "", "type": "secret", "attempt": False, "owners": True}
         if parts[0] == "vm" and len(parts) >= 3:          # a VM's own (A2): vm/<vm>/<kind> or vm/<vm>/account/<name>
             rest = "/".join(parts[2:])
             scope = "local"

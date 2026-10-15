@@ -212,7 +212,8 @@ With the stores in the stack (`container/stores/`), LABaPe owns their logins, so
 **Where secrets live.** **Secrets → Stored secrets** lists every stored secret: its name, its store, the rotation that changes it (with a link to its page) and the elevated account that rotation uses. Values are never shown.
 - **Move**: tick secrets, choose **Move to** and confirm. LABaPe copies each one, reads it back, switches to the new copy, then deletes the old one. If any step fails, that secret stays where it was and the result says why.
 - A secret's page has a **Store** field too: saving a new store moves that secret.
-- **Settings → Secret stores → Default store** decides where new environment secrets go (inventories, credential sheets, rotated passwords). Existing ones stay until you move them.
+- **Settings → Secret stores → Default store** decides where an environment's first secrets go (inventories, credential sheets, rotated passwords); later ones join the store that environment's secrets are in, so move an environment's secrets together. Existing ones stay until you move them.
+- **In OpenBao** each environment has a folder: `env/<environment>/accounts/` (what LABaPe generates), `env/<environment>/user/` and `env/<environment>/vm/<vm>/` (what owners store on the environment's page). Secrets stored before this layout move there the next time they're read.
 - The stores' own logins, elevated accounts and one-time job tokens always stay in the built-in store, since LABaPe needs them to reach the others.
 
 Once a secret is in an external store, LABaPe reads it from there every time it's used. If the store is down, whatever needs that secret fails with the store's error, such as a deploy that needs the environment's inventory. LABaPe never falls back to an old copy.

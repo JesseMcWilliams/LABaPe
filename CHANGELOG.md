@@ -41,6 +41,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- An environment's secrets on its page: owners and admins see every
+  secret of the environment, show or copy any (each audited), and store,
+  replace or delete their own, for the whole environment or one VM. In
+  OpenBao each environment's secrets sit in a folder of their own,
+  `env/<environment>/` (`accounts/` for LABaPe's, `user/` and `vm/<vm>/`
+  for the owners'); existing ones move there the next time they're read.
+  A new secret joins its environment's store.
 - A password of its own per VM: each Windows member server's
   Administrator and `labape-admin2`, and each of the environment's own
   local accounts on each VM, get a unique password, stored per VM. A

@@ -17,13 +17,14 @@ from sqlalchemy.orm import Session
 from .. import appsettings
 from ..models import Secret, SecretPolicy
 from ..security import audit, decrypt_value, encrypt_value, get_secret, pinned
+from . import layout
 from .base import SecretStore, StoreError
 from .builtin import BuiltinStore
 from .conjur import ConjurStore
 from .openbao import OpenBaoStore
 
-__all__ = ["SecretStore", "StoreError", "available", "check", "configured", "credential_secret", "move", "open_store",
-           "providers"]
+__all__ = ["SecretStore", "StoreError", "available", "check", "configured", "credential_secret", "ext_delete", "ext_get",
+           "ext_put", "move", "open_store", "providers"]
 
 _BUNDLED: dict[str, type[SecretStore]] = {"builtin": BuiltinStore, "openbao": OpenBaoStore, "conjur": ConjurStore}
 _providers: dict[str, type[SecretStore]] | None = None
@@ -110,6 +111,37 @@ def forget(name: str) -> None:
     _checks.pop(name, None)
 
 
+def ext_get(db: Session, store: str, name: str) -> str | None:
+    """A secret from an external store, at its place in the store's layout (layout.py). One still under
+    its name from before the layout is moved there on the way."""
+    s, path = open_store(db, store), layout.store_name(db, store, name)
+    value = s.get(path)
+    if value is None and path != name:
+        value = s.get(name)
+        if value is not None:
+            s.put(path, value)
+            if s.get(path) == value:
+                s.delete(name)
+    return value
+
+
+def ext_put(db: Session, store: str, name: str, value: str) -> None:
+    s, path = open_store(db, store), layout.store_name(db, store, name)
+    s.put(path, value)
+    if path != name:
+        try:
+            s.delete(name)            # a copy from before the layout, if any
+        except StoreError:
+            pass
+
+
+def ext_delete(db: Session, store: str, name: str) -> None:
+    s, path = open_store(db, store), layout.store_name(db, store, name)
+    s.delete(path)
+    if path != name:
+        s.delete(name)
+
+
 def move(db: Session, name: str, target: str, actor: str = "system", *, source_ip: str = "") -> str:
     """Move one secret to another store (design §25): read it, write it there,
     read it back, point the catalog row at the new store, then delete the old
@@ -134,9 +166,8 @@ def move(db: Session, name: str, target: str, actor: str = "system", *, source_i
         if decrypt_value(db, token) != value:
             raise StoreError(f"{name} didn't read back after encrypting; it stays in {_label(source)}")
     else:
-        dest = open_store(db, target)
-        dest.put(name, value)
-        if dest.get(name) != value:
+        ext_put(db, target, name, value)
+        if ext_get(db, target, name) != value:
             raise StoreError(f"{name} didn't read back from {_label(target)}; it stays in {_label(source)}")
         token = ""
     row.store, row.value = target, token
@@ -144,7 +175,7 @@ def move(db: Session, name: str, target: str, actor: str = "system", *, source_i
     note = ""
     if source != "builtin":
         try:
-            open_store(db, source).delete(name)
+            ext_delete(db, source, name)
         except StoreError as exc:
             note = f"; the old copy is still in {_label(source)} ({exc})"
     if row.policy_id:

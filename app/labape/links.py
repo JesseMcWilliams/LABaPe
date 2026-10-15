@@ -74,9 +74,9 @@ def _drop_secret(db: Session, name: str) -> None:
     if row is None:
         return
     if row.store != "builtin":
-        from .stores import open_store
+        from .stores import ext_delete
         try:
-            open_store(db, row.store).delete(name)
+            ext_delete(db, row.store, name)
         except Exception:  # noqa: BLE001 — the row goes anyway; the store keeps an orphan
             pass
     db.delete(row)
