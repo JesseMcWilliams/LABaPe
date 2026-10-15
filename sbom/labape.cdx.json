@@ -9557,6 +9557,36 @@
    ]
   },
   {
+   "bom-ref": "image:axllent/mailpit:v1.31.5",
+   "type": "container",
+   "name": "axllent/mailpit:v1.31.5",
+   "version": "v1.31.5",
+   "purl": "pkg:oci/mailpit@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea?repository_url=axllent/mailpit&tag=v1.31.5",
+   "description": "The stack's mail server: catches LABaPe's email, web page for admins at /mail/, optional forwarding",
+   "licenses": [
+    {
+     "license": {
+      "id": "MIT"
+     }
+    }
+   ],
+   "scope": "required",
+   "properties": [
+    {
+     "name": "labape:group",
+     "value": "container images"
+    },
+    {
+     "name": "labape:declared-in",
+     "value": "container/compose.yaml"
+    },
+    {
+     "name": "labape:digest",
+     "value": "sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea"
+    }
+   ]
+  },
+  {
    "bom-ref": "image:openbao/openbao:2.7.1",
    "type": "container",
    "name": "openbao/openbao:2.7.1",
@@ -9834,6 +9864,10 @@
   },
   {
    "ref": "deb:xorriso@1.5.6-1.2+b1",
+   "dependsOn": []
+  },
+  {
+   "ref": "image:axllent/mailpit:v1.31.5",
    "dependsOn": []
   },
   {

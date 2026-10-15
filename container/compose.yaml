@@ -39,6 +39,12 @@ x-labape: &labape
     LABAPE_CA_PUBLIC_URL: https://${LABAPE_HOSTNAME}:${LABAPE_CA_PORT:-9444}
     LABAPE_CA_ROOT: /var/lib/labape-ca/certs/root_ca.crt
     LABAPE_CA_PASSWORD_FILE: /run/secrets/ca_password
+    # The stack's mail server (design §52): Settings -> Email defaults to it, and Admin -> Mail
+    # writes its relay options into the shared folder (labape-mailpit-config).
+    LABAPE_MAIL_HOST: labape-mailpit
+    LABAPE_MAIL_PORT: "1025"
+    LABAPE_MAILPIT_URL: http://labape-mailpit:8025/mail
+    LABAPE_MAILPIT_CONFIG: /var/lib/labape-mailpit
   secrets: [database_url, tofu_pg_conn, secret_key, oidc_client_secret, ca_password]
   volumes:
     - labape-data:/var/lib/labape
@@ -61,6 +67,31 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # The stack's mail server (design §52): Mailpit catches what LABaPe sends (alerts, job emails) and shows
+  # it in a web page (Admin -> Mail opens it, behind Caddy at /mail/ for admins). It can forward chosen
+  # recipients through a real SMTP server: Admin -> Mail sets that, and supervise.sh restarts Mailpit with the
+  # new options. Reachable inside the stack only (SMTP 1025, UI 8025); not published on the host.
+  labape-mailpit:
+    image: docker.io/axllent/mailpit:v1.31.5
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/usr/local/bin/labape-mailpit.sh"]
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_BIND_ADDR: 0.0.0.0:1025
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+      MP_WEBROOT: /mail
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    volumes:
+      - labape-mailpit-data:/data
+      - labape-mailpit-config:/config
+      - ./mailpit/supervise.sh:/usr/local/bin/labape-mailpit.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8025/mail/livez"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   # The platform CA (design §22.5): step-ca, initialized on first start by ca/init.sh.
   labape-ca:
@@ -103,6 +134,8 @@ services:
       - labape-syslog-run:/run/syslog-db
       - labape-syslog-conf:/var/lib/labape-syslog/conf
       - labape-syslog-tls:/var/lib/labape-syslog/tls
+      # The stack's mail server (design §52): the API writes Mailpit's options here.
+      - labape-mailpit-config:/var/lib/labape-mailpit
 
   # Browser SSH/RDP/VNC (design §28.5, question 116): guacd behind the API's own
   # tunnel. Never published: only the API talks to it, with the credentials it
@@ -300,6 +333,8 @@ volumes:
   labape-syslog-spool:
   postgres-data:
   labape-data:
+  labape-mailpit-data:
+  labape-mailpit-config:
   labape-ca:
   caddy-data:
   caddy-config:

@@ -624,6 +624,7 @@
   "hashicorp/qemu": "1.1.7"
  },
  "images": {
+  "axllent/mailpit:v1.31.5": "sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea",
   "caddy:2": "sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772",
   "cyberark/conjur:1.27.0": "sha256:6f1af820eea9c4edd3506c7d2a61ec3097daf65196d37578b7624a9eda3f15f4",
   "ghcr.io/goauthentik/server:2026.8.3": "sha256:ab9b4e8cc4ab3f8d1198d2db6aeea66bafea1963b3f2843589e0d163f97d9849",
@@ -644,7 +645,7 @@
   ],
   "dpkg_total": 116
  },
- "image_version": "v0.4.0-12-gd502a74-dirty",
+ "image_version": "v0.4.0-14-g98da950-dirty",
  "captured": "2026-10-15",
- "captured_from": "the lab stack's worker container (labape:local, built as v0.4.0-12-gd502a74-dirty) and the images it runs"
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.4.0-14-g98da950-dirty) and the images it runs"
 }

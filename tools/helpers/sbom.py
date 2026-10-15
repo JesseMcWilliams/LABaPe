@@ -74,6 +74,7 @@ IMAGES = [
     ("smallstep/step-ca:0.30.2", "The platform certificate authority", "Apache-2.0", "container/compose.yaml", ""),
     ("guacamole/guacd:1.6.0", "Guacamole proxy daemon for browser RDP/SSH/VNC", "Apache-2.0", "container/compose.yaml", ""),
     ("postgres:17-alpine", "LABaPe's database, the syslog collector's and Conjur's", "PostgreSQL", "container/compose.yaml", "Three separate containers."),
+    ("axllent/mailpit:v1.31.5", "The stack's mail server: catches LABaPe's email, web page for admins at /mail/, optional forwarding", "MIT", "container/compose.yaml", "Alpine-based; run through container/mailpit/supervise.sh, which restarts it when Admin → Mail changes its options. Not published on the host."),
     ("openbao/openbao:2.7.1", "The secret store (platform secrets, environment secrets, VM sign-in)", "MPL-2.0", "container/compose.yaml", ""),
     ("cyberark/conjur:1.27.0", "Optional second secret store (Conjur Open Source)", "LGPL-3.0", "container/compose.yaml", "Optional (`LABAPE_CONJUR=no` leaves it out)."),
     ("nginx:1.28-alpine", "TLS front for Conjur", "BSD-2-Clause", "container/compose.yaml", "Optional, with Conjur."),

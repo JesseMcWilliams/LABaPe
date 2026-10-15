@@ -43,6 +43,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/openbao_people.py` | lab (container) | People in OpenBao (V1b): sync now, or sign a test user in with OIDC and try reads and writes (statuses only) |
 | `live/desktops.py` | lab (container) | xrdp/VNC on an environment's Linux host groups (E3) |
 | `live/host_files.py` | lab (container) | A KVM host's files path and free-space alert; change the path and wait for the move job |
+| `live/stack_mail.py` | lab (container) | The stack's own Mailpit: status, the admin-only route, a test email, its inbox, forwarding through a server (`relay`) or off |
 | `live/mail_check.sh` | lab host | The environment's mail server: send a test message over STARTTLS and read it back through Mailpit's API |
 | `live/package_updates.py` | lab (container) | Catalog → Updates: list the sources, or check (all or one) and wait |
 | `live/vm_secrets.py` | lab (container) | V2: store a shared secret for chosen VMs or a VM's own (random values, hashes printed), delete, sync |

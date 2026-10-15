@@ -125,7 +125,7 @@ Settings is in sections, listed on the left: **Sign-in** (directory group search
 | Remote access, Syslog collector | [§16](#16-remote-access-and-auditors), [§17](#17-the-syslog-collector) |
 | History | Days to keep job logs, user errors and the audit trail (0 keeps the audit trail forever, the default) |
 | Syslog | Sends every audit event to a syslog server over UDP, TCP or TLS (RFC 5424, JSON body). **Send test message** checks it. |
-| Email (SMTP) | Server, port, security (none, STARTTLS, SSL/TLS), optional sign-in, from address. **Email people when their jobs finish** turns on job emails. **Send test email** checks it. |
+| Email (SMTP) | Server, port, security (none, STARTTLS, SSL/TLS), optional sign-in, from address. **Email people when their jobs finish** turns on job emails. **Send test email** checks it. A stack starts with this pointed at its own mail server (Mailpit, [§6.1](#61-the-stacks-mail-server)). |
 | Directory (group search) | An Authentik API token that can only view groups (`authentik_core.view_group`), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. |
 | Downloads | Allow plain HTTP for Download from URL (off by default), and an HTTP(S) proxy |
 | VM accounts | The Linux admin user for new environments (default `labape`). Existing environments keep theirs. |
@@ -133,6 +133,19 @@ Settings is in sections, listed on the left: **Sign-in** (directory group search
 | Maintenance mode, Maintenance window | See [§7](#7-maintenance-mode) |
 
 Passwords and tokens entered here are kept encrypted in LABaPe's built-in secret store, unless you move them to an external store ([§8.1](#81-external-secret-stores)), and never shown again.
+
+### 6.1 The stack's mail server
+
+Every stack runs its own mail server, Mailpit, and Settings → Email is set to it the first time the stack starts (if you hadn't set Email up yourself). So alerts and job emails work out of the box: LABaPe sends to Mailpit, which keeps every message. **Admin → Mail** shows whether it's running, how many messages it holds, and opens its web page (**Open Mailpit**, admins only).
+
+- **Reading mail.** Everything LABaPe sent is in Mailpit's page, whether or not it was forwarded.
+- **Forwarding to real inboxes.** On the Mail page, give Mailpit an SMTP server to forward through (server, port, security, sign-in, and the password, which is kept encrypted), then say which recipients it forwards: only the addresses and `@domain`s you list, or every recipient. Anything else stays in Mailpit. Forwarding off (the default) sends nothing outside. A server that only accepts its own sender needs **Replace the From address**. Saving restarts Mailpit within seconds; its messages are kept.
+- **Alerts** go to the addresses in Settings → Monitoring ("Email alerts to"); with none set nothing is emailed. Put your address there and list it (or its domain) for forwarding.
+- **Test.** **Send test** emails an address the way LABaPe sends its own.
+- **If Email points elsewhere** the page offers **Use this server** to point it back.
+- **Retention.** Mailpit keeps 5000 messages or 30 days by default; both are on the page.
+
+The mail servers environments can have (catalog service Mail server) are separate, with their own forwarding account in Settings.
 
 ## 7. Maintenance mode
 

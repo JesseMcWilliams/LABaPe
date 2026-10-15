@@ -15,6 +15,16 @@
 {$LABAPE_HOSTNAME} {
 	tls {$LABAPE_TLS:internal}
 	encode gzip
+	# The stack's mail (Mailpit's web UI), for signed-in admins only: LABaPe answers the check (design §52).
+	handle /mail/* {
+		forward_auth labape-api:8000 {
+			uri /api/mail/auth
+			header_up -X-LABaPe-Local
+		}
+		reverse_proxy labape-mailpit:8025 {
+			flush_interval -1
+		}
+	}
 	reverse_proxy labape-api:8000 {
 		# The break-glass "host-only" marker is set only by the loopback
 		# listener below; never accept it from a client.

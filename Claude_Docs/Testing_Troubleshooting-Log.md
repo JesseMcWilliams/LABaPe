@@ -620,3 +620,9 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 1. **The Windows helper didn't install ("Destination directory ... LabapeSecret ... does not exist"):** `win_copy` to a file path doesn't create its folder. The role creates `C:\Program Files\WindowsPowerShell\Modules\LabapeSecret` first.
 2. **`sudo labape-secret get ...` said "command not found" on Rocky:** sudo's `secure_path` there is `/sbin:/bin:/usr/sbin:/usr/bin`, without `/usr/local/bin`. The role links `/usr/bin/labape-secret` to it.
+
+## The stack's mail server (2026-10-15)
+
+1. **The API couldn't write Mailpit's options ("/var/lib/labape-mailpit: no such file") although the volume was listed in the compose file:** `labape-api` and `labape-worker` each define their own `volumes:` list, which replaces the shared one from the YAML anchor (a merge doesn't merge lists). The mount is on `labape-api` itself.
+2. **A new Caddy route did nothing: signed out, `/mail/` answered 200 with LABaPe's web page instead of 401:** the Caddyfile is a bind-mounted single file. `tar` (deploy-web) and `git` (the update agent) replace a file with a new one, so the container kept the old inode: its copy didn't have the route, and `caddy reload` re-reads that same old copy. `up -d` doesn't recreate a container whose own configuration didn't change. Both now compare the file the container sees with the repository's and recreate Caddy when they differ.
+3. **Settings → Email wasn't pointed at Mailpit on a stack where nobody had set it up:** the first rule was "no saved row". A stack can have a saved row of defaults (something else saved the settings page), so "never set up" now means off with no server named.

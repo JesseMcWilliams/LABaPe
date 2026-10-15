@@ -70,7 +70,15 @@ PY
   echo "labape-update: [$1] $2: $3"
 }
 labape() { (cd "$C" && "${COMPOSE[@]}" exec -T labape-api labape "$@"); }
-up() { (cd "$C" && "${COMPOSE[@]}" up -d); }
+# The Caddyfile is a bind-mounted file: when git (or tar) replaces it, the container keeps the old inode
+# and never sees the change, and neither `up -d` nor `caddy reload` fixes that. Recreate Caddy then.
+caddy_current() {
+  local f
+  f="$(grep -m1 '^LABAPE_CADDYFILE=' "$C/.env" 2>/dev/null | cut -d= -f2-)"; f="${f:-Caddyfile}"
+  (cd "$C" && "${COMPOSE[@]}" exec -T caddy cat /etc/caddy/Caddyfile 2>/dev/null | cmp -s - "caddy/$f") \
+    || (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate caddy)
+}
+up() { (cd "$C" && "${COMPOSE[@]}" up -d) && caddy_current; }
 healthy() {
   labape health --deep >/dev/null 2>&1     && curl -sk --max-time 10 --resolve "${WEB_HOST:-localhost}:443:127.0.0.1" "https://${WEB_HOST:-localhost}/api/health" | grep -q '"ok":true'
 }
