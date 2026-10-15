@@ -1762,3 +1762,7 @@ Questions 167-173. Built batch by batch.
 | Installer | `Prereq.Packages` installs `smartmontools`, `lm-sensors` and `ethtool` on every profile (the web-only profile, a stack host such as the Pi, had none of them; the RHEL family gets `lm_sensors` and `ethtool`), then runs `sensors-detect --auto` once (marker `/var/lib/labape/sensors-detected`) so `sensors` finds the chips without questions. |
 | Existing hosts | A KVM or stack host's access-account setup (`hostadmin.SETUP`, run by **Set up access** / **Prepare**) installs the same three where missing and runs the probe once, so existing hosts get them without reinstalling. |
 | Verified | pytest (both package lists and the setup script). Live: access setup on nkvm1 (host record 2) left `smartctl`, `sensors` and `ethtool` installed and the probe marker written. kvm1 and the Pi get them at their next access setup or Prepare. |
+
+### 50.2 E1: paging and search on the environment's Secrets (built)
+
+`EnvSecrets.tsx`: a search box (name, VM, place in the store, rotation) and filters for group, VM and store, over the whole list; then pages of the user's own size (`Paging.tsx`, as every list since L1), the groups' headings kept for the rows on the page; **Clear** resets them. The API is unchanged (the list is small and held in the browser). Verified: the UI built (type-checked) and deployed on kvm1.
