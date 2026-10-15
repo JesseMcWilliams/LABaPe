@@ -53,6 +53,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- **Connect as an account**: on the environment's Secrets panel, an
+  account's **Connect** opens RDP or SSH in the browser signed in as that
+  account (a local account on its VM; a domain account on the member
+  servers, the domain controllers for domain admins, and the Linux VMs),
+  its password filled in by LABaPe. Linux VMs accept password sign-in for
+  accounts (LABaPe's admin user stays key-only) after their next redeploy.
 - Each KVM host has a **Files path** on its settings (by default beside its
   VM folder: `/data/VMs/LABaPe` -> `/data/Files`, with `ISOs`, `Installers`
   and `Other`): the copies jobs need are kept there instead of a hidden

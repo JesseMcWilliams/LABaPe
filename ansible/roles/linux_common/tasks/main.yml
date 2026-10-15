@@ -238,3 +238,22 @@
   loop_control:
     label: "{{ item.member }} -> {{ item.group }}"
   tags: [directory_objects, membership]
+
+# Accounts sign in over SSH with their own passwords (E2, question 167: browser SSH as an
+# environment account, local or domain). Clones get `ssh_pwauth: false` from cloud-init; this
+# drop-in sorts first, so it wins. LABaPe's admin user stays key-only: its password is locked.
+- name: Let accounts sign in over SSH with their passwords
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-labape-accounts.conf
+    content: |
+      # LABaPe (E2): the environment's accounts sign in with their passwords; the admin user's is locked.
+      PasswordAuthentication yes
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  register: labape_sshd_accounts
+
+- name: Reload sshd for it
+  ansible.builtin.service:
+    name: "{{ 'sshd' if ansible_facts['os_family'] == 'RedHat' else 'ssh' }}"
+    state: reloaded
+  when: labape_sshd_accounts is changed

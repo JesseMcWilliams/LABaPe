@@ -88,8 +88,86 @@ def new_token() -> tuple[str, str]:
     return t, token_hash(t)
 
 
-def vm_target(db: Session, env: Environment, vm: str) -> dict:
-    """Protocol, address and credentials for one of an environment's VMs."""
+# --- connecting as one of the environment's accounts (E2, question 167) --------------------
+
+RECOVERY_ADMIN = "labape-admin2"
+
+
+def _vm_kinds(env: Environment) -> dict[str, tuple[str, bool]]:
+    """VM -> (windows|linux, is a domain controller)."""
+    return {n: ("windows" if str(g.get("os", "")).startswith("windows") else "linux",
+                "domain_controller" in (g.get("roles") or []))
+            for g in (env.spec or {}).get("host_groups", []) for n in instance_names(g)}
+
+
+def account_of(env: Environment, rest: str) -> dict | None:
+    """What an environment secret (`environment/<id>/<rest>`) signs in as: {user, scope (local|domain),
+    vm (a local account's VM), admin (a domain admin)}; None for a secret that isn't an account."""
+    from . import env_accounts
+    parts = rest.split("/")
+    if parts[0] == "vm" and len(parts) >= 3:
+        kind = "/".join(parts[2:])
+        user = {"windows_admin": "Administrator", "windows_admin2": RECOVERY_ADMIN}.get(kind)
+        if user is None and kind.startswith("account/"):
+            user = kind.split("/", 1)[1]
+        return {"user": user, "scope": "local", "vm": parts[1], "admin": False} if user else None
+    if rest in ("domain_admin", "domain_admin2"):
+        return {"user": "Administrator" if rest == "domain_admin" else RECOVERY_ADMIN, "scope": "domain",
+                "vm": "", "admin": True}
+    if parts[0] == "account" and len(parts) == 2:
+        a = next((x for x in env_accounts.accounts(env) if x["name"] == parts[1]), None)
+        if a and a["kind"] == "domain":
+            return {"user": a["name"], "scope": "domain", "vm": "",
+                    "admin": "Domain Admins" in (a.get("groups") or [])}
+    return None
+
+
+def account_targets(env: Environment, rest: str) -> list[dict]:
+    """Where an account can sign in, as [{vm, protocol}] (question 167): a local Windows account RDP
+    to its VM; a local Linux account SSH to its VM; a domain account RDP to the Windows member
+    servers (and the domain controllers for a domain admin) and SSH to the Linux VMs (they join
+    the domain when it has a controller)."""
+    acc = account_of(env, rest)
+    if acc is None:
+        return []
+    kinds = _vm_kinds(env)
+    if acc["scope"] == "local":
+        os_, _ = kinds.get(acc["vm"], ("", False))
+        return [{"vm": acc["vm"], "protocol": "rdp" if os_ == "windows" else "ssh"}] if os_ else []
+    out = []
+    for vm, (os_, dc) in kinds.items():
+        if os_ == "windows" and (not dc or acc["admin"]):
+            out.append({"vm": vm, "protocol": "rdp"})
+        elif os_ == "linux":
+            out.append({"vm": vm, "protocol": "ssh"})
+    return out
+
+
+def _as_account(db: Session, env: Environment, vm: str, rest: str, protocol: str, host: dict) -> dict:
+    """The user name, domain and password `rest` signs in to `vm` with."""
+    from .security import get_secret
+    if {"vm": vm, "protocol": protocol} not in account_targets(env, rest):
+        raise RemoteError(f"{rest} can't sign in to {vm} over {protocol.upper()}")
+    acc = account_of(env, rest)
+    password = get_secret(db, f"environment/{env.id}/{rest}") or ""
+    if not password:
+        raise RemoteError(f"{rest} has no stored password")
+    if acc["scope"] == "local":
+        return {"username": acc["user"], "domain": "", "password": password}
+    # The domain's names: the inventory's `all: vars:` (generate-inventory.py), or a host's own.
+    from .engine.vmaccess import _hosts, _inventory
+    inv = _inventory(db, env)
+    every = [host, (inv.get("all") or {}).get("vars") or {}, *_hosts(inv).values()]
+    name_of = lambda key: next((str(h[key]) for h in every if h.get(key)), "")  # noqa: E731
+    if protocol == "rdp":
+        return {"username": acc["user"], "domain": name_of("netbios_name"), "password": password}
+    domain = name_of("domain_name")
+    return {"username": f"{acc['user']}@{domain}" if domain else acc["user"], "domain": "", "password": password}
+
+
+def vm_target(db: Session, env: Environment, vm: str, account: str = "", protocol: str = "") -> dict:
+    """Protocol, address and credentials for one of an environment's VMs: as LABaPe's admin, or as
+    `account` (an environment secret's name, E2)."""
     from .engine import engine_secrets
     from .engine.vmaccess import _hosts, _inventory
     groups = {n: g for g in (env.spec or {}).get("host_groups", []) for n in instance_names(g)}
@@ -99,7 +177,17 @@ def vm_target(db: Session, env: Environment, vm: str) -> dict:
     if not host or not host.get("ansible_host"):
         raise RemoteError(f"{vm} has no address yet (deploy the environment, or refresh DHCP addresses)")
     address = str(host["ansible_host"])
-    if str(groups[vm].get("os", "")).startswith("windows"):
+    windows = str(groups[vm].get("os", "")).startswith("windows")
+    if account:
+        who = _as_account(db, env, vm, account, protocol or ("rdp" if windows else "ssh"), host)
+        if windows:
+            return {"protocol": "rdp", "address": address, "params": {
+                "hostname": address, "port": "3389", **who, "security": "any", "ignore-cert": "true",
+                "resize-method": "display-update", "enable-font-smoothing": "true", "disable-audio": "true"}}
+        return {"protocol": "ssh", "address": address, "params": {
+            "hostname": address, "port": "22", "username": who["username"], "password": who["password"],
+            "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000"}}
+    if windows:
         user = str(host.get("ansible_user") or "Administrator")
         domain = ""
         if "\\" in user:
@@ -158,8 +246,8 @@ def resolve(db: Session, s: RemoteSession) -> dict:
         env = db.get(Environment, s.environment_id)
         if env is None or env.status != "deployed":
             raise RemoteError("the environment isn't deployed")
-        t = console_target(env, s.target, s.protocol) if s.protocol in ("vnc", "serial") else \
-            vm_target(db, env, s.target)
+        t = console_target(env, s.target, s.protocol) if s.protocol in ("vnc", "serial") and not s.account else \
+            vm_target(db, env, s.target, s.account or "", s.protocol)
     else:
         h = db.get(KvmHost, s.kvm_host_id)
         if h is None:

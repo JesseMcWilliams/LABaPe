@@ -319,6 +319,8 @@ class RemoteSession(Base):
     target: Mapped[str] = mapped_column(String(255))                   # VM or host name
     address: Mapped[str] = mapped_column(String(255), default="")
     protocol: Mapped[str] = mapped_column(String(8))                   # ssh | rdp | vnc
+    # Signed in as one of the environment's accounts (E2): its secret's name under environment/<id>/.
+    account: Mapped[str] = mapped_column(String(255), default="")
     state: Mapped[str] = mapped_column(String(16), default="pending")  # pending | open | closed | failed
     recorded: Mapped[bool] = mapped_column(Boolean, default=False)
     error: Mapped[str] = mapped_column(Text, default="")
