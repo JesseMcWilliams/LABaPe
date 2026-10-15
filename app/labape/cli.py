@@ -369,6 +369,28 @@ def cmd_engine_secrets(args) -> int:
     return 0
 
 
+def cmd_authentik_admin_import(_args) -> int:
+    """Store the Authentik administrator's password (read from stdin) in the secret store (design §54)."""
+    from . import authentik_admin
+    from .db import init_db, session_factory
+    from .security import audit, put_secret
+
+    value = sys.stdin.read().strip()
+    if len(value) < 8:
+        print("labape: give the password on stdin (at least 8 characters)", file=sys.stderr)
+        return 1
+    init_db()
+    with session_factory()() as db:
+        try:
+            put_secret(db, authentik_admin.SECRET, value)
+        except Exception as exc:  # noqa: BLE001 - a store that doesn't answer
+            print(f"labape: {exc}", file=sys.stderr)
+            return 1
+        audit(db, _who(), "secret.import", detail={"name": authentik_admin.SECRET})
+    print("labape: the Authentik administrator's password is in the secret store")
+    return 0
+
+
 def cmd_push_vm_key(args) -> int:
     """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
     import json as _json
@@ -498,6 +520,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--store", default="openbao", help="the platform store (default openbao)")
     p.add_argument("--force", action="store_true", help="import again over what's stored")
     p.set_defaults(func=cmd_engine_secrets)
+
+    p = sub.add_parser("authentik-admin-import", help="store the Authentik administrator's (akadmin) password, "
+                                                       "read from stdin, in the secret store")
+    p.set_defaults(func=cmd_authentik_admin_import)
 
     p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")
     p.add_argument("--new", required=True, help="the new private key; its .pub beside it")

@@ -19,7 +19,7 @@ export interface SecretPolicy {
   last_job: { id: number; state: string } | null; secret_name: string | null;
   // Health (S1, question 161).
   check_status: string; check_error: string; last_checked_at: string | null; next_check_at: string | null;
-  recoverable: boolean; recovery: string; checkable: boolean; check_every_hours: number | null;
+  recoverable: boolean; recovery: string; checkable: boolean; check_every_hours: number | null; revealable?: boolean;
   section: "stack" | "kvm" | "environments"; environment_id: number | null;
 }
 
@@ -68,6 +68,30 @@ export function StatusChip({ p }: { p: SecretPolicy }) {
       <Chip size="small" label="reminder" /></Tooltip>;
   const color = p.status === "ok" ? "success" : p.status === "failed" ? "error" : "default";
   return <Chip size="small" color={color} label={p.status} />;
+}
+
+/** Show a stored platform secret people need to use (the Authentik administrator's password); audited, never kept in the page. */
+function RevealButton({ p, onError }: { p: SecretPolicy; onError: (m: string) => void }) {
+  const [value, setValue] = useState<string | null>(null);
+  const show = () => api.post<{ value: string }>(`/api/admin/secrets/${p.id}/reveal`).then((r) => setValue(r.value), (e) => onError(e.message));
+  return (
+    <>
+      <Button size="small" sx={{ ml: 1 }} onClick={show} title="Show the stored value to you (audited, without the value)">Reveal</Button>
+      <Dialog open={value !== null} onClose={() => setValue(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{p.label}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <Typography variant="body2">The stored value. It is shown once here and not kept in the page; the reveal is in the audit log.</Typography>
+            <Typography sx={{ fontFamily: "monospace", overflowWrap: "anywhere" }}>{value}</Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => navigator.clipboard.writeText(value ?? "")} title="Copy it to the clipboard">Copy</Button>
+          <Button variant="contained" onClick={() => setValue(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
 }
 
 function AddElevated({ onDone }: { onDone: () => void }) {
@@ -150,6 +174,7 @@ export default function Secrets() {
             <TableRow key={p.id} hover sx={{ opacity: p.enabled ? 1 : 0.5 }}>
               <TableCell>
                 <Link component={RouterLink} to={`/admin/secrets/${p.id}`}>{p.label}</Link>
+                {p.revealable && <RevealButton p={p} onError={setError} />}
                 {p.needs_restart && <Tooltip title="Restarts a service: rotates in the maintenance window"><Chip size="small" label="restart" sx={{ ml: 1 }} /></Tooltip>}
               </TableCell>
               <TableCell>{p.secret_class.replace("_", "-")}</TableCell>
