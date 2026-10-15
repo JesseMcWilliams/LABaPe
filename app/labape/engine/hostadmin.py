@@ -134,9 +134,9 @@ USERS="$(printf '%%s\n' "$SSHD" | awk '$1=="allowusers"{for(i=2;i<=NF;i++) print
 if [ -n "$USERS" ] && ! printf '%%s\n' $USERS | grep -qx "$ACCOUNT"; then
   echo "labape-setup: warning: sshd's AllowUsers doesn't list $ACCOUNT; add it there, or it can't sign in" >&2
 fi
-# Disk health (SMART) and temperatures (lm-sensors) for the host's page; best effort, the account
-# works without them. tool:Debian package:RHEL package
-for want in smartctl:smartmontools:smartmontools sensors:lm-sensors:lm_sensors; do
+# Disk health (SMART), temperatures (lm-sensors) and NIC details (ethtool) for the host's page
+# (question 173); best effort, the account works without them. tool:Debian package:RHEL package
+for want in smartctl:smartmontools:smartmontools sensors:lm-sensors:lm_sensors ethtool:ethtool:ethtool; do
   tool="${want%%%%:*}"; rest="${want#*:}"; deb="${rest%%%%:*}"; rpm="${rest#*:}"
   command -v "$tool" >/dev/null 2>&1 && continue
   if command -v apt-get >/dev/null 2>&1; then
@@ -147,6 +147,10 @@ for want in smartctl:smartmontools:smartmontools sensors:lm-sensors:lm_sensors; 
   fi
   command -v "$tool" >/dev/null 2>&1 && echo "labape-setup: installed $deb" || echo "labape-setup: couldn't install $deb (install it for the host's page)"
 done
+# lm-sensors' probe, once: it loads the drivers for the chips it finds.
+if command -v sensors-detect >/dev/null 2>&1 && [ ! -e /var/lib/labape/sensors-detected ]; then
+  sensors-detect --auto >/dev/null 2>&1 && mkdir -p /var/lib/labape && touch /var/lib/labape/sensors-detected && echo "labape-setup: sensors detected"
+fi
 # A KVM host must never sleep (a desktop's login screen suspends after 15 idle minutes): mask the sleep targets.
 UNMASKED=""
 for t in sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target; do

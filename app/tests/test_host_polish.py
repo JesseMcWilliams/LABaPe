@@ -138,3 +138,21 @@ def test_hosts_never_sleep():
     assert any("can sleep" in x["message"] and x["level"] == "warning" for x in w)
     assert not any("can sleep" in x["message"] for x in hostadmin.warnings(
         {"os": {"can_sleep": []}, "tools": {"smartctl": True}}, {}, None))
+
+
+def test_monitoring_tools_everywhere():
+    """Question 173: SMART, sensors and ethtool on every host LABaPe sets up, sensors probed once."""
+    from labape.engine import hostadmin
+    import importlib.util
+    import sys
+    from pathlib import Path
+    assert "ethtool:ethtool:ethtool" in hostadmin.SETUP and "sensors-detect --auto" in hostadmin.SETUP
+    root = Path(__file__).resolve().parents[2] / "deploy"
+    sys.path.insert(0, str(root))
+    try:
+        from labape_deploy import steps
+    finally:
+        sys.path.remove(str(root))
+    for pkgs in (steps.APT_PACKAGES, steps.WEB_PACKAGES):
+        assert {"smartmontools", "lm-sensors", "ethtool"} <= set(pkgs)
+    assert {"smartmontools", "lm_sensors", "ethtool"} <= set(steps.RPM_PACKAGES)

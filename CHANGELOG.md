@@ -49,6 +49,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Every host LABaPe sets up gets `smartmontools`, `lm-sensors` (its chips
+  detected once, automatically) and `ethtool`: the installer on every
+  profile, and a host's access setup for hosts installed before.
 - People can use OpenBao itself: its web UI and `bao login -method=oidc`,
   signing in with their LABaPe account (`LABAPE_OPENBAO_PEOPLE=yes`,
   `stores/stores.sh setup`). Owners read their environment's folder and
