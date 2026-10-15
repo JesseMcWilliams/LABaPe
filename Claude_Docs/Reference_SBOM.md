@@ -10,7 +10,7 @@
 | | |
 |---|---|
 | Version | LABaPe 0.4.0 (`app/pyproject.toml`, `web/package.json`) |
-| Captured | 2026-10-15, from the lab stack's worker container (labape:local at v0.4.0 + V2) and the images it runs |
+| Captured | 2026-10-15, from the lab stack's worker container (labape:local at v0.4.0 + V2) and the images it runs. A release captures it from a clean `main` (`tools/helpers/release.sh`) |
 | Python | **Exact versions come from the built image**: `app/pyproject.toml` declares only lower bounds, and the repository has no lock file for Python, so a rebuild can install newer ones. 52 packages (8 from Debian, 44 from pip) |
 | Web (npm) | `web/package-lock.json`: 208 packages, every version and integrity hash (110 are bundled into the UI, 98 are build tooling only; the image carries just the built files) |
 | Images, tools | Pins from `container/Dockerfile`, `container/compose.yaml` and `tools/authentik-test/compose.yaml`; image digests as pulled on the lab |

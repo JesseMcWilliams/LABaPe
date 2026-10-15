@@ -8,11 +8,10 @@ Usage: python tools/helpers/sbom.py [--check]
 Where each part comes from:
   - web (npm): web/package-lock.json, every version and hash;
   - the worker image's Python packages, Debian packages, tools, Ansible collections, OpenTofu providers,
-    Packer plugins and the third-party images' digests: sbom/image-snapshot.json, taken from the lab
-    stack (tools/helpers/sbom_probe.py runs in the worker container; the tools, collections, providers,
-    plugins and image digests were added to the snapshot from `tofu version`, `ansible-galaxy collection
-    list`, the provider mirror and `docker image inspect`). Python's declared requirements are only lower
-    bounds (app/pyproject.toml), so the snapshot is the exact record;
+    Packer plugins and the third-party images' digests: sbom/image-snapshot.json, which
+    tools/helpers/sbom_snapshot.py takes from the lab stack (tools/helpers/release.sh does it at each
+    release). Python's declared requirements are only lower bounds (app/pyproject.toml), so the snapshot
+    is the exact record;
   - the declared pins in the repository (container/Dockerfile, compose files, deploy/labape_deploy/steps.py,
     ansible roles): the tables below, kept in step by hand when those change.
 Licenses are as the packages and projects declare them; this is not a license or vulnerability audit.
@@ -163,6 +162,23 @@ def resolve(items, key, dep):
         k = k.rsplit("/node_modules/", 1)[0] if "/node_modules/" in k else ""
 
 
+def tools_with_versions(snap):
+    """TOOLS with the versions the image really has (ansible-core's is the Python package's)."""
+    have = snap.get("tools", {})
+    py_core = next((p["version"] for p in snap["python"] if norm(p["name"]) == "ansible-core"), None)
+    return [(n, py_core if n == "ansible-core" and py_core else have.get(n, v), r, l, h) for n, v, r, l, h in TOOLS]
+
+
+def providers_with_versions(snap):
+    have = snap.get("providers", {})
+    return [(s, c, have.get(s, i), l, w) for s, c, i, l, w in PROVIDERS]
+
+
+def plugins_with_versions(snap):
+    have = snap.get("plugins", {})
+    return [(s, c, have.get(s, i), l) for s, c, i, l in PLUGINS]
+
+
 def steps_lists():
     tree = ast.parse((ROOT / "deploy" / "labape_deploy" / "steps.py").read_text(encoding="utf-8"))
     out = {}
@@ -237,7 +253,7 @@ def build():
         comp(f"deb-syslog:{name}@{ver}", "library", name, ver, f"pkg:deb/debian/{name}@{quote(ver, safe='')}?arch=amd64&distro=debian-13",
              props={"labape:group": "Debian packages (syslog image)"})
     # engine tools, collections, providers, plugins
-    for name, ver, role, lic, how in TOOLS:
+    for name, ver, role, lic, how in tools_with_versions(snap):
         if name != "ansible-core":
             comp(f"tool:{name}@{ver}", "application", name, ver, f"pkg:generic/{quote(name.lower().replace(' ', '-'))}@{ver}", lic,
                  desc=role, props={"labape:group": "engine tools", "labape:source": how})
@@ -245,11 +261,11 @@ def build():
         ver = snap["collections"][name]
         comp(f"collection:{name}@{ver}", "library", name, ver, f"pkg:generic/{name}@{ver}", lic, desc=role,
              props={"labape:group": "Ansible collections"})
-    for src, constraint, installed, lic, where in PROVIDERS:
+    for src, constraint, installed, lic, where in providers_with_versions(snap):
         if installed[0].isdigit():
             comp(f"provider:{src}@{installed}", "library", src, installed, f"pkg:generic/opentofu-provider-{src.replace('/', '-')}@{installed}",
                  lic, props={"labape:group": "OpenTofu providers", "labape:constraint": constraint})
-    for src, constraint, installed, lic in PLUGINS:
+    for src, constraint, installed, lic in plugins_with_versions(snap):
         comp(f"plugin:{src}@{installed}", "library", src, installed, f"pkg:generic/packer-plugin-{src.replace('/', '-')}@{installed}", lic,
              props={"labape:group": "Packer plugins", "labape:constraint": constraint})
     # container images
@@ -305,7 +321,7 @@ def document(bom, snap, npm, direct, py, declared, version):
 | | |
 |---|---|
 | Version | LABaPe {version} (`app/pyproject.toml`, `web/package.json`) |
-| Captured | {snap['captured']}, from {snap['captured_from']} |
+| Captured | {snap['captured']}, from {snap['captured_from']}. A release captures it from a clean `main` (`tools/helpers/release.sh`) |
 | Python | **Exact versions come from the built image**: `app/pyproject.toml` declares only lower bounds, and the repository has no lock file for Python, so a rebuild can install newer ones. {len(py)} packages ({len(deb_py)} from Debian, {len(py) - len(deb_py)} from pip) |
 | Web (npm) | `web/package-lock.json`: {len(npm)} packages, every version and integrity hash ({len(runtime)} are bundled into the UI, {len(devs)} are build tooling only; the image carries just the built files) |
 | Images, tools | Pins from `container/Dockerfile`, `container/compose.yaml` and `tools/authentik-test/compose.yaml`; image digests as pulled on the lab |
@@ -386,14 +402,14 @@ Licenses of third-party images are the upstream projects', not checked against t
 ## 6. Engine tools in the worker image
 
 """)
-    parts.append(md_table(["Tool", "Version", "What it does", "License", "How it gets there"], TOOLS))
+    parts.append(md_table(["Tool", "Version", "What it does", "License", "How it gets there"], tools_with_versions(snap)))
     parts.append("\n\nAnsible collections (`ansible-galaxy collection install`, pinned, three tries in the build):\n\n")
     parts.append(md_table(["Collection", "Constraint", "Installed", "License", "What for"],
                           [(n, c, snap["collections"][n], l, r) for n, c, l, r in COLLECTIONS]))
     parts.append("\n\nOpenTofu providers (mirrored into the image at build time, so deploys don't reach the internet for them):\n\n")
-    parts.append(md_table(["Provider", "Constraint", "Installed", "License", "Where used"], PROVIDERS))
+    parts.append(md_table(["Provider", "Constraint", "Installed", "License", "Where used"], providers_with_versions(snap)))
     parts.append("\n\nPacker plugins (`packer plugins install`, three tries):\n\n")
-    parts.append(md_table(["Plugin", "Constraint", "Installed", "License"], PLUGINS))
+    parts.append(md_table(["Plugin", "Constraint", "Installed", "License"], plugins_with_versions(snap)))
     parts.append(f"""
 
 ## 7. Debian packages

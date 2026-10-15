@@ -59,6 +59,8 @@ LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs b
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- The release script (`tools/helpers/release.sh`) also takes the lab image's inventory, regenerates the software bill of materials for the new version
+  and attaches the CycloneDX file to the GitHub release.
 - A software bill of materials: `Claude_Docs/Reference_SBOM.md` lists every
   Python and npm package, container image, engine tool, Ansible collection,
   provider and plugin LABaPe uses, with versions, licenses and what each is
