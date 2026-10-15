@@ -1,0 +1,649 @@
+{
+ "python": [
+  {
+   "name": "alembic",
+   "version": "1.20.0",
+   "license": "MIT",
+   "summary": "A database migration tool for SQLAlchemy.",
+   "home": "",
+   "requires": [
+    "SQLAlchemy>=2.0",
+    "Mako",
+    "typing-extensions>=4.12",
+    "tomli"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "annotated-doc",
+   "version": "0.0.5",
+   "license": "MIT",
+   "summary": "Document parameters, class attributes, return types, and variables inline, with Annotated.",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "annotated-types",
+   "version": "0.8.0",
+   "license": "MIT",
+   "summary": "Reusable constraint types to use with typing.Annotated",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "ansible-core",
+   "version": "2.21.4",
+   "license": "GPL-3.0-or-later",
+   "summary": "Radically simple IT automation",
+   "home": "",
+   "requires": [
+    "jinja2>=3.1.0",
+    "PyYAML>=5.1",
+    "cryptography",
+    "packaging",
+    "resolvelib<2.0.0,>=0.8.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "anyio",
+   "version": "4.15.1",
+   "license": "MIT",
+   "summary": "High-level concurrency and networking framework on top of asyncio or Trio",
+   "home": "",
+   "requires": [
+    "exceptiongroup>=1.0.2",
+    "idna>=2.8",
+    "typing_extensions>=4.16.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "Authlib",
+   "version": "1.9.1",
+   "license": "BSD-3-Clause",
+   "summary": "The ultimate Python library in building OAuth and OpenID Connect servers and clients.",
+   "home": "",
+   "requires": [
+    "cryptography>=45.0.1",
+    "joserfc>=1.6.8"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "certifi",
+   "version": "2025.1.31",
+   "license": "MPL-2.0",
+   "summary": "Python package for providing Mozilla's CA Bundle.",
+   "home": "https://github.com/certifi/python-certifi",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "cffi",
+   "version": "2.1.1",
+   "license": "MIT-0",
+   "summary": "Foreign Function Interface for Python calling C code.",
+   "home": "",
+   "requires": [
+    "pycparser"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "chardet",
+   "version": "5.2.0",
+   "license": "LGPL",
+   "summary": "Universal encoding detector for Python 3",
+   "home": "https://github.com/chardet/chardet",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "charset-normalizer",
+   "version": "3.4.2",
+   "license": "MIT",
+   "summary": "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet.",
+   "home": "",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "click",
+   "version": "8.5.0",
+   "license": "BSD-3-Clause",
+   "summary": "Composable command line interface toolkit",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "cryptography",
+   "version": "50.0.2",
+   "license": "Apache-2.0 OR BSD-3-Clause",
+   "summary": "cryptography is a package which provides cryptographic recipes and primitives to Python developers.",
+   "home": "",
+   "requires": [
+    "cffi>=2.0.0",
+    "typing-extensions>=4.13.2"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "fastapi",
+   "version": "0.143.1",
+   "license": "MIT",
+   "summary": "FastAPI framework, high performance, easy to learn, fast to code, ready for production",
+   "home": "",
+   "requires": [
+    "starlette>=0.46.0",
+    "pydantic>=2.9.0",
+    "typing-extensions>=4.8.0",
+    "typing-inspection>=0.4.2",
+    "annotated-doc>=0.0.2",
+    "opentelemetry-api>=1.44.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "h11",
+   "version": "0.16.0",
+   "license": "MIT",
+   "summary": "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1",
+   "home": "https://github.com/python-hyper/h11",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "httpcore",
+   "version": "1.0.9",
+   "license": "BSD-3-Clause",
+   "summary": "A minimal low-level HTTP client.",
+   "home": "",
+   "requires": [
+    "certifi",
+    "h11>=0.16"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "httptools",
+   "version": "0.9.0",
+   "license": "MIT",
+   "summary": "A collection of framework independent HTTP protocol utils.",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "httpx",
+   "version": "0.28.1",
+   "license": "BSD-3-Clause",
+   "summary": "The next generation HTTP client.",
+   "home": "",
+   "requires": [
+    "anyio",
+    "certifi",
+    "httpcore==1.*",
+    "idna"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "idna",
+   "version": "3.10",
+   "license": "BSD License",
+   "summary": "Internationalized Domain Names in Applications (IDNA)",
+   "home": "",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "itsdangerous",
+   "version": "2.2.0",
+   "license": "BSD License",
+   "summary": "Safely pass data to untrusted environments and back.",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "Jinja2",
+   "version": "3.1.6",
+   "license": "BSD License",
+   "summary": "A very fast and expressive template engine.",
+   "home": "",
+   "requires": [
+    "MarkupSafe>=2.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "joserfc",
+   "version": "1.7.5",
+   "license": "BSD-3-Clause",
+   "summary": "The ultimate Python library for JOSE RFCs, including JWS, JWE, JWK, JWA, JWT",
+   "home": "",
+   "requires": [
+    "cryptography>=45.0.1"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "labape",
+   "version": "0.4.0",
+   "license": "unknown",
+   "summary": "LABaPe web application: UI, REST API and job runner for lab environments",
+   "home": "",
+   "requires": [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "authlib>=1.3",
+    "httpx>=0.27",
+    "itsdangerous>=2.2",
+    "pydantic-settings>=2.4",
+    "cryptography>=43",
+    "pyyaml>=6.0",
+    "python-multipart>=0.0.9",
+    "alembic>=1.13"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "libvirt-python",
+   "version": "11.3.0",
+   "license": "GNU Lesser General Public License v2 or later (LGPLv2+)",
+   "summary": "The libvirt virtualization API python binding",
+   "home": "http://www.libvirt.org",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "Mako",
+   "version": "1.4.3",
+   "license": "MIT",
+   "summary": "A super-fast templating language that borrows the best ideas from the existing templating languages.",
+   "home": "",
+   "requires": [
+    "MarkupSafe>=2.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "MarkupSafe",
+   "version": "3.0.4",
+   "license": "BSD-3-Clause",
+   "summary": "Safely add untrusted strings to HTML/XML markup.",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "opentelemetry-api",
+   "version": "1.45.1",
+   "license": "Apache-2.0",
+   "summary": "OpenTelemetry Python API",
+   "home": "",
+   "requires": [
+    "typing-extensions>=4.5.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "packaging",
+   "version": "26.3",
+   "license": "Apache-2.0 OR BSD-2-Clause",
+   "summary": "Core utilities for Python packages",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "pip",
+   "version": "25.1.1",
+   "license": "MIT",
+   "summary": "The PyPA recommended tool for installing Python packages.",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "psycopg",
+   "version": "3.3.6",
+   "license": "LGPL-3.0-only",
+   "summary": "PostgreSQL database adapter for Python",
+   "home": "",
+   "requires": [
+    "typing-extensions>=4.6",
+    "tzdata"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "psycopg-binary",
+   "version": "3.3.6",
+   "license": "LGPL-3.0-only",
+   "summary": "PostgreSQL database adapter for Python -- C optimisation distribution",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "pycparser",
+   "version": "3.11",
+   "license": "BSD-3-Clause",
+   "summary": "C parser in Python",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "pydantic",
+   "version": "2.14.1",
+   "license": "MIT",
+   "summary": "Data validation using Python type hints",
+   "home": "",
+   "requires": [
+    "annotated-types>=0.6.0",
+    "pydantic-core==2.50.1",
+    "typing-extensions>=4.16.0",
+    "typing-inspection>=0.4.4"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "pydantic-settings",
+   "version": "2.16.0",
+   "license": "MIT",
+   "summary": "Settings management using Pydantic",
+   "home": "",
+   "requires": [
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.2.2",
+    "typing-extensions>=4.0.0",
+    "typing-inspection>=0.4.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "pydantic_core",
+   "version": "2.50.1",
+   "license": "MIT",
+   "summary": "Core functionality for Pydantic validation and serialization",
+   "home": "https://github.com/pydantic/pydantic",
+   "requires": [
+    "typing-extensions>=4.16.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "PyGObject",
+   "version": "3.50.0",
+   "license": "GNU LGPL",
+   "summary": "Python bindings for GObject Introspection",
+   "home": "https://pygobject.gnome.org",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "pyspnego",
+   "version": "0.12.4",
+   "license": "MIT",
+   "summary": "Windows Negotiate Authentication Client and Server",
+   "home": "",
+   "requires": [
+    "cryptography",
+    "sspilib>=0.5.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "python-dotenv",
+   "version": "1.2.4",
+   "license": "BSD-3-Clause",
+   "summary": "Read key-value pairs from a .env file and set them as environment variables",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "python-multipart",
+   "version": "0.0.32",
+   "license": "Apache-2.0",
+   "summary": "A streaming multipart parser for Python",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "pywinrm",
+   "version": "0.5.0",
+   "license": "MIT License",
+   "summary": "Python library for Windows Remote Management",
+   "home": "",
+   "requires": [
+    "requests >=2.9.1",
+    "requests-ntlm >=1.1.0",
+    "xmltodict"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "PyYAML",
+   "version": "6.0.3",
+   "license": "MIT",
+   "summary": "YAML parser and emitter for Python",
+   "home": "https://pyyaml.org/",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "requests",
+   "version": "2.32.3",
+   "license": "Apache-2.0",
+   "summary": "Python HTTP for Humans.",
+   "home": "https://requests.readthedocs.io",
+   "requires": [
+    "charset_normalizer<4,>=2",
+    "idna<4,>=2.5",
+    "urllib3<3,>=1.21.1",
+    "certifi>=2017.4.17"
+   ],
+   "origin": "debian"
+  },
+  {
+   "name": "requests_ntlm",
+   "version": "1.3.0",
+   "license": "ISC",
+   "summary": "This package allows for HTTP NTLM authentication using the requests library.",
+   "home": "https://github.com/requests/requests-ntlm",
+   "requires": [
+    "cryptography >=1.3",
+    "pyspnego >=0.4.0",
+    "requests >=2.0.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "resolvelib",
+   "version": "1.2.1",
+   "license": "ISC License",
+   "summary": "Resolve abstract dependencies into concrete ones",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "SQLAlchemy",
+   "version": "2.1.4",
+   "license": "MIT",
+   "summary": "Database Abstraction Library",
+   "home": "",
+   "requires": [
+    "typing-extensions>=4.6.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "starlette",
+   "version": "1.8.0",
+   "license": "BSD-3-Clause",
+   "summary": "The little ASGI library that shines.",
+   "home": "",
+   "requires": [
+    "anyio<5,>=4.0.0",
+    "typing-extensions>=4.10.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "typing-inspection",
+   "version": "0.4.4",
+   "license": "MIT",
+   "summary": "Runtime typing introspection tools",
+   "home": "",
+   "requires": [
+    "typing-extensions>=4.15.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "typing_extensions",
+   "version": "4.16.0",
+   "license": "PSF-2.0",
+   "summary": "Backported and Experimental Type Hints for Python 3.9+",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "urllib3",
+   "version": "2.3.0",
+   "license": "MIT License",
+   "summary": "HTTP library with thread-safe connection pooling, file post, and more.",
+   "home": "",
+   "requires": [],
+   "origin": "debian"
+  },
+  {
+   "name": "uvicorn",
+   "version": "0.54.0",
+   "license": "BSD-3-Clause",
+   "summary": "The lightning-fast ASGI server.",
+   "home": "",
+   "requires": [
+    "click>=7.0",
+    "h11>=0.8",
+    "typing-extensions>=4.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "uvloop",
+   "version": "0.23.0",
+   "license": "MIT License",
+   "summary": "Fast implementation of asyncio event loop on top of libuv",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "watchfiles",
+   "version": "1.3.0",
+   "license": "MIT",
+   "summary": "Simple, modern and high performance file watching and code reload in python.",
+   "home": "https://github.com/samuelcolvin/watchfiles",
+   "requires": [
+    "anyio>=3.0.0"
+   ],
+   "origin": "pip"
+  },
+  {
+   "name": "websockets",
+   "version": "17.2",
+   "license": "BSD-3-Clause",
+   "summary": "An implementation of the WebSocket Protocol (RFC 6455 & 7692)",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  },
+  {
+   "name": "xmltodict",
+   "version": "1.0.4",
+   "license": "MIT",
+   "summary": "Makes working with XML feel like you are working with JSON",
+   "home": "",
+   "requires": [],
+   "origin": "pip"
+  }
+ ],
+ "apt": [
+  "bash\t5.2.37-2+b10\tamd64",
+  "ca-certificates\t20250419\tall",
+  "curl\t8.14.1-2+deb13u5\tamd64",
+  "unzip\t6.0-29+deb13u1\tamd64",
+  "git\t1:2.47.3-0+deb13u1\tamd64",
+  "openssh-client\t1:10.0p1-7+deb13u4\tamd64",
+  "perl\t5.40.1-6+deb13u1\tamd64",
+  "iputils-ping\t3:20240905-3\tamd64",
+  "python3\t3.13.5-1\tamd64",
+  "python3-venv\t3.13.5-1\tamd64",
+  "libvirt-clients\t11.3.0-3+deb13u3\tamd64",
+  "virtinst\t1:5.0.0-5+deb13u1\tall",
+  "qemu-utils\t1:10.0.13+ds-0+deb13u1\tamd64",
+  "xorriso\t1.5.6-1.2+b1\tamd64",
+  "qemu-system-x86\t1:10.0.13+ds-0+deb13u1\tamd64",
+  "ovmf\t2025.02-8+deb13u1\tall",
+  "postgresql-client\t17+278\tall"
+ ],
+ "os": "Debian GNU/Linux 13 (trixie)",
+ "dpkg_total": 266,
+ "syslog_image": {
+  "packages": [
+   "rsyslog\t8.2504.0-1+deb13u2",
+   "rsyslog-pgsql\t8.2504.0-1+deb13u2",
+   "rsyslog-openssl\t8.2504.0-1+deb13u2",
+   "ca-certificates\t20250419",
+   "procps\t2:4.0.4-9"
+  ],
+  "dpkg_total": 116
+ },
+ "images": {
+  "caddy:2": "sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772",
+  "cyberark/conjur:1.27.0": "sha256:6f1af820eea9c4edd3506c7d2a61ec3097daf65196d37578b7624a9eda3f15f4",
+  "ghcr.io/goauthentik/server:2026.8.3": "sha256:ab9b4e8cc4ab3f8d1198d2db6aeea66bafea1963b3f2843589e0d163f97d9849",
+  "guacamole/guacd:1.6.0": "sha256:8974eaa9ba32f713daf311e7cc8cd7e4cdfba1edea39eed75524e78ef4b08f4f",
+  "nginx:1.28-alpine": "sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+  "openbao/openbao:2.7.1": "sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf",
+  "postgres:16-alpine": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+  "postgres:17-alpine": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+  "smallstep/step-ca:0.30.2": "sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270"
+ },
+ "captured": "2026-10-15",
+ "captured_from": "the lab stack's worker container (labape:local at v0.4.0 + V2) and the images it runs",
+ "tools": {
+  "OpenTofu": "1.12.6",
+  "Packer": "1.16.1",
+  "step CLI": "0.30.2"
+ },
+ "collections": {
+  "ansible.windows": "3.8.0",
+  "microsoft.ad": "1.12.1",
+  "community.general": "13.4.0",
+  "chocolatey.chocolatey": "1.6.0",
+  "community.library_inventory_filtering_v1": "1.1.5"
+ },
+ "providers": {
+  "dmacvicar/libvirt": "0.9.9",
+  "hashicorp/local": "2.9.1",
+  "hashicorp/null": "3.3.2"
+ },
+ "plugins": {
+  "hashicorp/qemu": "1.1.7",
+  "hashicorp/ansible": "1.1.6"
+ }
+}
