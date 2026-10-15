@@ -18,7 +18,8 @@ interface EnvSecret {
   name: string; area: "accounts" | "user" | "vm"; vm: string; short: string; store: string; path: string;
   updated_at: string; editable: boolean; rotation: string;
 }
-interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string }
+interface OpenBaoAccess { url: string; mount: string; path: string; cli: string }
+interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string; openbao: OpenBaoAccess | null }
 interface Draft { name: string; vm: string; value: string; replacing: boolean }
 
 const AREAS: { area: EnvSecret["area"]; title: string; note: string }[] = [
@@ -93,6 +94,15 @@ export default function EnvSecrets({ envId }: { envId: string }) {
           For the environment's owners and admins. Each value is fetched only when you show or copy it, and each time is in
           the audit log.{data.folder && <> In OpenBao they're in <code>{data.folder}</code>.</>}
         </Typography>
+        {data.openbao && (
+          <Alert severity="info" icon={false}>
+            You can also use OpenBao itself, signing in with your LABaPe account (OIDC):{" "}
+            <a href={data.openbao.url} target="_blank" rel="noreferrer">OpenBao's web UI</a>, secrets engine{" "}
+            <code>{data.openbao.mount}</code>, folder <code>{data.openbao.path}/</code>. From a shell:{" "}
+            <code>{data.openbao.cli}</code>. Owners read the whole folder and change <code>user/</code> and <code>vm/</code>;
+            what you store there shows here within a few minutes.
+          </Alert>
+        )}
         {error && !draft && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
         {AREAS.map(({ area, title, note }) => {
           const rows = data.secrets.filter((s) => s.area === area);

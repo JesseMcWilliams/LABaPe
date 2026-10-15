@@ -225,7 +225,9 @@ services:
       - ./stores/tls:/openbao/tls:ro
       - labape-openbao:/openbao/file
     ports:
-      - "${LABAPE_STORES_BIND:-127.0.0.1}:${LABAPE_OPENBAO_PORT:-8200}:8200"
+      # LABAPE_OPENBAO_BIND (else LABAPE_STORES_BIND): 0.0.0.0 for people's UI and command line (design
+      # §49.2). Not one host address: the host's own tools use 127.0.0.1 (stores.sh refuses it).
+      - "${LABAPE_OPENBAO_BIND:-${LABAPE_STORES_BIND:-127.0.0.1}}:${LABAPE_OPENBAO_PORT:-8200}:8200"
 
   labape-conjur-db:
     image: docker.io/library/postgres:17-alpine

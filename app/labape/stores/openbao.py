@@ -23,6 +23,10 @@ class OpenBaoSettings(BaseModel):
     namespace: str = Field(default="", pattern=rf"^({_SEGMENT}(/{_SEGMENT})*)?$")   # Vault Enterprise only
     verify_tls: bool = True
     ca_bundle: str = Field(default="", max_length=64000)
+    # People's own sign-in (design §49.2, V1b): the address their browsers and `bao` use, and the
+    # OIDC auth mount stores.sh sets up. Empty: people reach their secrets through LABaPe only.
+    people_url: str = Field(default="", pattern=r"^(https://[^\s/]+/?)?$")
+    people_mount: str = Field(default="oidc", pattern=rf"^{_SEGMENT}$")
 
 
 class OpenBaoStore(HttpStore):
@@ -90,6 +94,18 @@ class OpenBaoStore(HttpStore):
                     rel = full[len(self.cfg.path_prefix) + 1:] if self.cfg.path_prefix else full
                     out.append(decode_name(rel))
         return sorted(out)
+
+    def api(self, method: str, path: str, body: dict | None = None, *, missing_ok: bool = False) -> dict:
+        """Any OpenBao API call LABaPe's policy allows (design §49.2): the JSON answer, {} when there's
+        none (204, or 404 with `missing_ok`)."""
+        kw = {"json": body} if body is not None else {}
+        r = self._call(method, f"/v1/{url_path(path)}", path, missing_ok=missing_ok, **kw)
+        if r is None or r.status_code == 204 or not r.content:
+            return {}
+        try:
+            return r.json()
+        except ValueError as exc:
+            raise StoreError(f"{self.display_name} sent an answer LABaPe doesn't understand for {path}") from exc
 
     def test_connection(self):
         try:

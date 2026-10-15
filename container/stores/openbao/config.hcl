@@ -14,5 +14,6 @@ listener "tcp" {
 
 api_addr      = "https://labape-openbao:8200"
 cluster_addr  = "https://labape-openbao:8201"
-ui            = false
+# The web UI, for people signing in with OIDC (design §49.2, V1b; stores.sh sets the sign-in up).
+ui            = true
 disable_mlock = true

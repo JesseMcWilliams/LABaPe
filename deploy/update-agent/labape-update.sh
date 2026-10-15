@@ -17,6 +17,8 @@
 #   signs a test request) -> maintenance off; everything put back on failure.
 # authentik_sso: sign-on between linked stacks (design §47.2): tools/authentik-test/sso.sh.
 # stores_setup: stores/stores.sh setup (secret health, S1: new store logins for LABaPe).
+# openbao_people: stores/stores.sh people-policies <envs>: each environment's OpenBao policy and
+#   owners group (design §49.2), written with the root token from a fixed template.
 # full_backup: the whole stack in one sealed archive (deploy/stack-backup.sh,
 #   design §32); no maintenance mode, nothing stops.
 # The engine's own secrets (vault password, VM key) are rotated by the worker,
@@ -234,6 +236,21 @@ if [ "$ACTION" = stores_setup ]; then
     status succeeded done "stores.sh setup: ${out##*$'\n'}"
   else
     status failed applying "stores.sh setup failed: ${out##*$'\n'}"
+  fi
+  finish
+  exit 0
+fi
+
+if [ "$ACTION" = openbao_people ]; then
+  # People's access to their environments in OpenBao (design §49.2): LABaPe names the environments
+  # (stores.sh checks each name); the policies come from stores.sh's template, not from LABaPe.
+  envs="$(field "$U/processing.json" envs)"
+  status running applying "OpenBao: policies for ${envs:-no} environment(s)"
+  # shellcheck disable=SC2086  # one word per environment name; stores.sh refuses anything else
+  if out="$(bash "$C/stores/stores.sh" people-policies $envs 2>&1)"; then
+    status succeeded done "${out##*$'\n'}"
+  else
+    status failed applying "OpenBao people policies failed: ${out##*$'\n'}"
   fi
   finish
   exit 0

@@ -41,6 +41,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- People can use OpenBao itself: its web UI and `bao login -method=oidc`,
+  signing in with their LABaPe account (`LABAPE_OPENBAO_PEOPLE=yes`,
+  `stores/stores.sh setup`). Owners read their environment's folder and
+  change `user/` and `vm/`; admins read every environment's. LABaPe keeps
+  the owners in OpenBao in step; the policies come from a fixed template
+  that `stores.sh` writes when the update agent asks, so LABaPe can't grant
+  itself anything new.
 - An environment's secrets on its page: owners and admins see every
   secret of the environment, show or copy any (each audited), and store,
   replace or delete their own, for the whole environment or one VM. In

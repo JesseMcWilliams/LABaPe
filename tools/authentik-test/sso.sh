@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sign-on between linked stacks (design §47.2, F1b), on the host with this Authentik.
 #
-# Usage: sso.sh REQUEST_JSON       the update agent's request (action authentik_sso): op and fields
+# Usage: sso.sh REQUEST_JSON       the update agent's request (action authentik_sso): op and fields;
+#                                  stores/stores.sh's for OpenBao's sign-in (op client_add, design §49.2)
 #        sso.sh --bundle-only      (re)write trust/ca-bundle.pem only (deploy.sh, before starting)
 #
 # trust/ca-bundle.pem is what Authentik's outbound HTTPS trusts (REQUESTS_CA_BUNDLE in compose.yaml):
@@ -44,13 +45,16 @@ case "$OP" in
     grep -q "BEGIN CERTIFICATE" "trust/peers/$(f slug).pem.tmp" || { echo "sso: the linked stack's CA root is missing" >&2; exit 1; }
     mv "trust/peers/$(f slug).pem.tmp" "trust/peers/$(f slug).pem" ;;
   source_remove) rm -f "trust/peers/$(f slug).pem" ;;
-  provider_add|provider_remove) ;;
+  provider_add|provider_remove|client_add) ;;
   *) echo "sso: unknown op $OP" >&2; exit 1 ;;
 esac
 bundle
 $COMPOSE up -d >/dev/null 2>&1        # the bundle's settings, if this Authentik started before them
 for _ in $(seq 1 30); do $COMPOSE exec -T worker true 2>/dev/null && break; sleep 2; done
+# The client secret and redirect list go by name only (-e VAR), from this process's environment:
+# never on a command line.
+SSO_CLIENT_SECRET="$(f client_secret)" SSO_REDIRECT_URIS="$(f redirect_uris)" \
 $COMPOSE exec -T -e SSO_OP="$OP" -e SSO_CLIENT_ID="$(f client_id)" -e SSO_NAME="$(f name)" \
   -e SSO_REDIRECT_URI="$(f redirect_uri)" -e SSO_SLUG="$(f slug)" -e SSO_ISSUER="$(f issuer)" \
-  -e SSO_AUTH_BASE="$(f auth_base)" worker ak shell < sso.py 2>&1 | grep '^sso:' | tail -1 | grep . \
+  -e SSO_AUTH_BASE="$(f auth_base)" -e SSO_CLIENT_SECRET -e SSO_REDIRECT_URIS worker ak shell < sso.py 2>&1 | grep '^sso:' | tail -1 | grep . \
   || { echo "sso: $OP failed in Authentik (see: $COMPOSE logs worker)" >&2; exit 1; }

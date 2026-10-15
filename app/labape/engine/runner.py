@@ -955,6 +955,10 @@ def serve(slots: int | None = None) -> None:
                     for jid in secret_health.schedule(db):     # S1: is each secret still good
                         log.info("queued secret check job %s", jid)
                 with session_factory()() as db:
+                    from .. import openbao_people
+                    for what in openbao_people.schedule(db):   # V1b: owners' access in OpenBao
+                        log.info("OpenBao people access: %s", what)
+                with session_factory()() as db:
                     for jid in template_versions.schedule_refresh(db):
                         log.info("queued monthly template refresh job %s", jid)
                     for jid in template_versions.schedule_retention(db):

@@ -104,7 +104,7 @@ The stack includes OpenBao and Conjur Open Source (design §26), in the `stores`
 
 | Where | What |
 |---|---|
-| `https://127.0.0.1:8200`, `https://127.0.0.1:8444` | OpenBao and Conjur for the host (`LABAPE_OPENBAO_PORT`, `LABAPE_CONJUR_PORT`; `LABAPE_STORES_BIND` publishes them on another address) |
+| `https://127.0.0.1:8200`, `https://127.0.0.1:8444` | OpenBao and Conjur for the host (`LABAPE_OPENBAO_PORT`, `LABAPE_CONJUR_PORT`; `LABAPE_STORES_BIND`, or `LABAPE_OPENBAO_BIND` for OpenBao alone, set to `0.0.0.0` publishes them on every address; not one host address, which drops the loopback the host's tools use) |
 | `stores/secrets/` (0700) | Secret zero: OpenBao's unseal key and root token, Conjur's data key, database password and admin key, the update agent's AppRole login. Back it up with the `labape-openbao` and `labape-conjur-db` volumes. |
 | `stores/tls/` | The stores' certificate, key and the platform root |
 | `labape-stores.service`, `labape-stores-tls.timer` | User units: unseal OpenBao when the service user's systemd starts (lingering, so at boot), and renew the certificate daily when fewer than 10 days are left |
@@ -112,6 +112,8 @@ The stack includes OpenBao and Conjur Open Source (design §26), in the `stores`
 **Platform store.** LABaPe's own secrets (the engine secrets, the bootstrap secrets below, the command line's login) live in OpenBao unless `LABAPE_PLATFORM_STORE=conjur` is set in `.env`; re-run `stores/stores.sh setup` after changing it to move them. `stores/secrets/platform_store_active` records where they are now, so a boot before the move still reads the right store.
 
 `stores/stores.sh status` shows whether OpenBao is sealed and runs LABaPe's own checks; `stores/stores.sh unseal` unseals it by hand.
+
+**People in OpenBao** (design §49.2): `LABAPE_OPENBAO_PEOPLE=yes` and `LABAPE_OPENBAO_BIND=0.0.0.0` in `.env`, then `stores/stores.sh setup`: OpenBao's UI with OIDC sign-in through the Authentik installed with LABaPe (client `labape-openbao`, secret in `stores/secrets/openbao_oidc_secret`). `stores/stores.sh people-policies <env>...` writes each environment's policy and group; the update agent runs it when LABaPe asks.
 
 ## Run
 
