@@ -86,7 +86,8 @@ def test_first_start_points_email_at_mailpit_once(db_reset, mailpit):
         done = stack_mail.startup(db)
         smtp = appsettings.get(db, "smtp")
         assert (smtp.enabled, smtp.host, smtp.port, smtp.security, smtp.username) == (True, "labape-mailpit", 1025, "none", "")
-        assert smtp.from_address == "labape@lab.example.test" and smtp.notify_jobs is False and len(done) == 2
+        assert smtp.from_address == "labape@lab.example.test" and smtp.notify_jobs is False and len(done) == 3
+        assert appsettings.get(db, "monitoring").email_to == ["alerts@lab.example.test"]
         appsettings.put(db, "smtp", smtp.model_copy(update={"enabled": False, "host": "mail.corp.test"}))   # an admin's choice
         stack_mail.startup(db)
         assert appsettings.get(db, "smtp").host == "mail.corp.test"
