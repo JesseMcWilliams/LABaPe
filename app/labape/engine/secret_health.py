@@ -274,6 +274,33 @@ def _authentik_admin(db: Session, p: SecretPolicy) -> str:
     return f"{aa.USER} signs in with the stored password"
 
 
+def _elevated_account(db: Session, p: SecretPolicy) -> str:
+    import httpx
+    from .. import elevated
+    account = (p.params or {}).get("account", "")
+    if not elevated.token_identifier(account):
+        raise NotInUse(f"{account} isn't an Authentik token, so there is nothing LABaPe can ask Authentik about")
+    try:
+        ok = elevated.works(db, account)
+    except elevated.ElevatedError as exc:
+        raise NotInUse(str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise NotInUse(f"Authentik isn't answering: {exc}") from exc
+    if ok is None:
+        raise NotInUse("no credential is stored for it")
+    if not ok:
+        raise CheckError(f"Authentik refuses the stored credential for {account}")
+    return f"Authentik accepts the stored credential for {account}"
+
+
+def _elevated_restore(db: Session, p: SecretPolicy, log) -> str:
+    from .. import elevated
+    try:
+        return elevated.restore(db, (p.params or {}).get("account", ""), log)
+    except elevated.ElevatedError as exc:
+        raise CheckError(str(exc)) from exc
+
+
 def _smtp_login(db: Session, p: SecretPolicy) -> str:
     cfg = appsettings.get(db, "smtp")
     password = get_secret(db, appsettings.SMTP_PASSWORD_SECRET) or ""
@@ -420,6 +447,8 @@ HEALTH: dict[str, Health] = {
                              _worker_key, _worker_key_recover),
     "directory_token": Health(True, "The rotation account sets a new token key in Authentik.", _directory_token),
     "oidc_client_secret": Health(True, "The rotation account sets a new client secret in Authentik.", _oidc_secret),
+    "elevated_account": Health(True, "akadmin's stored password signs in, sets a new key on the account's Authentik token, "
+                                     "and the new key is stored.", _elevated_account, _elevated_restore),
     "authentik_admin": Health(True, "The rotation account sets a new akadmin password in Authentik.", _authentik_admin),
     "smtp_password": Health(False, "It's the mail server's: set the new password in Settings → Notifications.",
                             _smtp_login),
