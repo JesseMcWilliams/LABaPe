@@ -49,6 +49,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- The environment's Secrets panel pages like the other lists and has a
+  search box and filters (group, VM, store).
 - Every host LABaPe sets up gets `smartmontools`, `lm-sensors` (its chips
   detected once, automatically) and `ethtool`: the installer on every
   profile, and a host's access setup for hosts installed before.

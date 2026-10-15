@@ -13,6 +13,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { api } from "../api";
+import { Pager, pageOf, usePageSize } from "./Paging";
 
 interface EnvSecret {
   name: string; area: "accounts" | "user" | "vm"; vm: string; short: string; store: string; path: string;
@@ -49,9 +50,27 @@ export default function EnvSecrets({ envId }: { envId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // E1: search and filters over the whole list, then pages of the user's own size.
+  const [search, setSearch] = useState("");
+  const [area, setArea] = useState("");
+  const [vmFilter, setVmFilter] = useState("");
+  const [storeFilter, setStoreFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const [size] = usePageSize();
   const load = () => api.get<SecretList>(`/api/environments/${envId}/secrets`).then(setData, (e) => setError(e.message));
   useEffect(() => { load(); }, [envId]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data) return error ? <Alert severity="error">{error}</Alert> : null;
+  const q = search.trim().toLowerCase();
+  const matching = data.secrets.filter((s) => (!area || s.area === area) && (!vmFilter || s.vm === vmFilter)
+    && (!storeFilter || s.store === storeFilter)
+    && (!q || [s.short, s.name, s.vm, s.path, s.rotation].some((v) => v.toLowerCase().includes(q))));
+  const order = { user: 0, vm: 1, accounts: 2 } as const;
+  const sorted = [...matching].sort((a, b) => order[a.area] - order[b.area] || a.name.localeCompare(b.name));
+  const shown = pageOf(sorted, page, size);
+  const storesInUse = [...new Set(data.secrets.map((s) => s.store))].sort();
+  const vmsInUse = [...new Set(data.secrets.map((s) => s.vm).filter(Boolean))].sort();
+  const filtered = Boolean(q || area || vmFilter || storeFilter);
+  const refilter = (f: () => void) => { f(); setPage(0); };
 
   const fetchValue = (name: string, action: "show" | "copy") =>
     api.post<{ value: string }>(`/api/environments/${envId}/secrets/reveal`, { name, action }).then((r) => r.value);
@@ -104,9 +123,30 @@ export default function EnvSecrets({ envId }: { envId: string }) {
           </Alert>
         )}
         {error && !draft && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
+        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+          <TextField size="small" label="Search" value={search} sx={{ minWidth: 220 }}
+            onChange={(e) => refilter(() => setSearch(e.target.value))} title="Name, VM, place in the store or rotation" />
+          <TextField select size="small" label="Group" value={area} sx={{ minWidth: 200 }}
+            onChange={(e) => refilter(() => setArea(e.target.value))}>
+            <MenuItem value="">All</MenuItem>
+            {AREAS.map((a) => <MenuItem key={a.area} value={a.area}>{a.title}</MenuItem>)}
+          </TextField>
+          <TextField select size="small" label="VM" value={vmFilter} sx={{ minWidth: 140 }}
+            onChange={(e) => refilter(() => setVmFilter(e.target.value))}>
+            <MenuItem value="">All</MenuItem>
+            {vmsInUse.map((v) => <MenuItem key={v} value={v}>{v}</MenuItem>)}
+          </TextField>
+          <TextField select size="small" label="Store" value={storeFilter} sx={{ minWidth: 140 }}
+            onChange={(e) => refilter(() => setStoreFilter(e.target.value))}>
+            <MenuItem value="">All</MenuItem>
+            {storesInUse.map((v) => <MenuItem key={v} value={v}>{v}</MenuItem>)}
+          </TextField>
+          {filtered && <Button size="small" onClick={() => refilter(() => { setSearch(""); setArea(""); setVmFilter(""); setStoreFilter(""); })}
+            title="Show every secret again">Clear</Button>}
+        </Stack>
         {AREAS.map(({ area, title, note }) => {
-          const rows = data.secrets.filter((s) => s.area === area);
-          if (!rows.length && area !== "user") return null;
+          const rows = shown.filter((s) => s.area === area);
+          if (!rows.length && (filtered || area !== "user" || page > 0)) return null;
           return (
             <Stack key={area} spacing={0.5}>
               <Typography variant="subtitle2" sx={{ mt: 1 }}>{title}</Typography>
@@ -158,6 +198,8 @@ export default function EnvSecrets({ envId }: { envId: string }) {
             </Stack>
           );
         })}
+        {filtered && matching.length === 0 && <Typography variant="body2">No secret matches.</Typography>}
+        {sorted.length > 0 && <Pager total={sorted.length} page={page} onPage={setPage} />}
       </Stack>
       <Dialog open={!!draft} onClose={() => setDraft(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{draft?.replacing ? `Replace ${draft.name}` : "Store a secret"}</DialogTitle>
