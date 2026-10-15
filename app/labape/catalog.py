@@ -34,7 +34,7 @@ PKG_MANAGERS = ("chocolatey", "apt", "dnf", "zypper")
 INSTALLER_TYPES = {"windows": ("msi", "exe"), "linux": ("deb", "rpm")}
 # Ansible roles a Linux service may run (`linux.role`, design §27). Kept to
 # vetted roles in ansible/roles; site.yml's service-roles play has the same list.
-SERVICE_ROLES = ("syslog_collector",)
+SERVICE_ROLES = ("syslog_collector", "mailpit")
 
 
 class CatalogError(ValueError):
@@ -171,6 +171,17 @@ SYSLOG_COLLECTOR = (
     {"linux": {"packages": {"dnf": ["rsyslog", "rsyslog-gnutls"], "apt": ["rsyslog", "rsyslog-gnutls"]},
                "units": ["rsyslog"], "role": "syslog_collector"}})
 
+# Linux only (M1, question 169): Mailpit catching the environment's mail (SMTP 25 with STARTTLS from the
+# platform certificate), a web UI and API on 8025 (HTTPS, a password LABaPe keeps), relaying only what
+# Settings → Lab mail relay allows. Added to existing catalogs by migration 0025.
+MAIL_SERVER = (
+    "service", "mail_server", "Mail server (Mailpit)",
+    "Mailpit: every VM of the environment can send to it on port 25 (STARTTLS); it keeps every message and "
+    "shows them in a web UI and API on port 8025 (HTTPS, user mailpit, its password on the environment's "
+    "Secrets). Mail goes nowhere else unless an admin turns on Settings → Lab mail relay, and then only to "
+    "the recipients allowed there.",
+    {"linux": {"role": "mailpit"}})
+
 # Starter catalog, published on first start (only when the catalog is empty).
 SEED = [
     ("service", "iis", "IIS web server", "Internet Information Services with the management console.",
@@ -188,6 +199,7 @@ SEED = [
     ("service", "cockpit", "Cockpit web console", "Browser-based server management on port 9090.",
      {"linux": {"packages": {"dnf": ["cockpit"], "apt": ["cockpit"]}, "units": ["cockpit.socket"]}}),
     SYSLOG_COLLECTOR,
+    MAIL_SERVER,
 ]
 
 

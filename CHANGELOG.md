@@ -53,6 +53,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- A mail server per environment: the catalog service **Mail server
+  (Mailpit)** on a Linux VM catches what the environment's VMs send to it
+  (port 25) and shows it in a web UI (port 8025, HTTPS, user `mailpit`, its
+  password on the Secrets panel). Nothing leaves unless an admin sets
+  Settings → **Lab mail relay**, and then only to the recipients listed.
 - Desktop sessions on Linux VMs: a host group can have **xrdp** (a desktop
   over RDP for every account, local or domain) and **VNC** (a desktop of
   its own for each local account), set when creating the environment or on

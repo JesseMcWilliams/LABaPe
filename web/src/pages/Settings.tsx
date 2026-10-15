@@ -54,6 +54,7 @@ interface AllSettings {
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   syslog_collector: Collector;
   file_distribution: { wait_minutes: number; copy_templates_to_all: boolean };
+  lab_mail_relay: { enabled: boolean; host: string; port: number; starttls: boolean; username: string; allow: string[]; has_password?: boolean };
   monitoring: { email_to: string[]; syslog: boolean; disk_free_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number };
   file_roots: Record<string, string>;
 }
@@ -84,7 +85,7 @@ type Group = typeof GROUPS[number]["key"];
 const GROUP_OF: Record<string, Group> = {
   "Directory (group search)": "signin", "VM accounts": "signin",
   "Maintenance window": "stack", "Monitoring": "stack", "Branding": "stack", "History": "stack",
-  "Syslog (audit trail)": "stack", "Email (SMTP)": "stack", "Syslog collector": "stack",
+  "Syslog (audit trail)": "stack", "Email (SMTP)": "stack", "Syslog collector": "stack", "Lab mail relay": "environments",
   "Full stack backups": "backups", "Database backups": "backups",
   "Environment leases": "environments", "VM snapshots": "environments", "Templates": "environments",
   "File distribution": "files", "File locations": "files", "Downloads": "files",
@@ -215,6 +216,7 @@ export default function Settings() {
   const [s, setS] = useState<AllSettings | null>(null);
   const [error, setError] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
+  const [relayPassword, setRelayPassword] = useState("");
   const [testTo, setTestTo] = useState("");
   const [dirToken, setDirToken] = useState("");
   const [baoSecretId, setBaoSecretId] = useState("");
@@ -235,7 +237,7 @@ export default function Settings() {
 
   const set = <K extends keyof AllSettings>(k: K, patch: Partial<AllSettings[K]>) =>
     setS({ ...s, [k]: { ...s[k], ...patch } });
-  const put = async <K extends "backup" | "stack_backup" | "vm_snapshots" | "leases" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring">(k: K, body: object) => {
+  const put = async <K extends "backup" | "stack_backup" | "vm_snapshots" | "leases" | "retention" | "syslog" | "smtp" | "directory" | "branding" | "downloads" | "maintenance_window" | "vm_accounts" | "store_openbao" | "store_conjur" | "secret_stores" | "templates" | "remote" | "syslog_collector" | "file_distribution" | "monitoring" | "lab_mail_relay">(k: K, body: object) => {
     const saved = await api.put<AllSettings[K]>(`/api/admin/settings/${k}`, body);
     setS((cur) => (cur ? { ...cur, [k]: saved } : cur));
   };
@@ -645,6 +647,35 @@ export default function Settings() {
             onChange={(e) => set("smtp", { notify_jobs: e.target.checked })} />} />
         </Stack>
       </Section>
+
+      {s.lab_mail_relay && <Section title="Lab mail relay"
+        intro="The account the environments' mail servers (catalog service Mail server, Mailpit) may forward through. Off: they catch every message and send none. Use an account of its own, not the one above: the VMs' owners can read what's on their VMs. Only the recipients listed are forwarded; a redeploy applies a change."
+        onSave={async () => {
+          await put("lab_mail_relay", { ...s.lab_mail_relay, ...(relayPassword ? { password: relayPassword } : {}) });
+          setRelayPassword("");
+          return "Lab mail relay saved; redeploy environments with a mail server to apply it.";
+        }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <FormControlLabel label="Forward allowed recipients" control={<Checkbox checked={s.lab_mail_relay.enabled}
+            onChange={(e) => set("lab_mail_relay", { enabled: e.target.checked })} />} />
+          <Field label="Server" value={s.lab_mail_relay.host} sx={{ minWidth: 220 }}
+            onChange={(e) => set("lab_mail_relay", { host: e.target.value })} />
+          <Field label="Port" type="number" value={s.lab_mail_relay.port} sx={{ width: 110 }}
+            onChange={(e) => set("lab_mail_relay", { port: num(e.target.value) })} />
+          <FormControlLabel label="STARTTLS" control={<Checkbox checked={s.lab_mail_relay.starttls}
+            onChange={(e) => set("lab_mail_relay", { starttls: e.target.checked })} />} />
+        </Stack>
+        <Stack direction="row" spacing={2} useFlexGap sx={row}>
+          <Field label="User name" value={s.lab_mail_relay.username} sx={{ minWidth: 220 }} help="Blank: no sign-in"
+            onChange={(e) => set("lab_mail_relay", { username: e.target.value })} />
+          <Field label="Password" type="password" value={relayPassword} sx={{ minWidth: 220 }} autoComplete="new-password"
+            help={s.lab_mail_relay.has_password ? "Saved. Type a new one to replace it." : "Not set"}
+            onChange={(e) => setRelayPassword(e.target.value)} />
+          <Field label="Allowed recipients" value={s.lab_mail_relay.allow.join(", ")} sx={{ minWidth: 320 }}
+            help="Addresses, or @domain for a whole domain; comma-separated"
+            onChange={(e) => set("lab_mail_relay", { allow: e.target.value.split(/[\s,;]+/).filter(Boolean) })} />
+        </Stack>
+      </Section>}
 
       <Section title="Directory (group search)"
         intro="Lets group fields search Authentik as you type. Use a token that can only view groups. Without one, suggestions come from the groups LABaPe has seen at sign-in."

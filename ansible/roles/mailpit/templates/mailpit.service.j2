@@ -1,0 +1,31 @@
+# LABaPe (catalog service mail_server, design §50.6): Mailpit catching the environment's mail.
+[Unit]
+Description=Mailpit (lab mail server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mailpit
+Group=mailpit
+# Port 25 without root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/mailpit \
+  --database {{ mailpit_dir }}/mailpit.db \
+  --smtp 0.0.0.0:{{ mailpit_smtp_port }} \
+  --listen 0.0.0.0:{{ mailpit_ui_port }} \
+  --smtp-auth-accept-any --smtp-auth-allow-insecure \
+{% if labape_mailpit_ui_auth | length > 0 %}
+  --ui-auth-file {{ mailpit_conf }}/ui-auth \
+{% endif %}
+{% if mailpit_cert.stat.exists %}
+  --ui-tls-cert {{ mailpit_conf }}/host.crt --ui-tls-key {{ mailpit_conf }}/host.key \
+  --smtp-tls-cert {{ mailpit_conf }}/host.crt --smtp-tls-key {{ mailpit_conf }}/host.key \
+{% endif %}
+{% if labape_mailpit_relay | length > 0 %}
+  --smtp-relay-config {{ mailpit_conf }}/relay.yaml --smtp-relay-matching '{{ labape_mailpit_relay.matching }}' \
+{% endif %}
+  --max 5000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

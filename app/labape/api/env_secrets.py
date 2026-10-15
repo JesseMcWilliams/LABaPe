@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import remote, stores
+from .. import mail_server, remote, stores
 from ..db import get_db
 from ..models import Environment, Secret, SecretPolicy
 from ..naming import instance_names
@@ -75,7 +75,7 @@ def list_secrets(env_id: int, db: Session = Depends(get_db), p: Principal = Depe
                     # E2: where this account can sign in from the browser, when the environment runs.
                     "connect": remote.account_targets(e, rest) if e.status == "deployed" else []})
     return {"secrets": out, "vms": _vms(e), "folder": f"env/{e.name}/" if _layout_store(db, e) else "",
-            "openbao": _openbao(db, e)}
+            "openbao": _openbao(db, e), "mail": mail_server.info(db, e)}
 
 
 def _openbao(db: Session, e: Environment) -> dict | None:

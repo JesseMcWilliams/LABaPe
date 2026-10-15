@@ -5,6 +5,7 @@ directory API token live in the encrypted secrets store.
 """
 from __future__ import annotations
 
+import re
 import os
 import time
 from typing import Literal
@@ -174,6 +175,26 @@ class SmtpSettings(BaseModel):
     notify_jobs: bool = False          # email the requester when their job finishes
 
 
+class LabMailRelaySettings(BaseModel):
+    """M1 (question 169): the SMTP account the environments' mail servers (Mailpit) may forward through.
+    Off by default; its own account, not Settings → Email's (the VMs' owners can read what's on them).
+    Only recipients matching `allow` (an address, or a domain as @example.com) are forwarded."""
+    enabled: bool = False
+    host: str = Field(default="", max_length=253)
+    port: int = Field(default=587, ge=1, le=65535)
+    starttls: bool = True
+    username: str = Field(default="", max_length=255)
+    allow: list[str] = Field(default=[], max_length=50)
+
+    @field_validator("allow")
+    @classmethod
+    def _allow(cls, v: list[str]) -> list[str]:
+        bad = [a for a in v if not re.fullmatch(r"[A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", a.strip())]
+        if bad:
+            raise ValueError(f"not an address or @domain: {', '.join(bad)}")
+        return [a.strip().lower() for a in v]
+
+
 class DirectorySettings(BaseModel):
     """Authentik API for the group search; blank URL = the OIDC issuer's origin."""
     enabled: bool = False
@@ -265,6 +286,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "syslog_collector": SyslogCollectorSettings,
     "file_distribution": FileDistributionSettings,
     "monitoring": MonitoringSettings,
+    "lab_mail_relay": LabMailRelaySettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"
@@ -272,6 +294,7 @@ DIRECTORY_TOKEN_SECRET = "settings/directory_token"
 SECRET_FIELDS = {
     "smtp": ("password", SMTP_PASSWORD_SECRET, "has_password"),
     "directory": ("token", DIRECTORY_TOKEN_SECRET, "has_token"),
+    "lab_mail_relay": ("password", "settings/lab_mail_relay_password", "has_password"),
 }
 
 _cache: dict[str, tuple[float, BaseModel]] = {}

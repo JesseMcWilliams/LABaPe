@@ -23,7 +23,8 @@ interface EnvSecret {
   connect: { vm: string; protocol: "rdp" | "ssh" | "vnc" }[];      // E2: where the account signs in
 }
 interface OpenBaoAccess { url: string; mount: string; path: string; cli: string }
-interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string; openbao: OpenBaoAccess | null }
+interface MailServer { vm: string; address: string; smtp: string; ui: string; user: string; relay: string[] }
+interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string; openbao: OpenBaoAccess | null; mail: MailServer[] }
 interface Draft { name: string; vm: string; value: string; replacing: boolean }
 
 const AREAS: { area: EnvSecret["area"]; title: string; note: string }[] = [
@@ -128,6 +129,13 @@ export default function EnvSecrets({ envId }: { envId: string }) {
           For the environment's owners and admins. Each value is fetched only when you show or copy it, and each time is in
           the audit log.{data.folder && <> In OpenBao they're in <code>{data.folder}</code>.</>}
         </Typography>
+        {(data.mail ?? []).map((m) => (
+          <Alert key={m.vm} severity="info" icon={false}>
+            Mail server on {m.vm}: the VMs send to <code>{m.smtp}</code> (STARTTLS); read what arrived at{" "}
+            <a href={m.ui} target="_blank" rel="noreferrer">{m.ui}</a> as <code>{m.user}</code> (its password is
+            {" "}<code>vm/{m.vm}/mailpit</code> below). {m.relay.length ? <>Forwarded outside: {m.relay.join(", ")}.</> : "Nothing is forwarded outside."}
+          </Alert>
+        ))}
         {data.openbao && (
           <Alert severity="info" icon={false}>
             You can also use OpenBao itself, signing in with your LABaPe account (OIDC):{" "}
