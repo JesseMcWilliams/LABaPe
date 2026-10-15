@@ -545,6 +545,8 @@ class Secret(Base):
     value: Mapped[str] = mapped_column(Text)                   # "v2:..." token; "" for an external store
     store: Mapped[str] = mapped_column(String(64), default="builtin")
     policy_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # V2 (R21): a shared environment secret's VMs, the only ones that may read it themselves.
+    vms: Mapped[list] = mapped_column(JSON, default=list)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

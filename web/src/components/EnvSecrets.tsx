@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Menu, MenuItem, Paper, Stack, Table,
+  Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Menu, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -21,11 +21,12 @@ interface EnvSecret {
   name: string; area: "accounts" | "user" | "vm"; vm: string; short: string; store: string; path: string;
   updated_at: string; editable: boolean; rotation: string;
   connect: { vm: string; protocol: "rdp" | "ssh" | "vnc" }[];      // E2: where the account signs in
+  readers: string[];                                               // V2: the VMs that read it themselves
 }
 interface OpenBaoAccess { url: string; mount: string; path: string; cli: string }
 interface MailServer { vm: string; address: string; smtp: string; ui: string; user: string; relay: string[] }
-interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string; openbao: OpenBaoAccess | null; mail: MailServer[] }
-interface Draft { name: string; vm: string; value: string; replacing: boolean }
+interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string; openbao: OpenBaoAccess | null; mail: MailServer[]; vm_access: boolean }
+interface Draft { name: string; vm: string; value: string; replacing: boolean; readers: string[] }
 
 const AREAS: { area: EnvSecret["area"]; title: string; note: string }[] = [
   { area: "user", title: "Stored by owners, shared", note: "For the whole environment." },
@@ -106,7 +107,7 @@ export default function EnvSecrets({ envId }: { envId: string }) {
   }, (e) => setError(e.message));
   const save = () => {
     setBusy(true);
-    api.put(`/api/environments/${envId}/secrets`, { name: draft!.name, vm: draft!.vm, value: draft!.value }).then(() => {
+    api.put(`/api/environments/${envId}/secrets`, { name: draft!.name, vm: draft!.vm, value: draft!.value, readers: draft!.readers }).then(() => {
       setDraft(null);
       setValues({});
       load();
@@ -122,7 +123,7 @@ export default function EnvSecrets({ envId }: { envId: string }) {
       <Stack spacing={1}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>Secrets</Typography>
-          <Button size="small" onClick={() => { setError(""); setDraft({ name: "", vm: "", value: "", replacing: false }); }}
+          <Button size="small" onClick={() => { setError(""); setDraft({ name: "", vm: "", value: "", replacing: false, readers: [] }); }}
             title="Store a secret of your own for this environment, or for one of its VMs">Store a secret</Button>
         </Stack>
         <Typography variant="body2" color="text.secondary">
@@ -186,7 +187,9 @@ export default function EnvSecrets({ envId }: { envId: string }) {
                     {rows.map((s) => (
                       <TableRow key={s.name}>
                         <TableCell title={s.rotation ? `Rotation: ${s.rotation}` : undefined}>{s.short}</TableCell>
-                        <TableCell>{s.vm || "—"}</TableCell>
+                        <TableCell title={s.area === "user" && data.vm_access ? "The VMs that read it themselves" : undefined}>
+                          {s.vm || (s.area === "user" && data.vm_access ? ((s.readers ?? []).join(", ") || "none") : "—")}
+                        </TableCell>
                         <TableCell sx={{ fontFamily: "monospace", wordBreak: "break-all", maxWidth: 360 }}>
                           {s.name in values ? (values[s.name] || "(empty)") : "••••••••••••"}
                         </TableCell>
@@ -210,7 +213,7 @@ export default function EnvSecrets({ envId }: { envId: string }) {
                           </Tooltip>}
                           {s.editable && <Tooltip title="Replace the value">
                             <IconButton size="small" aria-label="Replace"
-                              onClick={() => { setError(""); setDraft({ name: s.short, vm: s.vm, value: "", replacing: true }); }}>
+                              onClick={() => { setError(""); setDraft({ name: s.short, vm: s.vm, value: "", replacing: true, readers: s.readers ?? [] }); }}>
                               <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>}
@@ -248,13 +251,26 @@ export default function EnvSecrets({ envId }: { envId: string }) {
               <MenuItem value="">The whole environment (shared)</MenuItem>
               {data.vms.map((vm) => <MenuItem key={vm} value={vm}>{vm} only</MenuItem>)}
             </TextField>
-            <TextField label="Value" size="small" type="password" value={draft.value} required multiline={false}
-              autoComplete="new-password" onChange={(e) => setDraft({ ...draft, value: e.target.value })} />
+            <TextField label="Value" size="small" type="password" value={draft.value} required={!draft.replacing} multiline={false}
+              autoComplete="new-password" helperText={draft.replacing ? "Empty: keep the value (change only the VMs below)" : undefined}
+              onChange={(e) => setDraft({ ...draft, value: e.target.value })} />
+            {data.vm_access && !draft.vm && (
+              <Stack>
+                <Typography variant="body2">VMs that read it themselves (<code>sudo labape-secret get {draft.name || "NAME"}</code> /
+                  {" "}<code>Get-LabapeSecret {draft.name || "NAME"}</code>); the others can't:</Typography>
+                <Stack direction="row" sx={{ flexWrap: "wrap" }}>
+                  {data.vms.map((vm) => (
+                    <FormControlLabel key={vm} label={vm} control={<Checkbox size="small" checked={draft.readers.includes(vm)}
+                      onChange={(e) => setDraft({ ...draft, readers: e.target.checked ? [...draft.readers, vm] : draft.readers.filter((x) => x !== vm) })} />} />
+                  ))}
+                </Stack>
+              </Stack>
+            )}
           </Stack>
         </DialogContent>}
         <DialogActions>
           <Button onClick={() => setDraft(null)} title="Close without saving">Cancel</Button>
-          <Button variant="contained" disabled={busy || !draft?.name || !draft?.value} onClick={save}
+          <Button variant="contained" disabled={busy || !draft?.name || (!draft?.value && !draft?.replacing)} onClick={save}
             title="Save it in the environment's store">{draft?.replacing ? "Replace" : "Store"}</Button>
         </DialogActions>
       </Dialog>

@@ -1,0 +1,51 @@
+---
+# The VM's way to its own secrets in OpenBao (V2, question 165 a; Claude_Docs/Planning_Web-Interface-
+# Design.md §49.3): signed in with the platform certificate (labape_cert), it reads its own folder
+# (env/<env>/vm/<vm>/) and the shared secrets whose VM list names it. LABaPe sets
+# labape_secret_client: {url, role, mount, env, vm} (nothing secret).
+
+- name: Where OpenBao is, and who this VM is (Linux)
+  ansible.builtin.copy:
+    dest: /etc/labape/secret-client.conf
+    mode: "0644"
+    content: |
+      # LABaPe (V2): read by labape-secret.
+      URL='{{ labape_secret_client.url }}'
+      ROLE='{{ labape_secret_client.role }}'
+      MOUNT='{{ labape_secret_client.mount }}'
+      ENV='{{ labape_secret_client.env }}'
+      VM='{{ labape_secret_client.vm }}'
+  when: ansible_connection | default('ssh') != 'winrm'
+
+- name: labape-secret (Linux)
+  ansible.builtin.copy:
+    src: labape-secret
+    dest: /usr/local/bin/labape-secret
+    mode: "0755"
+  when: ansible_connection | default('ssh') != 'winrm'
+
+# `sudo labape-secret`: the RHEL family's sudo secure_path leaves out /usr/local/bin.
+- name: labape-secret where sudo finds it
+  ansible.builtin.file:
+    src: /usr/local/bin/labape-secret
+    dest: /usr/bin/labape-secret
+    state: link
+  when: ansible_connection | default('ssh') != 'winrm'
+
+- name: Where OpenBao is, and who this VM is (Windows)
+  ansible.windows.win_copy:
+    dest: 'C:\ProgramData\LABaPe\secret-client.json'
+    content: "{{ labape_secret_client | to_json }}"
+  when: ansible_connection | default('ssh') == 'winrm'
+
+- name: The module's folder (win_copy doesn't make it)
+  ansible.windows.win_file:
+    path: 'C:\Program Files\WindowsPowerShell\Modules\LabapeSecret'
+    state: directory
+  when: ansible_connection | default('ssh') == 'winrm'
+
+- name: Get-LabapeSecret (Windows, a module every PowerShell loads)
+  ansible.windows.win_copy:
+    src: LabapeSecret.psm1
+    dest: 'C:\Program Files\WindowsPowerShell\Modules\LabapeSecret\LabapeSecret.psm1'
+  when: ansible_connection | default('ssh') == 'winrm'

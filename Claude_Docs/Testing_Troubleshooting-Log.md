@@ -615,3 +615,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 1. **Mailpit's release didn't download on a lab VM ("Request failed: <urlopen error timed out>"):** from the lab, GitHub's `releases/latest/download` redirect alone took 5.5 s and the whole download about 11 s, over `unarchive`'s 10-second fetch timeout. The role downloads with `get_url` (`timeout: 120`, three tries), then unpacks the local file.
 2. **Then "Unable to find required 'gtar' or 'tar' binary":** the minimal Rocky image has no `tar`. The role installs it first.
+
+## VMs reading their secrets (V2, 2026-10-15)
+
+1. **The Windows helper didn't install ("Destination directory ... LabapeSecret ... does not exist"):** `win_copy` to a file path doesn't create its folder. The role creates `C:\Program Files\WindowsPowerShell\Modules\LabapeSecret` first.
+2. **`sudo labape-secret get ...` said "command not found" on Rocky:** sudo's `secure_path` there is `/sbin:/bin:/usr/sbin:/usr/bin`, without `/usr/local/bin`. The role links `/usr/bin/labape-secret` to it.

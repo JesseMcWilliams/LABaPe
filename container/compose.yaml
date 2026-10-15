@@ -228,6 +228,8 @@ services:
       # LABAPE_OPENBAO_BIND (else LABAPE_STORES_BIND): 0.0.0.0 for people's UI and command line (design
       # §49.2). Not one host address: the host's own tools use 127.0.0.1 (stores.sh refuses it).
       - "${LABAPE_OPENBAO_BIND:-${LABAPE_STORES_BIND:-127.0.0.1}}:${LABAPE_OPENBAO_PORT:-8200}:8200"
+      # VMs' certificate sign-in (V2, design §49.3); on the same address.
+      - "${LABAPE_OPENBAO_BIND:-${LABAPE_STORES_BIND:-127.0.0.1}}:${LABAPE_OPENBAO_VM_PORT:-8210}:8210"
 
   labape-conjur-db:
     image: docker.io/library/postgres:17-alpine

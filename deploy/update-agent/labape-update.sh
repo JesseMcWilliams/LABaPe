@@ -19,6 +19,8 @@
 # stores_setup: stores/stores.sh setup (secret health, S1: new store logins for LABaPe).
 # openbao_people: stores/stores.sh people-policies <envs>: each environment's OpenBao policy and
 #   owners group (design §49.2), written with the root token from a fixed template.
+# openbao_vms: stores/stores.sh vm-policies <file>: each VM's OpenBao policy and certificate sign-in
+#   (design §49.3), from the request's `vms` (stores.sh checks every name).
 # full_backup: the whole stack in one sealed archive (deploy/stack-backup.sh,
 #   design §32); no maintenance mode, nothing stops.
 # The engine's own secrets (vault password, VM key) are rotated by the worker,
@@ -252,6 +254,23 @@ if [ "$ACTION" = openbao_people ]; then
   else
     status failed applying "OpenBao people policies failed: ${out##*$'\n'}"
   fi
+  finish
+  exit 0
+fi
+
+if [ "$ACTION" = openbao_vms ]; then
+  # VMs reading their secrets (design §49.3): LABaPe's list of VMs and secret names; the policies
+  # and sign-in roles come from stores.sh's template.
+  f="$(mktemp)"
+  python3 -c 'import json, sys; json.dump({"vms": json.load(open(sys.argv[1])).get("vms", [])}, open(sys.argv[2], "w"))' \
+    "$U/processing.json" "$f"
+  status running applying "OpenBao: VM policies"
+  if out="$(bash "$C/stores/stores.sh" vm-policies "$f" 2>&1)"; then
+    status succeeded done "${out##*$'\n'}"
+  else
+    status failed applying "OpenBao VM policies failed: ${out##*$'\n'}"
+  fi
+  rm -f "$f"
   finish
   exit 0
 fi
