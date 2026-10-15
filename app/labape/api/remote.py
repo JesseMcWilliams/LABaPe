@@ -32,11 +32,12 @@ class SessionIn(BaseModel):
     environment_id: int | None = None
     vm: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,63}$")
     kvm_host_id: int | None = None
+    account: str = Field(default="", max_length=255, pattern=r"^[A-Za-z0-9._/-]*$")   # E2: as this account
 
 
 def _out(s: RemoteSession) -> dict:
     return {c: getattr(s, c) for c in ("id", "username", "target_type", "environment_id", "kvm_host_id", "target",
-                                       "address", "protocol", "state", "recorded", "error", "client_ip",
+                                       "address", "protocol", "state", "recorded", "error", "client_ip", "account",
                                        "created_at", "started_at", "ended_at")}
 
 
@@ -53,7 +54,7 @@ def create_session(body: SessionIn, request: Request, db: Session = Depends(get_
             raise HTTPException(status_code=403, detail="Only the environment's owners and admins can open sessions")
         name = body.vm or ""
         s = RemoteSession(username=p.username, target_type="vm", environment_id=env.id, target=name,
-                          protocol=body.protocol, client_ip=client_ip(request))
+                          protocol=body.protocol, client_ip=client_ip(request), account=body.account)
     else:
         if not p.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can open sessions on KVM hosts")
@@ -73,7 +74,8 @@ def create_session(body: SessionIn, request: Request, db: Session = Depends(get_
     s.address, s.recorded = t["address"], "recording-path" in t["params"]
     db.commit()
     audit(db, p.username, "remote.session.create", object_type="remote_session", object_id=s.id,
-          detail={"target": s.target, "type": s.target_type, "protocol": s.protocol, "recorded": s.recorded},
+          detail={"target": s.target, "type": s.target_type, "protocol": s.protocol, "recorded": s.recorded,
+                  "account": s.account},
           source_ip=client_ip(request))
     return {"id": s.id, "token": token, "protocol": s.protocol, "target": s.target, "recorded": s.recorded}
 

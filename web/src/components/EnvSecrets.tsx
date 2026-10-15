@@ -3,13 +3,15 @@
 // audited, fetched only when asked) and store, replace or delete their own; LABaPe's own change
 // through rotation. In OpenBao they sit in the environment's folder, shown as each one's place.
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Paper, Stack, Table,
+  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Menu, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import TerminalIcon from "@mui/icons-material/Terminal";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { api } from "../api";
@@ -18,6 +20,7 @@ import { Pager, pageOf, usePageSize } from "./Paging";
 interface EnvSecret {
   name: string; area: "accounts" | "user" | "vm"; vm: string; short: string; store: string; path: string;
   updated_at: string; editable: boolean; rotation: string;
+  connect: { vm: string; protocol: "rdp" | "ssh" | "vnc" }[];      // E2: where the account signs in
 }
 interface OpenBaoAccess { url: string; mount: string; path: string; cli: string }
 interface SecretList { secrets: EnvSecret[]; vms: string[]; folder: string; openbao: OpenBaoAccess | null }
@@ -50,6 +53,18 @@ export default function EnvSecrets({ envId }: { envId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; secret: EnvSecret } | null>(null);
+  // E2: a browser session signed in as this account; the password stays on the server.
+  const connect = async (secret: EnvSecret, vm: string, protocol: string) => {
+    setMenu(null);
+    try {
+      const r = await api.post<{ id: number; token: string; target: string; protocol: string; recorded: boolean }>(
+        "/api/remote/sessions", { target_type: "vm", protocol, environment_id: Number(envId), vm, account: secret.name });
+      navigate(`/remote/${r.id}`, { state: { ...r, back: location.pathname + location.search } });
+    } catch (e) { setError((e as Error).message); }
+  };
   // E1: search and filters over the whole list, then pages of the user's own size.
   const [search, setSearch] = useState("");
   const [area, setArea] = useState("");
@@ -180,6 +195,11 @@ export default function EnvSecrets({ envId }: { envId: string }) {
                               <ContentCopyIcon fontSize="small" color={copied === s.name ? "success" : undefined} />
                             </IconButton>
                           </Tooltip>
+                          {s.connect.length > 0 && <Tooltip title="Sign in as this account in the browser (RDP or SSH; audited, recorded if the admins turned recording on)">
+                            <IconButton size="small" aria-label="Connect" onClick={(e) => setMenu({ anchor: e.currentTarget, secret: s })}>
+                              <TerminalIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>}
                           {s.editable && <Tooltip title="Replace the value">
                             <IconButton size="small" aria-label="Replace"
                               onClick={() => { setError(""); setDraft({ name: s.short, vm: s.vm, value: "", replacing: true }); }}>
@@ -201,6 +221,13 @@ export default function EnvSecrets({ envId }: { envId: string }) {
         {filtered && matching.length === 0 && <Typography variant="body2">No secret matches.</Typography>}
         {sorted.length > 0 && <Pager total={sorted.length} page={page} onPage={setPage} />}
       </Stack>
+      <Menu open={!!menu} anchorEl={menu?.anchor} onClose={() => setMenu(null)}>
+        {menu?.secret.connect.map((t) => (
+          <MenuItem key={`${t.vm}-${t.protocol}`} onClick={() => connect(menu.secret, t.vm, t.protocol)}>
+            {t.vm}: {t.protocol.toUpperCase()}
+          </MenuItem>
+        ))}
+      </Menu>
       <Dialog open={!!draft} onClose={() => setDraft(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{draft?.replacing ? `Replace ${draft.name}` : "Store a secret"}</DialogTitle>
         {draft && <DialogContent>

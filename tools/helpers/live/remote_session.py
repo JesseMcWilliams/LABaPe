@@ -1,12 +1,13 @@
 """Open a browser-style remote session through the API and the tunnel (design §28.5).
 
-Usage: remote_session.py vm ENV_ID VM_NAME ssh|rdp|serial|vnc [--seconds N]
+Usage: remote_session.py vm ENV_ID VM_NAME ssh|rdp|serial|vnc [--as ACCOUNT] [--seconds N]
        remote_session.py host HOST_ID ssh [--seconds N]
        remote_session.py record on|off
        remote_session.py sessions
 Signs in as labape-admin, asks for a session, connects to /api/remote/tunnel the way
 guacamole-common-js does (session cookie, LABaPe's origin), and reports what guacd
 sent: opcodes and counts, or the error. Sends no keystrokes; disconnects after N seconds.
+--as signs in as one of the environment's accounts (E2): its secret's name, e.g. account/jesse.
 """
 import asyncio
 import collections
@@ -33,6 +34,8 @@ if args[0] == "sessions":
 seconds = int(args[args.index("--seconds") + 1]) if "--seconds" in args else 8
 if args[0] == "vm":
     body = {"target_type": "vm", "environment_id": int(args[1]), "vm": args[2], "protocol": args[3]}
+    if "--as" in args:
+        body["account"] = args[args.index("--as") + 1]
 else:
     body = {"target_type": "host", "kvm_host_id": int(args[1]), "protocol": args[2]}
 r = c.post(f"{LABAPE}/api/remote/sessions", json=body)
