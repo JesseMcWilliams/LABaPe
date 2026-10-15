@@ -35,6 +35,8 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/oidc_login.py` | lab (container) | Sign in through the test Authentik; imported by the others |
 | `live/env_create.py` | lab (container) | Create a one-VM environment (optionally with catalog applications, `--apps`, and services, `--services`) and wait for its deploy |
 | `live/env_job.py` | lab (container) | Deploy, refresh or destroy an environment and wait |
+| `live/env_secrets.py` | lab (container) | An environment's secrets on its page: list, or a store/replace/reveal/delete round trip (V1a) |
+| `live/env_secrets_move.py` | lab (container) | Move an environment's secrets to another store and check they read the same |
 | `live/job_log.py` | lab (container) | A finished job's log, or only one host's lines with their task names |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |

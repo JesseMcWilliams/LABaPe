@@ -230,9 +230,24 @@ def pinned(name: str) -> bool:
     return name.startswith(PINNED_PREFIXES)
 
 
+def env_store(db: Session, env_id: int) -> str | None:
+    """The store an environment's secrets are in (the one most of them use), or None when it has none."""
+    from sqlalchemy import func, select
+    row = db.execute(select(Secret.store, func.count()).where(Secret.name.startswith(f"environment/{env_id}/"))
+                     .group_by(Secret.store).order_by(func.count().desc(), Secret.store)).first()
+    return row[0] if row else None
+
+
 def default_store(db: Session, name: str) -> str:
+    """Where a new secret goes: an environment's joins the rest of that environment's (V1: one place per
+    environment, which OpenBao's folders and policies rely on), else Settings → Secret stores' default."""
     if pinned(name) or not name.startswith(DEFAULT_STORE_PREFIX):
         return "builtin"
+    parts = name.split("/")
+    if len(parts) > 2 and parts[1].isdigit():
+        here = env_store(db, int(parts[1]))
+        if here:
+            return here
     from . import appsettings
     return appsettings.get(db, "secret_stores", cached=True).default_environment_store
 
@@ -244,8 +259,8 @@ def put_secret(db: Session, name: str, value: str) -> None:
     row = db.get(Secret, name)
     store = row.store if row else default_store(db, name)
     if store != "builtin":
-        from .stores import open_store
-        open_store(db, store).put(name, value)
+        from .stores import ext_put
+        ext_put(db, store, name, value)
         token = ""
     else:
         token = encrypt_value(db, value)
@@ -261,6 +276,6 @@ def get_secret(db: Session, name: str) -> str | None:
     if not row:
         return None
     if row.store != "builtin":
-        from .stores import open_store
-        return open_store(db, row.store).get(name)
+        from .stores import ext_get
+        return ext_get(db, row.store, name)
     return decrypt_value(db, row.value)

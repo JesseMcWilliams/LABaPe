@@ -182,12 +182,12 @@ def env_password_overrides(db: Session, env_id: int) -> dict[str, str]:
 
 def clear_env_passwords(db: Session, env_id: int) -> None:
     """When an environment is destroyed: its rotated passwords, its own accounts' passwords and any
-    value a rotation was trying (S2 found accounts kept after a destroy)."""
+    value a rotation was trying (S2 found accounts kept after a destroy), and what its owners stored (V1)."""
     from sqlalchemy import select
     names = {env_password_name(env_id, kind) for kind in ENV_PASSWORD_VAULT_KEYS}
     names.add(env_password_name(env_id, "windows_admin2"))          # A1's environment-wide one, before A2
     for prefix in (f"environment/{env_id}/account/", f"environment/{env_id}/rotation-candidate/",
-                   f"environment/{env_id}/vm/"):
+                   f"environment/{env_id}/vm/", f"environment/{env_id}/user/", f"environment/{env_id}/uservm/"):
         names |= set(db.scalars(select(Secret.name).where(Secret.name.startswith(prefix))))
     for name in sorted(names):
         if db.get(Secret, name) is not None:
@@ -206,8 +206,8 @@ def split_legacy_passwords(db: Session) -> int:
             if key in by_key and value:
                 put_secret(db, f"environment/{env_id}/{by_key[key]}", value)
         if row.store != "builtin":
-            from ..stores import open_store
-            open_store(db, row.store).delete(row.name)
+            from ..stores import ext_delete
+            ext_delete(db, row.store, row.name)
         db.delete(row)
         db.commit()
         done += 1

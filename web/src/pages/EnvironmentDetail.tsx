@@ -12,6 +12,7 @@ import { StateChip } from "../components";
 import { ActionButton } from "../components/Confirm";
 import VmPower from "../components/VmPower";
 import EnvAccounts from "../components/EnvAccounts";
+import EnvSecrets from "../components/EnvSecrets";
 
 export default function EnvironmentDetail() {
   const { id } = useParams();
@@ -144,6 +145,7 @@ export default function EnvironmentDetail() {
       )}
       {env.is_owner && env.status === "deployed" && <PasswordRotation envId={id!} />}
       {env.status !== "destroyed" && <EnvAccounts envId={id!} />}
+      {env.is_owner && env.status !== "destroyed" && <EnvSecrets envId={id!} />}
       {(env.status === "deployed" || env.status === "failed") && (
         <VmPower key={env.spec.host_groups.map((g) => `${g.name}:${g.start_order ?? ""}`).join(",")}
           envId={id!} envName={env.name} groups={env.spec.host_groups} isOwner={Boolean(env.is_owner)} onSaved={load} />
