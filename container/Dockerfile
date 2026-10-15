@@ -118,8 +118,12 @@ RUN set -eux; \
       '    exclude = ["registry.opentofu.org/*/*"]' \
       '  }' \
       '}' > /opt/labape/tofurc; \
-    packer plugins install github.com/hashicorp/qemu; \
-    packer plugins install github.com/hashicorp/ansible; \
+    for p in qemu ansible; do \
+      for attempt in 1 2 3; do \
+        packer plugins install "github.com/hashicorp/$p" && break; \
+        [ "$attempt" -eq 3 ] && exit 1; sleep $((attempt * 15)); \
+      done; \
+    done; \
     chmod -R a+rX /opt/labape
 
 COPY --from=web /web/dist /opt/labape/web

@@ -175,6 +175,13 @@ class SmtpSettings(BaseModel):
     notify_jobs: bool = False          # email the requester when their job finishes
 
 
+class PackageUpdateSettings(BaseModel):
+    """Catalog → Updates (U1, question 170): when the weekly check runs (UTC)."""
+    enabled: bool = True
+    day: Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"] = "sun"
+    hour: int = Field(default=3, ge=0, le=23)
+
+
 class LabMailRelaySettings(BaseModel):
     """M1 (question 169): the SMTP account the environments' mail servers (Mailpit) may forward through.
     Off by default; its own account, not Settings → Email's (the VMs' owners can read what's on them).
@@ -287,6 +294,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "file_distribution": FileDistributionSettings,
     "monitoring": MonitoringSettings,
     "lab_mail_relay": LabMailRelaySettings,
+    "package_updates": PackageUpdateSettings,
 }
 SMTP_PASSWORD_SECRET = "settings/smtp_password"
 DIRECTORY_TOKEN_SECRET = "settings/directory_token"

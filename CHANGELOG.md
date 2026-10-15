@@ -8,6 +8,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Fixed
+- The image build retries the Packer plugin installs (a dropped connection
+  made Packer crash and the build fail).
 - OpenBao's sign-in page offers **OIDC** (your LABaPe account), not only a
   token.
 - OpenBao's web UI no longer asks for a client certificate (a smart card
@@ -53,6 +55,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Catalog → **Updates**: download sites checked weekly (and on demand);
+  new versions land in Files → Installers with the vendor's hash checked,
+  and only the newest few of each are kept. Sources can be Microsoft's .NET
+  feed, a GitHub release, a fixed link, a page that links the newest
+  version, or a Chocolatey package; admins add their own. .NET 8 and 10
+  (runtime, hosting bundle, SDK), Chrome, KeePassXC and PuTTY are there to
+  start.
 - A mail server per environment: the catalog service **Mail server
   (Mailpit)** on a Linux VM catches what the environment's VMs send to it
   (port 25) and shows it in a web UI (port 8025, HTTPS, user `mailpit`, its
