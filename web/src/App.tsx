@@ -51,6 +51,8 @@ export const useAuth = () => useContext(AuthContext);
 export const hasRole = (me: Me | null, ...roles: string[]) =>
   !!me && (me.roles.includes("admin") || roles.some((r) => me.roles.includes(r)));
 
+const SOURCE_URL = "https://github.com/JesseMcWilliams/LABaPe";
+
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
@@ -192,6 +194,12 @@ export default function App() {
           <Route path="*" element={<Typography>Not found.</Typography>} />
         </Routes>
       </Container>
+      {/* AGPL-3.0 section 13: whoever uses a modified LABaPe over the network is offered its source. A modified
+          copy points this at its own source. */}
+      <Box component="footer" sx={{ px: 3, py: 2, color: "text.secondary", typography: "caption" }}>
+        LABaPe is free software under the GNU Affero General Public License v3.{" "}
+        <a href={SOURCE_URL} target="_blank" rel="noreferrer">Source code</a>
+      </Box>
       </MaintenanceProvider>
     </AuthContext.Provider>
   );

@@ -8,6 +8,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- LABaPe is licensed under the GNU Affero General Public License v3
+  (`LICENSE`); the web interface has a footer linking to the source, as the
+  license asks of a network service.
 - The release script (`tools/helpers/release.sh`) also takes the lab image's inventory, regenerates the software bill of materials for the new version
   and attaches the CycloneDX file to the GitHub release.
 - A software bill of materials: `Claude_Docs/Reference_SBOM.md` lists every
