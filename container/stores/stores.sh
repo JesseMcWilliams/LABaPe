@@ -283,6 +283,8 @@ PY
   fi
   [ -s "$S/openbao_oidc_secret" ] || die "no stores/secrets/openbao_oidc_secret for the OIDC client $client"
   root_api GET sys/auth < /dev/null | grep -q '"oidc/"' || echo '{"type": "oidc"}' | root_api POST sys/auth/oidc >/dev/null
+  # Listed on the sign-in page: otherwise the UI offers only Token, and ?with=oidc/ has nothing to pick.
+  echo '{"listing_visibility": "unauth", "description": "Your LABaPe account"}' | root_api POST sys/auth/oidc/tune >/dev/null
   python3 - "$issuer" "$client" "$S/openbao_oidc_secret" "$TLS/root.crt" <<'PY' | root_api POST auth/oidc/config >/dev/null
 import json, sys
 print(json.dumps({"oidc_discovery_url": sys.argv[1].rstrip("/") + "/", "oidc_client_id": sys.argv[2],

@@ -8,6 +8,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Fixed
+- OpenBao's sign-in page offers **OIDC** (your LABaPe account), not only a
+  token.
 - OpenBao's web UI no longer asks for a client certificate (a smart card
   prompt on Windows), and its tile in Authentik opens OpenBao's sign-in at
   the stack's host name instead of `localhost`.
