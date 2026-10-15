@@ -623,6 +623,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 ## Updating a Pi install (2026-10-15)
 
+2. **v0.3.0 -> v0.5.0 failed its health checks and the rollback failed too (worker restarting, API answering 503 to the OpenBao login):** the new compose file recreated `labape-openbao`, and a recreated OpenBao is sealed. Only `stores.sh unseal` (the boot unit) unseals it, and the update agent never ran it. The database restore had worked (0028 -> 0021). Recovered by hand with `sudo -u labape sh -c 'cd /opt/LABaPe/container/stores && ./stores.sh unseal'` and `labape maintenance off`. The agent's `up()` now unseals; the rollback uses the same `up()`. OZ didn't show it because its OpenBao wasn't recreated by that update. A checkout's agent is a copy (`~/.local/libexec/labape-update.sh`): it needs reinstalling (`deploy/update-agent/install.sh`) before the update that fixes it.
+
 1. **Update failed at "checking": "the checkout at /opt/LABaPe has local changes":** `git status --porcelain` listed the installer's untracked `container/compose.override.yaml` (and a `.env.bak-*`). OZ never showed it because its stack has no override file. The files are git-ignored now and the agent uses `--untracked-files=no`; a checkout that predates this needs the two names in `.git/info/exclude` once.
 
 ## The stack's mail server (2026-10-15)

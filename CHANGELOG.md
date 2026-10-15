@@ -47,6 +47,7 @@ The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and 
 LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs between them, signs people in across linked stacks, and makes secrets something people and tests can use: every secret is checked and recovered where it can be, Windows VMs get a password of their own per account, environment secrets are on their page and in OpenBao (with its own sign-in), and the browser connects as any of the environment's accounts, RDP, SSH, xrdp or VNC. Environments can have a lab mail server (Mailpit); Catalog → Updates downloads new .NET, Chrome, KeePassXC and PuTTY versions weekly for offline installs; Claude Code is in the catalog; each KVM host keeps its files beside its VMs; and every list pages, filters and exports.
 
 ### Fixed
+- A web update that recreated OpenBao left it sealed: the API answered 503 to its login, the worker restarted forever, the health check failed and the rollback failed the same way. The update agent now runs `stores.sh unseal` after it brings the stack up (and after a rollback does).
 - An install made by `install-labape.py` could never update from the web interface: the update agent called its checkout dirty because of the installer's own `container/compose.override.yaml` (and `.env` backups). Those files are now git-ignored and the agent looks at tracked changes only.
 - A changed Caddyfile reaches the running Caddy: the file is bind-mounted, so
   replacing it (git, or `deploy-web.sh`) left the container on the old one.
