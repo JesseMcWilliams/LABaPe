@@ -12,6 +12,7 @@ import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
 import { FilterBar, SelectFilter, useUrlFilters } from "../components/Filters";
 import { pageOf, Pager, usePageSize } from "../components/Paging";
+import PackageUpdates from "../components/PackageUpdates";
 
 // Services, applications and packages users can add to host groups, on
 // top of the template (design §21.4). Users browse and request; admins
@@ -287,11 +288,14 @@ export default function Catalog() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
         {KINDS.map((k) => <Tab key={k.key} value={k.key} label={k.label} />)}
         <Tab value="requests" label="Requests" />
+        <Tab value="updates" label="Updates" />
       </Tabs>
       {kind && <Typography variant="body2" color="text.secondary">{kind.help}</Typography>}
-      {isAdmin && tab !== "requests" && <Importer onDone={(text, ok) => { setMsg({ ok, text }); setReload(reload + 1); }} />}
+      {isAdmin && tab !== "requests" && tab !== "updates" && <Importer onDone={(text, ok) => { setMsg({ ok, text }); setReload(reload + 1); }} />}
       {msg && <Alert severity={msg.ok ? "success" : "error"} onClose={() => setMsg(null)}>{msg.text}</Alert>}
-      {tab === "requests" ? <Requests isAdmin={isAdmin} /> : <ItemList key={`${tab}-${reload}`} kind={tab} isAdmin={isAdmin} />}
+      {tab === "requests" ? <Requests isAdmin={isAdmin} />
+        : tab === "updates" ? <PackageUpdates isAdmin={isAdmin} />
+          : <ItemList key={`${tab}-${reload}`} kind={tab} isAdmin={isAdmin} />}
     </Stack>
   );
 }

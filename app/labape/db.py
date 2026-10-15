@@ -67,3 +67,5 @@ def _seed() -> None:
         if eng.dialect.name == "postgresql":
             db.execute(text("SELECT pg_advisory_xact_lock(4711)"))
         seed(db, str(get_settings().engine_dir / "ansible" / "package_catalog.yml"))
+        from .engine import package_updates
+        package_updates.seed(db)                     # Catalog → Updates' first sources (U1)

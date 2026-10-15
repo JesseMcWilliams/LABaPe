@@ -42,7 +42,7 @@ from ..naming import instance_names
 from .. import linux_desktop, mail_server, spread, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
+from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
@@ -546,7 +546,8 @@ def run(job_id: int, worker: str) -> None:
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
                   "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
                   "secret.check": secret_health.run_job,
-                  "files.sync_templates": filedist.run_sync_templates, "host.files_move": filedist.run_move_job}
+                  "files.sync_templates": filedist.run_sync_templates, "host.files_move": filedist.run_move_job,
+                  "files.update_check": package_updates.run_job}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -968,6 +969,8 @@ def serve(slots: int | None = None) -> None:
                     for what in openbao_people.schedule(db):   # V1b: owners' access in OpenBao
                         log.info("OpenBao people access: %s", what)
                 with session_factory()() as db:
+                    for jid in package_updates.schedule(db):           # U1: Catalog → Updates, weekly
+                        log.info("queued the weekly package update check (job %s)", jid)
                     for jid in template_versions.schedule_refresh(db):
                         log.info("queued monthly template refresh job %s", jid)
                     for jid in template_versions.schedule_retention(db):

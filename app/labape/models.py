@@ -462,6 +462,26 @@ class BreakglassGrant(Base):
     local_only: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class UpdateSource(Base):
+    """Catalog → Updates (U1, design §50.7): where a package's newest version is found, how many
+    versions to keep, and what was downloaded (newest first: version, file id, name, when)."""
+
+    __tablename__ = "update_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    kind: Mapped[str] = mapped_column(String(16))                     # dotnet | github | url | page | chocolatey
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    targets: Mapped[list] = mapped_column(JSON, default=list)         # the installers' OS targets (ostargets)
+    keep: Mapped[int] = mapped_column(Integer, default=3)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_version: Mapped[str] = mapped_column(String(64), default="")
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    history: Mapped[list] = mapped_column(JSON, default=list)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

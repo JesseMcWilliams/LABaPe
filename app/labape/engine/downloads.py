@@ -109,101 +109,112 @@ def _human(n: float) -> str:
     return f"{n:.1f} GB"
 
 
-def run_download(db: Session, job: Job) -> int:
-    p = job.params or {}
+class Cancelled(DownloadError):
+    pass
+
+
+def fetch(db: Session, url: str, category: str, name: str, log, *, expected: str = "", hash_type: str = "sha256",
+          os_key: str = "", targets: list | None = None, description: str = "", actor: str = "system",
+          beat=None) -> StoredFile:
+    """Download `url` into the category's location as `name` (on the primary file host), checking each
+    redirect, resuming a partial file, verifying `expected` (a `hash_type` digest) and refusing content
+    already stored. Returns the new file's row; raises DownloadError (Cancelled when `beat()` says so)."""
     cfg = appsettings.get(db, "downloads")
     from .. import filestore
     store = filestore.current(db)             # on the primary file host (design §29.5)
-    root = roots(db)[p["category"]].rstrip("/")
-    name = p["filename"]
+    root = roots(db)[category].rstrip("/")
     target = f"{root}/{name}"
+    if store.exists(target):
+        raise DownloadError(f"{target} already exists; delete it first.")
+    if store.remote:
+        log.write(f"labape: saving on the primary file host, {store.where}\n")
+    part = _partial(root, url, name)
+    store.makedirs(f"{root}/.downloads")
+    first = url
+    with httpx.Client(timeout=httpx.Timeout(30, read=120), proxy=cfg.proxy or None, follow_redirects=False) as c:
+        for _ in range(10):                       # follow redirects ourselves, checking each hop
+            check_url(url, cfg.allow_http)
+            if not cfg.proxy:
+                check_resolves(urlsplit(url).hostname)
+            have = max(store.size(part), 0)
+            headers = {"Range": f"bytes={have}-"} if have else {}
+            with c.stream("GET", url, headers=headers) as r:
+                if r.is_redirect:
+                    url = urljoin(url, r.headers["location"])
+                    log.write(f"labape: redirected to {url}\n")
+                    continue
+                if r.status_code == 416 and have:      # already complete
+                    log.write("labape: the partial file is already complete.\n")
+                else:
+                    r.raise_for_status()
+                    resumed = r.status_code == 206
+                    if have and not resumed:
+                        log.write("labape: the server doesn't resume downloads; starting over.\n")
+                    # A compressed transfer's Content-Length counts the compressed bytes, not the file's.
+                    enc = r.headers.get("content-encoding", "identity").lower()
+                    total = r.headers.get("content-length") if enc in ("", "identity") else None
+                    total = (int(total) + (have if resumed else 0)) if total else None
+                    log.write(f"labape: downloading {url}"
+                              f"{f' ({_human(total)})' if total else ''}"
+                              f"{f', resuming at {_human(have)}' if resumed else ''}\n")
+                    done, started, last = (have if resumed else 0), time.monotonic(), 0.0
+                    with store.open_write(part, append=resumed) as fh:
+                        for chunk in r.iter_bytes(CHUNK):
+                            fh.write(chunk)
+                            done += len(chunk)
+                            now = time.monotonic()
+                            if now - last >= PROGRESS_SECONDS:
+                                last = now
+                                rate = (done - (have if resumed else 0)) / max(now - started, 0.001)
+                                log.write(f"labape: {_human(done)}"
+                                          f"{f' of {_human(total)} ({done * 100 // total}%)' if total else ''}"
+                                          f" at {_human(rate)}/s\n")
+                                if beat and beat():
+                                    raise Cancelled("cancelled; the partial file is kept for a retry.")
+                break
+        else:
+            raise DownloadError("too many redirects.")
+
+    log.write("labape: download complete; checking hashes\n")
+    sums = store.hashes(part, {"sha256", hash_type or "sha256"})
+    sha256 = sums["sha256"]
+    if expected:
+        got = sums[hash_type]
+        if got != expected:
+            store.remove(part)
+            raise DownloadError(f"{hash_type.upper()} mismatch: expected {expected}, got {got}. The file was deleted.")
+        log.write(f"labape: {hash_type.upper()} matches the expected value.\n")
+    dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == sha256, StoredFile.present.is_(True)))
+    if dup is not None:
+        store.remove(part)
+        raise DownloadError(f"the same content is already stored as {dup.name} ({dup.category}); not kept.")
+    store.replace(part, target)
+    size, mtime = store.stat(target)
+    f = StoredFile(category=category, name=name, path=target, size=size, mtime=mtime, sha256=sha256,
+                   os_key=(os_key or infer_os(name)) if category == "isos" else "",
+                   targets=targets or (ostargets.infer(name) if category == "installers" else []),
+                   description=description, uploaded_by=actor, uploaded_at=utcnow())
+    db.add(f)
+    db.commit()
+    audit(db, actor, "file.download", object_type="file", object_id=f.id,
+          detail={"url": first, "category": f.category, "name": name, "size": f.size, "sha256": sha256,
+                  "verified": hash_type if expected else ""})
+    log.write(f"labape: saved {target} ({_human(size)}){f' on {store.where}' if store.remote else ''}, "
+              f"SHA-256 {sha256}\n")
+    return f
+
+
+def run_download(db: Session, job: Job) -> int:
+    p = job.params or {}
     log = open(job.log_path, "a", encoding="utf-8", buffering=1)
     try:
-        if store.exists(target):
-            log.write(f"labape: {target} already exists; delete it first.\n")
-            return 1
-        if store.remote:
-            log.write(f"labape: saving on the primary file host, {store.where}\n")
-        part = _partial(root, p["url"], name)
-        store.makedirs(f"{root}/.downloads")
-        url = p["url"]
-        with httpx.Client(timeout=httpx.Timeout(30, read=120), proxy=cfg.proxy or None, follow_redirects=False) as c:
-            for _ in range(10):                       # follow redirects ourselves, checking each hop
-                check_url(url, cfg.allow_http)
-                if not cfg.proxy:
-                    check_resolves(urlsplit(url).hostname)
-                have = max(store.size(part), 0)
-                headers = {"Range": f"bytes={have}-"} if have else {}
-                with c.stream("GET", url, headers=headers) as r:
-                    if r.is_redirect:
-                        url = urljoin(url, r.headers["location"])
-                        log.write(f"labape: redirected to {url}\n")
-                        continue
-                    if r.status_code == 416 and have:      # already complete
-                        log.write("labape: the partial file is already complete.\n")
-                    else:
-                        r.raise_for_status()
-                        resumed = r.status_code == 206
-                        if have and not resumed:
-                            log.write("labape: the server doesn't resume downloads; starting over.\n")
-                        # A compressed transfer's Content-Length counts the compressed bytes, not the file's.
-                        enc = r.headers.get("content-encoding", "identity").lower()
-                        total = r.headers.get("content-length") if enc in ("", "identity") else None
-                        total = (int(total) + (have if resumed else 0)) if total else None
-                        log.write(f"labape: downloading {url}"
-                                  f"{f' ({_human(total)})' if total else ''}"
-                                  f"{f', resuming at {_human(have)}' if resumed else ''}\n")
-                        done, started, last = (have if resumed else 0), time.monotonic(), 0.0
-                        with store.open_write(part, append=resumed) as fh:
-                            for chunk in r.iter_bytes(CHUNK):
-                                fh.write(chunk)
-                                done += len(chunk)
-                                now = time.monotonic()
-                                if now - last >= PROGRESS_SECONDS:
-                                    last = now
-                                    rate = (done - (have if resumed else 0)) / max(now - started, 0.001)
-                                    log.write(f"labape: {_human(done)}"
-                                              f"{f' of {_human(total)} ({done * 100 // total}%)' if total else ''}"
-                                              f" at {_human(rate)}/s\n")
-                                    if _beat(job.id):
-                                        log.write("labape: cancelled; the partial file is kept for a retry.\n")
-                                        return 130
-                    break
-            else:
-                log.write("labape: too many redirects.\n")
-                return 1
-
-        log.write("labape: download complete; checking hashes\n")
-        sums = store.hashes(part, {"sha256", p.get("hash_type") or "sha256"})
-        sha256 = sums["sha256"]
-        expected = p.get("expected_hash")
-        if expected:
-            got = sums[p["hash_type"]]
-            if got != expected:
-                store.remove(part)
-                log.write(f"labape: {p['hash_type'].upper()} mismatch: expected {expected}, got {got}. "
-                          "The file was deleted.\n")
-                return 1
-            log.write(f"labape: {p['hash_type'].upper()} matches the expected value.\n")
-        dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == sha256, StoredFile.present.is_(True)))
-        if dup is not None:
-            store.remove(part)
-            log.write(f"labape: the same content is already stored as {dup.name} ({dup.category}); not kept.\n")
-            return 1
-        store.replace(part, target)
-        size, mtime = store.stat(target)
-        f = StoredFile(category=p["category"], name=name, path=target, size=size, mtime=mtime, sha256=sha256,
-                       os_key=(p.get("os_key") or infer_os(name)) if p["category"] == "isos" else "",
-                       targets=p.get("targets") or (ostargets.infer(name) if p["category"] == "installers" else []),
-                       description=p.get("description", ""), uploaded_by=job.requested_by, uploaded_at=utcnow())
-        db.add(f)
-        db.commit()
-        audit(db, job.requested_by, "file.download", object_type="file", object_id=f.id,
-              detail={"url": p["url"], "category": f.category, "name": name, "size": f.size, "sha256": sha256,
-                      "verified": p.get("hash_type") if expected else ""})
-        log.write(f"labape: saved {target} ({_human(size)}){f' on {store.where}' if store.remote else ''}, "
-                  f"SHA-256 {sha256}\n")
+        fetch(db, p["url"], p["category"], p["filename"], log, expected=p.get("expected_hash") or "",
+              hash_type=p.get("hash_type") or "sha256", os_key=p.get("os_key") or "", targets=p.get("targets"),
+              description=p.get("description", ""), actor=job.requested_by, beat=lambda: _beat(job.id))
         return 0
+    except Cancelled as exc:
+        log.write(f"labape: {exc}\n")
+        return 130
     except (DownloadError, httpx.HTTPError, OSError) as exc:
         log.write(f"labape: download failed: {exc}\n")
         return 1
