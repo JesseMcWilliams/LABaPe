@@ -59,6 +59,12 @@ LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs b
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- A software bill of materials: `Claude_Docs/Reference_SBOM.md` lists every
+  Python and npm package, container image, engine tool, Ansible collection,
+  provider and plugin LABaPe uses, with versions, licenses and what each is
+  for, and `sbom/labape.cdx.json` is the same in CycloneDX form for scanners.
+  `tools/helpers/sbom.py` regenerates both, and a test fails when they're
+  out of date.
 - VMs read their own secrets: a VM signs in to OpenBao with its platform
   certificate and reads the secrets its owners stored for it, and the
   shared ones whose VM list names it (`sudo labape-secret get NAME` on
