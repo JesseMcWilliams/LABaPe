@@ -21,7 +21,7 @@ from ..db import get_db
 from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
-from ..engine import hostadmin, hostpower
+from ..engine import hostadmin, hostpools, hostpower
 from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
@@ -311,6 +311,7 @@ def host_admin(host_id: int, hours: int = 24, db: Session = Depends(get_db),
             "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None,
                                           h.disk_free_pct or appsettings.get(db, "monitoring", cached=True).disk_free_pct),
             "series": hostadmin.series(db, h, min(max(hours, 1), 168)),
+            "pools": hostpools.build(facts), "pool_candidates": hostpools.unused_disks(facts),
             "resources": _resources(db, h.id), "stack": _stack(db, h)}
 
 
@@ -388,6 +389,41 @@ def log_forwarding(host_id: int, body: LogForwardIn, request: Request, db: Sessi
     audit(db, p.username, "host.log_forwarding", object_type="kvm_host", object_id=h.id,
           detail={"enabled": body.enabled}, source_ip=client_ip(request))
     return _out(h)
+
+
+class PoolActionIn(BaseModel):
+    pool: str = Field(max_length=80)                  # the pool's id from the page: "md:md0", "zfs:tank"
+    op: str = Field(max_length=20)
+    device: str | None = Field(default=None, max_length=130)
+
+
+@router.post("/{host_id}/pools/action")
+def pool_action(host_id: int, body: PoolActionIn, request: Request, db: Session = Depends(get_db),
+                p: Principal = Depends(require_roles("admin"))):
+    """A safe action on one drive pool (design §53.4): check/scrub, stop or restart a resync, take a drive out,
+    add a spare. The pool and the drive come from the host's last facts; the host's facts are read again after."""
+    h = _host(db, host_id)
+    facts = (db.get(HostFacts, h.id).facts if db.get(HostFacts, h.id) else {}) or {}
+    pool = next((x for x in hostpools.build(facts) if x["id"] == body.pool), None)
+    if pool is None:
+        raise HTTPException(status_code=404, detail="No such pool on this host (refresh the page)")
+    detail = {"pool": body.pool, "device": body.device}
+    try:
+        if body.op in ("fail-remove", "offline", "online") and body.device not in {m["name"] for m in pool["members"]}:
+            raise hostadmin.AdminError("that drive isn't in this pool")
+        if body.op == "add-spare" and body.device not in {d["path"] for d in hostpools.unused_disks(facts)}:
+            raise hostadmin.AdminError("that drive isn't free: it is mounted, has a filesystem, or is in a pool already")
+        out = hostpools.run_action(hostadmin.for_host(h), pool, body.op, body.device)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
+        audit(db, p.username, f"host.pool.{body.op}", object_type="kvm_host", object_id=h.id, outcome="failed",
+              detail={**detail, "error": str(exc)[:300]}, source_ip=client_ip(request))
+        raise FieldError("pool", str(exc)) from exc
+    audit(db, p.username, f"host.pool.{body.op}", object_type="kvm_host", object_id=h.id, detail=detail, source_ip=client_ip(request))
+    try:
+        hostadmin.collect_facts(db, h)
+    except Exception:  # noqa: BLE001 - the action worked; the next scheduled read will catch up
+        pass
+    return {"ok": True, "output": out}
 
 
 @router.get("/{host_id}/os-updates")

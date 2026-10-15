@@ -272,6 +272,18 @@ out["lvm"] = lvm
 out["zfs"] = [dict(zip(("name", "size", "alloc", "free", "health"), l.split("\t")))
               for l in sh("zpool", "list", "-H", "-p", "-o", "name,size,alloc,free,health").splitlines()] if shutil.which("zpool") else []
 out["mdraid"] = read("/proc/mdstat")
+# Drive pools (design §53.4): raw values here, parsed by hostpools.build on the web stack.
+md = {}
+for base in sorted(glob.glob("/sys/block/md*/md")):
+    mdname = base.split("/")[3]
+    d = {k: read(f"{base}/{k}") for k in ("level", "array_state", "sync_action", "sync_completed", "degraded", "raid_disks", "sync_speed")}
+    d["size"] = read(f"/sys/block/{mdname}/size")
+    d["members"] = {os.path.basename(m)[4:]: {"state": read(m + "/state"), "slot": read(m + "/slot"), "errors": read(m + "/errors")}
+                    for m in sorted(glob.glob(base + "/dev-*"))}
+    d["detail"] = sh("mdadm", "--detail", f"/dev/{mdname}") if shutil.which("mdadm") else ""
+    md[mdname] = d
+out["md"] = md
+out["zpool_status"] = {z["name"]: sh("zpool", "status", "-p", "-P", z["name"]) for z in out["zfs"]}
 nics = []
 for a in js("ip", "-j", "-s", "addr") or []:
     name = a.get("ifname", "")
@@ -485,7 +497,8 @@ def series(db: Session, h: KvmHost, hours: int = 24) -> dict:
 def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) -> list[dict]:
     """What the Dashboard section flags: SMART failures and wear, heat, filesystems with less than
     `free_pct` percent free (an error below a quarter of it), failed units, a pending reboot, many updates."""
-    w = []
+    from . import hostpools
+    w = hostpools.warnings(facts)
     for d in (smart or {}).get("disks", []):
         if d.get("passed") is False:
             w.append({"level": "error", "message": f"{d['device']} ({d.get('model')}): SMART overall health FAILED"})

@@ -69,6 +69,12 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 
 **Roles.** Each host is a **KVM** host (runs VMs), a **stack** host (runs a LABaPe stack only, such as a Raspberry Pi), or **both**. A stack host has a **Stack address** (its web address) and a **Stack** section instead of VMs; Prepare isn't offered for stack-only hosts.
 
+**Drive Pools.** A host that has a Linux RAID array (mdadm), a ZFS pool or an LVM volume group gets a **Drive Pools** section between Drives and volumes and NICs. Each pool shows its state (healthy, checking, rebuilding, degraded, failed), size and use, the progress of a check or rebuild, and its drives with their state and errors. A degraded or failed pool, a rebuild, a faulty drive and ZFS errors also appear on the Dashboard and as Monitoring alerts.
+- **Check** (mdadm) / **Scrub** (ZFS) reads and verifies every drive; **Stop** ends it. **Repair** (mdadm) rewrites blocks that differ between the drives.
+- **Take out** marks a drive faulty and removes it from the array (the pool runs degraded until a replacement is added); **Take offline** / **Bring online** do the same for a ZFS drive without removing it.
+- **Add a drive…** lists the drives that are free (not mounted, no filesystem, in no pool) and adds the one you pick; in a degraded pool it starts rebuilding onto it, and whatever was on the drive is overwritten.
+- Every action asks to confirm first and is audited. LVM groups are shown only. Creating, destroying or growing a pool is done on the host itself.
+
 **Update and Reboot.** The host's Dashboard has **Update** and **Reboot** buttons, each asking you to confirm first and then following the job.
 - **Update** runs the normal package update (`apt-get update` then `apt-get upgrade`, or `dnf upgrade`; never a release upgrade). The confirmation lists the packages waiting by the host's package lists as they are now; the job refreshes the lists first.
 - **Reboot** waits until no other job is running on that host (and no new job starts there meanwhile), then reboots about a minute later. For a KVM host, LABaPe waits for it to come back and refreshes its facts. On the host this stack runs on, LABaPe is offline until it returns. Running VMs stop with the host.
