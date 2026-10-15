@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-15
+
+Operations round: KVM host Update and Reboot, every stack container's logs in the stack syslog, container admin pages, Drive Pools (mdadm, ZFS, LVM) with alerts and actions, paged Audit log and User errors, the Authentik administrator's password in the secret store (check, rotate, reveal), and update fixes (installer files no longer block updates; the agent unseals OpenBao after bringing the stack up).
+
 ### Added
 - The Authentik administrator's (akadmin) password is on the Secrets page (Stack): kept in the secret store, checked by signing in, rotated through the Authentik API with an elevated account (monthly), and shown to admins with **Reveal** (audited). `labape authentik-admin-import` stores an existing one; `deploy.sh` does it for a new stack and grants the rotation account its permission.
 - A **Drive Pools** section on a host's page (shown when the host has a Linux RAID array, ZFS pool or LVM volume group): state, size, drives, rebuild and check progress, with confirmed actions (check/scrub, stop, repair, take a drive out, add a drive, ZFS offline/online). A degraded, failed or rebuilding pool raises a Monitoring alert.
