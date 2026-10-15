@@ -56,6 +56,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Backlog.md`: agreed but deferred work (Hyper-V parity, `.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
   - `Planning_Lists-Secrets-Settings.md`: the round of 2026-10-14 (paging and exports, filters, a stack's names and SANs, secret health, sections for Secrets and Settings), batch by batch.
+  - `Planning_Handoff-2026-10-15.md`: where LABaPe stands (v0.4.0, V2), what's left, the lab's state and the gotchas; read it first when resuming.
   - `Planning_Access-Mail-Updates-Files.md`: the next round's list (2026-10-14): Secrets paging, connecting as an account, a lab mail server, Catalog → Updates, new packages, files per KVM host, monitoring tools; questions 167-173.
   - `Planning_Operations-And-Admin-UI.md`: plan for VM power and boot order, the Admin area, filters, KVM host and VM details pages, browser SSH/RDP and consoles (batches O1-O6, questions 107-120).
   - `Archive_Planning_Stack-Syslog-Installer-File-Host.md`: built (design §29.1-§29.6); the plan for the stack's syslog collector and Syslog tab, the installer's ask-first answer file and service choices, and the primary file host (batches Y1-Y3, questions 121-141).
