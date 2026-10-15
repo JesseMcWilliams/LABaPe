@@ -40,8 +40,7 @@ def test_the_pins_in_the_dockerfile_are_in_the_sbom():
     dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
     bom = json.loads((ROOT / "sbom" / "labape.cdx.json").read_text(encoding="utf-8"))
     have = {(c["name"], c["version"]) for c in bom["components"]}
-    for arg, name in (("TOFU_VERSION", "OpenTofu"), ("PACKER_VERSION", "Packer"), ("STEP_VERSION", "step CLI"),
-                      ("ANSIBLE_CORE_VERSION", "ansible-core")):
+    for arg, name in (("TOFU_VERSION", "OpenTofu"), ("PACKER_VERSION", "Packer"), ("STEP_VERSION", "step CLI")):
         version = next(line.split("=", 1)[1] for line in dockerfile.splitlines() if line.startswith(f"ARG {arg}="))
         assert (name, version) in have, f"{name} {version} (Dockerfile) isn't in the SBOM: regenerate it"
     compose = (ROOT / "container" / "compose.yaml").read_text(encoding="utf-8")

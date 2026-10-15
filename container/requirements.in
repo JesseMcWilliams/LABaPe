@@ -1,0 +1,5 @@
+# What the worker image installs besides LABaPe's own dependencies (app/pyproject.toml): the engine's
+# Ansible and its Windows connection. container/requirements.txt is the locked, hash-pinned result of
+# compiling this and pyproject.toml together: refresh it with tools/helpers/lock-python.sh.
+ansible-core==2.21.4
+pywinrm

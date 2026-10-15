@@ -10,7 +10,16 @@ import subprocess
 from importlib import metadata
 
 out = {"python": [], "apt": [], "os": ""}
-for d in sorted(metadata.distributions(), key=lambda x: (x.metadata["Name"] or "").lower()):
+# distributions() lists in import order: the venv's copy comes before the Debian one it shadows, so the
+# first of each name is the one in use.
+seen = set()
+distributions = []
+for d in metadata.distributions():
+    key = (d.metadata["Name"] or "").lower().replace("_", "-").replace(".", "-")
+    if key not in seen:
+        seen.add(key)
+        distributions.append(d)
+for d in sorted(distributions, key=lambda x: (x.metadata["Name"] or "").lower()):
     m = d.metadata
     lic = m.get("License-Expression") or ""
     if not lic:

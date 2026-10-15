@@ -8,6 +8,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- The Python packages in the image are locked: `container/requirements.txt`
+  pins every one (LABaPe's dependencies, Ansible and pywinrm) with hashes,
+  for amd64 and arm64, and the image build installs from it, checking the
+  hashes. Rebuilds now repeat, and the Debian copies of `requests`,
+  `urllib3`, `certifi` and `idna` (old) are replaced by the locked ones.
+  `tools/helpers/lock-python.sh` refreshes the lock.
 - LABaPe is licensed under the GNU Affero General Public License v3
   (`LICENSE`); the web interface has a footer linking to the source, as the
   license asks of a network service.
