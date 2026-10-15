@@ -187,6 +187,8 @@ def sync(db: Session) -> list[str]:
     if have != {f"{PREFIX}{n}" for n in names}:
         out.append(_ask_agent(db, names, have))
     out.append(f"{len(names)} environment(s) in OpenBao: owners kept in step")
+    from . import openbao_vms
+    out += openbao_vms.sync(db)                     # V2: the VMs' own access
     return out
 
 

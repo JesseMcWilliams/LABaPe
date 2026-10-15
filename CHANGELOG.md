@@ -59,6 +59,11 @@ LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs b
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- VMs read their own secrets: a VM signs in to OpenBao with its platform
+  certificate and reads the secrets its owners stored for it, and the
+  shared ones whose VM list names it (`sudo labape-secret get NAME` on
+  Linux, `Get-LabapeSecret NAME` on Windows). Each shared secret's VM list
+  is set on the environment's Secrets panel; other VMs can't read it.
 - New catalog applications: .NET 8 and 10 (runtime, hosting bundle, SDK),
   Google Chrome, KeePassXC, PuTTY and Claude Code. On Windows they install
   from the newest copy Catalog → Updates downloaded (offline), or from

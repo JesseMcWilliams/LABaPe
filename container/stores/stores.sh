@@ -12,6 +12,9 @@
 #   stores/stores.sh people-policies ENV...
 #                                each environment's OpenBao policy and owners group
 #                                (design §49.2; the update agent, asked by LABaPe)
+#   stores/stores.sh vm-policies FILE
+#                                each VM's OpenBao policy and certificate sign-in
+#                                (design §49.3; the update agent, asked by LABaPe)
 #
 # Secret zero (question 105) stays in stores/secrets/ (directory 0700): OpenBao's
 # unseal key and root token, Conjur's data key, database password and admin
@@ -23,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 C="$(dirname "$HERE")"                       # container/
 S="$HERE/secrets" TLS="$HERE/tls"
 MODE="${1:-setup}"
-case "$MODE" in setup|unseal|tls-renew|status|people-policies) ;; *) sed -n '2,20p' "$0" >&2; exit 1 ;; esac
+case "$MODE" in setup|unseal|tls-renew|status|people-policies|vm-policies) ;; *) sed -n '2,23p' "$0" >&2; exit 1 ;; esac
 
 say() { echo "labape-stores: $*"; }
 die() { echo "labape-stores: $*" >&2; exit 1; }
@@ -225,7 +228,7 @@ conjur_rotate_app_key() { conjur_rotate_key app; }
 # --- LABaPe's settings -----------------------------------------------------------------------
 labape() { (cd "$C" && "${COMPOSE[@]}" exec -T labape-api labape "$@"); }
 settings_json() {   # the store settings LABaPe should have, plus any logins given as files
-  python3 - "$TLS/root.crt" "$(role_id labape)" "${1:-}" "${2:-}" "$CONJUR_ON" "$(people_url)" <<'PY'
+  python3 - "$TLS/root.crt" "$(role_id labape)" "${1:-}" "${2:-}" "$CONJUR_ON" "$(people_url)" "$VMPORT" <<'PY'
 import json, sys
 root = open(sys.argv[1]).read()
 creds = {}
@@ -234,7 +237,8 @@ for name, path in (("openbao", sys.argv[3]), ("conjur", sys.argv[4])):
         creds[name] = open(path).read().strip()
 stores = {"openbao": {"url": "https://labape-openbao:8200", "mount": "labape", "path_prefix": "",
                       "auth_mount": "approle", "role_name": "labape", "role_id": sys.argv[2],
-                      "verify_tls": True, "ca_bundle": root, "people_url": sys.argv[6]}}
+                      "verify_tls": True, "ca_bundle": root, "people_url": sys.argv[6],
+                      "vm_url": (sys.argv[6].rsplit(":", 1)[0] + ":" + sys.argv[7]) if sys.argv[6] else ""}}
 if sys.argv[5] != "no":
     stores["conjur"] = {"url": "https://labape-conjur-tls:8443", "account": "labape", "login": "host/labape/app",
                         "authenticator": "authn", "branch": "labape/secrets", "verify_tls": True, "ca_bundle": root}
@@ -345,6 +349,58 @@ people_policies() {   # people_policies NAME...: exactly these environments' pol
     say "OpenBao: removed $p"
   done
   say "OpenBao: policies and groups for $# environment(s)${1:+: $*}"
+}
+# --- VMs signing in with their platform certificate (design §49.3, V2) -----------------------
+VMPORT="$(envget LABAPE_OPENBAO_VM_PORT)"; VMPORT="${VMPORT:-8210}"
+configure_vm_auth() {   # the cert sign-in, with people access (the VMs reach the same address)
+  [ "$PEOPLE" = yes ] || return 0
+  root_api GET sys/auth < /dev/null | grep -q '"cert/"' || echo '{"type": "cert"}' | root_api POST sys/auth/cert >/dev/null
+}
+ca_chain() {   # the platform CA's intermediate(s) and root: what a VM's certificate chains to
+  python3 - "$TLS/server.crt" "$TLS/root.crt" <<'PY'
+import re, sys
+pem = lambda p: re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", open(p).read(), re.S)
+print("\n".join(pem(sys.argv[1])[1:] + pem(sys.argv[2])))
+PY
+}
+vm_policies() {   # vm_policies FILE: exactly these VMs' policies and certificate roles (JSON from LABaPe)
+  local file="${1:?vm-policies FILE}" chain
+  chain="$(ca_chain)"
+  CHAIN="$chain" python3 - "$file" <<'PY' | while IFS=$'\t' read -r kind name body; do
+import json, os, re, sys
+NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
+VM = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,62}$")
+SECRET = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+CN = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+for v in json.load(open(sys.argv[1])).get("vms", []):
+    env, vm, cn, user = v["env"], v["vm"], v["cn"], v.get("user", [])
+    if not (NAME.match(env) and VM.match(vm) and CN.match(cn) and all(SECRET.match(u) for u in user)):
+        sys.exit(f"not a valid VM entry: {env}/{vm}")
+    name = f"labape-vm-{env}-{vm.lower()}"
+    lines = [f"# VM {vm} of {env} (design §49.3): kept by stores.sh vm-policies; edits are replaced.",
+             f'path "labape/data/env/{env}/vm/{vm}/*" {{ capabilities = ["read"] }}']
+    lines += [f'path "labape/data/env/{env}/user/{u}" {{ capabilities = ["read"] }}' for u in sorted(set(user))]
+    print("policy", name, json.dumps({"policy": "\n".join(lines) + "\n"}), sep="\t")
+    print("role", name, json.dumps({"certificate": os.environ["CHAIN"], "allowed_common_names": [cn],
+                                    "token_policies": [name], "token_ttl": "15m", "token_max_ttl": "1h",
+                                    "display_name": name}), sep="\t")
+PY
+    if [ "$kind" = policy ]; then printf '%s' "$body" | root_api PUT "sys/policies/acl/$name" >/dev/null
+    else printf '%s' "$body" | root_api POST "auth/cert/certs/$name" >/dev/null; fi
+    echo "$name" >> "$file.done"
+  done
+  local keep=" " p r
+  keep+="$(sort -u "$file.done" 2>/dev/null | tr '\n' ' ') "
+  for p in $(root_api LIST sys/policies/acl < /dev/null | python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)["data"]["keys"]))'); do
+    [[ "$p" == labape-vm-* && "$keep" != *" $p "* ]] || continue
+    root_api DELETE "sys/policies/acl/$p" < /dev/null >/dev/null; say "OpenBao: removed $p"
+  done
+  for r in $(root_api LIST auth/cert/certs < /dev/null 2>/dev/null | python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)["data"]["keys"]))' 2>/dev/null); do
+    [[ "$r" == labape-vm-* && "$keep" != *" $r "* ]] || continue
+    root_api DELETE "auth/cert/certs/$r" < /dev/null >/dev/null
+  done
+  say "OpenBao: policies and certificate sign-in for $(sort -u "$file.done" 2>/dev/null | wc -l) VM(s)"
+  rm -f "$file.done"
 }
 configure_labape() {
   local needs tmp bao_file="" conjur_file=""
@@ -558,6 +614,7 @@ case "$MODE" in
           unseal; start_stack; exit 0 ;;
   tls-renew) due || exit 0; sign; reload_tls; say "certificate renewed"; exit 0 ;;
   people-policies) shift; people_policies "$@"; exit 0 ;;
+  vm-policies) shift; vm_policies "$@"; exit 0 ;;
   status)
     st="$(bao_status)"; say "OpenBao: ${st:-not answering}"
     labape stores-configure --check < /dev/null 2>/dev/null | grep '^labape:' || true; exit 0 ;;
@@ -589,6 +646,7 @@ reload_tls
 unseal
 configure_bao
 configure_people
+configure_vm_auth
 [ "$CONJUR_ON" = no ] || configure_conjur
 configure_labape
 install_units

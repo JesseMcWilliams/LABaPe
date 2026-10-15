@@ -191,6 +191,27 @@
     - labape_cert
   tags: [certificates]
 
+# --- The VMs' own way to their secrets (Claude_Docs/Planning_Web-Interface-Design.md §49.3, V2) ---
+# labape-secret / Get-LabapeSecret, signing in with the certificate above. Only where LABaPe set
+# labape_secret_client (the environment's secrets in OpenBao, with VM access on).
+
+- name: The secret helper (Linux)
+  hosts: linux_server:linux_workstation
+  become: true
+  gather_facts: false
+  roles:
+    - role: labape_secret_client
+      when: labape_secret_client is defined
+  tags: [certificates]
+
+- name: The secret helper (Windows)
+  hosts: windows_server:windows_workstation:domain_controller
+  gather_facts: false
+  roles:
+    - role: labape_secret_client
+      when: labape_secret_client is defined
+  tags: [certificates]
+
 # --- Service roles (Claude_Docs/Planning_Web-Interface-Design.md §27) ---
 # A service chosen in the web UI may name an Ansible role (`linux.role`) for
 # configuration that packages and units can't express, e.g. the syslog

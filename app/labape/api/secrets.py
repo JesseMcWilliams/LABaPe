@@ -249,6 +249,8 @@ def sync_openbao_people(request: Request, db: Session = Depends(get_db), p: Prin
     from .. import openbao_people
     if not openbao_people.enabled(db):
         raise HTTPException(status_code=409, detail="People don't sign in to OpenBao here (stores.sh, LABAPE_OPENBAO_PEOPLE=yes)")
+    from .. import openbao_vms
+    openbao_vms.forget(db)                          # an admin's sync asks for the VMs' policies again too
     try:
         changes = openbao_people.sync(db)
     except stores.StoreError as exc:

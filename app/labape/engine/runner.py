@@ -39,7 +39,7 @@ from ..models import CatalogItem, Environment, HostNetwork, IpAllocation, Job, K
 from ..catalog import expand
 from ..files import iso_paths, roots
 from ..naming import instance_names
-from .. import linux_desktop, mail_server, spread, vm_passwords
+from .. import linux_desktop, mail_server, openbao_vms, spread, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
@@ -351,6 +351,7 @@ def prepare(db: Session, env: Environment, host: KvmHost, only: list[dict] | Non
     vm_passwords.write_host_vars(db, env, work)
     linux_desktop.write_host_vars(db, env, work)          # E3: xrdp / VNC per VM
     mail_server.write_host_vars(db, env, work)            # M1: Mailpit's UI password and relay
+    openbao_vms.write_host_vars(db, env, work)            # V2: the VMs' labape-secret helper
     return work
 
 

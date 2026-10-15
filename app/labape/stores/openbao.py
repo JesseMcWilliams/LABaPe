@@ -27,6 +27,8 @@ class OpenBaoSettings(BaseModel):
     # OIDC auth mount stores.sh sets up. Empty: people reach their secrets through LABaPe only.
     people_url: str = Field(default="", pattern=r"^(https://[^\s/]+/?)?$")
     people_mount: str = Field(default="oidc", pattern=rf"^{_SEGMENT}$")
+    # VMs' certificate sign-in (design §49.3, V2): the address VMs use; empty without people access.
+    vm_url: str = Field(default="", pattern=r"^(https://[^\s/]+/?)?$")
 
 
 class OpenBaoStore(HttpStore):

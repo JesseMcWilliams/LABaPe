@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import mail_server, remote, stores
+from .. import mail_server, openbao_vms, remote, stores
 from ..db import get_db
 from ..models import Environment, Secret, SecretPolicy
 from ..naming import instance_names
@@ -71,11 +71,13 @@ def list_secrets(env_id: int, db: Session = Depends(get_db), p: Principal = Depe
         out.append({"name": rest, "area": where, "vm": vm, "short": short, "store": row.store,
                     "path": layout.store_name(db, row.store, row.name) if row.store != "builtin" else "",
                     "updated_at": row.updated_at, "editable": where in ("user", "vm"),
+                    "readers": list(row.vms or []) if where == "user" else ([vm] if where == "vm" else []),
                     "rotation": pol.label if pol else "",
                     # E2: where this account can sign in from the browser, when the environment runs.
                     "connect": remote.account_targets(e, rest) if e.status == "deployed" else []})
     return {"secrets": out, "vms": _vms(e), "folder": f"env/{e.name}/" if _layout_store(db, e) else "",
-            "openbao": _openbao(db, e), "mail": mail_server.info(db, e)}
+            "openbao": _openbao(db, e), "mail": mail_server.info(db, e),
+            "vm_access": openbao_vms.enabled(db) and _layout_store(db, e)}
 
 
 def _openbao(db: Session, e: Environment) -> dict | None:
@@ -124,7 +126,9 @@ def reveal(env_id: int, body: RevealIn, request: Request, db: Session = Depends(
 class StoreIn(BaseModel):
     name: str = Field(pattern=NAME)
     vm: str = Field(default="", max_length=63)
-    value: str = Field(min_length=1, max_length=64000)
+    value: str = Field(default="", max_length=64000)      # empty on a replace: keep the value (V2: VMs only)
+    # V2 (R21): for a shared secret, the VMs that may read it themselves (none: people only).
+    readers: list[str] = Field(default=[], max_length=100)
 
 
 @router.put("/{env_id}/secrets")
@@ -136,13 +140,25 @@ def store_secret(env_id: int, body: StoreIn, request: Request, db: Session = Dep
         raise HTTPException(status_code=422, detail=f"{body.vm} isn't one of this environment's VMs")
     full = layout.user_name(e.id, body.name, body.vm)
     replaced = db.get(Secret, full) is not None
+    bad = [v for v in body.readers if v not in _vms(e)]
+    if bad:
+        raise HTTPException(status_code=422, detail=f"Not VMs of this environment: {', '.join(bad)}")
+    if body.vm and body.readers:
+        raise HTTPException(status_code=422, detail="A VM's own secret is read by that VM; it has no VM list")
+    if not body.value and not replaced:
+        raise HTTPException(status_code=422, detail="A new secret needs a value")
     try:
-        put_secret(db, full, body.value)
+        if body.value:
+            put_secret(db, full, body.value)
     except stores.StoreError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    row = db.get(Secret, full)
+    row.vms = sorted(set(body.readers)) if not body.vm else []
+    db.commit()
     rest = full[len(f"environment/{e.id}/"):]
     audit(db, p.username, "environment.secret.replace" if replaced else "environment.secret.store",
-          object_type="environment", object_id=e.id, detail={"name": rest}, source_ip=client_ip(request))
+          object_type="environment", object_id=e.id, detail={"name": rest, "readers": row.vms, "value_changed": bool(body.value)},
+          source_ip=client_ip(request))
     return {"name": rest, "replaced": replaced}
 
 
