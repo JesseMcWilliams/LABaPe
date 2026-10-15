@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..auth import load_providers, provider_enabled
@@ -37,10 +37,12 @@ def _audit_query(actor: str | None, action: str | None, since: dt.datetime | Non
 
 
 @router.get("/audit")
-def audit_log(limit: int = 200, actor: str | None = None, action: str | None = None,
-              since: dt.datetime | None = None, until: dt.datetime | None = None,
+def audit_log(response: Response, limit: int = 200, offset: int = 0, actor: str | None = None,
+              action: str | None = None, since: dt.datetime | None = None, until: dt.datetime | None = None,
               db: Session = Depends(get_db), _: Principal = Depends(require_roles("auditor"))):
-    rows = db.scalars(_audit_query(actor, action, since, until).limit(min(limit, 1000)))
+    q = _audit_query(actor, action, since, until)
+    response.headers["X-Total-Count"] = str(db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0)
+    rows = db.scalars(q.offset(max(offset, 0)).limit(min(max(limit, 1), 1000)))
     return [{c: getattr(r, c) for c in AUDIT_FIELDS} for r in rows]
 
 
@@ -93,13 +95,15 @@ def _errors_query(username: str | None, path: str | None, message: str | None, o
 
 
 @router.get("/errors")
-def user_errors(limit: int = 200, username: str | None = None, path: str | None = None, message: str | None = None,
-                origin: str | None = None, status: int | None = None, since: dt.datetime | None = None,
-                until: dt.datetime | None = None, db: Session = Depends(get_db),
+def user_errors(limit: int = 200, offset: int = 0, username: str | None = None, path: str | None = None,
+                message: str | None = None, origin: str | None = None, status: int | None = None,
+                since: dt.datetime | None = None, until: dt.datetime | None = None, db: Session = Depends(get_db),
                 _: Principal = Depends(require_roles("admin"))):
-    q = _errors_query(username, path, message, origin, status, since, until).limit(min(limit, 2000))
+    base = _errors_query(username, path, message, origin, status, since, until)
+    total = db.scalar(select(func.count()).select_from(base.order_by(None).subquery())) or 0
+    q = base.offset(max(offset, 0)).limit(min(max(limit, 1), 2000))
     rows = [{c: getattr(r, c) for c in ERROR_FIELDS} for r in db.scalars(q)]
-    return {"retention_days": error_retention_days(db), "errors": rows}
+    return {"retention_days": error_retention_days(db), "errors": rows, "total": total}
 
 
 @router.get("/errors/export")

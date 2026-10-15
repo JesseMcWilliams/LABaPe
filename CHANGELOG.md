@@ -12,6 +12,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 The stack now runs its own mail server, Mailpit, with an Admin -> Mail page and forwarding to real inboxes; alerts default to its inbox. The project is licensed AGPL-3.0-only, the Python dependencies are locked with hashes, and the software bill of materials is regenerated on every release. Updates now recreate Caddy when its bind-mounted Caddyfile changed.
 
 ### Added
+- The Audit log and User errors pages are paged like the other lists (rows per page from your profile, previous/next, the total); the API takes `offset` and returns the total (`X-Total-Count` on the audit log, `total` in the errors).
 - A stack's monitoring alerts go to a Mailpit inbox (`alerts@<host name>`) until real recipients are set, and Settings → Email and Monitoring link to the Mailpit page.
 - Every stack runs its own mail server, Mailpit, in the base install. Settings →
   Email is set to it the first time the stack starts (unless you had set up

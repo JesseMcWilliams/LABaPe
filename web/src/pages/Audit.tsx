@@ -4,20 +4,26 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { api, AuditEntry, fmtTime } from "../api";
 import { Field } from "../forms";
 import { DateRangeFields, FilterBar, toQuery, useUrlFilters } from "../components/Filters";
+import { Pager, usePageSize } from "../components/Paging";
 
 const KEYS = ["actor", "action", "since", "until"];
 
 // Who did what, when. Filters are kept in the URL (design §28, O1).
 export default function Audit() {
   const [rows, setRows] = useState<AuditEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [size] = usePageSize();
   const [error, setError] = useState("");
   const f = useUrlFilters(KEYS);
   const query = toQuery(f.applied).toString();
 
+  useEffect(() => { setPage(0); }, [query]);
   useEffect(() => {
-    api.get<AuditEntry[]>(`/api/admin/audit?limit=500&${query}`).then((r) => { setRows(r); setError(""); },
-      (e) => setError(e.message));
-  }, [query]);
+    api.getPage<AuditEntry>(`/api/admin/audit?limit=${size}&offset=${page * size}&${query}`).then((r) => {
+      setRows(r.rows); setTotal(r.total); setError("");
+    }, (e) => setError(e.message));
+  }, [query, page, size]);
 
   return (
     <Stack spacing={2}>
@@ -42,9 +48,7 @@ export default function Audit() {
           onChange={(e) => f.set("action", e.target.value)} />
         <DateRangeFields since={f.draft.since} until={f.draft.until} onChange={f.set} />
       </FilterBar>
-      <Typography variant="body2" color="text.secondary">
-        {rows.length} entr{rows.length === 1 ? "y" : "ies"}{f.active ? " match" : ""}{rows.length === 500 ? " (newest 500 shown)" : ""}
-      </Typography>
+      <Pager total={total} page={page} onPage={setPage} />
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -69,6 +73,7 @@ export default function Audit() {
           ))}
         </TableBody>
       </Table>
+      <Pager total={total} page={page} onPage={setPage} />
     </Stack>
   );
 }
