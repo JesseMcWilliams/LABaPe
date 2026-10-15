@@ -12,7 +12,7 @@ import { ActionButton, useConfirm } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import HostNetworks from "./HostNetworks";
 import {
-  AccessSection, AccountsSection, DashboardSection, DrivesSection, GroupsSection, NicsSection, OsSection, SECTIONS,
+  AccessSection, AccountsSection, DashboardSection, DrivesSection, GroupsSection, NicsSection, OsSection, PoolsSection, SECTIONS,
   SectionHeader, sectionsFor, StackSection, useAdminView, VmsSection,
 } from "../components/HostSections";
 
@@ -92,6 +92,7 @@ function HostSectionsPage({ hostId }: { hostId: number }) {
     if (section === "stack") return <StackSection view={view} />;
     if (view.host.access_status !== "ready" || !view.collected_at) return null;
     if (section === "drives") return <DrivesSection view={view} />;
+    if (section === "pools") return <PoolsSection view={view} hostId={hostId} reload={load} />;
     if (section === "nics") return <NicsSection view={view} />;
     if (section === "os") return <OsSection view={view} />;
     if (section === "accounts") return <AccountsSection view={view} hostId={hostId} reload={load} />;
@@ -104,7 +105,7 @@ function HostSectionsPage({ hostId }: { hostId: number }) {
       <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
         <Paper variant="outlined" sx={{ width: 190, flexShrink: 0 }}>
           <List dense disablePadding>
-            {sectionsFor(view?.host.role).map((x) => (
+            {sectionsFor(view?.host.role, (view?.pools?.length ?? 0) > 0).map((x) => (
               <ListItemButton key={x.key} selected={section === x.key} onClick={() => setParams({ section: x.key }, { replace: true })}>
                 <ListItemText primary={x.label} />
               </ListItemButton>

@@ -43,6 +43,10 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/openbao_people.py` | lab (container) | People in OpenBao (V1b): sync now, or sign a test user in with OIDC and try reads and writes (statuses only) |
 | `live/desktops.py` | lab (container) | xrdp/VNC on an environment's Linux host groups (E3) |
 | `live/host_files.py` | lab (container) | A KVM host's files path and free-space alert; change the path and wait for the move job |
+| `live/host_pools.py` | lab | Every host's drive pools as the page sees them (`refresh` reads the facts first); read-only |
+| `live/host_power.py` | lab | `info` a host's pending OS updates (read-only); `update` / `reboot` start real jobs |
+| `live/host_logs.py` | lab | Which hosts forward their own logs to the stack syslog; `on`/`off` HOST_ID |
+| `live/alert_to.py` | lab | Settings → Monitoring "Email alerts to": show or set |
 | `live/stack_mail.py` | lab (container) | The stack's own Mailpit: status, the admin-only route, a test email, its inbox, forwarding through a server (`relay`) or off |
 | `live/mail_check.sh` | lab host | The environment's mail server: send a test message over STARTTLS and read it back through Mailpit's API |
 | `live/package_updates.py` | lab (container) | Catalog → Updates: list the sources, or check (all or one) and wait |

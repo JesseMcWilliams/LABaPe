@@ -4,7 +4,7 @@
 import { Fragment, ReactNode, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Stack, Table,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, LinearProgress, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { api, fmtTime, KvmHost, Network } from "../api";
@@ -20,18 +20,28 @@ export interface AdminView {
   host: KvmHost; collected_at: string | null; smart_at: string | null; error: string;
   facts: Any; smart: Any; latest: Any; warnings: { level: "error" | "warning" | "info"; message: string }[];
   series: Record<string, (number | null)[]> & { t: string[] }; resources: Any; stack?: Any;
+  pools?: Pool[]; pool_candidates?: { path: string; size: number; model: string }[];
+}
+export interface PoolMember { name: string; role: string; state: string; errors: number; depth?: number }
+export interface Pool {
+  id: string; type: "mdadm" | "zfs" | "lvm"; name: string; level: string; state: string; size: number | null; used: number | null;
+  free: number | null; mounts: string[]; uuid: string; members: PoolMember[]; errors: number; actions: string[];
+  sync: { action: string; percent: number | null; speed: number | null; text?: string }; raid_disks?: number; degraded?: number;
+  data_errors?: string; logical_volumes?: { name: string; size: number }[];
 }
 
 export const SECTIONS = [
-  { key: "dashboard", label: "Dashboard" }, { key: "drives", label: "Drives and volumes" }, { key: "nics", label: "NICs" },
+  { key: "dashboard", label: "Dashboard" }, { key: "drives", label: "Drives and volumes" }, { key: "pools", label: "Drive Pools" },
+  { key: "nics", label: "NICs" },
   { key: "os", label: "OS" }, { key: "accounts", label: "Accounts" }, { key: "groups", label: "Groups" },
   { key: "vms", label: "VMs" }, { key: "stack", label: "Stack" }, { key: "access", label: "SSH access" },
   { key: "settings", label: "Settings" },
 ] as const;
 
 /** The sections a host's role calls for (design §30): VMs for KVM hosts, Stack for stack hosts. */
-export const sectionsFor = (role: string | undefined) =>
-  SECTIONS.filter((x) => (x.key !== "vms" || role !== "stack") && (x.key !== "stack" || role === "stack" || role === "both"));
+export const sectionsFor = (role: string | undefined, hasPools = false) =>
+  SECTIONS.filter((x) => (x.key !== "vms" || role !== "stack") && (x.key !== "stack" || role === "stack" || role === "both")
+    && (x.key !== "pools" || hasPools));
 
 const ago2 = (iso?: string | null) => (iso ? fmtTime(iso) : "—");
 
@@ -319,6 +329,152 @@ function DiskRows({ devs, depth = 0 }: { devs: Any[]; depth?: number }): ReactNo
       {d.children && <DiskRows devs={d.children} depth={depth + 1} />}
     </Fragment>
   ));
+}
+
+const POOL_COLOR: Record<string, "success" | "info" | "warning" | "error" | "default"> = {
+  healthy: "success", scrubbing: "info", rebuilding: "warning", degraded: "error", failed: "error", unknown: "default",
+};
+const POOL_KIND: Record<string, string> = { mdadm: "Linux RAID (mdadm)", zfs: "ZFS", lvm: "LVM volume group" };
+
+/** Drive Pools (design §53.4): mdadm arrays, ZFS pools and LVM volume groups the host has, with the safe actions. */
+export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId: number; reload: () => void }) {
+  const confirm = useConfirm();
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState<Pool | null>(null);
+  const [spare, setSpare] = useState("");
+  const pools = view.pools ?? [];
+  const free = view.pool_candidates ?? [];
+  const run = async (pool: Pool, op: string, device: string | undefined, title: string, body: ReactNode, label: string, danger = false) => {
+    if (!(await confirm({ title, body, confirmLabel: label, danger }))) return;
+    setBusy(true);
+    setError("");
+    setDone("");
+    try {
+      await api.post(`/api/hosts/${hostId}/pools/action`, { pool: pool.id, op, device });
+      setDone(`${label}: done on ${pool.name}.`);
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const check = (p: Pool) => run(p, p.type === "zfs" ? "scrub" : "check", undefined, `${p.type === "zfs" ? "Scrub" : "Check"} ${p.name}?`,
+    "Reads every drive of the pool and verifies it. It slows the pool down while it runs, and you can stop it.", p.type === "zfs" ? "Scrub" : "Check");
+  const stop = (p: Pool) => run(p, "stop-sync", undefined, `Stop the running ${p.sync.action} on ${p.name}?`,
+    p.state === "rebuilding"
+      ? "This is a rebuild. Stopping it leaves the pool without its redundancy until it is started again."
+      : "The check or scrub stops where it is.", "Stop", p.state === "rebuilding");
+  const pull = (p: Pool, m: PoolMember) => run(p, "fail-remove", m.name, `Take ${m.name} out of ${p.name}?`,
+    `${m.name} is marked faulty and removed from ${p.name}. The pool runs without it (degraded) until a replacement is added. Only do this to a drive that has failed or that you are replacing.`, "Take out", true);
+  const offline = (p: Pool, m: PoolMember) => run(p, m.state === "OFFLINE" ? "online" : "offline", m.name,
+    `${m.state === "OFFLINE" ? "Bring online" : "Take offline"} ${m.name}?`,
+    m.state === "OFFLINE" ? "The drive rejoins the pool and is brought up to date." : `${p.name} runs without ${m.name} until it is brought back online.`,
+    m.state === "OFFLINE" ? "Bring online" : "Take offline", m.state !== "OFFLINE");
+  return (
+    <Stack spacing={2}>
+      <Typography variant="body2" color="text.secondary">
+        The RAID arrays, ZFS pools and LVM volume groups on this host, read with the rest of its facts (every 5 minutes; Refresh above reads now).
+        Degraded, failed and rebuilding pools also raise an alert on the dashboard. LVM groups are shown only; the other actions ask to confirm first.
+      </Typography>
+      {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
+      {done && <Alert severity="success" onClose={() => setDone("")}>{done}</Alert>}
+      {pools.map((p) => {
+        const pct = p.size && p.used != null ? Math.min(100, (100 * p.used) / p.size) : null;
+        const working = p.sync.action !== "idle";
+        return (
+          <Paper key={p.id} variant="outlined" sx={{ p: 2 }}>
+            <Stack spacing={1.5}>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                <Typography variant="h6" sx={{ fontFamily: "monospace" }}>{p.name}</Typography>
+                <Chip size="small" label={POOL_KIND[p.type]} />
+                {p.level && <Chip size="small" variant="outlined" label={p.level} />}
+                <Chip size="small" color={POOL_COLOR[p.state] ?? "default"} label={p.state} />
+                {p.errors > 0 && <Chip size="small" color="warning" label={`${p.errors} drive error${p.errors === 1 ? "" : "s"}`} />}
+              </Stack>
+              <Facts rows={[
+                ["Size", p.size ? `${gb(p.size)}${p.used != null ? ` · ${gb(p.used)} used` : ""}${p.free != null ? ` · ${gb(p.free)} free` : ""}` : "—"],
+                ...(p.mounts.length ? [["Mounted at", p.mounts.join(", ")] as [string, ReactNode]] : []),
+                ...(p.uuid ? [["UUID", <code key="u">{p.uuid}</code>] as [string, ReactNode]] : []),
+                ...(p.type === "zfs" && p.data_errors ? [["Data errors", p.data_errors] as [string, ReactNode]] : []),
+              ]} />
+              {pct != null && <LinearProgress variant="determinate" value={pct} color={pct >= 90 ? "error" : pct >= 80 ? "warning" : "primary"} />}
+              {working && (
+                <Box>
+                  <Typography variant="body2">
+                    {p.sync.action === "check" || p.sync.action === "scrub" ? "Checking" : p.sync.action === "repair" ? "Repairing" : "Rebuilding"}
+                    {p.sync.percent != null ? `: ${p.sync.percent.toFixed(1)}% done` : ""}{p.sync.speed ? ` · ${(p.sync.speed / 1024).toFixed(0)} MB/s` : ""}
+                  </Typography>
+                  {p.sync.percent != null && <LinearProgress variant="determinate" value={p.sync.percent} />}
+                  {p.sync.text && <Typography variant="caption" color="text.secondary">{p.sync.text}</Typography>}
+                </Box>
+              )}
+              <Table size="small">
+                <TableHead><TableRow><TableCell>Drive</TableCell><TableCell>Role</TableCell><TableCell>State</TableCell><TableCell>Errors</TableCell><TableCell /></TableRow></TableHead>
+                <TableBody>
+                  {p.members.map((m) => (
+                    <TableRow key={m.name}>
+                      <TableCell sx={{ fontFamily: "monospace", pl: 2 + (m.depth ?? 0) * 2 }}>{m.name}</TableCell>
+                      <TableCell>{m.role}</TableCell>
+                      <TableCell><Chip size="small" label={m.state} color={/faulty|FAULT|UNAVAIL|missing|REMOVED/.test(m.state) ? "error" : /OFFLINE|DEGRADED/.test(m.state) ? "warning" : "default"} /></TableCell>
+                      <TableCell>{m.errors || "—"}</TableCell>
+                      <TableCell align="right">
+                        {p.type === "mdadm" && p.actions.includes("fail-remove") && (
+                          <Button size="small" color="warning" disabled={busy} onClick={() => pull(p, m)}>{m.role === "faulty" ? "Remove" : "Take out"}</Button>
+                        )}
+                        {p.type === "zfs" && m.name.startsWith("/") && (
+                          <Button size="small" color="warning" disabled={busy} onClick={() => offline(p, m)}>{m.state === "OFFLINE" ? "Bring online" : "Take offline"}</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {p.logical_volumes && p.logical_volumes.length > 0 && (
+                <Typography variant="body2" color="text.secondary">Logical volumes: {p.logical_volumes.map((l) => `${l.name} (${gb(l.size)})`).join(", ")}</Typography>
+              )}
+              {p.actions.length === 0 ? <Typography variant="body2" color="text.secondary">Shown only: LABaPe doesn&apos;t change LVM groups.</Typography> : (
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+                  {working
+                    ? <Button size="small" variant="outlined" disabled={busy} onClick={() => stop(p)}>Stop</Button>
+                    : <Button size="small" variant="outlined" disabled={busy} onClick={() => check(p)}>{p.type === "zfs" ? "Scrub" : "Check"}</Button>}
+                  {p.type === "mdadm" && !working && p.actions.includes("resync") && (
+                    <Button size="small" variant="outlined" disabled={busy} title="Rewrite mismatched blocks from the other drives"
+                      onClick={() => run(p, "resync", undefined, `Repair ${p.name}?`, "Starts a repair pass: blocks that differ between the drives are rewritten. It reads every drive and slows the array while it runs.", "Repair")}>Repair</Button>
+                  )}
+                  {p.actions.includes("add-spare") && (
+                    <Button size="small" variant="outlined" disabled={busy || free.length === 0} onClick={() => { setAdding(p); setSpare(free[0]?.path ?? ""); }}
+                      title={free.length === 0 ? "No free drive: every disk is mounted, has a filesystem or is in a pool" : "Add a free drive as a spare or replacement"}>Add a drive…</Button>
+                  )}
+                </Stack>
+              )}
+            </Stack>
+          </Paper>
+        );
+      })}
+      <Dialog open={Boolean(adding)} onClose={() => setAdding(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add a drive to {adding?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Typography variant="body2">Only drives that are not mounted, have no filesystem and are in no pool are offered. Whatever is on the drive is overwritten. In a degraded pool it starts rebuilding onto the drive.</Typography>
+            <Field select label="Drive" value={spare} onChange={(e) => setSpare(e.target.value)}>
+              {free.map((d) => <MenuItem key={d.path} value={d.path}>{d.path} · {gb(d.size)}{d.model ? ` · ${d.model}` : ""}</MenuItem>)}
+            </Field>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAdding(null)}>Cancel</Button>
+          <Button variant="contained" color="warning" disabled={!spare} onClick={() => {
+            const p = adding;
+            setAdding(null);
+            if (p) run(p, "add-spare", spare, `Add ${spare} to ${p.name}?`, `${spare} becomes part of ${p.name}; anything on it is overwritten.`, "Add the drive", true);
+          }}>Add…</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
 }
 
 export function DrivesSection({ view }: { view: AdminView }) {
