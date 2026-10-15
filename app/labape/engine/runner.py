@@ -42,7 +42,7 @@ from ..naming import instance_names
 from .. import linux_desktop, mail_server, openbao_vms, spread, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
+from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from .templates import sync_all as sync_templates
@@ -78,10 +78,12 @@ def claim(db: Session, worker: str) -> Job | None:
     pg = db.bind.dialect.name == "postgresql"
     if pg:
         db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": CLAIM_LOCK})
-    running, busy_envs = {}, set()
-    for host_id, env_id in db.execute(select(Job.kvm_host_id, Job.environment_id).where(Job.state == "running")):
+    running, busy_envs, rebooting = {}, set(), set()
+    for host_id, env_id, jtype in db.execute(select(Job.kvm_host_id, Job.environment_id, Job.type).where(Job.state == "running")):
         running[host_id] = running.get(host_id, 0) + 1
         busy_envs.add(env_id)
+        if jtype == "host.reboot":
+            rebooting.add(host_id)            # H2: it waits for the host's jobs to end, so nothing new starts there
     limits = {h.id: (h.concurrency_limit, h.enabled) for h in db.scalars(select(KvmHost))}
     q = select(Job).where(Job.state == "queued").order_by(Job.id)
     if pg:
@@ -93,7 +95,9 @@ def claim(db: Session, worker: str) -> Job | None:
         if job.kvm_host_id is not None:
             limit, enabled = limits.get(job.kvm_host_id, (0, False))
             # A host is prepared (host.install) before it's enabled for deploys (design §28.4).
-            if (not enabled and job.type != "host.install") or running.get(job.kvm_host_id, 0) >= max(limit, 1):
+            if (not enabled and job.type not in HOST_OWN_JOBS) or running.get(job.kvm_host_id, 0) >= max(limit, 1):
+                continue
+            if job.kvm_host_id in rebooting:
                 continue
         job.state = "running"
         job.worker = worker
@@ -103,6 +107,9 @@ def claim(db: Session, worker: str) -> Job | None:
         return job
     db.commit()
     return None
+
+
+HOST_OWN_JOBS = ("host.install", "host.update", "host.reboot")        # these also run on a host not enabled for deploys
 
 
 def recover_stale(db: Session) -> None:
@@ -569,6 +576,7 @@ def run(job_id: int, worker: str) -> None:
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
+                  "host.update": hostpower.run_update, "host.reboot": hostpower.run_reboot,
                   "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
                   "secret.check": secret_health.run_job,
                   "files.sync_templates": filedist.run_sync_templates, "host.files_move": filedist.run_move_job,
