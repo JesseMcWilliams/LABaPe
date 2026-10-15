@@ -463,7 +463,7 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [msg, setMsg] = useState("");
   const [install, setInstall] = useState({ KvmHostName: host.name, ServiceUser: "labape", VmStoragePath: host.vm_storage_path, TemplateStoragePath: host.template_storage_path,
-    IsoPath: "/data/OS_Images", DefaultNetwork: "", ForwardHostLogs: true, InstallCli: true, CliCheckout: false });
+    IsoPath: "/data/OS_Images", FilesPath: host.files_dir || "", DefaultNetwork: "", ForwardHostLogs: true, InstallCli: true, CliCheckout: false });
   const [catalog, setCatalog] = useState<Network[]>([]);
   const [choices, setChoices] = useState<Record<number, NetChoice>>({});
   useEffect(() => {
@@ -542,7 +542,7 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
             and it carries the networks chosen below. Jobs bring their own files, so the host needs no command-line setup unless you want one.
           </Typography>
           <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-start" }}>
-            {(["KvmHostName", "ServiceUser", "VmStoragePath", "TemplateStoragePath", "IsoPath"] as const).map((k) => (
+            {(["KvmHostName", "ServiceUser", "VmStoragePath", "TemplateStoragePath", "IsoPath", "FilesPath"] as const).map((k) => (
               <Field key={k} label={k} value={install[k]} error={errs.fields[k]} onChange={(e) => setInstall({ ...install, [k]: e.target.value })} />
             ))}
             <FormControlLabel label="Send its logs to the syslog collector" title="Afterwards, forward the host's own logs to the stack's collector over TLS"

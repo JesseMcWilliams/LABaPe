@@ -544,7 +544,7 @@ def run(job_id: int, worker: str) -> None:
                   "environment.power": power.run_job, "host.install": hostadmin.run_install,
                   "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
                   "secret.check": secret_health.run_job,
-                  "files.sync_templates": filedist.run_sync_templates}
+                  "files.sync_templates": filedist.run_sync_templates, "host.files_move": filedist.run_move_job}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -759,7 +759,7 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
                 groups: list[dict] | None = None, installers: bool = True) -> None:
     """Before a job runs on a remote host: the files it needs from the primary file host
     (design §29.4), and the workspace pointed at the host's copies. ISOs go to
-    <vm storage>/.labape-isos, installers to <vm storage>/.labape-files/installers (Ansible
+    <files path>/ISOs, installers to <files path>/Installers (F1; Ansible
     reads them there: it runs on that host), templates into the host's library. `groups`: only
     these groups' templates and ISOs (a spread environment's part, design §45); `installers`: False
     when Ansible runs elsewhere."""
@@ -769,12 +769,18 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
         iso_keys = iso_keys & {g.get("os", "") for g in groups if (g.get("image_source") or "iso_direct") == "iso_direct"}
     path = work / "environment.yml"
     env_yml = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    iso_dir = f"{host.vm_storage_path.rstrip('/')}/.labape-isos"
+    if not host.is_primary and not host.files_from_share:
+        try:                                    # F1: beside the VM folder, under a root-owned folder
+            hostadmin.ensure_files_path(db, host)
+        except hostadmin.AdminError as exc:
+            log.write(f"labape: warning: {exc}\n")
+    iso_dir = filedist.cache_dir(host, "isos")
     isos = env_yml.get("os_iso_paths") or {}
     for key, src in list(isos.items()):
         if key in iso_keys:
             size, sha = filedist.known(db, src)
-            isos[key] = filedist.ensure(db, host, src, f"{iso_dir}/{Path(src).name}", log, size, sha)
+            isos[key] = filedist.ensure(db, host, src, f"{iso_dir}/{Path(src).name}", log, size, sha,
+                                        legacy=f"{filedist.legacy_dir(host, 'isos')}/{Path(src).name}")
         elif not host.is_primary and not host.files_from_share:
             isos[key] = f"{iso_dir}/{Path(src).name}"
     env_yml["os_iso_paths"] = isos
@@ -803,7 +809,8 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
     cache = filedist.cache_dir(host, "installers")
     for rel in sorted(wanted):
         size, sha = filedist.known(db, f"{store}/{rel}")
-        filedist.ensure(db, host, f"{store}/{rel}", f"{cache}/{rel}", log, size, sha)
+        filedist.ensure(db, host, f"{store}/{rel}", f"{cache}/{rel}", log, size, sha,
+                        legacy=f"{filedist.legacy_dir(host, 'installers')}/{rel}")
     gv = work / "ansible" / "inventory" / "group_vars" / "all" / "labape.yml"
     if gv.parent.is_dir():
         gv.write_text(yaml.safe_dump({"software_store_path": cache}), encoding="utf-8")

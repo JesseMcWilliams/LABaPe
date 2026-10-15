@@ -244,19 +244,17 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
             f = db.get(HostFacts, h.id)
             latest = db.scalar(select(HostMetric).where(HostMetric.kvm_host_id == h.id).order_by(HostMetric.at.desc()).limit(1))
             ld = latest.data if latest else {}
-            for w in hostadmin.warnings(f.facts if f else {}, f.smart if f else {}, ld):
+            free_pct = h.disk_free_pct or cfg.disk_free_pct            # F1: every host's filesystems
+            for w in hostadmin.warnings(f.facts if f else {}, f.smart if f else {}, ld, free_pct):
                 if w["level"] == "info":
                     continue
-                if stack and ("°C" in w["message"] or "% full" in w["message"]):
-                    continue                                     # stack hosts: the monitoring thresholds below
-                add(h, w["level"], w["message"])
+                if stack and "°C" in w["message"]:
+                    continue                                     # stack hosts: the monitoring threshold below
+                add(h, w["level"], w["message"], "fs" if "% full" in w["message"] else "")
             if stack:
                 for name, t in (ld.get("temps") or {}).items():
                     if isinstance(t, (int, float)) and t >= cfg.temp_c:
                         add(h, "warning" if t < cfg.temp_c + 5 else "error", f"{name} at {t:.0f} °C", "temp")
-                for mount, pct in (ld.get("fs_used_pct") or {}).items():
-                    if pct >= cfg.disk_pct:
-                        add(h, "warning" if pct < 95 else "error", f"{mount} is {pct}% full", "fs")
         if not stack:
             continue
         st = db.get(StackStatus, h.id)

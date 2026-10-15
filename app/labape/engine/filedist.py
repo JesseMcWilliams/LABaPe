@@ -3,7 +3,10 @@
 One KVM host is the primary: it holds every file LABaPe uses (ISOs, installers, other files,
 and the template library's images). A job on another host gets the files it needs copied
 there, streamed host to host through the worker (`ssh primary cat | ssh host 'cat >'`), into
-that host's cache (`<vm storage>/.labape-files/...`) or, for templates, its template library.
+that host's files path (F1: `ISOs/`, `Installers/`, `Other/` under it; by default beside the VM
+folder, `/data/VMs/LABaPe` -> `/data/Files`) or, for templates, its template library. A copy
+still in the hidden cache of before F1 (`<vm storage>/.labape-isos`, `.labape-files/...`) is moved
+into place on first use instead of copied again.
 A file already there with the same size (and SHA-256, when LABaPe knows it) isn't copied
 again. A host whose admin mounted the primary's file locations at the same paths (a share)
 reads them there instead. While the primary can't be reached, a job waits up to
@@ -15,7 +18,7 @@ import os
 import shlex
 import subprocess
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +27,8 @@ from .. import appsettings
 from ..models import KvmHost, StoredFile, Template
 from . import hostio
 
-CACHE = ".labape-files"              # under a host's VM storage path
+CACHE = ".labape-files"              # under a host's VM storage path: the cache before F1
+CATEGORY_DIRS = {"isos": "ISOs", "installers": "Installers", "files": "Other"}
 POLL_SECONDS = 30
 
 
@@ -66,8 +70,42 @@ def endpoint(h: KvmHost) -> hostio.Host | None:
     return hostio.Host(h.libvirt_uri) if hostio.is_remote(h.libvirt_uri) else None
 
 
+def files_path(h: KvmHost) -> str:
+    """Where a host keeps its copies of LABaPe's files (F1, question 172): its own setting, else
+    beside its VM folder: the path up to `/VMs` with `/Files` instead (`/data/VMs/LABaPe` ->
+    `/data/Files`), or the VM folder's parent's `Files`."""
+    if h.files_path:
+        return h.files_path.rstrip("/")
+    vm = h.vm_storage_path.rstrip("/")
+    i = vm.find("/VMs")
+    base = vm[:i] if i > 0 else str(PurePosixPath(vm).parent).rstrip("/")
+    return f"{base}/Files"
+
+
 def cache_dir(h: KvmHost, kind: str) -> str:
+    """The folder a host keeps one kind of file in: isos, installers, files."""
+    return f"{files_path(h)}/{CATEGORY_DIRS.get(kind, kind)}"
+
+
+def vm_cache_dir(h: KvmHost, kind: str) -> str:
+    """LABaPe's hidden folder under the VM storage (linked stacks' backups, design §36; files before F1)."""
     return f"{h.vm_storage_path.rstrip('/')}/{CACHE}/{kind}"
+
+
+def legacy_dir(h: KvmHost, kind: str) -> str:
+    """Where the same kind of file was cached before F1."""
+    return f"{h.vm_storage_path.rstrip('/')}/.labape-isos" if kind == "isos" else vm_cache_dir(h, kind)
+
+
+def _move(ep: hostio.Host | None, src: str, dst: str) -> None:
+    if ep is None:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        import shutil
+        shutil.move(src, dst)
+        return
+    r = _run(ep, f"mkdir -p {shlex.quote(os.path.dirname(dst))} && mv -f {shlex.quote(src)} {shlex.quote(dst)}")
+    if r.returncode != 0:
+        raise FileDistError(f"moving {src} to {dst} failed: {r.stderr.decode(errors='replace').strip()[-200:]}")
 
 
 def _run(ep: hostio.Host, command: str, timeout: float = 120) -> subprocess.CompletedProcess:
@@ -136,10 +174,11 @@ def copy(src: hostio.Host | None, src_path: str, dst: hostio.Host | None, dst_pa
 
 
 def ensure(db: Session, target: KvmHost, src_path: str, dst_path: str, log, size: int = -1, sha256: str = "",
-           sleep=time.sleep, now=time.monotonic, use_share: bool = True) -> str:
+           sleep=time.sleep, now=time.monotonic, use_share: bool = True, legacy: str = "") -> str:
     """Make `src_path` (on the primary) available on `target`; returns the path the target uses.
     `size`/`sha256`: what LABaPe knows about the file (it then needn't reach the primary to
-    see that the target's copy is current)."""
+    see that the target's copy is current). `legacy`: where an older LABaPe cached it on the target;
+    a copy there is moved into place rather than copied again."""
     p = primary(db)
     if p is None:
         raise FileDistError("no KVM host is the primary file host (Admin → KVM hosts)")
@@ -151,6 +190,12 @@ def ensure(db: Session, target: KvmHost, src_path: str, dst_path: str, log, size
             raise FileDistError(f"{target.name} reads files from a share, but {src_path} isn't there")
         return src_path
     have = size_of(tgt, dst_path)
+    if have < 0 and legacy and legacy != dst_path:
+        old = size_of(tgt, legacy)
+        if old >= 0 and (size < 0 or old == size):
+            _move(tgt, legacy, dst_path)
+            log.write(f"labape: moved {os.path.basename(dst_path)} on {target.name} to {os.path.dirname(dst_path)}\n")
+            have = size_of(tgt, dst_path)
     if have >= 0 and have == size and (not sha256 or sha256_of(tgt, dst_path) == sha256):
         return dst_path
     src = endpoint(p)
@@ -305,3 +350,42 @@ def schedule_template_sync(db: Session, now=None) -> int | None:
     db.commit()
     return job.id
 
+
+def move_files(db: Session, h: KvmHost, old: str, new: str, log) -> int:
+    """Job `host.files_move` (F1): a host's files from its old files path to the new one, folder by
+    folder (ISOs, Installers, Other). The new folder must be one the service user may create (Prepare
+    the host again for a folder beside the VM folder, which belongs to root). Returns the job's exit."""
+    ep = endpoint(h)
+    old, new = old.rstrip("/"), new.rstrip("/")
+    if old == new:
+        log.write("labape: the files path didn't change\n")
+        return 0
+    dirs = " ".join(shlex.quote(d) for d in CATEGORY_DIRS.values())
+    script = (f"set -e; for d in {dirs}; do mkdir -p {shlex.quote(new)}/\"$d\"; "
+              f"if [ -d {shlex.quote(old)}/\"$d\" ]; then "
+              f"find {shlex.quote(old)}/\"$d\" -mindepth 1 -maxdepth 1 -exec mv -t {shlex.quote(new)}/\"$d\" {{}} +; "
+              f"rmdir {shlex.quote(old)}/\"$d\" 2>/dev/null || true; fi; done; rmdir {shlex.quote(old)} 2>/dev/null || true")
+    if ep is None:
+        r = subprocess.run(["bash", "-c", script], capture_output=True, timeout=3600)
+    else:
+        r = _run(ep, script, timeout=3600)
+    if r.returncode != 0:
+        log.write(f"labape: moving {h.name}'s files to {new} failed: {r.stderr.decode(errors='replace').strip()[-300:]}\n"
+                  "labape: if the folder is beside the VM folder, Prepare the host again so it's created\n")
+        return 1
+    log.write(f"labape: {h.name}'s files are now in {new}\n")
+    return 0
+
+
+def run_move_job(db: Session, job) -> int:
+    from .runner import _append
+
+    class _Log:
+        def write(self, text: str) -> None:
+            _append(job, text)
+
+    h = db.get(KvmHost, job.kvm_host_id)
+    if h is None:
+        _append(job, "labape: the KVM host is gone\n")
+        return 1
+    return move_files(db, h, job.params["old"], job.params["new"], _Log())

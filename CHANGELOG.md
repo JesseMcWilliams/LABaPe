@@ -32,6 +32,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   still sleep.
 
 ### Changed
+- Drive space alerts: **Free space below (%)** in Settings → Monitoring
+  (default 20%), for every host and every filesystem, and a host can set its
+  own. It replaces "Disk full at (%)", which only covered stack hosts (KVM
+  hosts warned at a fixed 90% full); a saved value isn't carried over.
 - `stores/stores.sh setup` makes the stack's OpenBao the default store for
   new environments' secrets when it first connects LABaPe to it (a later
   choice in Settings → Secret stores stays).
@@ -49,6 +53,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
   accounts, remote access, the syslog collector, tokens and metrics.
 
 ### Added
+- Each KVM host has a **Files path** on its settings (by default beside its
+  VM folder: `/data/VMs/LABaPe` -> `/data/Files`, with `ISOs`, `Installers`
+  and `Other`): the copies jobs need are kept there instead of a hidden
+  cache, and changing it moves the files.
 - The environment's Secrets panel pages like the other lists and has a
   search box and filters (group, VM, store).
 - Every host LABaPe sets up gets `smartmontools`, `lm-sensors` (its chips

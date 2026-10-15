@@ -317,18 +317,22 @@ def storage_dirs(c: Ctx):
     for key in ("VmStoragePath", "TemplateStoragePath"):
         c.r.run(["chown", f"{c.user}:{c.user}", c.a.need(key)])
         c.r.run(["chmod", "0775", c.a.need(key)])
+    # F1: this host's copies of LABaPe's files, beside the VM folder by default; jobs write them.
+    files = str(c.a.need("FilesPath")).rstrip("/")
+    for d in (files, f"{files}/ISOs", f"{files}/Installers", f"{files}/Other"):
+        c.r.run(["install", "-d", "-m", "0775", "-o", c.user, "-g", c.user, d])
     note = ""
     if c.r.out(["getenforce"]) in ("Enforcing", "Permissive"):
         # SELinux (RHEL family): QEMU may only use files labelled for it: disks and templates
         # virt_image_t, installation media virt_content_t (read-only).
         for key, label in (("VmStoragePath", "virt_image_t"), ("TemplateStoragePath", "virt_image_t"),
-                           ("IsoPath", "virt_content_t")):
-            spec = f"{str(c.a.need(key)).rstrip('/')}(/.*)?"
+                           ("IsoPath", "virt_content_t"), ("FilesPath", "virt_content_t")):
+            spec = f"{str(c.a.need(key)).rstrip('/')}{'/ISOs' if key == 'FilesPath' else ''}(/.*)?"
             if c.r.run(["semanage", "fcontext", "-a", "-t", label, spec], check=False).returncode != 0:
                 c.r.run(["semanage", "fcontext", "-m", "-t", label, spec])      # already defined: update it
-            c.r.run(["restorecon", "-R", c.a.need(key)])
+            c.r.run(["restorecon", "-R", c.a.need(key) if key != "FilesPath" else f"{files}/ISOs"])
         note = " (SELinux labels set)"
-    return DONE, ", ".join(str(c.a.need(k)) for k in ("VmStoragePath", "TemplateStoragePath", "IsoPath")) + note
+    return DONE, ", ".join(str(c.a.need(k)) for k in ("VmStoragePath", "TemplateStoragePath", "IsoPath", "FilesPath")) + note
 
 
 def storage_template_pool(c: Ctx):

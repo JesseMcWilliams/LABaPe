@@ -54,7 +54,7 @@ interface AllSettings {
   remote: { record_sessions: boolean; idle_minutes: number; keep_recordings_days: number };
   syslog_collector: Collector;
   file_distribution: { wait_minutes: number; copy_templates_to_all: boolean };
-  monitoring: { email_to: string[]; syslog: boolean; disk_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number };
+  monitoring: { email_to: string[]; syslog: boolean; disk_free_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number };
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -303,7 +303,7 @@ export default function Settings() {
           <Field label="Email alerts to" value={s.monitoring.email_to.join(", ")} sx={{ minWidth: 300 }} help="Comma-separated; uses Email (SMTP) below"
             onChange={(e) => set("monitoring", { email_to: e.target.value.split(/[\s,;]+/).filter(Boolean) })} />
           <FormControlLabel label="Send to syslog" control={<Checkbox checked={s.monitoring.syslog} onChange={(e) => set("monitoring", { syslog: e.target.checked })} />} />
-          {([["disk_pct", "Disk full at (%)"], ["temp_c", "Hot at (°C)"], ["cert_days", "Certificate days left"], ["backup_hours", "Backup older than (hours)"],
+          {([["disk_free_pct", "Free space below (%)"], ["temp_c", "Hot at (°C)"], ["cert_days", "Certificate days left"], ["backup_hours", "Backup older than (hours)"],
             ["peer_failures", "Missed probes"]] as const).map(([k, label]) => (
             <Field key={k} label={label} type="number" value={s.monitoring[k]} sx={{ width: 170 }}
               onChange={(e) => set("monitoring", { [k]: Number(e.target.value) })} />

@@ -195,7 +195,7 @@ def store_linked(db: Session, job) -> int:
             log.write("labape: no primary file host to keep the copy on\n")
             return 1
         ep = filedist.endpoint(prim)
-        d = f"{filedist.cache_dir(prim, LINKED_DIR)}/{peer}"
+        d = f"{filedist.vm_cache_dir(prim, LINKED_DIR)}/{peer}"
         dst = f"{d}/{p['archive']}"
         log.write(f"labape: {p['archive']} from {p['peer_url']} -> {prim.name}:{dst}\n")
         side_path = staged.with_name(staged.name + ".json")

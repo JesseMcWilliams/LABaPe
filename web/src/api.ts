@@ -120,6 +120,11 @@ export interface KvmHost {
   // What runs on it (design §30): kvm, stack (a LABaPe web stack only) or both; the stack's address
   role?: "kvm" | "stack" | "both";
   stack_url?: string;
+  // F1: its copies of LABaPe's files ("" = beside the VM folder; files_dir is what it uses now) and its
+  // free-space alert (null = Settings → Monitoring's)
+  files_path?: string;
+  files_dir?: string;
+  disk_free_pct?: number | null;
 }
 
 export interface Network {

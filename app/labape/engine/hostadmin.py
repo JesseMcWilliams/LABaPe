@@ -482,9 +482,9 @@ def series(db: Session, h: KvmHost, hours: int = 24) -> dict:
     return out
 
 
-def warnings(facts: dict, smart: dict, latest: dict | None) -> list[dict]:
-    """What the Dashboard section flags: SMART failures and wear, heat, full filesystems,
-    failed units, a pending reboot, many updates."""
+def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) -> list[dict]:
+    """What the Dashboard section flags: SMART failures and wear, heat, filesystems with less than
+    `free_pct` percent free (an error below a quarter of it), failed units, a pending reboot, many updates."""
     w = []
     for d in (smart or {}).get("disks", []):
         if d.get("passed") is False:
@@ -498,8 +498,12 @@ def warnings(facts: dict, smart: dict, latest: dict | None) -> list[dict]:
         if isinstance(t, (int, float)) and t >= 85:
             w.append({"level": "warning", "message": f"{name} at {t:.0f} °C"})
     for mount, pct in ((latest or {}).get("fs_used_pct") or {}).items():
-        if pct >= 90:
-            w.append({"level": "warning" if pct < 97 else "error", "message": f"{mount} is {pct}% full"})
+        if mount.startswith(("/sys/", "/proc/", "/dev/", "/run/")):
+            continue                             # pseudo filesystems (efivars: the firmware's own)
+        free = round(100 - pct, 1)
+        if free < free_pct:
+            w.append({"level": "error" if free < max(free_pct / 4, 2) else "warning",
+                      "message": f"{mount} is {pct}% full ({free}% free; the alert is below {free_pct}%)"})
     os_ = (facts or {}).get("os", {})
     if os_.get("failed_units"):
         w.append({"level": "warning", "message": f"Failed services: {', '.join(os_['failed_units'][:6])}"})
@@ -745,6 +749,29 @@ def ensure_file_roots(db: Session, h: KvmHost) -> list[str]:
     return paths
 
 
+def ensure_files_path(db: Session, h: KvmHost, path: str | None = None) -> str:
+    """A KVM host's files path (F1) and its ISOs/, Installers/, Other/, owned by the service user,
+    created through the access account (sudo): beside the VM folder they'd be under a root-owned
+    folder (/data). ISOs are labelled for QEMU where SELinux enforces. Returns the path, or "" when
+    the host has no access account set up (jobs then create what they can themselves)."""
+    from .filedist import CATEGORY_DIRS, files_path
+    user = service_user(h)
+    if not user or h.access_status != "ready":
+        return ""
+    q = shlex.quote
+    base = (path or files_path(h)).rstrip("/")
+    dirs = [base] + [f"{base}/{d}" for d in CATEGORY_DIRS.values()]
+    cmd = " && ".join(f"sudo -n install -d -m 0775 -o {q(user)} -g {q(user)} {q(d)}" for d in dirs)
+    iso = q(f"{base}/ISOs")
+    cmd += (f" && if command -v getenforce >/dev/null 2>&1 && [ \"$(getenforce)\" != Disabled ]; then "
+            f"sudo -n semanage fcontext -a -t virt_content_t {q(base + '/ISOs(/.*)?')} 2>/dev/null || "
+            f"sudo -n semanage fcontext -m -t virt_content_t {q(base + '/ISOs(/.*)?')}; sudo -n restorecon -R {iso}; fi")
+    r = for_host(h).run(cmd, timeout=120)
+    if r.returncode != 0:
+        raise AdminError(f"creating {base} failed: {r.stderr.decode(errors='replace').strip()[-300:]}")
+    return base
+
+
 def attach_networks(db: Session, h: KvmHost, answers: dict) -> list[str]:
     """After a successful Prepare, the catalog networks chosen in the form (question 127) are
     attached to the host on the bridges the installer made; existing attachments keep their own
@@ -843,6 +870,8 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
         return rc
     svc = answers.get("ServiceUser") or "labape"
     h.libvirt_uri = f"qemu+ssh://{svc}@{h.ssh_address}{'' if (h.ssh_port or 22) == 22 else ':' + str(h.ssh_port)}/system"
+    if answers.get("FilesPath") and not h.is_primary:
+        h.files_path = answers["FilesPath"]              # F1: the folder the installer made
     db.commit()
     attached = attach_networks(db, h, answers)
     if attached:

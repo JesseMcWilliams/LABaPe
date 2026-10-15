@@ -49,6 +49,11 @@ class KvmHost(Base):
     libvirt_uri: Mapped[str] = mapped_column(String(255), default="qemu:///system")
     vm_storage_path: Mapped[str] = mapped_column(String(255), default="/data/VMs/LABaPe")
     template_storage_path: Mapped[str] = mapped_column(String(255), default="/data/VMs/LABaPe/templates")
+    # Its copies of LABaPe's files (F1): ISOs/, Installers/, Other/ under it; empty: beside the VM
+    # folder (/data/VMs/LABaPe -> /data/Files; filedist.files_path). The primary keeps the stack's roots.
+    files_path: Mapped[str] = mapped_column(String(255), default="")
+    # Alert when a filesystem's free space falls below this (percent); None: Settings → Monitoring's.
+    disk_free_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bridge: Mapped[str] = mapped_column(String(64), default="br0")
     concurrency_limit: Mapped[int] = mapped_column(Integer, default=2)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

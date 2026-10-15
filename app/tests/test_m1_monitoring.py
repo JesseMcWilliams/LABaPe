@@ -30,11 +30,16 @@ def test_stack_hosts_use_the_monitoring_thresholds(client):
         _setup(db, role="stack", stack_url="https://pi.lab")
         cur = stackmon.evaluate(db, NOW)
         msgs = {v[2]: v[1] for v in cur.values()}
-        assert msgs == {"kvm1: cpu at 82 °C": "warning", "kvm1: / is 87% full": "warning"}
+        full = "kvm1: / is 87% full (13% free; the alert is below 20%)"
+        assert msgs == {"kvm1: cpu at 82 °C": "warning", full: "warning"}
         h = db.get(KvmHost, 1)
-        h.role = "kvm"                                                   # a KVM host keeps the host page's levels
+        h.role = "kvm"               # a KVM host: the host page's temperature level, the same free-space alert (F1)
+        db.commit()
+        assert {v[2] for v in stackmon.evaluate(db, NOW).values()} == {full}
+        h.disk_free_pct = 10                                             # its own threshold
         db.commit()
         assert stackmon.evaluate(db, NOW) == {}
+        h.disk_free_pct = None
         # The key doesn't change with the numbers.
         h.role = "stack"
         db.add(HostMetric(kvm_host_id=1, at=NOW + dt.timedelta(minutes=5), data={"temps": {"cpu": 84.0}, "fs_used_pct": {"/": 88}}))
