@@ -645,7 +645,7 @@
   ],
   "dpkg_total": 116
  },
- "image_version": "v0.4.0-14-g98da950-dirty",
+ "image_version": "v0.4.0-18-gf0490e3",
  "captured": "2026-10-15",
- "captured_from": "the lab stack's worker container (labape:local, built as v0.4.0-14-g98da950-dirty) and the images it runs"
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.4.0-18-gf0490e3) and the images it runs"
 }
