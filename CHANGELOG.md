@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-15
+
+LABaPe 0.4.0 spreads environments over several KVM hosts and moves running VMs between them, signs people in across linked stacks, and makes secrets something people and tests can use: every secret is checked and recovered where it can be, Windows VMs get a password of their own per account, environment secrets are on their page and in OpenBao (with its own sign-in), and the browser connects as any of the environment's accounts, RDP, SSH, xrdp or VNC. Environments can have a lab mail server (Mailpit); Catalog → Updates downloads new .NET, Chrome, KeePassXC and PuTTY versions weekly for offline installs; Claude Code is in the catalog; each KVM host keeps its files beside its VMs; and every list pages, filters and exports.
+
 ### Fixed
 - The image build retries the Packer plugin installs (a dropped connection
   made Packer crash and the build fail).
