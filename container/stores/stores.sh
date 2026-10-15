@@ -9,6 +9,9 @@
 #   stores/stores.sh unseal      start the stores and unseal OpenBao (at boot)
 #   stores/stores.sh tls-renew   new certificate from the platform CA when due
 #   stores/stores.sh status      sealed or not, and LABaPe's store checks
+#   stores/stores.sh people-policies ENV...
+#                                each environment's OpenBao policy and owners group
+#                                (design §49.2; the update agent, asked by LABaPe)
 #
 # Secret zero (question 105) stays in stores/secrets/ (directory 0700): OpenBao's
 # unseal key and root token, Conjur's data key, database password and admin
@@ -20,7 +23,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 C="$(dirname "$HERE")"                       # container/
 S="$HERE/secrets" TLS="$HERE/tls"
 MODE="${1:-setup}"
-case "$MODE" in setup|unseal|tls-renew|status) ;; *) sed -n '2,17p' "$0" >&2; exit 1 ;; esac
+case "$MODE" in setup|unseal|tls-renew|status|people-policies) ;; *) sed -n '2,20p' "$0" >&2; exit 1 ;; esac
 
 say() { echo "labape-stores: $*"; }
 die() { echo "labape-stores: $*" >&2; exit 1; }
@@ -222,7 +225,7 @@ conjur_rotate_app_key() { conjur_rotate_key app; }
 # --- LABaPe's settings -----------------------------------------------------------------------
 labape() { (cd "$C" && "${COMPOSE[@]}" exec -T labape-api labape "$@"); }
 settings_json() {   # the store settings LABaPe should have, plus any logins given as files
-  python3 - "$TLS/root.crt" "$(role_id labape)" "${1:-}" "${2:-}" "$CONJUR_ON" <<'PY'
+  python3 - "$TLS/root.crt" "$(role_id labape)" "${1:-}" "${2:-}" "$CONJUR_ON" "$(people_url)" <<'PY'
 import json, sys
 root = open(sys.argv[1]).read()
 creds = {}
@@ -231,12 +234,112 @@ for name, path in (("openbao", sys.argv[3]), ("conjur", sys.argv[4])):
         creds[name] = open(path).read().strip()
 stores = {"openbao": {"url": "https://labape-openbao:8200", "mount": "labape", "path_prefix": "",
                       "auth_mount": "approle", "role_name": "labape", "role_id": sys.argv[2],
-                      "verify_tls": True, "ca_bundle": root}}
+                      "verify_tls": True, "ca_bundle": root, "people_url": sys.argv[6]}}
 if sys.argv[5] != "no":
     stores["conjur"] = {"url": "https://labape-conjur-tls:8443", "account": "labape", "login": "host/labape/app",
                         "authenticator": "authn", "branch": "labape/secrets", "verify_tls": True, "ca_bundle": root}
 print(json.dumps({"stores": stores, "credentials": creds}))
 PY
+}
+# --- people signing in to OpenBao themselves (design §49.2, V1b) -------------------------------
+# LABAPE_OPENBAO_PEOPLE=yes in .env: OpenBao's UI and `bao` with the stack's sign-in (OIDC; the
+# Authentik installed with LABaPe makes the client), reached at LABAPE_HOSTNAME on LABAPE_OPENBAO_BIND.
+# LABaPe then keeps each environment's policy and owners in OpenBao. Elsewhere: an OIDC client you
+# make yourself, LABAPE_OPENBAO_OIDC_CLIENT_ID in .env and its secret in stores/secrets/openbao_oidc_secret
+# (and LABAPE_OPENBAO_OIDC_ISSUER when its issuer isn't LABAPE_OIDC_ISSUER).
+PEOPLE="$(envget LABAPE_OPENBAO_PEOPLE)"; PEOPLE="${PEOPLE:-no}"
+people_url() { if [ "$PEOPLE" = yes ]; then echo "https://$(envget LABAPE_HOSTNAME):$BPORT"; fi; }
+redirect_uris() {   # OpenBao's UI at each name the certificate carries, and `bao login -method=oidc`
+  names | grep -v '^labape-' | while read -r n; do printf 'https://%s:%s/ui/vault/auth/oidc/oidc/callback\n' "$n" "$BPORT"; done
+  echo "http://localhost:8250/oidc/callback"
+}
+configure_people() {
+  [ "$PEOPLE" = yes ] || return 0
+  local issuer client ak="$REPO/tools/authentik-test" req
+  issuer="$(envget LABAPE_OIDC_ISSUER)"
+  [ -n "$issuer" ] || die "LABAPE_OPENBAO_PEOPLE=yes needs LABAPE_OIDC_ISSUER in .env"
+  client="$(envget LABAPE_OPENBAO_OIDC_CLIENT_ID)"
+  if [ -z "$client" ]; then
+    [ -f "$ak/.env" ] || die "LABAPE_OPENBAO_PEOPLE=yes: no Authentik installed with LABaPe here; make an OIDC client and set LABAPE_OPENBAO_OIDC_CLIENT_ID"
+    client=labape-openbao
+    [ -s "$S/openbao_oidc_secret" ] || sput openbao_oidc_secret "$(gen)"
+    req="$S/openbao-client.json"
+    (umask 077; python3 - "$S/openbao_oidc_secret" "$(redirect_uris)" > "$req" <<'PY'
+import json, sys
+print(json.dumps({"op": "client_add", "client_id": "labape-openbao", "name": "LABaPe: OpenBao",
+                  "client_secret": open(sys.argv[1]).read().strip(), "redirect_uris": sys.argv[2]}))
+PY
+)
+    if ! out="$(cd "$ak" && bash ./sso.sh "$req" 2>&1)"; then rm -f "$req"; die "making OpenBao's client in Authentik failed: ${out##*$'\n'}"; fi
+    rm -f "$req"
+    say "Authentik: ${out##*sso: }"
+    # Authentik gives each application its own issuer: .../application/o/<slug>/.
+    issuer="${issuer%/application/o/*}/application/o/labape-openbao/"
+  else
+    issuer="$(envget LABAPE_OPENBAO_OIDC_ISSUER)"; issuer="${issuer:-$(envget LABAPE_OIDC_ISSUER)}"
+  fi
+  [ -s "$S/openbao_oidc_secret" ] || die "no stores/secrets/openbao_oidc_secret for the OIDC client $client"
+  root_api GET sys/auth < /dev/null | grep -q '"oidc/"' || echo '{"type": "oidc"}' | root_api POST sys/auth/oidc >/dev/null
+  python3 - "$issuer" "$client" "$S/openbao_oidc_secret" "$TLS/root.crt" <<'PY' | root_api POST auth/oidc/config >/dev/null
+import json, sys
+print(json.dumps({"oidc_discovery_url": sys.argv[1].rstrip("/") + "/", "oidc_client_id": sys.argv[2],
+                  "oidc_client_secret": open(sys.argv[3]).read().strip(), "oidc_discovery_ca_pem": open(sys.argv[4]).read(),
+                  "default_role": "people"}))
+PY
+  python3 - "$(redirect_uris)" <<'PY' | root_api POST auth/oidc/role/people >/dev/null
+import json, sys
+print(json.dumps({"role_type": "oidc", "user_claim": "preferred_username", "groups_claim": "groups",
+                  "oidc_scopes": ["openid", "profile", "email"], "allowed_redirect_uris": sys.argv[1].split(),
+                  "token_policies": ["default"], "token_ttl": "8h", "token_max_ttl": "12h"}))
+PY
+  say "OpenBao: people sign in with OIDC at $(people_url)/ui (client $client)"
+}
+# What an environment's owners may do in OpenBao, written here with the root token from this fixed
+# template: LABaPe only names the environments and keeps the groups' members, so it can't write a
+# policy or attach one (a policy it wrote, on a group it fills, could grant it anything).
+env_hcl() {   # env_hcl NAME
+  cat <<HCL
+# The owners of environment $1 (design §49.2): kept by stores.sh people-policies; edits are replaced.
+path "labape/data/env/$1/*"          { capabilities = ["read"] }
+path "labape/metadata/env/$1/*"      { capabilities = ["read", "list"] }
+path "labape/metadata/env/$1"        { capabilities = ["list"] }
+path "labape/data/env/$1/user/*"     { capabilities = ["create", "read", "update", "delete"] }
+path "labape/data/env/$1/vm/*"       { capabilities = ["create", "read", "update", "delete"] }
+path "labape/metadata/env/$1/user/*" { capabilities = ["read", "list", "delete"] }
+path "labape/metadata/env/$1/vm/*"   { capabilities = ["read", "list", "delete"] }
+HCL
+}
+admins_hcl() {
+  cat <<'HCL'
+# LABaPe's admins read every environment's folder (design §49.2). Kept by stores.sh people-policies.
+path "labape/data/env/*"     { capabilities = ["read"] }
+path "labape/metadata/env/*" { capabilities = ["read", "list"] }
+path "labape/metadata/env"   { capabilities = ["list"] }
+HCL
+}
+policy_text() {   # policy_text NAME < HCL
+  python3 -c 'import json, sys; print(json.dumps({"policy": sys.stdin.read()}))' | root_api PUT "sys/policies/acl/$1" >/dev/null
+}
+owners_group() {   # owners_group GROUP POLICY: the group carries the policy; its members stay as LABaPe set them
+  printf '{"type": "internal", "policies": ["%s"]}\n' "$2" | root_api POST "identity/group/name/$1" >/dev/null
+}
+people_policies() {   # people_policies NAME...: exactly these environments' policies and groups
+  local n keep=" " p
+  for n in "$@"; do [[ "$n" =~ ^[a-z][a-z0-9-]{2,39}$ ]] || die "not an environment name: $n"; done
+  for n in "$@"; do
+    env_hcl "$n" | policy_text "labape-env-$n"
+    owners_group "labape-env-$n" "labape-env-$n"
+    keep+="labape-env-$n "
+  done
+  admins_hcl | policy_text labape-env-admins
+  owners_group labape-admins labape-env-admins
+  for p in $(root_api LIST sys/policies/acl < /dev/null | python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)["data"]["keys"]))'); do
+    [[ "$p" == labape-env-* && "$p" != labape-env-admins && "$keep" != *" $p "* ]] || continue
+    root_api DELETE "identity/group/name/$p" < /dev/null >/dev/null || true
+    root_api DELETE "sys/policies/acl/$p" < /dev/null >/dev/null
+    say "OpenBao: removed $p"
+  done
+  say "OpenBao: policies and groups for $# environment(s)${1:+: $*}"
 }
 configure_labape() {
   local needs tmp bao_file="" conjur_file=""
@@ -449,6 +552,7 @@ case "$MODE" in
   unseal) dc up -d "${STORE_SERVICES[@]}" >/dev/null 2>&1 || true
           unseal; start_stack; exit 0 ;;
   tls-renew) due || exit 0; sign; reload_tls; say "certificate renewed"; exit 0 ;;
+  people-policies) shift; people_policies "$@"; exit 0 ;;
   status)
     st="$(bao_status)"; say "OpenBao: ${st:-not answering}"
     labape stores-configure --check < /dev/null 2>/dev/null | grep '^labape:' || true; exit 0 ;;
@@ -457,6 +561,12 @@ esac
 # setup
 for tool in curl openssl python3; do command -v "$tool" >/dev/null 2>&1 || die "$tool is missing"; done
 [ -f "$C/.env" ] || die "no container/.env (run container/setup.sh first)"
+# The host's own tools (this script, the update agent, the command line) reach the stores on 127.0.0.1,
+# so a bind address must include it: one host address alone left OpenBao sealed and out of reach.
+for bind in LABAPE_OPENBAO_BIND LABAPE_STORES_BIND; do
+  case "$(envget "$bind")" in ""|0.0.0.0|127.0.0.1|"::") ;;
+    *) die "$bind must be 0.0.0.0 (every address, loopback included) or 127.0.0.1, not $(envget "$bind")" ;; esac
+done
 chmod 700 "$HERE"
 install -d -m 0700 "$S"
 [ -s "$S/conjur_db_password" ] || sput conjur_db_password "$(gen)"
@@ -473,6 +583,7 @@ dc up -d "${STORE_SERVICES[@]}" >/dev/null
 reload_tls
 unseal
 configure_bao
+configure_people
 [ "$CONJUR_ON" = no ] || configure_conjur
 configure_labape
 install_units

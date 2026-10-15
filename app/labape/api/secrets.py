@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -242,6 +242,20 @@ def classify(name: str, envs: dict[int, Environment]) -> dict:
                 "scope": scope, "type": typ, "attempt": "rotation-candidate" in what}
     section = "kvm" if name.startswith(("kvm/", "hosts/")) else "stack"
     return {"section": section, "type": "key" if KEYISH.search(name) else "password"}
+
+@router.post("/openbao-people/sync")
+def sync_openbao_people(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """Bring OpenBao's per-environment policies and owner groups in step now (V1b, design §49.2)."""
+    from .. import openbao_people
+    if not openbao_people.enabled(db):
+        raise HTTPException(status_code=409, detail="People don't sign in to OpenBao here (stores.sh, LABAPE_OPENBAO_PEOPLE=yes)")
+    try:
+        changes = openbao_people.sync(db)
+    except stores.StoreError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    audit(db, p.username, "openbao.people.sync", detail={"changes": changes[:50]}, source_ip=client_ip(request))
+    return {"changes": changes}
+
 
 @router.get("/stored-secrets")      # not under /secrets/, where /secrets/{policy_id} would catch it
 def list_stored(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):

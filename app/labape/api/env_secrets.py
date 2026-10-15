@@ -72,7 +72,20 @@ def list_secrets(env_id: int, db: Session = Depends(get_db), p: Principal = Depe
                     "path": layout.store_name(db, row.store, row.name) if row.store != "builtin" else "",
                     "updated_at": row.updated_at, "editable": where in ("user", "vm"),
                     "rotation": pol.label if pol else ""})
-    return {"secrets": out, "vms": _vms(e), "folder": f"env/{e.name}/" if _layout_store(db, e) else ""}
+    return {"secrets": out, "vms": _vms(e), "folder": f"env/{e.name}/" if _layout_store(db, e) else "",
+            "openbao": _openbao(db, e)}
+
+
+def _openbao(db: Session, e: Environment) -> dict | None:
+    """Where the owners reach this environment's folder in OpenBao themselves (V1b), when they can."""
+    from .. import appsettings, openbao_people
+    from ..security import env_store
+    if not openbao_people.enabled(db) or env_store(db, e.id) != "openbao":
+        return None
+    cfg = appsettings.get(db, "store_openbao", cached=True)
+    url = cfg.people_url.rstrip("/")
+    return {"url": f"{url}/ui/", "mount": cfg.mount, "path": f"env/{e.name}",
+            "cli": f"BAO_ADDR={url} bao login -method=oidc; bao kv list -mount={cfg.mount} env/{e.name}/accounts"}
 
 
 def _layout_store(db: Session, e: Environment) -> bool:

@@ -84,6 +84,8 @@ LABaPe's identity may read, write, list and delete its own area, and nothing els
   It's attached to AppRole role `labape` (token TTL 1 h, max 4 h).
 - **Conjur**: host `labape/app` owns policy `labape/secrets`, so it can declare variables there and read and update them; it has no rights outside that branch.
 
+With people's access to OpenBao (design §49.2) the `labape` policy also lets LABaPe keep the owners of each environment: identity entities `labape-user-*`, entity and group aliases, the members of groups `labape-*` (types internal and external, no `policies` parameter), lookups, and reading `sys/auth` and the policy list. It can't write a policy or attach one: those are written with the root token by `stores.sh people-policies` from a fixed template. Don't widen this with an `allowed_parameters` glob on `policies`: OpenBao matches a glob only against a string, and a comma list in a string passes it.
+
 Administration (the root token, Conjur's admin) is never given to LABaPe.
 
 ## 8. Rotation and caching (design §24)
