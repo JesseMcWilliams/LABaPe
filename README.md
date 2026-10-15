@@ -15,6 +15,15 @@ credentials, the software manifest, directory objects, the web interface
 [Claude_Docs/Testing_Troubleshooting-Log.md](./Claude_Docs/Testing_Troubleshooting-Log.md)
 for the detailed, blow-by-blow history behind every bug found along the way.
 
+## License
+
+LABaPe is free software under the **GNU Affero General Public License, version 3** (`AGPL-3.0-only`; the full
+text is in [LICENSE](./LICENSE)). In short: you may use, study, change and share it, including commercially; if you
+share a changed version, or let others use one over a network, you must offer them its source under the same
+license. The web interface links to the source (the line in `web/src/App.tsx`; a modified copy points it at its
+own). The third-party software LABaPe uses has its own licenses: see
+[Claude_Docs/Reference_SBOM.md](./Claude_Docs/Reference_SBOM.md).
+
 ## Status
 
 - **M1 (libvirt/KVM, Linux + Windows)** — done, end-to-end, confirmed against real infrastructure. **Recommended backend.**

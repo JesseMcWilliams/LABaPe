@@ -3,6 +3,7 @@ name = "labape"
 version = "0.4.0"
 description = "LABaPe web application: UI, REST API and job runner for lab environments"
 requires-python = ">=3.11"
+license = "AGPL-3.0-only"
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
@@ -34,7 +35,7 @@ openbao = "labape.stores.openbao:OpenBaoStore"
 conjur = "labape.stores.conjur:ConjurStore"
 
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]      # 77: the SPDX `license` expression (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

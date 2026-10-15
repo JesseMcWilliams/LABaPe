@@ -15,7 +15,7 @@
 | Web (npm) | `web/package-lock.json`: 208 packages, every version and integrity hash (110 are bundled into the UI, 98 are build tooling only; the image carries just the built files) |
 | Images, tools | Pins from `container/Dockerfile`, `container/compose.yaml` and `tools/authentik-test/compose.yaml`; image digests as pulled on the lab |
 | Licenses | As the packages and projects declare them (Python and npm metadata; the images' upstream projects). **Debian packages' licenses aren't recorded here**: each package's is in `/usr/share/doc/<package>/copyright`. Not a legal review, and **not a vulnerability scan**: feed the CycloneDX file to a scanner (Grype, Trivy, OSV-Scanner) for that |
-| LABaPe's own license | The repository has **no LICENSE file** yet: until one is added, the SBOM can't state it |
+| LABaPe's own license | AGPL-3.0-only (`LICENSE`; `app/pyproject.toml` and `web/package.json` say so too) |
 | Not covered | Operating-system ISOs and VM templates you supply (Windows Server, Rocky, Debian); what runs *inside* an environment's VMs beyond section 9; the lab hosts' own operating systems |
 
 Summary: 52 Python, 208 npm, 22 explicitly installed Debian packages
@@ -508,10 +508,9 @@ Admins can add sources of their own, so this list grows with use; the Updates ta
 ## 10. Gaps and things to know
 
 1. **Python isn't locked.** Add a constraints file (`pip freeze` of a good build, or `uv lock`) and install with it, so builds repeat and this SBOM can come from the repository alone.
-2. **No license for LABaPe itself**, and none declared in `pyproject.toml`; add a LICENSE file and the `license` field.
-3. **Packer's Business Source License (BUSL-1.1)** applies from 1.10 on; OpenTofu is the open-source fork of Terraform for the same reason. Fine for internal use; check before offering LABaPe to others as a service.
-4. **Floating tags**: `caddy:2`, `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
-5. **Unpinned downloads on VMs**: Mailpit's latest release, `claude-code`, Chocolatey and distribution packages are whatever is current at deploy time.
-6. **Copyleft components.** `ansible-core` and its collections (GPL-3.0) run as separate processes, not linked into LABaPe. `psycopg` (LGPL-3.0) and `libvirt-python`/`PyGObject` (LGPL) are imported as libraries: fine to use unmodified, but a modified copy would need its source offered. Conjur Open Source is LGPL-3.0.
-7. **No vulnerability data here.** Run a scanner on `sbom/labape.cdx.json` regularly; the lab's Authentik, OpenBao and Conjur images are the most exposed, as they face the network.
+2. **Packer's Business Source License (BUSL-1.1)** applies from 1.10 on; OpenTofu is the open-source fork of Terraform for the same reason. Fine for internal use; check before offering LABaPe to others as a service.
+3. **Floating tags**: `caddy:2`, `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
+4. **Unpinned downloads on VMs**: Mailpit's latest release, `claude-code`, Chocolatey and distribution packages are whatever is current at deploy time.
+5. **Copyleft components.** `ansible-core` and its collections (GPL-3.0) run as separate processes, not linked into LABaPe. `psycopg` (LGPL-3.0) and `libvirt-python`/`PyGObject` (LGPL) are imported as libraries: fine to use unmodified, but a modified copy would need its source offered. Conjur Open Source is LGPL-3.0.
+6. **No vulnerability data here.** Run a scanner on `sbom/labape.cdx.json` regularly; the lab's Authentik, OpenBao and Conjur images are the most exposed, as they face the network.
 

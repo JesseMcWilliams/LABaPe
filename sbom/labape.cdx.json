@@ -18,6 +18,13 @@
    "type": "application",
    "name": "LABaPe",
    "version": "0.4.0",
+   "licenses": [
+    {
+     "license": {
+      "id": "AGPL-3.0-only"
+     }
+    }
+   ],
    "description": "LABaPe: web interface, API and worker for building lab environments (KVM, Hyper-V), with the stack around them"
   },
   "properties": [
