@@ -38,6 +38,7 @@ def _out(db: Session, p: SecretPolicy, last_jobs: dict[int, Job] | None = None) 
     last = (last_jobs if last_jobs is not None else _last_jobs(db)).get(p.id)
     return {**{f: getattr(p, f) for f in FIELDS}, "automatic": bool(r and r.automatic),
             "needs_elevated": bool(r and r.needs_elevated), "rotator_notes": r.notes if r else "",
+            "revealable": p.kind in REVEALABLE,
             "last_job": {"id": last.id, "state": last.state} if last else None, "secret_name": policy_secret(p),
             **secret_health.describe(p),
             # The Secrets page's sections (S2): the stack, the KVM hosts, the environments.
@@ -132,6 +133,28 @@ def rotate_now(policy_id: int, request: Request, db: Session = Depends(get_db),
     audit(db, p.username, "secret.rotate.start", object_type="secret_policy", object_id=pol.id,
           detail={"name": pol.name, "job": job.id}, source_ip=client_ip(request))
     return {"job_id": job.id}
+
+
+REVEALABLE = ("authentik_admin",)          # platform secrets an admin may read back (the others are never shown)
+
+
+@router.post("/secrets/{policy_id}/reveal")
+def reveal_secret(policy_id: int, request: Request, db: Session = Depends(get_db),
+                  p: Principal = Depends(require_roles("admin"))):
+    """Show a stored platform secret that people need to use (the Authentik administrator's password). Audited, never with the value."""
+    pol = db.get(SecretPolicy, policy_id)
+    if pol is None or pol.kind not in REVEALABLE:
+        raise FieldError("policy", "This secret can't be shown.", status_code=404)
+    name = policy_secret(pol)
+    try:
+        value = get_secret(db, name) if name else None
+    except Exception as exc:  # noqa: BLE001 - a store that doesn't answer
+        raise FieldError("policy", f"The secret store didn't answer: {exc}", status_code=502) from exc
+    if not value:
+        raise FieldError("policy", "Nothing is stored yet: import it or rotate.", status_code=404)
+    audit(db, p.username, "secret.reveal", object_type="secret_policy", object_id=pol.id, detail={"name": pol.name},
+          source_ip=client_ip(request))
+    return {"value": value}
 
 
 @router.post("/secrets/{policy_id}/check")

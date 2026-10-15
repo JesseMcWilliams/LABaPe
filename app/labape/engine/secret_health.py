@@ -254,6 +254,26 @@ def _oidc_secret(db: Session, p: SecretPolicy) -> str:
     return "the provider accepts the stored client secret"
 
 
+def _authentik_admin(db: Session, p: SecretPolicy) -> str:
+    import httpx
+    from .. import authentik_admin as aa, ca
+    from ..api.directory import api_base
+    password = get_secret(db, aa.SECRET) or ""
+    cfg = appsettings.get(db, "directory")
+    base = api_base(cfg)
+    if not password:
+        raise NotInUse("no akadmin password is stored yet: import it (labape authentik-admin-import) or rotate")
+    if not base:
+        raise NotInUse("no Authentik URL (Settings > Directory)")
+    try:
+        ok = aa.signs_in(base, aa.USER, password, verify=ca.trust() if cfg.verify_tls else False)
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise NotInUse(f"Authentik isn't answering as expected: {exc}") from exc
+    if not ok:
+        raise CheckError(f"Authentik refuses the stored password for {aa.USER}")
+    return f"{aa.USER} signs in with the stored password"
+
+
 def _smtp_login(db: Session, p: SecretPolicy) -> str:
     cfg = appsettings.get(db, "smtp")
     password = get_secret(db, appsettings.SMTP_PASSWORD_SECRET) or ""
@@ -400,6 +420,7 @@ HEALTH: dict[str, Health] = {
                              _worker_key, _worker_key_recover),
     "directory_token": Health(True, "The rotation account sets a new token key in Authentik.", _directory_token),
     "oidc_client_secret": Health(True, "The rotation account sets a new client secret in Authentik.", _oidc_secret),
+    "authentik_admin": Health(True, "The rotation account sets a new akadmin password in Authentik.", _authentik_admin),
     "smtp_password": Health(False, "It's the mail server's: set the new password in Settings → Notifications.",
                             _smtp_login),
     "openbao_secret_id": Health(True, "The update agent runs stores.sh setup with the stores' root credentials kept on "

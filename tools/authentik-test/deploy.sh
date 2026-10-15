@@ -106,8 +106,25 @@ role.assign_perms(['authentik_core.view_token', 'authentik_core.add_token', 'aut
 provider = OAuth2Provider.objects.get(client_id='labape')
 role.assign_perms(['authentik_providers_oauth2.view_oauth2provider',
                    'authentik_providers_oauth2.change_oauth2provider'], obj=provider)
-print('authentik-test: labape-token-rotator may set the directory token key and the client secret')
+# ... and reset akadmin's password (design section 54: the stored administrator password rotates).
+from authentik.core.models import User
+role.assign_perms(['authentik_core.view_user', 'authentik_core.change_user', 'authentik_core.reset_user_password'],
+                  obj=User.objects.get(username='akadmin'))
+print('authentik-test: labape-token-rotator may set the directory token key, the client secret and akadmin password')
 " 2>/dev/null | tail -1 || echo "authentik-test: couldn't grant the rotator its permissions (see $COMPOSE logs worker)" >&2
+
+# akadmin's first password lives in the stack's secret store from here on (Secrets -> Authentik administrator),
+# where LABaPe checks and rotates it; the plain copy in .env is removed once it is stored. Best effort: with the
+# LABaPe stack not up yet, the line stays and `labape authentik-admin-import` stores it later.
+if grep -q '^AUTHENTIK_BOOTSTRAP_PASSWORD=.' .env; then
+  if grep '^AUTHENTIK_BOOTSTRAP_PASSWORD=' .env | cut -d= -f2- \
+       | (cd ../../container && ${LABAPE_COMPOSE:-docker compose} exec -T labape-api labape authentik-admin-import) >/dev/null 2>&1; then
+    sed -i 's/^AUTHENTIK_BOOTSTRAP_PASSWORD=.*/AUTHENTIK_BOOTSTRAP_PASSWORD=/' .env
+    echo "authentik-test: akadmin's password is in the secret store (Secrets -> Authentik administrator -> Reveal)"
+  else
+    echo "authentik-test: akadmin's password is still in .env; store it with: grep ^AUTHENTIK_BOOTSTRAP_PASSWORD= .env | cut -d= -f2- | (cd ../../container && docker compose exec -T labape-api labape authentik-admin-import)"
+  fi
+fi
 
 if $CONFIGURE; then
   env_file=../../container/.env
@@ -129,7 +146,7 @@ fi
 cat <<EOF
 authentik-test: ready.
   Issuer:      $issuer
-  Admin UI:    http://${PUBLIC_HOST}:9000/  (user akadmin; password: AUTHENTIK_BOOTSTRAP_PASSWORD in tools/authentik-test/.env)
+  Admin UI:    http://${PUBLIC_HOST}:9000/  (user akadmin; password: LABaPe -> Admin -> Secrets -> Authentik administrator -> Reveal; AUTHENTIK_BOOTSTRAP_PASSWORD in .env only until it is stored)
   Test users:  labape-admin, labape-dev, labape-viewer (password: LABAPE_TEST_USER_PASSWORD in .env)
   Group search: LABaPe Settings > Directory; API token LABAPE_TEST_DIRECTORY_TOKEN in .env (view groups only)
 EOF

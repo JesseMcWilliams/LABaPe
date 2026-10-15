@@ -66,7 +66,7 @@ function adminPageFor(name: string, host: string): AdminPage | null {
   if (/^authentik-test-server(-\d+)?$/.test(name)) {
     return { title: "Authentik (sign-in provider)", url: `https://${host}:9445/if/admin/`, steps: [
       "Sign in as the user akadmin.",
-      <>The first password is <code>AUTHENTIK_BOOTSTRAP_PASSWORD</code> in <code>tools/authentik-test/.env</code> on the stack host (not shown here). If it has been changed since, use the new one.</>,
+      <>The password is in LABaPe: Admin → Secrets → <b>Authentik administrator (akadmin)</b> → <b>Reveal</b>. LABaPe checks it, and rotates it monthly once an elevated account is chosen there. (A stack from before this keeps the first one as <code>AUTHENTIK_BOOTSTRAP_PASSWORD</code> in <code>tools/authentik-test/.env</code> on the host until <code>labape authentik-admin-import</code> stores it.)</>,
       "The certificate comes from the platform CA: install its root (LABaPe dashboard → Download the root certificate) to stop the browser warning.",
     ] };
   }

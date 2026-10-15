@@ -181,6 +181,50 @@ def rotate_directory_token(db: Session, policy: SecretPolicy, log) -> str:
     return f"token {ident} has a new key"
 
 
+@rotator(kind="authentik_admin", label="Authentik administrator (akadmin)", needs_elevated=True, interval_hours=720,
+         notes="Sets a new password for akadmin through the Authentik API, using an elevated Authentik account that may "
+               "reset that user's password, checks it by signing in, and stores it (Reveal shows it to an admin). "
+               "The old one is put back if the new one doesn't sign in. Without an elevated account it's a reminder.")
+def rotate_authentik_admin(db: Session, policy: SecretPolicy, log) -> str:
+    from .. import authentik_admin as aa, ca
+    from ..api.directory import api_base
+    elevated = elevated_value(db, policy)
+    cfg = appsettings.get(db, "directory")
+    base = api_base(cfg)
+    if not base:
+        raise RotationError("no Authentik URL (Settings > Directory)")
+    verify = ca.trust() if cfg.verify_tls else False
+    auth = {"Authorization": f"Bearer {elevated}", "Accept": "application/json"}
+    r = httpx.get(f"{base}/api/v3/core/users/", params={"username": aa.USER}, headers=auth, timeout=15, verify=verify)
+    found = [u for u in (r.json().get("results", []) if r.status_code == 200 else []) if u.get("username") == aa.USER]
+    if not found:
+        raise RotationError(f"the elevated account can't see the Authentik user {aa.USER} (HTTP {r.status_code})")
+    url = f"{base}/api/v3/core/users/{found[0]['pk']}/set_password/"
+    old = get_secret(db, aa.SECRET) or ""
+
+    def set_password(value: str) -> httpx.Response:
+        return httpx.post(url, json={"password": value}, headers=auth, timeout=15, verify=verify)
+
+    new = _secrets.token_urlsafe(32)
+    r = set_password(new)
+    if r.status_code >= 300:
+        raise RotationError(f"Authentik refused the new password (HTTP {r.status_code}); the old one stays")
+    try:
+        ok = aa.signs_in(base, aa.USER, new, verify=verify)
+    except (httpx.HTTPError, RuntimeError) as exc:
+        ok, why = False, str(exc)
+    else:
+        why = "Authentik refused to sign in with it"
+    if not ok:
+        back = set_password(old) if old else None
+        put = "the old one was put back" if back is not None and back.status_code < 300 else \
+            "it could not be put back: set it in Authentik by hand" if old else "there was no earlier one to put back"
+        raise RotationError(f"the new password didn't work ({why}); {put}")
+    put_secret(db, aa.SECRET, new)
+    _write(log, f"labape: {aa.USER} has a new password")
+    return f"{aa.USER} has a new password"
+
+
 @rotator(kind="oidc_client_secret", label="OIDC client secret (Authentik)", needs_elevated=True,
          notes="Sets a new client secret on LABaPe's Authentik provider through the Authentik API, using an elevated "
                "Authentik token that may change the provider, checks Authentik accepts it, then signs in with it from "
@@ -366,7 +410,7 @@ REGISTRY["env_account"] = Rotator(kind="env_account", label="Environment account
 ENV_KINDS = set(ENV_ACCOUNTS) | {"env_account"}
 
 PLATFORM = ("builtin_data_key", "worker_ssh_key", "directory_token", "master_key", "postgres_password", "ca_password",
-            "vault_password", "bootstrap_ssh_key", "oidc_client_secret", "smtp_password")
+            "vault_password", "bootstrap_ssh_key", "oidc_client_secret", "authentik_admin", "smtp_password")
 
 
 # --- policies and scheduling -------------------------------------------------------
@@ -409,6 +453,9 @@ def policy_secret(p: SecretPolicy) -> str | None:
         return appsettings.DIRECTORY_TOKEN_SECRET
     if p.kind == "smtp_password":
         return appsettings.SMTP_PASSWORD_SECRET
+    if p.kind == "authentik_admin":
+        from .. import authentik_admin
+        return authentik_admin.SECRET
     if p.kind in STORE_ROTATORS:
         from .. import stores
         return stores.credential_secret(STORE_ROTATORS[p.kind])
