@@ -167,6 +167,7 @@ export default function EnvironmentNew() {
         template: g.image_source === "packer_template" ? g.template : undefined,
         windows_core: g.os.startsWith("windows_server") ? g.windows_core : false,
         windows_datacenter: g.os.startsWith("windows_server") ? g.windows_datacenter : false,
+        remote_desktop: g.os.startsWith("windows") ? [] : (g.remote_desktop ?? []),
         names: (g.names ?? []).slice(0, g.count),
         kvm_host_id: g.kvm_host_id && g.kvm_host_id !== hostId ? g.kvm_host_id : undefined,
       }));
@@ -314,6 +315,14 @@ export default function EnvironmentNew() {
                   onChange={(e) => setGroup(i, { addressing: e.target.value as HostGroup["addressing"] })}>
                   {modesFor(g).map((m) => <MenuItem key={m} value={m}>{m === "dhcp" ? "DHCP" : "Static"}</MenuItem>)}
                 </Field>
+                {!g.os.startsWith("windows") && (["xrdp", "vnc"] as const).map((k) => (
+                  <FormControlLabel key={k} label={k === "xrdp" ? "xrdp (RDP)" : "VNC"} sx={{ mt: 0.5 }}
+                    title={k === "xrdp" ? "A desktop over RDP for every account, local or domain, like Windows"
+                      : "A VNC desktop of its own for each local account on these VMs"}
+                    control={<Checkbox checked={(g.remote_desktop ?? []).includes(k)}
+                      onChange={(e) => setGroup(i, { remote_desktop: e.target.checked
+                        ? [...(g.remote_desktop ?? []), k] : (g.remote_desktop ?? []).filter((x) => x !== k) })} />} />
+                ))}
                 {g.os.startsWith("windows_server") && g.image_source === "iso_direct" && (
                   <FormControlLabel label="Server Core" sx={{ mt: 0.5 }}
                     control={<Checkbox checked={g.windows_core}

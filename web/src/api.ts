@@ -194,6 +194,7 @@ export interface HostGroup {
   disk_gb: number;
   windows_core: boolean;
   windows_datacenter: boolean;
+  remote_desktop?: ("xrdp" | "vnc")[];   // E3: desktop sessions on a Linux group's VMs
   network?: string;
   addressing: "static" | "dhcp";
   names?: string[];

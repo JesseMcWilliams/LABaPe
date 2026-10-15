@@ -38,6 +38,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/env_secrets.py` | lab (container) | An environment's secrets on its page: list, or a store/replace/reveal/delete round trip (V1a) |
 | `live/env_secrets_move.py` | lab (container) | Move an environment's secrets to another store and check they read the same |
 | `live/openbao_people.py` | lab (container) | People in OpenBao (V1b): sync now, or sign a test user in with OIDC and try reads and writes (statuses only) |
+| `live/desktops.py` | lab (container) | xrdp/VNC on an environment's Linux host groups (E3) |
 | `live/host_files.py` | lab (container) | A KVM host's files path and free-space alert; change the path and wait for the move job |
 | `live/job_log.py` | lab (container) | A finished job's log, or only one host's lines with their task names |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |

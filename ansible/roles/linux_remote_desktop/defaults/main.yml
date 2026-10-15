@@ -1,0 +1,6 @@
+---
+# Set per VM by LABaPe (app/labape/linux_desktop.py): what the host group asked for, the accounts with
+# a VNC display, and the ports to open (3389 for xrdp, 5900 + display for each VNC account).
+labape_remote_desktop: []
+labape_vnc_users: []
+labape_desktop_ports: []

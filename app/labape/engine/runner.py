@@ -39,7 +39,7 @@ from ..models import CatalogItem, Environment, HostNetwork, IpAllocation, Job, K
 from ..catalog import expand
 from ..files import iso_paths, roots
 from ..naming import instance_names
-from .. import spread, vm_passwords
+from .. import linux_desktop, spread, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import (downloads, engine_secrets, filedist, hostadmin, hostio, maintenance, migrate, power, rotation,
@@ -325,6 +325,7 @@ def prepare(db: Session, env: Environment, host: KvmHost, only: list[dict] | Non
     # Each member VM's own local passwords (A2), in its host variables.
     from .. import vm_passwords
     vm_passwords.write_host_vars(db, env, work)
+    linux_desktop.write_host_vars(db, env, work)          # E3: xrdp / VNC per VM
     return work
 
 
