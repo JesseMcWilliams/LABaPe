@@ -131,7 +131,8 @@ class MonitoringSettings(BaseModel):
     """Alerts about hosts and stacks (design §30, question 143)."""
     email_to: list[str] = Field(default=[], max_length=20)            # empty: no email alerts
     syslog: bool = True                                               # through Settings → Syslog (audit trail)
-    disk_pct: int = Field(default=85, ge=50, le=99)                   # stack hosts; KVM hosts warn at 90
+    # Every host's filesystems: alert when free space falls below this percent (F1; a host may set its own).
+    disk_free_pct: int = Field(default=20, ge=1, le=50)
     temp_c: int = Field(default=80, ge=50, le=110)                    # stack hosts (a Pi 5 throttles at 85)
     cert_days: int = Field(default=7, ge=1, le=90)
     backup_hours: int = Field(default=26, ge=2, le=24 * 14)

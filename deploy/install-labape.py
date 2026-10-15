@@ -77,7 +77,7 @@ STEPS = [
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
     ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], full, "Don't filter bridged VM traffic with iptables (Docker)"),
     ("Net.Bridges", S.net_bridges, ["Networks"], kvm, "Create missing VM bridges on their NICs (NetworkManager)"),
-    ("Storage.Dirs", S.storage_dirs, ["VmStoragePath", "TemplateStoragePath", "IsoPath"], kvm,
+    ("Storage.Dirs", S.storage_dirs, ["VmStoragePath", "TemplateStoragePath", "IsoPath", "FilesPath"], kvm,
      "VM, template and ISO directories"),
     ("Storage.TemplatePool", S.storage_template_pool, ["TemplateStoragePath"], kvm,
      "libvirt storage pool labape-templates"),

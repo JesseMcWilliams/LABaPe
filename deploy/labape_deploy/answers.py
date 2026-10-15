@@ -30,6 +30,15 @@ class Answer:
     optional: bool = False                # True: an empty value is a valid answer
 
 
+def files_path_for(vm_storage: str) -> str:
+    """Beside the VM folder (F1; the web app's filedist.files_path): the path up to /VMs with /Files
+    instead (/data/VMs/LABaPe -> /data/Files), or the VM folder's parent's Files."""
+    vm = vm_storage.rstrip("/")
+    i = vm.find("/VMs")
+    base = vm[:i] if i > 0 else vm.rsplit("/", 1)[0]
+    return f"{base}/Files"
+
+
 def _primary_ip() -> str:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -81,6 +90,8 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("TemplateStoragePath", "Directory for the template library",
            default=lambda a: a.get("VmStoragePath", "/data/VMs/LABaPe").rstrip("/") + "/templates"),
     Answer("IsoPath", "Directory holding OS installation ISOs", default="/data/OS_Images"),
+    Answer("FilesPath", "Directory for this host's copies of LABaPe's files (ISOs, Installers, Other under it)",
+           default=lambda a: files_path_for(a.get("VmStoragePath", "/data/VMs/LABaPe"))),
     Answer("DomainName", "Active Directory domain for lab environments", default="labape.test"),
     Answer("NetbiosName", "NetBIOS name of that domain", default=lambda a: a.get("DomainName", "labape").split(".")[0].upper()[:15]),
     Answer("ManagementSource", "IP or CIDR that manages the lab VMs (SSH firewall scoping)", default=lambda a: _primary_ip()),

@@ -15,9 +15,10 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import appsettings
 from ..config import get_settings
 from ..db import get_db
-from ..engine import hostio
+from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
 from ..engine import hostadmin
@@ -47,6 +48,10 @@ class HostIn(BaseModel):
     # What runs on it (design §30): kvm, stack or both; a stack's https address.
     role: str = Field(default="kvm", pattern=r"^(kvm|stack|both)$")
     stack_url: str = Field(default="", pattern=r"^(https://[A-Za-z0-9.:\[\]-]+/?)?$", max_length=255)
+    # F1: its copies of LABaPe's files (empty: beside the VM folder) and its free-space alert (empty:
+    # Settings → Monitoring's).
+    files_path: str = Field(default="", pattern=r"^(/[A-Za-z0-9._/-]+)?$", max_length=255)
+    disk_free_pct: int | None = Field(default=None, ge=1, le=50)
 
 
 def _out(h: KvmHost) -> dict:
@@ -54,7 +59,9 @@ def _out(h: KvmHost) -> dict:
                                        "bridge", "concurrency_limit", "enabled", "ssh_address", "ssh_port",
                                        "ssh_user", "access_status", "access_error", "access_at", "log_forward",
                                        "log_forward_until", "log_forward_error", "is_primary",
-                                       "files_from_share", "role", "stack_url")}
+                                       "files_from_share", "role", "stack_url", "files_path", "disk_free_pct")} | {
+        # What it uses now (F1): the primary keeps the stack's file locations (Settings → File locations).
+        "files_dir": "" if h.is_primary else filedist.files_path(h)}
 
 
 def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
@@ -141,7 +148,7 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
     _check_uri(body.libvirt_uri)
     data = body.model_dump()
     for k in ("ssh_address", "ssh_port", "ssh_user", "is_primary", "files_from_share", "role",
-              "stack_url"):                                   # kept unless sent
+              "stack_url", "files_path", "disk_free_pct"):    # kept unless sent
         if k not in body.model_fields_set:
             data.pop(k)
     if data.get("is_primary") is False and h.is_primary:
@@ -152,8 +159,20 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
         for other in db.scalars(select(KvmHost).where(KvmHost.is_primary.is_(True), KvmHost.id != h.id)):
             other.is_primary = False                    # one primary (question 135)
     became_primary = bool(data.get("is_primary")) and not h.is_primary
+    old_files = filedist.files_path(h)
     for k, v in data.items():
         setattr(h, k, v)
+    new_files = filedist.files_path(h)
+    move = None
+    if new_files != old_files and not h.is_primary and not h.files_from_share:
+        try:                                   # F1: created through the access account, then the files moved
+            hostadmin.ensure_files_path(db, h, new_files)
+        except hostadmin.AdminError as exc:
+            db.rollback()
+            raise FieldError("files_path", f"{exc}") from exc
+        move = Job(type="host.files_move", params={"old": old_files, "new": new_files}, kvm_host_id=h.id,
+                   requested_by=p.username)
+        db.add(move)
     db.commit()
     if became_primary and hostio.is_remote(h.libvirt_uri):
         try:                                  # the Files page will keep files there (design §29.5)
@@ -163,7 +182,7 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
                                            f"prepared: {exc}") from exc
     audit(db, p.username, "host.update", object_type="kvm_host", object_id=h.id, detail=body.model_dump(),
           source_ip=client_ip(request))
-    return _out(h)
+    return {**_out(h), "files_move_job": move.id if move else None}
 
 
 @router.post("/{host_id}/check")
@@ -289,7 +308,8 @@ def host_admin(host_id: int, hours: int = 24, db: Session = Depends(get_db),
     return {"host": _out(h), "collected_at": f.collected_at if f else None, "smart_at": f.smart_at if f else None,
             "error": f.error if f else "", "facts": facts, "smart": smart,
             "latest": {"at": latest.at, **(latest.data or {})} if latest else None,
-            "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None),
+            "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None,
+                                          h.disk_free_pct or appsettings.get(db, "monitoring", cached=True).disk_free_pct),
             "series": hostadmin.series(db, h, min(max(hours, 1), 168)),
             "resources": _resources(db, h.id), "stack": _stack(db, h)}
 
@@ -400,6 +420,7 @@ class InstallIn(BaseModel):
     VmStoragePath: str = Field(default="/data/VMs/LABaPe", pattern=r"^/[A-Za-z0-9._/-]+$")
     TemplateStoragePath: str = Field(default="/data/VMs/LABaPe/templates", pattern=r"^/[A-Za-z0-9._/-]+$")
     IsoPath: str = Field(default="/data/OS_Images", pattern=r"^/[A-Za-z0-9._/-]+$")
+    FilesPath: str = Field(default="", pattern=r"^(/[A-Za-z0-9._/-]+)?$")    # F1; empty: beside the VM folder
     Networks: list[NetworkAnswer] = Field(default=[], max_length=8)
     NetworkChoices: list[NetworkChoice] = Field(default=[], max_length=8)
     DefaultNetwork: str = ""

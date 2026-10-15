@@ -187,6 +187,15 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
               {field("template_storage_path", "Template storage path")}
               {field("bridge", "Fallback bridge", "Used when a network has no bridge here")}
               {field("concurrency_limit", "Concurrent jobs", "Jobs run at once on this host", "number")}
+              {!form.is_primary && (
+                <Field label="Files path" value={form.files_path ?? ""} error={errs.fields.files_path} sx={{ minWidth: 220 }}
+                  placeholder={host?.files_dir || "/data/Files"}
+                  help={`ISOs, Installers and Other under it; empty: beside the VM folder${host?.files_dir ? ` (${host.files_dir})` : ""}. A change moves the files.`}
+                  onChange={(e) => setForm({ ...form, files_path: e.target.value })} />
+              )}
+              <Field label="Free-space alert (%)" type="number" value={form.disk_free_pct ?? ""} error={errs.fields.disk_free_pct}
+                sx={{ width: 170 }} help="Alert when a drive has less free; empty: Settings → Monitoring's"
+                onChange={(e) => setForm({ ...form, disk_free_pct: e.target.value === "" ? null : Number(e.target.value) })} />
               <Field select label="Role" value={form.role ?? "kvm"} sx={{ width: 190 }} help="What runs on it"
                 onChange={(e) => setForm({ ...form, role: e.target.value as HostForm["role"] })}>
                 <MenuItem value="kvm">KVM host</MenuItem><MenuItem value="stack">LABaPe stack only</MenuItem><MenuItem value="both">KVM host and stack</MenuItem>
