@@ -78,7 +78,15 @@ caddy_current() {
   (cd "$C" && "${COMPOSE[@]}" exec -T caddy cat /etc/caddy/Caddyfile 2>/dev/null | cmp -s - "caddy/$f") \
     || (cd "$C" && "${COMPOSE[@]}" up -d --force-recreate caddy)
 }
-up() { (cd "$C" && "${COMPOSE[@]}" up -d) && caddy_current; }
+# `up -d` recreates OpenBao when the compose file changed, and a recreated OpenBao starts sealed: the API's
+# login to it then answers 503 and the worker restarts forever. stores.sh unseal (what the boot unit runs)
+# unseals it and starts the stack with the secrets it holds; it is a no-op when nothing is sealed.
+unseal_stores() {
+  [ -x "$C/stores/stores.sh" ] || [ -f "$C/stores/stores.sh" ] || return 0
+  grep -q '^LABAPE_SECRETS_DIR=.' "$C/.env" 2>/dev/null || return 0
+  bash "$C/stores/stores.sh" unseal
+}
+up() { (cd "$C" && "${COMPOSE[@]}" up -d) && unseal_stores && caddy_current; }
 healthy() {
   labape health --deep >/dev/null 2>&1     && curl -sk --max-time 10 --resolve "${WEB_HOST:-localhost}:443:127.0.0.1" "https://${WEB_HOST:-localhost}/api/health" | grep -q '"ok":true'
 }
