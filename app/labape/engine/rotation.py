@@ -167,7 +167,7 @@ def rotate_directory_token(db: Session, policy: SecretPolicy, log) -> str:
     old = get_secret(db, appsettings.DIRECTORY_TOKEN_SECRET) or ""
     new = _secrets.token_urlsafe(48)
     r = httpx.post(f"{base}/api/v3/core/tokens/{ident}/set_key/", json={"key": new},
-                   headers={"Authorization": f"Bearer {elevated}"}, timeout=15, verify=cfg.verify_tls)
+                   headers={"Authorization": f"Bearer {elevated}"}, timeout=15, verify=_verify(cfg))
     if r.status_code >= 300:
         raise RotationError(f"Authentik refused setting the key (HTTP {r.status_code}); the old token stays")
     try:
@@ -175,7 +175,7 @@ def rotate_directory_token(db: Session, policy: SecretPolicy, log) -> str:
     except Exception as exc:  # noqa: BLE001
         if old:
             httpx.post(f"{base}/api/v3/core/tokens/{ident}/set_key/", json={"key": old},
-                       headers={"Authorization": f"Bearer {elevated}"}, timeout=15, verify=cfg.verify_tls)
+                       headers={"Authorization": f"Bearer {elevated}"}, timeout=15, verify=_verify(cfg))
         raise RotationError(f"the new token didn't work ({exc}); the old one was put back") from exc
     put_secret(db, appsettings.DIRECTORY_TOKEN_SECRET, new)
     return f"token {ident} has a new key"
@@ -243,7 +243,7 @@ def rotate_oidc_client_secret(db: Session, policy: SecretPolicy, log) -> str:
         raise RotationError("there's no current client secret to rotate")
     auth = {"Authorization": f"Bearer {elevated}", "Accept": "application/json"}
     r = httpx.get(f"{base}/api/v3/providers/oauth2/", params={"client_id": client_id}, headers=auth, timeout=15,
-                  verify=cfg.verify_tls)
+                  verify=_verify(cfg))
     found = [p for p in (r.json().get("results", []) if r.status_code == 200 else []) if p.get("client_id") == client_id]
     if not found:
         raise RotationError(f"the elevated token can't see the Authentik provider for client {client_id} "
@@ -251,7 +251,7 @@ def rotate_oidc_client_secret(db: Session, policy: SecretPolicy, log) -> str:
     url = f"{base}/api/v3/providers/oauth2/{found[0]['pk']}/"
 
     def set_secret(value: str) -> httpx.Response:
-        return httpx.patch(url, json={"client_secret": value}, headers=auth, timeout=15, verify=cfg.verify_tls)
+        return httpx.patch(url, json={"client_secret": value}, headers=auth, timeout=15, verify=_verify(cfg))
 
     new = _secrets.token_urlsafe(96)
     r = set_secret(new)
@@ -325,6 +325,10 @@ def uses_agent(db: Session, kind: str) -> bool:
     every install had moved them into the store (design §26)."""
     return REGISTRY[kind].via_agent
 
+REGISTRY["elevated_account"] = Rotator(
+    kind="elevated_account", label="Elevated account", secret_class="privileged", automatic=False, interval_hours=168,
+    notes="The credential rotators use to change secrets that can't change themselves. LABaPe checks it weekly; an "
+          "Authentik token that has fallen out of step is restored with akadmin's stored password.")
 REGISTRY["smtp_password"] = Rotator(kind="smtp_password", label="SMTP password", secret_class="external",
                                     automatic=False, interval_hours=168,
                                     notes="LABaPe can't change it on the mail server: a reminder only.")
@@ -439,6 +443,7 @@ def ensure_policies(db: Session) -> None:
                                 interval_hours=r.interval_hours, needs_restart=False, notes=r.notes, status="pending",
                                 next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
     db.commit()
+    ensure_elevated_policies(db)
     ensure_env_policies(db)
     from .vmaccess import split_legacy_passwords
     split_legacy_passwords(db)
@@ -456,6 +461,8 @@ def policy_secret(p: SecretPolicy) -> str | None:
     if p.kind == "authentik_admin":
         from .. import authentik_admin
         return authentik_admin.SECRET
+    if p.kind == "elevated_account":
+        return ELEVATED_PREFIX + (p.params or {}).get("account", "")
     if p.kind in STORE_ROTATORS:
         from .. import stores
         return stores.credential_secret(STORE_ROTATORS[p.kind])
@@ -488,6 +495,20 @@ def link_secrets(db: Session) -> None:
 
 def env_policy_name(env_id: int, kind: str) -> str:
     return f"env.{env_id}.{kind}"
+
+
+def ensure_elevated_policies(db: Session) -> None:
+    """A policy per elevated account, so each is listed on the Secrets page and checked on a schedule."""
+    have = set(db.scalars(select(SecretPolicy.name).where(SecretPolicy.name.startswith("elevated."))))
+    r = REGISTRY["elevated_account"]
+    for secret_name in db.scalars(select(Secret.name).where(Secret.name.startswith(ELEVATED_PREFIX))):
+        account = secret_name[len(ELEVATED_PREFIX):]
+        if account and f"elevated.{account}" not in have:
+            db.add(SecretPolicy(name=f"elevated.{account}", kind="elevated_account", label=f"Elevated account: {account}",
+                                secret_class=r.secret_class, interval_hours=r.interval_hours, needs_restart=False,
+                                params={"account": account}, notes=r.notes, status="pending",
+                                next_due_at=utcnow() + dt.timedelta(hours=r.interval_hours)))
+    db.commit()
 
 
 def ensure_env_policies(db: Session) -> None:
@@ -528,6 +549,13 @@ def _env_deployed(db: Session, p: SecretPolicy) -> bool:
     from ..models import Environment
     env = db.get(Environment, (p.params or {}).get("environment_id"))
     return env is not None and env.status == "deployed"
+
+
+def _verify(cfg):
+    """TLS verification for calls to Authentik: the system roots plus the platform CA (Authentik is served with a
+    platform-CA certificate, design §47), or none when Settings → Directory turns verification off."""
+    from .. import ca
+    return ca.trust() if cfg.verify_tls else False
 
 
 def elevated_value(db: Session, policy: SecretPolicy) -> str:

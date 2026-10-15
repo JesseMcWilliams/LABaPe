@@ -1920,3 +1920,13 @@ Questions 167-173. Built batch by batch.
 | Rotation | `rotate_authentik_admin` (needs an elevated Authentik account): finds the user, `POST /core/users/{pk}/set_password/` with a new random password, checks it by signing in, stores it; if the new one doesn't sign in the old one is set again (or the change is refused and the old one stays). `deploy.sh` grants `labape-token-rotator` `view_user`, `change_user` and `reset_user_password` on akadmin only. |
 | Reveal | `POST /api/admin/secrets/{id}/reveal` (admin, audited as `secret.reveal` without the value) for the kinds in `REVEALABLE` (this one only); **Reveal** on the Secrets row shows it in a dialog with Copy. The other platform secrets are never shown. |
 | Verified | pytest (the check's outcomes, the rotation and both failure paths, reveal's rules, the flow). Live on OZ: imported, checked (really signed in), the elevated account chosen, rotated; the `.env` line blanked. |
+
+### 54.1 Elevated accounts: checked and restored (built)
+
+| Area | As built |
+|---|---|
+| Policies | `rotation.ensure_elevated_policies`: one `elevated.<name>` policy (kind `elevated_account`, params `{account}`) per stored elevated account, made when the account is added and when policies are ensured; listed in the Stack tab, checked weekly (not rotated: `automatic=False`). |
+| Check | `secret_health._elevated_account`: `GET /api/v3/core/users/me/` with the stored value; 401/403 = refused (a failed check), no answer = not in use, not an Authentik token (`elevated.token_identifier`) = not in use. |
+| Restore | `elevated.restore`: `authentik_admin.admin_client` signs in as akadmin with the stored password (the session cookie, the CSRF header and a Referer, which Django wants on HTTPS), `POST /core/tokens/<identifier>/set_key/` with a new random key, store it as the elevated account, check Authentik accepts it. `authentik-rotator` is the token `labape-rotator` (others: `authentik-x` -> `labape-x`). Run as the check's recovery, so a refused token is restored on the next scheduled check or Check now. |
+| TLS | The rotators that call Authentik (`directory_token`, `oidc_client_secret`) verified against the system roots only and failed against a platform-CA certificate; `rotation._verify` now uses `ca.trust()` as the directory search does. |
+| Verified | pytest (policies, the check's outcomes, the restore with a stale key, its refusals). Live on OZ: the stored rotator key was refused; the check recovered it with akadmin; the directory token and the OIDC client secret then rotated and sign-in still worked. |

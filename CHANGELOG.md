@@ -7,6 +7,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- Elevated accounts (Secrets → Add elevated account) are listed on the Secrets page and checked weekly: LABaPe asks Authentik whether the stored token still works. When Authentik refuses it, the stored akadmin password signs in, sets a new key on the token, and the new key is stored.
+
+### Fixed
+- The rotations that call the Authentik API (the directory token, the OIDC client secret) failed with "certificate verify failed" when Authentik is served with a platform-CA certificate; they now trust the platform CA like the directory search does.
+
 ## [0.5.1] - 2026-10-15
 
 Operations round: KVM host Update and Reboot, every stack container's logs in the stack syslog, container admin pages, Drive Pools (mdadm, ZFS, LVM) with alerts and actions, paged Audit log and User errors, the Authentik administrator's password in the secret store (check, rotate, reveal), and update fixes (installer files no longer block updates; the agent unseals OpenBao after bringing the stack up).

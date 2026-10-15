@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import stores
 from ..db import get_db
 from ..engine.rotation import (ELEVATED_PREFIX, ENV_KINDS, REGISTRY, RESTART_INTERVAL_HOURS, RotationError,
-                               ensure_policies, policy_secret, request_agent, uses_agent)
+                               ensure_elevated_policies, ensure_policies, policy_secret, request_agent, uses_agent)
 from ..engine import secret_health
 from ..errors import FieldError
 from ..models import Environment, Job, Secret, SecretPolicy
@@ -190,6 +190,7 @@ def add_elevated(body: ElevatedIn, request: Request, db: Session = Depends(get_d
                  p: Principal = Depends(require_roles("admin"))):
     """An elevated account's credential, used by rotators that can't rotate their own secret."""
     put_secret(db, ELEVATED_PREFIX + body.name, body.value)
+    ensure_elevated_policies(db)
     audit(db, p.username, "secret.elevated", detail={"name": body.name, "description": body.description},
           source_ip=client_ip(request))
     return {"name": body.name}

@@ -159,3 +159,115 @@ def test_signs_in_follows_the_flow(monkeypatch):
     assert aa.signs_in("https://ak.example.test", "akadmin", "right") is True
     assert aa.signs_in("https://ak.example.test", "akadmin", "wrong") is False
     assert steps[0] == {"component": "ak-stage-identification", "uid_field": "akadmin"}
+
+
+# --- elevated accounts: checked on a schedule, restored with akadmin (design §54.1) ---------------------
+
+from contextlib import contextmanager  # noqa: E402
+
+from labape import elevated  # noqa: E402
+
+
+def _elevated_policy(db, value="rotator-key"):
+    appsettings.put(db, "directory", appsettings.DirectorySettings(enabled=True, api_url="https://ak.example.test"))
+    put_secret(db, rotation.ELEVATED_PREFIX + "authentik-rotator", value)
+    rotation.ensure_policies(db)
+    return db.query(SecretPolicy).filter_by(name="elevated.authentik-rotator").one()
+
+
+def test_every_elevated_account_has_a_policy_that_is_checked_weekly(client):
+    _admin_session(client)
+    with session_factory()() as db:
+        p = _elevated_policy(db)
+        assert p.kind == "elevated_account" and p.params == {"account": "authentik-rotator"}
+        assert rotation.policy_secret(p) == "elevated/authentik-rotator"
+        d = H.describe(p)
+        assert d["checkable"] and d["recoverable"] and d["check_every_hours"] == 7 * 24
+    assert client.post("/api/admin/secrets/elevated", json={"name": "other-token", "value": "ThisIsMy_FAKE_Password6!"}).status_code == 201
+    kinds = {x["label"] for x in client.get("/api/admin/secrets").json()["policies"] if x["kind"] == "elevated_account"}
+    assert kinds == {"Elevated account: authentik-rotator", "Elevated account: other-token"}
+
+
+def test_the_elevated_check(client, monkeypatch):
+    _admin_session(client)
+    with session_factory()() as db:
+        p = _elevated_policy(db)
+        seen = []
+
+        def get(url, headers, timeout, verify):
+            seen.append((url, headers["Authorization"]))
+            return httpx.Response(200, json={}, request=httpx.Request("GET", url))
+        monkeypatch.setattr(elevated.httpx, "get", get)
+        assert "accepts" in H._elevated_account(db, p) and seen == [("https://ak.example.test/api/v3/core/users/me/", "Bearer rotator-key")]
+        monkeypatch.setattr(elevated.httpx, "get", lambda url, headers, timeout, verify: httpx.Response(
+            403, request=httpx.Request("GET", url)))
+        with pytest.raises(H.CheckError):
+            H._elevated_account(db, p)
+
+        def down(*a, **k):
+            raise httpx.ConnectError("no route")
+        monkeypatch.setattr(elevated.httpx, "get", down)
+        with pytest.raises(H.NotInUse):
+            H._elevated_account(db, p)
+        other = SecretPolicy(name="elevated.vault-admin", kind="elevated_account", label="x", params={"account": "vault-admin"},
+                             interval_hours=168)
+        with pytest.raises(H.NotInUse):
+            H._elevated_account(db, other)                                  # not an Authentik token
+
+
+def test_akadmin_restores_an_elevated_token_that_fell_out_of_step(client, monkeypatch):
+    _admin_session(client)
+    posts = []
+
+    class Admin:
+        def post(self, url, json):
+            posts.append((url, json["key"]))
+            return httpx.Response(204, request=httpx.Request("POST", url))
+
+    @contextmanager
+    def admin_client(base, password, verify=True):
+        assert password == "akadmin-pw"
+        yield Admin()
+    monkeypatch.setattr(aa, "admin_client", admin_client)
+    state = {"key": None}
+
+    def get(url, headers, timeout, verify):
+        ok = headers["Authorization"] == f"Bearer {state['key']}"
+        return httpx.Response(200 if ok else 401, json={}, request=httpx.Request("GET", url))
+    monkeypatch.setattr(elevated.httpx, "get", get)
+    with session_factory()() as db:
+        p = _elevated_policy(db, "stale-key")
+        put_secret(db, aa.SECRET, "akadmin-pw")
+        import io
+        log = io.StringIO()
+        monkeypatch.setitem(H.HEALTH, "elevated_account", H.HEALTH["elevated_account"])
+        # the stale key is refused; after akadmin sets a new key Authentik accepts exactly that one
+        orig_post = Admin.post
+
+        def post(self, url, json):
+            state["key"] = json["key"]
+            return orig_post(self, url, json)
+        monkeypatch.setattr(Admin, "post", post)
+        status = H.run_check(db, p, log, "system")
+        assert status == "recovered", log.getvalue()
+        new = get_secret(db, rotation.ELEVATED_PREFIX + "authentik-rotator")
+    assert new != "stale-key" and posts == [("https://ak.example.test/api/v3/core/tokens/labape-rotator/set_key/", new)]
+
+
+def test_the_restore_needs_akadmins_password_and_a_known_token(client, monkeypatch):
+    _admin_session(client)
+    with session_factory()() as db:
+        _elevated_policy(db)
+        with pytest.raises(elevated.ElevatedError, match="akadmin's password isn't stored"):
+            elevated.restore(db, "authentik-rotator")
+        put_secret(db, aa.SECRET, "wrong")
+
+        @contextmanager
+        def refused(base, password, verify=True):
+            raise aa.SignInRefused("no")
+            yield
+        monkeypatch.setattr(aa, "admin_client", refused)
+        with pytest.raises(elevated.ElevatedError, match="doesn't sign in"):
+            elevated.restore(db, "authentik-rotator")
+        with pytest.raises(elevated.ElevatedError, match="can't restore"):
+            elevated.restore(db, "vault-admin")
