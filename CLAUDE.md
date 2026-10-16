@@ -62,7 +62,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_Operations-And-Admin-UI.md`: plan for VM power and boot order, the Admin area, filters, KVM host and VM details pages, browser SSH/RDP and consoles (batches O1-O6, questions 107-120).
   - `Archive_Planning_Stack-Syslog-Installer-File-Host.md`: built (design §29.1-§29.6); the plan for the stack's syslog collector and Syslog tab, the installer's ask-first answer file and service choices, and the primary file host (batches Y1-Y3, questions 121-141).
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.
-  - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number).
+  - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number). Numbers are plain in the files and never reset (next: 175); in chat they appear with a D prefix (D174) so they don't collide with the chat's own Q/A numbers.
   - `Planning_Web-Interface-Design.md`: M10 design and as-built record (components, data model, permissions, job runner, deployment, build phases 10a-10h; §19-§24 cover what's built, through secret rotation).
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history from M10 on, filed by topic. When it grows past ~500 lines, move fully closed sections into an `Archive_Testing_...` file, as was done for M1-M6.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** Current: `Archive_Testing_Troubleshooting-Log-M1-M6.md` (closed M1-M6 troubleshooting history).
