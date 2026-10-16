@@ -60,6 +60,7 @@ def list_secrets(env_id: int, db: Session = Depends(get_db), p: Principal = Depe
     """The environment's secrets: names, places and dates, never values."""
     e = _owned(db, env_id, p)
     prefix = f"environment/{e.id}/"
+    netbios, dns = remote.domain_names(db, e)
     policies = {pol.id: pol for pol in db.scalars(select(SecretPolicy))}
     out = []
     for row in db.scalars(select(Secret).where(Secret.name.startswith(prefix)).order_by(Secret.name)):
@@ -73,6 +74,8 @@ def list_secrets(env_id: int, db: Session = Depends(get_db), p: Principal = Depe
                     "updated_at": row.updated_at, "editable": where in ("user", "vm"),
                     "readers": list(row.vms or []) if where == "user" else ([vm] if where == "vm" else []),
                     "rotation": pol.label if pol else "",
+                    # The user name to type for this account (not the secret's name): COMPUTER\user, DOMAIN\user...
+                    "login": remote.login_of(e, rest, netbios, dns),
                     # E2: where this account can sign in from the browser, when the environment runs.
                     "connect": remote.account_targets(e, rest) if e.status == "deployed" else []})
     return {"secrets": out, "vms": _vms(e), "folder": f"env/{e.name}/" if _layout_store(db, e) else "",

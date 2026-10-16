@@ -20,7 +20,7 @@ def show():
     data = c.get(base).json()
     print("folder:", data["folder"], "vms:", data["vms"])
     for s in data["secrets"]:
-        print(f"  {s['area']:8} {s['vm'] or '-':8} {s['name'][:40]:40} {s['store']:8} {s['path']}")
+        print(f"  {s['area']:8} {s['vm'] or '-':8} {s['name'][:40]:40} {s.get('login') or '-':26} {s['store']:8} {s['path']}")
     return data
 
 

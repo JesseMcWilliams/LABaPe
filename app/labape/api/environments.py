@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, env_accounts, leases, quotas, spread, timezones
+from .. import appsettings, env_accounts, leases, quotas, remote, spread, timezones
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
@@ -477,7 +477,29 @@ def credentials(env_id: int, request: Request, db: Session = Depends(get_db),
     audit(db, p.username, "environment.credentials.view", object_type="environment", object_id=e.id,
           source_ip=client_ip(request))
     text = get_secret(db, f"environment/{e.id}/credentials") or ""
-    return {"credentials": text, "sections": parse_credentials(text)}
+    return {"credentials": text, "sections": sheet_hints(parse_credentials(text))}
+
+
+def sheet_hints(sections: list[dict]) -> list[dict]:
+    """The user name to type, beside what the sheet already says (the sheet's own text is unchanged): a Windows
+    VM's local Administrator is `.` plus a backslash plus the name (or COMPUTER, a backslash, then the name), because a
+    bare Administrator is completed with the client's own domain; each per-VM password has its user name above it
+    and is masked."""
+    bs = chr(92)
+    for sec in sections:
+        title = sec["title"]
+        if title.startswith("Windows ("):
+            for it in sec["items"]:
+                if it["label"] == "Local Administrator" and it["value"] == "Administrator":
+                    it["value"] = f".{bs}Administrator"
+        elif title.startswith("Windows Administrator, per VM"):
+            items = []
+            for it in sec["items"]:
+                items.append({"label": f"{it['label']} user name", "value": f"{remote.computer_name(it['label'])}{bs}Administrator",
+                              "secret": False})
+                items.append({**it, "secret": True})
+            sec["items"] = items
+    return sections
 
 
 def parse_credentials(text: str) -> list[dict]:

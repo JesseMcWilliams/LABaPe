@@ -122,6 +122,49 @@ def account_of(env: Environment, rest: str) -> dict | None:
     return None
 
 
+def domain_names(db: Session, env: Environment) -> tuple[str, str]:
+    """(NetBIOS name, DNS name) of the environment's domain, from the inventory ("" when it has none)."""
+    from .engine.vmaccess import _hosts, _inventory
+    inv = _inventory(db, env)
+    every = [(inv.get("all") or {}).get("vars") or {}, *_hosts(inv).values()]
+    pick = lambda key: next((str(h[key]) for h in every if h.get(key)), "")  # noqa: E731
+    return pick("netbios_name"), pick("domain_name")
+
+
+def computer_name(vm: str) -> str:
+    """The name Windows knows a VM by: the host name, upper case, at most 15 characters."""
+    return vm[:15].upper()
+
+
+def login_of(env: Environment, rest: str, netbios: str = "", dns: str = "") -> str:
+    """What to type as the user name to sign in as `rest`. Not the secret's name (windows_admin): a Windows
+    local account is COMPUTER, a backslash, then the user (a bare name is taken as the client's own domain or the
+    VM's domain); on a domain controller the local Administrator is the domain's, so DOMAIN, backslash, user;
+    a domain account is DOMAIN, backslash, user (or user@dns.name where there is no NetBIOS name); a Linux local
+    account is the bare name."""
+    bs = chr(92)
+    if rest in ("windows_admin", "windows_admin2"):             # the shared copy: each Windows VM has its own account
+        return f"<VM name>{bs}{'Administrator' if rest == 'windows_admin' else RECOVERY_ADMIN}"
+    acc = account_of(env, rest)
+    if acc is None:
+        return ""
+    kinds = _vm_kinds(env)
+    if acc["scope"] == "local":
+        os_, dc = kinds.get(acc["vm"], ("", False))
+        if os_ != "windows":
+            return acc["user"]
+        if dc:
+            return f"{netbios}{bs}{acc['user']}" if netbios else acc["user"]
+        return f"{computer_name(acc['vm'])}{bs}{acc['user']}"
+    return f"{netbios}{bs}{acc['user']}" if netbios else (f"{acc['user']}@{dns}" if dns else acc["user"])
+
+
+def rdp_domain(db: Session, env: Environment, vm: str) -> str:
+    """The domain part to put before a VM's local Administrator in an .rdp file."""
+    _, dc = _vm_kinds(env).get(vm, ("", False))
+    return domain_names(db, env)[0] if dc else computer_name(vm)
+
+
 def account_targets(env: Environment, rest: str) -> list[dict]:
     """Where an account can sign in, as [{vm, protocol}] (question 167): a local Windows account RDP
     to its VM; a local Linux account SSH to its VM; a domain account RDP to the Windows member

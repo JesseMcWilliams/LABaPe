@@ -28,7 +28,20 @@ export default function RemoteSession() {
     const display = c.getDisplay().getElement();
     holder.current.innerHTML = "";
     holder.current.appendChild(display);
-    c.onstatechange = (s: number) => setState(STATES[s] ?? String(s));
+    const fit = () => {                                  // a reconnected session keeps its old size: show all of it
+      const d = c.getDisplay();
+      const w = d.getWidth();
+      const room = holder.current?.getBoundingClientRect().width ?? 0;
+      if (w > 0 && room > 0) d.scale(Math.min(1, room / w));
+    };
+    c.getDisplay().onresize = fit;
+    c.onstatechange = (s: number) => {
+      setState(STATES[s] ?? String(s));
+      if (s === 3) {                                       // connected: ask for our size again so Windows repaints the desktop
+        const b = holder.current?.getBoundingClientRect();
+        if (b) c.sendSize(Math.max(640, Math.floor(b.width)), Math.max(400, Math.floor(window.innerHeight - b.top - 16)));
+      }
+    };
     c.onerror = (status: Guacamole.Status) => setError(status.message || `error ${status.code}`);
     tunnel.onerror = (status: Guacamole.Status) => setError(status.message || "The connection to LABaPe was lost.");
 

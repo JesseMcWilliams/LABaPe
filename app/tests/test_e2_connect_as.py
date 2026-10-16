@@ -85,3 +85,53 @@ def test_a_session_as_an_account(client, monkeypatch):
     bad = client.post("/api/remote/sessions", json={"target_type": "vm", "protocol": "rdp", "environment_id": env_id,
                                                     "vm": "dc1", "account": "account/jdoe"})
     assert bad.status_code == 422 and "can't sign in" in bad.text
+
+
+def test_the_user_name_to_type_is_not_the_secrets_name(db_reset):
+    bs = chr(92)
+    with session_factory()() as db:
+        e = _env()
+        db.add(e)
+        db.commit()
+        put_secret(db, f"environment/{e.id}/inventory", INV)
+        netbios, dns = remote.domain_names(db, e)
+        assert (netbios, dns) == ("LAB", "lab.test")
+        login = lambda rest: remote.login_of(e, rest, netbios, dns)  # noqa: E731
+        assert login("vm/app1/windows_admin") == f"APP1{bs}Administrator"          # a member's local account: its computer
+        assert login("vm/app2/windows_admin2") == f"APP2{bs}labape-admin2"
+        assert login("vm/dc1/windows_admin") == f"LAB{bs}Administrator"            # a controller has no local accounts
+        assert login("domain_admin") == f"LAB{bs}Administrator"
+        assert login("account/jdoe") == f"LAB{bs}jdoe"
+        assert login("vm/web1/account/tester") == "tester"                         # Linux: the bare name
+        assert login("credentials") == "" and login("inventory") == ""
+        assert login("windows_admin") == f"<VM name>{bs}Administrator"              # the shared copy
+        assert remote.rdp_domain(db, e, "app1") == "APP1" and remote.rdp_domain(db, e, "dc1") == "LAB"
+        assert remote.computer_name("a-very-long-host-name-x") == "A-VERY-LONG-HOS"   # Windows keeps 15 characters
+
+
+def test_the_secrets_list_carries_the_login(client):
+    _admin_session(client)
+    host_id = _host(client)
+    r = client.post("/api/environments", json={
+        "name": "logins", "kvm_host_id": host_id, "host_groups": [{
+            "name": "win", "os": "windows_server_2022", "roles": ["windows_server"], "image_source": "packer_template",
+            "template": "t", "count": 1, "cpu_count": 2, "memory_mb": 4096, "disk_gb": 40, "addressing": "static"}]})
+    if r.status_code != 201:
+        pytest.skip("the creation form needs a template on the host: " + r.text[:100])
+    env_id = r.json()["environment"]["id"]
+    with session_factory()() as db:
+        put_secret(db, f"environment/{env_id}/vm/win1/windows_admin", PW)
+    rows = client.get(f"/api/environments/{env_id}/secrets").json()["secrets"]
+    assert any(s["name"].endswith("windows_admin") and s["login"].endswith("Administrator") for s in rows)
+
+
+def test_the_credentials_sheet_names_the_user_to_type():
+    from labape.api.environments import parse_credentials, sheet_hints
+    bs = chr(92)
+    text = ("## Windows (app1, dc1)\nLocal Administrator: Administrator\nPassword: boot\n"
+            "## Windows Administrator, per VM\n\napp1: s3cret\n")
+    secs = {s["title"]: s for s in sheet_hints(parse_credentials(text))}
+    assert secs["Windows (app1, dc1)"]["items"][0]["value"] == f".{bs}Administrator"
+    per_vm = secs["Windows Administrator, per VM"]["items"]
+    assert [(i["label"], i["value"], i["secret"]) for i in per_vm] == [
+        ("app1 user name", f"APP1{bs}Administrator", False), ("app1", "s3cret", True)]

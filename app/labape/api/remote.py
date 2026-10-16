@@ -204,6 +204,7 @@ def rdp(environment_id: int, vm: str, request: Request, db: Session = Depends(ge
         raise FieldError("vm", f"{vm} is a Linux VM: use SSH")
     audit(db, p.username, "remote.rdp_file", object_type="environment", object_id=env.id, detail={"vm": vm},
           source_ip=client_ip(request))
-    body = remote.rdp_file(t["address"], t["params"]["username"], t["params"]["domain"])
+    # A bare name would be taken as the client's own domain: name the VM (or the domain, on a controller).
+    body = remote.rdp_file(t["address"], t["params"]["username"], t["params"]["domain"] or remote.rdp_domain(db, env, vm))
     return Response(body, media_type="application/x-rdp",
                     headers={"Content-Disposition": f'attachment; filename="{vm}.rdp"'})

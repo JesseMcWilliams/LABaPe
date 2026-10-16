@@ -10,6 +10,7 @@ sent: opcodes and counts, or the error. Sends no keystrokes; disconnects after N
 --as signs in as one of the environment's accounts (E2): its secret's name, e.g. account/jesse.
 """
 import asyncio
+import base64
 import collections
 import ssl
 import sys
@@ -52,6 +53,7 @@ async def go():
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
     url = f"wss://{u.netloc}/api/remote/tunnel?token={sess['token']}&width=1024&height=768&dpi=96"
     seen, errors, buf = collections.Counter(), [], ""
+    image_bytes = 0                  # compressed picture data: a blank screen sends almost none
     async with websockets.connect(url, ssl=ctx, subprotocols=["guacamole"], max_size=None,
                                   additional_headers={"Cookie": cookie, "Origin": f"{u.scheme}://{u.netloc}"}) as ws:
         loop = asyncio.get_running_loop()
@@ -61,16 +63,23 @@ async def go():
                 msg = await asyncio.wait_for(ws.recv(), max(end - loop.time(), 0.1))
             except asyncio.TimeoutError:
                 break
+            except websockets.exceptions.ConnectionClosed as exc:      # the tunnel ended before the time was up
+                print(f"tunnel closed after {int(loop.time() - end + seconds)} s: {exc}")
+                break
             buf += msg if isinstance(msg, str) else msg.decode()
             instrs, buf = guac.parse(buf)
             for i in instrs:
                 seen[i[0] or "(internal)"] += 1
+                if i[0] == "blob" and len(i) > 2:
+                    image_bytes += len(base64.b64decode(i[2] + "=" * (-len(i[2]) % 4)))
                 if i[0] == "error":
                     errors.append(i[1:])
                 if i[0] == "sync":                          # acknowledge frames, as the browser does
                     await ws.send(guac.encode("sync", i[1]))
-        await ws.send(guac.encode("disconnect"))
+        if not ws.close_code:
+            await ws.send(guac.encode("disconnect"))
     print("received:", dict(seen.most_common(12)))
+    print("picture data received:", image_bytes, "bytes")
     print("errors:", errors or "none")
 
 asyncio.run(go())
