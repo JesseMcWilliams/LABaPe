@@ -77,6 +77,7 @@ class RetentionSettings(BaseModel):
     job_logs_days: int = Field(default=90, ge=1, le=3650)
     audit_days: int = Field(default=0, ge=0, le=36500)      # 0 = keep forever
     errors_days: int = Field(default=90, ge=1, le=3650)
+    deleted_hosts_days: int = Field(default=30, ge=1, le=3650)   # how long a deleted KVM host can be restored
 
 
 class SyslogSettings(BaseModel):

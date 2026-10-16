@@ -80,6 +80,11 @@ class KvmHost(Base):
     # a stack's https address, so the stacks can watch each other.
     role: Mapped[str] = mapped_column(String(8), default="kvm")
     stack_url: Mapped[str] = mapped_column(String(255), default="")
+    # Deleted (design §55): hidden everywhere (db.py), purged after the retention period; `purged` marks the
+    # hidden record kept when environments still point at the host.
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[str] = mapped_column(String(255), default="")
+    purged: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Network(Base):
