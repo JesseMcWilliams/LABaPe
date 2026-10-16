@@ -64,7 +64,10 @@ def test_conditional_questions():
     need = inst.CONDITIONAL_NEEDS
     a = A.Resolver(interactive=False)
     a.add({"InstallAuthentik": True, "InstallConjur": False, "InstallSyslog": False})
-    assert need["Stack.Auth"](a) == [] and need["Stack.Stores"](a) == [] and need["Stack.Services"](a) == []
+    assert need["Stack.Auth"](a) == ["AuthentikAdminUser"]                    # your own login; the email only once a user is named
+    a.add({"AuthentikAdminUser": "jesse"})
+    assert need["Stack.Auth"](a) == ["AuthentikAdminUser", "AuthentikAdminEmail"]
+    assert need["Stack.Stores"](a) == [] and need["Stack.Services"](a) == []
     b = A.Resolver(interactive=False)
     b.add({"InstallAuthentik": False, "AuthMode": "existing", "InstallConjur": True, "InstallSyslog": True})
     assert need["Stack.Auth"](b) == ["AuthMode", "OidcIssuer", "OidcClientId"]
@@ -258,3 +261,33 @@ def test_web_tls_step_only_with_the_platform_ca(tmp_path):
     assert cmd[1].replace("\\", "/").endswith("container/caddy/web-tls.sh") and cmd[2] == "setup" and as_user
     names = [s[0] for s in _installer().STEPS]
     assert names.index("Stack.Up") < names.index("Stack.WebTls")
+
+
+def test_the_authentik_admin_password_is_asked_once_and_never_saved(monkeypatch):
+    a = A.Resolver(interactive=True)
+    a.add({"AuthentikAdminUser": "jesse"})
+    answers = iter(["short", "ThisIsMy_FAKE_Password6!", "different", "ThisIsMy_FAKE_Password6!", "ThisIsMy_FAKE_Password6!"])
+    monkeypatch.setattr(S.getpass, "getpass", lambda prompt="": next(answers))
+    S.ask_authentik_admin_password(a)
+    assert a.secret_inputs == {"AuthentikAdminPassword": "ThisIsMy_FAKE_Password6!"}
+    assert "AuthentikAdminPassword" not in a.answers and "AuthentikAdminPassword" not in A.ANSWERS
+    S.ask_authentik_admin_password(a)                                         # already have it: not asked again
+    unattended = A.Resolver(interactive=False)
+    unattended.add({"AuthentikAdminUser": "jesse"})
+    monkeypatch.delenv("LABAPE_AUTHENTIK_ADMIN_PASSWORD", raising=False)
+    S.ask_authentik_admin_password(unattended)
+    assert unattended.secret_inputs == {}                                     # no terminal, no variable: skipped with a note
+    monkeypatch.setenv("LABAPE_AUTHENTIK_ADMIN_PASSWORD", "ThisIsMy_FAKE_Password6!")
+    S.ask_authentik_admin_password(unattended)
+    assert unattended.secret_inputs["AuthentikAdminPassword"] == "ThisIsMy_FAKE_Password6!"
+    none = A.Resolver(interactive=True)
+    none.add({"AuthentikAdminUser": ""})
+    S.ask_authentik_admin_password(none)
+    assert none.secret_inputs == {}
+
+
+def test_the_authentik_admin_user_is_checked():
+    v = A.ANSWERS["AuthentikAdminUser"].validate
+    assert v("jesse") is None and v("") is None
+    for bad in ("akadmin", "Jesse", "j", "1abc", "a b"):
+        assert v(bad)

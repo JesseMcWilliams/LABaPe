@@ -8,6 +8,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ## [Unreleased]
 
 ### Added
+- The installer asks for your own Authentik administrator login (user name, email, and a password prompted once before anything runs, never saved) and creates it with the Authentik that comes with LABaPe, as a superuser and a LABaPe administrator, so akadmin isn't the login people use; akadmin stays for LABaPe's own checks and rotation. `tools/authentik-test/create-admin.sh USER EMAIL` does the same on a stack that is already installed. For an unattended install give the password in `LABAPE_AUTHENTIK_ADMIN_PASSWORD`.
 - Elevated accounts (Secrets → Add elevated account) are listed on the Secrets page and checked weekly: LABaPe asks Authentik whether the stored token still works. When Authentik refuses it, the stored akadmin password signs in, sets a new key on the token, and the new key is stored.
 
 ### Fixed

@@ -1930,3 +1930,12 @@ Questions 167-173. Built batch by batch.
 | Restore | `elevated.restore`: `authentik_admin.admin_client` signs in as akadmin with the stored password (the session cookie, the CSRF header and a Referer, which Django wants on HTTPS), `POST /core/tokens/<identifier>/set_key/` with a new random key, store it as the elevated account, check Authentik accepts it. `authentik-rotator` is the token `labape-rotator` (others: `authentik-x` -> `labape-x`). Run as the check's recovery, so a refused token is restored on the next scheduled check or Check now. |
 | TLS | The rotators that call Authentik (`directory_token`, `oidc_client_secret`) verified against the system roots only and failed against a platform-CA certificate; `rotation._verify` now uses `ca.trust()` as the directory search does. |
 | Verified | pytest (policies, the check's outcomes, the restore with a stale key, its refusals). Live on OZ: the stored rotator key was refused; the check recovered it with akadmin; the directory token and the OIDC client secret then rotated and sign-in still worked. |
+
+### 54.2 A login of your own in Authentik (built)
+
+| Area | As built |
+|---|---|
+| Why | Authentik is installed with `akadmin` only; people shouldn't use it. LABaPe keeps akadmin for its own checks and rotation (§54) and the installer makes a login for the person installing. |
+| Installer | Answers `AuthentikAdminUser` (default the service user; not `akadmin`) and `AuthentikAdminEmail`, asked with the others when Authentik is installed with LABaPe or as the throwaway test Authentik. The password is not an answer: `steps.ask_authentik_admin_password` asks once (hidden, twice, 12+ characters) after the answers are confirmed and before any step runs, keeps it in memory (`Resolver.secret_inputs`) and passes it to `deploy.sh` on standard input; unattended runs use `LABAPE_AUTHENTIK_ADMIN_PASSWORD`, else the login is skipped with a note. |
+| Script | `tools/authentik-test/create-admin.sh USER EMAIL` (password on stdin or asked at a terminal): `ak shell` creates or updates the user, sets the password, adds it to `authentik Admins` (superuser) and `labape-admins` (LABaPe admin). The password travels in an environment variable to the container, never a command line. |
+| Verified | pytest (the prompts, the unattended path, nothing saved, the name checked). Live on OZ with a throwaway login: created, signs in, a wrong password is refused, a superuser in both groups, a second run updates it; then removed. |
