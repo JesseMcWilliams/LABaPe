@@ -5,6 +5,25 @@
 > LogaPe, aPeSecrets and LABaPe are separate projects with their own handoffs. It follows
 > [Planning_Handoff-2026-10-15.md](Planning_Handoff-2026-10-15.md), which still describes the lab and the rules.
 
+## Latest (end of 2026-10-16): v0.5.3 released
+
+`main` is at the merge of PR #164 (the one after v0.5.3's release commit); tests **390 passing, 1 skipped**; no open PRs, no batch in progress; `[Unreleased]` in `CHANGELOG.md` holds only whatever came after v0.5.3 (nothing yet). **v0.5.2** (Kerberos, time zones, host deletion, the rest of §0 and §2) and **v0.5.3** (below) are released, both signed tags with the SBOM attached.
+
+| What | PR | Where |
+|---|---|---|
+| **Sign in as**: the Secrets page shows the user name to type for each account (`L2WIN1\Administrator`, `LABAPE\jesse`) with a copy button; the credentials sheet shows the Windows local Administrator as `.\Administrator`, adds a user name above each per-VM password and masks those passwords; the `.rdp` file names the VM (or the domain on a controller). Cause: people typed the secret's name (`windows_admin`) as the user name, and a bare `Administrator` is completed with the client's own domain. | #162 | `remote.login_of`, `api/env_secrets.py`, `api/environments.py` `sheet_hints`, `EnvSecrets.tsx`; Testing_Troubleshooting-Log.md "Signing in to a domain member's local account" |
+| **Browser RDP blank window** on a reconnected session: the page asks for its size again once connected and scales a bigger session to fit. The user confirmed it works. | #162 | `RemoteSession.tsx` |
+| **`release.sh --resume`**: finishes the signed tag and the GitHub release when a run stopped after the release PR merged. The v0.5.3 run took over ten minutes and was cut off by the terminal's time limit, so its tag and release were made by hand; start a release in the background. | #164 | `tools/helpers/release.sh` |
+
+**To do:**
+1. **Update Director** (`pi1`) to v0.5.3 with its Admin → Updates click (it is still on v0.5.1).
+2. A real-browser click-through of Windows sign-on on `l2win1` (§0); an installer step or Settings page for its domain side.
+3. Published `.docx` guides (question 24, later). Hyper-V is dropped (question 175).
+
+**Lab:** `~/LABaPe-web` was built from clean `main` for the v0.5.3 SBOM, so it matches `main` (reset it to `origin/main` after any later `deploy-web.sh` of a working tree). Everything else is as in §0 and §5.
+
+**Gotchas added:** `release.sh` needs a worker image built from this clean `main` and the lab reachable (`deploy-web.sh` first); `--dry-run` checks both. A Windows `Administrator` typed bare on a domain member goes to the wrong domain: use `COMPUTER\Administrator` or `.\Administrator`.
+
 ## 0. Update, later on 2026-10-16: Kerberos, time zones, Hyper-V dropped
 
 `main` is at the merge of PR #158 or later; tests **387 passing, 1 skipped**. Merged since the state in §1: PR #157 (below), #158 (D-number note in CLAUDE.md). aPeTemplate PR #8 (the user's personal numbering rules: Q/A for chat, D for document items, reset after 100) is merged too. Nothing is in progress. **v0.5.2 was released** (signed tag on the merge of PR #160; the SBOM is attached) and holds all of this and PRs #151-#154; `[Unreleased]` in `CHANGELOG.md` is empty again. Director (`pi1`) is still on v0.5.1 and needs the Update click.
@@ -66,7 +85,7 @@ Design sections are in [Planning_Web-Interface-Design.md](Planning_Web-Interface
 
 | Item | Where | Note |
 |---|---|---|
-| Update Director to v0.5.2 | Director's Admin → Updates | The user's click; v0.5.2 is released. The next release: only when the user says. |
+| Update Director to v0.5.3 | Director's Admin → Updates | The user's click; v0.5.3 is released. The next release: only when the user says. |
 | Director's rotation account | Director's Secrets page | The user is to add the elevated account `authentik-rotator` (token `LABAPE_TEST_ROTATOR_TOKEN` in Director's `tools/authentik-test/.env`) and choose it on the akadmin, directory-token and OIDC rows; steps were given in chat. Until then Director's Authentik rotations are reminders. |
 | Redeploy plan preview | design §56 | A list of VMs a redeploy would replace (an OpenTofu plan before applying) is not built; the user was asked, no answer yet. |
 | Drive Pools actions on real hardware | design §53.4 | Never run on kvm1's RAID10 `md10` (read-only view only); the user was asked, no answer yet. |
