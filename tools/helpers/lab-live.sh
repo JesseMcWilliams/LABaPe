@@ -15,7 +15,7 @@ script="$1"; shift
 [ -f "$HERE/live/$script" ] || { echo "no such script: live/$script" >&2; ls "$HERE/live" >&2; exit 1; }
 
 "${LAB_SSH[@]}" 'mkdir -p ~/labape-test-tools'
-"${LAB_SCP[@]}" "$HERE"/live/*.py "$HERE"/live/*.sh "$LABAPE_LAB_SSH:labape-test-tools/"
+"${LAB_SCP[@]}" "$HERE"/live/*.py "$HERE"/live/*.sh "$HERE"/live/*.ps1 "$LABAPE_LAB_SSH:labape-test-tools/"
 "${LAB_SSH[@]}" "sed -i 's/\r\$//' ~/labape-test-tools/*"
 
 args=""; [ $# -eq 0 ] || args="$(printf ' %q' "$@")"

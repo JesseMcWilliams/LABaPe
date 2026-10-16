@@ -163,3 +163,15 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `maintenance.py` | `maintenance.py on\|check\|off` | `check`: a developer's write gets 503, a read works, and Back up now is refused. |
 | `update_api.py` | `update_api.py [tag]` | Shows the current version, releases, standby version and agent state. With a tag, offers it to the API, which refuses unpublished tags. |
 | `agent-request.sh` | `agent-request.sh <update\|rollback> [tag]` | Writes the agent's request file directly and waits up to 20 minutes. Then it shows the state, running version, checkout, standby version, maintenance mode and the log tail. |
+
+### Kerberos proof (2026-10-16)
+
+| Script | Runs | What it does |
+|---|---|---|
+| `live/ad_run.py <env> <host> <script.ps1> [secret [user]]` | lab (container) | Run a PowerShell file on a Windows VM over WinRM with the environment's revealed password (default the DC as Administrator); `@@UTCNOW@@` in the script becomes the real UTC time |
+| `live/ad_inspect.ps1`, `krb_time.ps1` | on the DC | Read-only: domain, DNS, users; clock and the service account's key version |
+| `live/krb_dc_setup.ps1` | on the DC | DNS name for Authentik, service account with the `HTTP/` SPN, keytab (random password, AES256) |
+| `live/krb_fix_clock.ps1` | on a Windows VM | Set the time zone to Pacific and the real time (libvirt's localtime clock vs the guests' UTC zone) |
+| `live/krb_source.py <env> <DC>` | lab (container) | Create or update (`--remove` deletes) the test Authentik's Kerberos source `lab2-kerberos`; reads the keytab from the DC and deletes it there |
+| `live/krb_negotiate.py <env> <DC> <secret> <user>` | lab (container) | Sign in as an AD user through SPNEGO (`curl --negotiate` in a scheduled task) and finish Authentik's enrollment flow |
+| `live/krb_schema.py`, `krb_users.py`, `ak_admin.py` | lab (container) | Read-only: the Kerberos source's fields; users the source created; the akadmin client the others import |
