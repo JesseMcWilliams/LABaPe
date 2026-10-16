@@ -5,7 +5,37 @@
 > LogaPe, aPeSecrets and LABaPe are separate projects with their own handoffs. It follows
 > [Planning_Handoff-2026-10-15.md](Planning_Handoff-2026-10-15.md), which still describes the lab and the rules.
 
-## 1. State in one paragraph
+## 0. Update, later on 2026-10-16: Kerberos, time zones, Hyper-V dropped
+
+`main` is at the merge of PR #158 or later; tests **387 passing, 1 skipped**. Merged since the state in §1: PR #157 (below), #158 (D-number note in CLAUDE.md). aPeTemplate PR #8 (the user's personal numbering rules: Q/A for chat, D for document items, reset after 100) is merged too. Nothing is in progress; `[Unreleased]` in `CHANGELOG.md` also holds all of this and still waits for the user's word on a release.
+
+| What | Where |
+|---|---|
+| **Environment time zone** (browser's by default; UTC hardware clock for new VMs; Ansible sets the zone, and on Windows the "clock is UTC" flag and a clock fix). Fixes Windows VMs running 7 h behind real time. | Design §57; `app/labape/timezones.py`, `tofu/timezones.json` |
+| **Sign-in on the name used**: the OIDC redirect and the trip to Authentik follow the stack's name the browser used (`LABAPE_ALT_NAMES`); `sync-redirects.sh` keeps Authentik's redirect addresses in step. | Design §58; `app/labape/auth/oidc.py` |
+| **Windows sign-on (Kerberos)**: Authentik Kerberos source (SPNEGO) + LDAP source for AD users and groups; role bindings map AD groups. The domain side is a manual recipe of helper scripts. | Design §58; `tools/helpers/README.md` "Kerberos proof" |
+| **Hyper-V will be dropped** (question 175): docs say so; no code removed, removal not scheduled. | Planning_Questions.md 175; banners across the docs |
+
+**Left from this round:** a click-through in a real browser on `l2win1` (setup is scripted: `krb_client_setup.ps1`); an installer step or Settings page for the domain side (DNS name, service account and keytab, the two Authentik sources, role bindings); Windows VMs created before §57 keep their skewed clock until recreated.
+
+**Lab state added today** (the details of §5 still apply):
+1. The stack's names are `172.21.20.11` (main), `OZ`, `OZ.jlm.abq` and **`auth.labape.test`** (`LABAPE_ALT_NAMES` in `container/.env`); one certificate covers them; Authentik's LABaPe provider has a redirect address for each. `~/LABaPe-web` was reset to `main` at the PR #157 merge, so it is **clean** again (supersedes the "dirty" note in §5).
+2. The domain `labape.test` (`l2dc1`): DNS record `auth.labape.test` → 172.21.49.100; service accounts `svc-authentik` (SPN `HTTP/auth.labape.test`) and `svc-authentik-ldap`; AD groups `lab2-admins` (with `jesse`), `lab2-deployers`, `lab2-viewers`. **`l2dc1` and `l2win1` run on Pacific time with the real clock** (set by hand, `krb_fix_clock.ps1`).
+3. The test Authentik has the sources `lab2-kerberos` ("Sign in with Windows", promoted) and `lab2-ad` (LDAP), a property mapping "labape: AD group name", and the synced AD users (`jesse` is Domain Admins + `lab2-admins`).
+4. LABaPe role bindings: group `lab2-admins` → admin, `lab2-deployers` → deployer, `lab2-viewers` → viewer, `LABAPE.TEST` → viewer.
+5. `l2win1` trusts the platform root CA, has `auth.labape.test` in the Local intranet zone and the Edge/Chrome `AuthServerAllowlist` policy.
+6. The test environments `tzlin` and `tzwin` were destroyed. Environments `lab2`, `syslog1`, `nestkvm` as before.
+
+**Gotchas from today:**
+1. Kerberos needs the full host name (the SPN) and clocks within 5 minutes: check both first when a ticket is refused ("Clock skew too great", "cannot decrypt ticket").
+2. `ktpass`: no `-setupn` (it rewrites the account's UPN and breaks the key's salt); use `-mapOp set`. It writes its success line to stderr.
+3. `Start-Process -Credential` fails over WinRM (0xC0000142); run as a user with a scheduled task (`krb_negotiate.py`).
+4. A group with the same name in LDAP and Authentik merges without its AD members (`name_link`): the lab's AD groups are named `lab2-*` and matched by identifier.
+5. `git archive` (deploy-web) drops the execute bit: call scripts with `bash`, and test with `-f`, not `-x`.
+6. Python in a Bash heredoc turns `\a`/`\n` in strings into control characters (a registry path got a bell): use the Write tool for anything with backslashes, and grep for the result.
+7. The platform CA publishes no revocation list; `curl` on Windows needs `--ssl-no-revoke` against its certificates.
+
+## 1. State in one paragraph (as of the first part of 2026-10-16)
 
 `main` is at `ebc96ac` (PR #154), no open PRs, tests **379 passing, 1 skipped** (`pytest app/tests`).
 **v0.5.1** is released (signed tag, release PR #150, SBOM attached). Four changes merged after it and wait in
@@ -41,7 +71,7 @@ Design sections are in [Planning_Web-Interface-Design.md](Planning_Web-Interface
 | Director's rotation account | Director's Secrets page | The user is to add the elevated account `authentik-rotator` (token `LABAPE_TEST_ROTATOR_TOKEN` in Director's `tools/authentik-test/.env`) and choose it on the akadmin, directory-token and OIDC rows; steps were given in chat. Until then Director's Authentik rotations are reminders. |
 | Redeploy plan preview | design §56 | A list of VMs a redeploy would replace (an OpenTofu plan before applying) is not built; the user was asked, no answer yet. |
 | Drive Pools actions on real hardware | design §53.4 | Never run on kvm1's RAID10 `md10` (read-only view only); the user was asked, no answer yet. |
-| Kerberos sign-on (built since: design §58), published `.docx` guides; Hyper-V parity is **dropped** (question 175) | Planning_Backlog.md rows 16-18; questions 29, 154, 155, 24 | Carried over, all "later" by the user's choice. |
+| Published `.docx` guides | Planning_Backlog.md row 18; question 24 | "Later" by the user's choice. (Kerberos is built, §58; Hyper-V parity is dropped, question 175.) |
 
 Follow-ups noticed, not asked for:
 1. **Fresh installs keep akadmin's first password in `.env`** until `labape authentik-admin-import` runs: `Stack.Auth` runs before `Stack.Up`, so `deploy.sh`'s import into the secret store is best-effort and usually can't reach the API yet. A later installer step (after `Stack.Up`) should import it and blank the line.
@@ -54,7 +84,7 @@ Follow-ups noticed, not asked for:
 
 ## 4. How the work is done here
 
-- **Read first:** `CLAUDE.md`, this file, [Planning_Questions.md](Planning_Questions.md) (new questions continue from **175**; 174 is answered), [Testing_Troubleshooting-Log.md](Testing_Troubleshooting-Log.md).
+- **Read first:** `CLAUDE.md`, this file, [Planning_Questions.md](Planning_Questions.md) (new questions continue from **176**; 175 (Hyper-V dropped) is answered), [Testing_Troubleshooting-Log.md](Testing_Troubleshooting-Log.md).
 - **Shipping:** a `YYYY-MM-DD-<topic>` branch first; pytest; a live check on the lab; docs (design section, `CHANGELOG.md` `[Unreleased]`, user guides); `tools/helpers/ship.sh <title> <msg-file> <body-file>` (the commit ends with the `Co-Authored-By` line, the PR body with the Claude Code line); then make the next branch. Releases only when the user says: `tools/helpers/release.sh vX.Y.Z <summary-file>` after `deploy-web.sh` from a clean `main` (it regenerates the SBOM from the lab image).
 - **The user prefers numbered lists** for actions, options and questions, and answers by number.
 - **Lab:** details are in the gitignored `Live-Testing.local.md` (read it only for live work). `tools/helpers/deploy-web.sh` puts the working tree on kvm1; `tools/helpers/lab-live.sh <script>` runs a script from `tools/helpers/live/` in a throwaway container signed in through the test Authentik, or on the host for `*.sh`; `lab-live.sh host_exec.sh <host id> '<command>'` runs a command on a registered host as its access account. New live helpers this session: `akadmin.py`, `secret_row.py`, `secret_rows.py`, `host_pools.py`, `host_power.py`, `host_logs.py`, `host_delete_test.py`, `alert_to.py`, `stack_mail.py`.
