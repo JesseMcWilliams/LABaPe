@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--dry-run]
+# release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--dry-run] [--resume]
 # Cut a LABaPe release (question 24; releases only at milestones, which the user decides):
 #   1. checks: on main, clean, up to date; the tag doesn't exist; [Unreleased] has entries;
 #   2. on a YYYY-MM-DD-release-X.Y.Z branch, release_prep.py: the CHANGELOG section
@@ -17,17 +17,20 @@
 #   5. a signed tag vX.Y.Z on the merge (git's signing setup; checked with git tag -v), pushed;
 #   6. gh release create vX.Y.Z with the CHANGELOG section as its notes (--prerelease for -rc.N) and the
 #      CycloneDX file attached as labape-X.Y.Z.cdx.json.
+# --resume: the release PR merged but the run stopped before the tag (a long run can be cut off by a
+# terminal's time limit: start it in the background, e.g. run_in_background): from clean main with the
+# [X.Y.Z] section, make the signed tag and the GitHub release. SUMMARY_FILE is still required but unused.
 # VERSION is X.Y.Z or X.Y.Z-rc.N, with or without the v. --dry-run stops after the checks (the lab and
 # the worker image are checked too).
 # RELEASE_TRAILER (optional) is appended to the commit message, e.g. a Co-Authored-By line.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-USAGE="usage: release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--dry-run]"
+USAGE="usage: release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--dry-run] [--resume]"
 VERSION="${1:?$USAGE}"; VERSION="${VERSION#v}"
 SUMMARY="${2:?$USAGE}"
 shift 2
-PRE=false DOCX=false DRY=false SKIP_SBOM=false SBOM_ANYWAY=false
+PRE=false DOCX=false DRY=false SKIP_SBOM=false SBOM_ANYWAY=false RESUME=false
 for a in "$@"; do
   case "$a" in
     --prerelease) PRE=true ;;
@@ -35,6 +38,7 @@ for a in "$@"; do
     --skip-sbom) SKIP_SBOM=true ;;
     --sbom-anyway) SBOM_ANYWAY=true ;;
     --dry-run) DRY=true ;;
+    --resume) RESUME=true ;;
     *) echo "$USAGE" >&2; exit 2 ;;
   esac
 done
@@ -45,12 +49,36 @@ cd "$REPO"
 [ -f "$SUMMARY" ] || { echo "release: no summary file $SUMMARY" >&2; exit 2; }
 SUMMARY="$(cd "$(dirname "$SUMMARY")" && pwd)/$(basename "$SUMMARY")"
 
+# Steps 5 and 6, also what --resume runs: the signed tag, then the GitHub release.
+publish() {
+  TMP="${TMP:-$(mktemp -d)}"
+  # 5. The signed tag.
+  git tag -s "$TAG" -m "LABaPe $TAG"
+  git tag -v "$TAG" >/dev/null 2>&1 || { echo "release: $TAG doesn't verify (git tag -v); not pushed" >&2; exit 1; }
+  git push -q origin "$TAG"
+
+  # 6. The GitHub release.
+  "$PY" "$HERE/release_prep.py" --notes "$VERSION" > "$TMP/notes"
+  cp "$REPO/sbom/labape.cdx.json" "$TMP/labape-$VERSION.cdx.json"
+  {
+    echo
+    echo "The software bill of materials is attached (\`labape-$VERSION.cdx.json\`, CycloneDX 1.5) and in the repository (\`Claude_Docs/Reference_SBOM.md\`)."
+  } >> "$TMP/notes"
+  gh release create "$TAG" --title "$TAG" --notes-file "$TMP/notes" "$TMP/labape-$VERSION.cdx.json" $($PRE && echo --prerelease)
+  echo "release: $TAG tagged (signed), pushed and published"
+}
+
 # 1. Checks.
 [ "$(git branch --show-current)" = main ] || { echo "release: start on main" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "release: the working tree isn't clean" >&2; exit 1; }
 git pull --ff-only -q
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
   echo "release: tag $TAG exists already" >&2; exit 1
+fi
+if $RESUME; then      # the release PR merged but the run stopped before the tag: finish steps 5 and 6
+  grep -q "^## \[$VERSION\]" CHANGELOG.md || { echo "release: main has no [$VERSION] section; nothing to resume" >&2; exit 1; }
+  publish
+  exit 0
 fi
 "$PY" "$HERE/release_prep.py" "$VERSION" "$SUMMARY" --check
 if $DOCX && ! command -v pandoc >/dev/null 2>&1; then
@@ -117,17 +145,4 @@ fi
 git pull --ff-only -q
 grep -q "^## \[$VERSION\]" CHANGELOG.md || { echo "release: main doesn't have the [$VERSION] section; no tag made" >&2; exit 1; }
 
-# 5. The signed tag.
-git tag -s "$TAG" -m "LABaPe $TAG"
-git tag -v "$TAG" >/dev/null 2>&1 || { echo "release: $TAG doesn't verify (git tag -v); not pushed" >&2; exit 1; }
-git push -q origin "$TAG"
-
-# 6. The GitHub release.
-"$PY" "$HERE/release_prep.py" --notes "$VERSION" > "$TMP/notes"
-cp "$REPO/sbom/labape.cdx.json" "$TMP/labape-$VERSION.cdx.json"
-{
-  echo
-  echo "The software bill of materials is attached (\`labape-$VERSION.cdx.json\`, CycloneDX 1.5) and in the repository (\`Claude_Docs/Reference_SBOM.md\`)."
-} >> "$TMP/notes"
-gh release create "$TAG" --title "$TAG" --notes-file "$TMP/notes" "$TMP/labape-$VERSION.cdx.json" $($PRE && echo --prerelease)
-echo "release: $TAG tagged (signed), pushed and published"
+publish
