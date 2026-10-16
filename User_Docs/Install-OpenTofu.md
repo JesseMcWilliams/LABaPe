@@ -1,5 +1,7 @@
 # Installing and Configuring OpenTofu (Debian 13)
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 This targets the **control machine** — the Linux/WSL box that runs
 `tofu`/`ansible-playbook` (Claude_Docs/Design_System-Overview.md §15), not necessarily the libvirt
 host itself. If this same Debian 13 box is *also* your libvirt host

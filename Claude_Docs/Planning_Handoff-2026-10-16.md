@@ -41,7 +41,7 @@ Design sections are in [Planning_Web-Interface-Design.md](Planning_Web-Interface
 | Director's rotation account | Director's Secrets page | The user is to add the elevated account `authentik-rotator` (token `LABAPE_TEST_ROTATOR_TOKEN` in Director's `tools/authentik-test/.env`) and choose it on the akadmin, directory-token and OIDC rows; steps were given in chat. Until then Director's Authentik rotations are reminders. |
 | Redeploy plan preview | design §56 | A list of VMs a redeploy would replace (an OpenTofu plan before applying) is not built; the user was asked, no answer yet. |
 | Drive Pools actions on real hardware | design §53.4 | Never run on kvm1's RAID10 `md10` (read-only view only); the user was asked, no answer yet. |
-| Kerberos sign-on, Hyper-V parity, published `.docx` guides | Planning_Backlog.md rows 16-18; questions 29, 154, 155, 24 | Carried over, all "later" by the user's choice. |
+| Kerberos sign-on (built since: design §58), published `.docx` guides; Hyper-V parity is **dropped** (question 175) | Planning_Backlog.md rows 16-18; questions 29, 154, 155, 24 | Carried over, all "later" by the user's choice. |
 
 Follow-ups noticed, not asked for:
 1. **Fresh installs keep akadmin's first password in `.env`** until `labape authentik-admin-import` runs: `Stack.Auth` runs before `Stack.Up`, so `deploy.sh`'s import into the secret store is best-effort and usually can't reach the API yet. A later installer step (after `Stack.Up`) should import it and blank the line.

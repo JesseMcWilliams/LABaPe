@@ -66,6 +66,7 @@ linux)
     --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant detect=on,require=off \
+    --clock offset=utc \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
@@ -104,6 +105,7 @@ debian_preseed)
     --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant "$OS_VARIANT" \
+    --clock offset=utc \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
@@ -174,6 +176,7 @@ debian)
     --network "bridge=${BRIDGE_DEVICE},model=virtio${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant "$OS_VARIANT" \
+    --clock offset=utc \
     --graphics none \
     --console "pty,target_type=serial,log.file=${console_log},log.append=off" \
     --noautoconsole \
@@ -263,6 +266,7 @@ windows)
     --network "bridge=${BRIDGE_DEVICE},model=e1000e${MAC_ADDRESS:+,mac=$MAC_ADDRESS}" \
     --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --os-variant "$OS_VARIANT" \
+    --clock offset=utc \
     --graphics vnc,listen=127.0.0.1 \
     --noautoconsole \
     --metadata "description=${workspace_tag}" \

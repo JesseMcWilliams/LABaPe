@@ -1,5 +1,7 @@
 # Base Images: Packer Templates, Direct ISO Boot, Promotion, and Refresh
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 Both hypervisor backends (Hyper-V, libvirt) need a starting point for
 each VM's disk. LABaPe supports four related workflows, chosen per
 host/host-group, not globally: build a template with Packer up front,

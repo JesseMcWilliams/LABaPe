@@ -214,7 +214,7 @@ export interface Environment {
   name: string;
   status: string;
   kvm_host: string | null;
-  spec: { host_groups: HostGroup[] };
+  spec: { host_groups: HostGroup[]; timezone?: string };
   created_by: string;
   created_at: string;
   updated_at: string;

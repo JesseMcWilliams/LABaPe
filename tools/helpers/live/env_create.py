@@ -3,7 +3,7 @@
 Usage: env_create.py list
        env_create.py <name> <os key> <template> [--vm NAME] [--cpu N] [--mem MB] [--disk GB]
                      [--network NAME] [--addressing static|dhcp] [--host ID] [--as USER]
-                     [--apps NAME,NAME] [--services NAME,NAME]
+                     [--apps NAME,NAME] [--services NAME,NAME] [--tz IANA_ZONE]
 `list` prints the KVM hosts, the templates and networks of each, and the
 environments. Otherwise it creates the environment (a deploy job starts at
 once), waits, and prints the result, the VM's address and the job's
@@ -38,6 +38,7 @@ ap.add_argument("--disk", type=int, default=40)
 ap.add_argument("--network", default=None)
 ap.add_argument("--addressing", default="static")
 ap.add_argument("--host", type=int, default=None)
+ap.add_argument("--tz", default=None, help="the environment's time zone, e.g. America/Denver")
 ap.add_argument("--as", dest="user", default="labape-admin")
 ap.add_argument("--apps", default="", help="catalog applications, comma-separated")
 ap.add_argument("--services", default="", help="catalog services, comma-separated")
@@ -52,7 +53,8 @@ group = {"name": "".join(ch for ch in o.name if ch.isalnum())[:12] or "vm", "cou
          "services": [s for s in o.services.split(",") if s], "applications": [a for a in o.apps.split(",") if a], "packages": []}
 if o.network:
     group["network"] = o.network
-r = c.post(f"{LABAPE}/api/environments", json={"name": o.name, "kvm_host_id": host, "host_groups": [group]})
+r = c.post(f"{LABAPE}/api/environments", json={"name": o.name, "kvm_host_id": host, "host_groups": [group],
+                                                      **({"timezone": o.tz} if o.tz else {})})
 if r.status_code >= 300:
     raise SystemExit(f"create refused: {r.status_code} {r.text[:600]}")
 env = r.json()["environment"]

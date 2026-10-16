@@ -1961,3 +1961,32 @@ Questions 167-173. Built batch by batch.
 | Not triggers | The daily VM-key rotation and the Windows bootstrap password rotation (masked), Windows answer-file comments, the MAC address. |
 | Where it comes from | The environment's spec isn't editable after creation (placement and host groups are fixed), so a reinstall in practice follows a change outside it: Settings' management source or syslog address, a new template, a changed network allocation, or a LABaPe update that changes the answer-file templates under `iso/answer-files/` or the clone seed. |
 | Shown to the user | The Redeploy confirmation says this and points to snapshots; the user guide's *What a redeploy keeps*. A plan preview that lists the VMs about to be replaced is not built. |
+
+## 57. An environment's time zone (built 2026-10-16)
+
+Found while proving Kerberos sign-on (Testing_Troubleshooting-Log.md): Windows VMs ran 7 hours behind real time, because libvirt gives Windows guests a `localtime` clock while the answer files set the zone to UTC.
+
+| Area | As built |
+|---|---|
+| Option | New environment → **Time zone** (an IANA name; default the browser's, UTC when LABaPe doesn't offer it). Saved as `spec.timezone` (an API client that sends none gets UTC); shown on the environment's page. Fixed at creation. |
+| Zones | `tofu/timezones.json`: IANA name → Windows name, about 80 zones (`app/labape/timezones.py` reads it; `GET /api/environments/timezones` feeds the form). An unknown name is refused (422). |
+| Clock | Every VM `virt-install` creates gets `--clock offset=utc` (both scripts). The zone changes only how time is shown. |
+| Ansible | The runner writes `timezone` and `windows_timezone` to `environment.yml`; `generate-inventory.py` makes them `labape_timezone` / `labape_windows_timezone` for all hosts. `linux_common` sets the zone (`community.general.timezone`). `windows_common` sets `RealTimeIsUniversal`, the zone (`win_timezone`), then corrects the clock from the controller when it is more than 2 minutes off. All skipped when `labape_timezone` is absent, so environments from before the option are untouched (their VMs keep the old clock until recreated). |
+| Not changed | The answer files and clone seeds (so no VM is reinstalled for this), and Hyper-V (its module can't `tofu init` yet; its clock follows the host). |
+
+## 58. Windows sign-on (Kerberos) and sign-in on the name used (built 2026-10-16)
+
+Questions 29 and 154 ("later") are now built. Kerberos is Authentik's Kerberos source (SPNEGO); LABaPe still sees an ordinary OIDC sign-in. The proof ran against lab2's domain `labape.test` and the test Authentik; the recipe is the helpers in `tools/helpers/live/` (README, "Kerberos proof").
+
+| Area | As built |
+|---|---|
+| Names | A stack answers on its main name and every `LABAPE_ALT_NAMES` entry (design §48.4), each on 443 and 9445 with one certificate. **Kerberos needs the full host name** (the SPN `HTTP/<fqdn>`); the IP and short names keep working with a password or OIDC. |
+| Sign-in on the name used | `auth/oidc.py`: `request_name` is the request's `Host` when it is one of the stack's names (never an arbitrary header), else the main name. The redirect address (`https://<name>/api/auth/oidc/callback`) and the browser's trip to Authentik (`https://<name>:9445/...`) use that name, so Authentik's session cookie and the Kerberos handshake stay on one name. Server-side calls (metadata, token, keys) keep the configured issuer. The API gets `LABAPE_ALT_NAMES` (compose). |
+| Authentik | `tools/authentik-test/sync-redirects.sh` keeps the provider's redirect URIs at one strict entry per name; `deploy.sh` and `web-tls.sh` (setup, and renew when the names change) run it. |
+| Domain side | DNS record for the stack's FQDN; a service account with `HTTP/<fqdn>`; its AES256 keytab from `ktpass ... +rndPass -mapOp set` (no `-setupn`, which breaks the key's salt); the keytab goes into the Kerberos source (`spnego_keytab`, `spnego_server_name HTTP@<fqdn>`) and is deleted from the DC. The source names the KDC by address in its `krb5.conf` (the container can't resolve the domain). |
+| Users and groups | A Kerberos login alone carries one group, the realm (`LABAPE.TEST`). For AD groups an Authentik **LDAP source** syncs users (sAMAccountName) and groups, and the Kerberos source matches users by name, so the sign-in is the synced user with its groups. LABaPe maps them with role bindings (Admin → role bindings): the lab binds `lab2-admins` → admin, `lab2-deployers` → deployer, `lab2-viewers` → viewer, and the realm group `LABAPE.TEST` → viewer (any domain user may look). |
+| Clients | The browser needs the stack's name in the intranet zone (Edge/Chrome: Local intranet, or the policy `AuthServerAllowlist`), the platform root CA trusted, and DNS for the name. Authentik's login page offers **Sign in with Windows** (the source is `promoted`); SPNEGO answers without a password. |
+| Clock | Kerberos fails past 5 minutes of skew: the 7-hour Windows clock fault behind it is §57. |
+| Verified | pytest (names kept or refused, redirect address, Authentik's address). Live on the lab: as `jesse` (domain admin) in a scheduled task on `l2dc1`, `curl --negotiate` to `https://auth.labape.test:9445/source/kerberos/lab2-kerberos/` finished Authentik's flow, then `https://auth.labape.test/api/auth/oidc/login` signed in to LABaPe: `/api/auth/me` gave `jesse`, provider `oidc`, roles `admin,viewer`, groups `LABAPE.TEST, Domain Admins, lab2-admins`. |
+| Client setup | `krb_client_setup.ps1` (run on `l2win1`): the platform root in the machine store, the name in the Local intranet zone (`ZoneMap\Domains\labape.test\auth`, https = 1) and `AuthServerAllowlist` for Edge and Chrome; checked: the name resolves, 9445 answers, the certificate verifies (the platform CA has no revocation list, so tools must skip that check). The same Kerberos sign-in then ran from `l2win1` as `jesse` and signed in to LABaPe with roles `admin,viewer`. |
+| Not done | A click-through in a real browser on `l2win1` (the scripts above are the setup it needs), an installer step or Settings page for the domain side (the recipe is manual). Hyper-V is dropped (question 175). |

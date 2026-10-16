@@ -1,7 +1,8 @@
 # LABaPe — Lab Automation & Provisioning Engine
 
 Automates deployment of self-hosted test/lab environments (mixed Windows +
-Linux servers and workstations) on either Hyper-V or KVM (Rocky/Debian),
+Linux servers and workstations) on KVM (libvirt; Rocky/Debian/Ubuntu and Windows guests). Hyper-V is being dropped
+(see below),
 using OpenTofu for provisioning and Ansible for configuration/software
 installation.
 
@@ -27,7 +28,7 @@ own). The third-party software LABaPe uses has its own licenses: see
 ## Status
 
 - **M1 (libvirt/KVM, Linux + Windows)** — done, end-to-end, confirmed against real infrastructure. **Recommended backend.**
-- **M2 (Hyper-V, Linux)** — done, end-to-end, but needs more operational care (a manual boot-order fix after every `tofu apply`) — prefer libvirt/KVM when it's an option.
+- **M2 (Hyper-V, Linux)** — done end to end, but **Hyper-V support will be dropped** (decision 2026-10-16): use libvirt/KVM.
 - **M4 (domain services)** — done, end-to-end: AD DS promotion, Windows + Linux domain join, software install, one playbook run.
 - **M5 (directory objects half)** — done, end-to-end: OUs, domain/local groups and users, both membership directions.
 - **M5 (workstation host types half)** — Windows 11/10, Ubuntu 24.04/26.04 and Debian 13 workstations install fully unattended and domain-join (`windows_workstation` and `linux_workstation`).
@@ -137,7 +138,7 @@ full deploy.
 
 ## Known gaps
 
-- The Hyper-V backend still uses one static network: no network catalog or DHCP addressing (`Claude_Docs/Reference_Backend-Parity.md`). Remaining milestones: `Claude_Docs/Design_System-Overview.md` §18.
+- Hyper-V will be dropped (question 175), so these three notes won't be fixed. The Hyper-V backend still uses one static network: no network catalog or DHCP addressing (`Claude_Docs/Reference_Backend-Parity.md`). Remaining milestones: `Claude_Docs/Design_System-Overview.md` §18.
 - Hyper-V's `scripts/set-boot-order.sh` must currently be run by hand after every `tofu apply` — see `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` § M2.
 - Hosts in different environments on the same libvirt host need unique host-group names: VM names are host-global, and a create refuses a VM tagged for another workspace (rendered answer files are already kept per workspace) — see `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` § M5 (completion pass).
 - Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing ([operating system notes](User_Docs/Web-Interface-Guide.md#6-operating-system-notes)).

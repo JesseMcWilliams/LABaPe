@@ -38,6 +38,7 @@ x-labape: &labape
       condition: service_healthy
   environment:
     LABAPE_PUBLIC_URL: https://${LABAPE_HOSTNAME:?set LABAPE_HOSTNAME in container/.env}
+    LABAPE_ALT_NAMES: ${LABAPE_ALT_NAMES:-}
     LABAPE_DATABASE_URL_FILE: /run/secrets/database_url
     LABAPE_TOFU_PG_CONN_FILE: /run/secrets/tofu_pg_conn
     LABAPE_SECRET_KEY_FILE: /run/secrets/secret_key

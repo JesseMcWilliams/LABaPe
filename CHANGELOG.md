@@ -7,7 +7,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Changed
+- Hyper-V support will be dropped (question 175): LABaPe supports KVM (libvirt) only. The Hyper-V backend is no longer maintained and gets no new features; the documentation says so. Its removal isn't scheduled.
+
 ### Added
+- Windows sign-on (Kerberos): Authentik's Kerberos source with the AD domain's users and groups lets people on domain-joined Windows machines sign in to LABaPe without a password (design §58). Sign-in now stays on the name the browser used (the stack's address, host name or FQDN) and Authentik's redirect addresses follow the stack's names. The domain side is a manual recipe for now (`tools/helpers/` Kerberos proof).
+- A new environment has a **Time zone** (default: your browser's; design §57). Its VMs show that zone and keep a UTC hardware clock; Windows VMs no longer run hours behind real time.
 - The Redeploy confirmation and the user guide say what a redeploy keeps and when it reinstalls a VM (its image or template, size, network, host or storage, or its install answers, including the answer files a LABaPe update changes), instead of "existing VMs aren't reinstalled".
 - A KVM host can be deleted (its Settings → Delete host): it is hidden everywhere at once, listed under Deleted hosts where an admin can restore it, and removed for good after a retention period (Settings → History, 30 days by default). A host that is the primary file host, runs this stack, has jobs queued or running, or is used by an environment can't be deleted. Nothing changes on the host itself.
 - The installer asks for your own Authentik administrator login (user name, email, and a password prompted once before anything runs, never saved) and creates it with the Authentik that comes with LABaPe, as a superuser and a LABaPe administrator, so akadmin isn't the login people use; akadmin stays for LABaPe's own checks and rotation. `tools/authentik-test/create-admin.sh USER EMAIL` does the same on a stack that is already installed. For an unattended install give the password in `LABAPE_AUTHENTIK_ADMIN_PASSWORD`.

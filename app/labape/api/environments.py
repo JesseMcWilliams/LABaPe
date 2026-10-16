@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, env_accounts, leases, quotas, spread
+from .. import appsettings, env_accounts, leases, quotas, spread, timezones
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
@@ -81,7 +81,16 @@ class EnvironmentIn(BaseModel):
     # Ignored since static addresses are allocated from the network
     # catalog (design §20.4); accepted so older clients still work.
     static_ip_offset_start: int | None = None
+    # An IANA zone as the browser reports it (design §52); None: UTC.
+    timezone: str | None = None
     host_groups: list[HostGroup] = Field(min_length=1, max_length=20)
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, v: str | None) -> str | None:
+        if v and not timezones.is_valid(v):
+            raise ValueError("That time zone isn't one LABaPe offers; pick one from the list.")
+        return v or None
 
     @field_validator("name")
     @classmethod
@@ -371,7 +380,8 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
     _check_catalog(db, raw)
     groups = _check_networks(db, p, host.id, raw)
     # The Linux admin account comes from Settings > VM accounts, fixed per environment.
-    spec = {"host_groups": groups, "linux_admin_user": appsettings.get(db, "vm_accounts").linux_admin_user}
+    spec = {"host_groups": groups, "linux_admin_user": appsettings.get(db, "vm_accounts").linux_admin_user,
+            "timezone": body.timezone or timezones.DEFAULT}
     e = Environment(name=body.name, kvm_host_id=host.id, spec=spec, created_by=p.username,
                     expires_at=leases.default_expiry(db))
     db.add(e)
@@ -396,6 +406,12 @@ def _get(db: Session, env_id: int, p: Principal) -> Environment:
     if e is None or not can_see(db, p, "environment", env_id):
         raise HTTPException(status_code=404, detail="No such environment")
     return e
+
+
+@router.get("/timezones")
+def list_timezones(_: Principal = Depends(current_principal)):
+    """The zones the new-environment form offers (design §52)."""
+    return {"timezones": timezones.names(), "default": timezones.DEFAULT}
 
 
 @router.get("/{env_id}")

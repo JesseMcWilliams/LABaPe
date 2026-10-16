@@ -31,6 +31,16 @@ export default function EnvironmentNew() {
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [name, setName] = useState("");
   const [hostId, setHostId] = useState<number | "">("");
+  // The environment's time zone (design §52): the browser's, when LABaPe offers it, else UTC.
+  const [zones, setZones] = useState<string[]>(["UTC"]);
+  const [timezone, setTimezone] = useState("UTC");
+  useEffect(() => {
+    api.get<{ timezones: string[]; default: string }>("/api/environments/timezones").then((z) => {
+      setZones(z.timezones);
+      const mine = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setTimezone(z.timezones.includes(mine) ? mine : z.default);
+    }, () => undefined);
+  }, []);
   // Each host's networks and templates, loaded as hosts are chosen (design §45: a group may go elsewhere).
   const [netsBy, setNetsBy] = useState<Record<number, Network[]>>({});
   const [tplsBy, setTplsBy] = useState<Record<number, Template[]>>({});
@@ -172,7 +182,7 @@ export default function EnvironmentNew() {
         kvm_host_id: g.kvm_host_id && g.kvm_host_id !== hostId ? g.kvm_host_id : undefined,
       }));
       const r = await api.post<{ environment: { id: number } }>("/api/environments", {
-        name, kvm_host_id: hostId, host_groups,
+        name, kvm_host_id: hostId, timezone, host_groups,
       });
       navigate(`/environments/${r.environment.id}`);
     } catch (err) {
@@ -217,6 +227,11 @@ export default function EnvironmentNew() {
         <Field select label="KVM host" value={hostId} onChange={(e) => setHostId(Number(e.target.value))}
           sx={{ minWidth: 200 }} required error={err("kvm_host_id")}>
           {hosts.map((h) => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
+        </Field>
+        <Field select label="Time zone" value={timezone} onChange={(e) => setTimezone(e.target.value)}
+          sx={{ minWidth: 220 }} error={err("timezone")}
+          help="The VMs show this zone; the default is your browser's. Their clock is UTC either way.">
+          {zones.map((z) => <MenuItem key={z} value={z}>{z}</MenuItem>)}
         </Field>
         {hosts.length > 1 && <Button sx={{ mt: 1 }} onClick={suggest}
           title="Rank the KVM hosts for these host groups (memory, CPU, running jobs, templates there) and choose the best">Suggest best host</Button>}

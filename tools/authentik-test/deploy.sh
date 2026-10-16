@@ -83,17 +83,12 @@ curl -fsS "${issuer}.well-known/openid-configuration" >/dev/null || {
 }
 
 # The blueprint makes the provider once (state: created, so a rotated client secret sticks), so a
-# changed LABaPe host name never reaches its redirect URI that way: set that one field here.
-$COMPOSE exec -T worker ak shell -c "
-import dataclasses, os
-from authentik.providers.oauth2.models import OAuth2Provider
-p = OAuth2Provider.objects.get(client_id='labape')
-url = 'https://%s/api/auth/oidc/callback' % os.environ['LABAPE_HOSTNAME']
-if [u.url for u in p.redirect_uris] != [url]:
-    p.redirect_uris = [dataclasses.replace(u, url=url) for u in p.redirect_uris[:1]]
-    p.save()
-    print('authentik-test: the redirect URI is now', url)
-" 2>&1 | grep '^authentik-test:' || true
+# changed LABaPe host name never reaches its redirect URIs that way: sync-redirects.sh sets them
+# (the main name and every LABAPE_ALT_NAMES entry of the stack, design §58).
+alt_names=""
+stack_env="$(cd ../../container 2>/dev/null && pwd)/.env"
+if [ -f "$stack_env" ]; then alt_names="$(sed -n 's/^LABAPE_ALT_NAMES=//p' "$stack_env" | tail -n 1)"; fi
+COMPOSE="$COMPOSE" bash ./sync-redirects.sh "$LABAPE_HOSTNAME_ARG" "$alt_names"
 
 # The rotation account may set the directory token's key and the LABaPe
 # provider's client secret, on those two objects only (object permissions; the
