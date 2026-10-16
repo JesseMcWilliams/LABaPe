@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-16
+
+Windows sign-on (Kerberos) for people on domain-joined machines, sign-in that stays on the name the browser used, a time zone for every new environment (which also fixes Windows VMs running hours behind real time), deleting a KVM host, an installer prompt for your own Authentik administrator login, elevated-account health checks, and the decision to drop Hyper-V support.
+
 ### Changed
 - Hyper-V support will be dropped (question 175): LABaPe supports KVM (libvirt) only. The Hyper-V backend is no longer maintained and gets no new features; the documentation says so. Its removal isn't scheduled.
 
