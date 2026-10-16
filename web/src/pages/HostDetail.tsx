@@ -223,6 +223,14 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
                 {isNew ? "Register" : "Save"}
               </ActionButton>
               <Button component={RouterLink} to="/admin/hosts" title="Leave without saving">Cancel</Button>
+              {!isNew && host && (
+                <ActionButton color="error" variant="outlined" tip="Delete this host from LABaPe (restorable until the retention period ends)"
+                  confirm={{ title: `Delete ${host.name}?`, confirmLabel: "Delete", danger: true,
+                    body: `${host.name} is hidden from LABaPe now and removed for good after the retention period (Settings → History); until then Admin → KVM hosts → Deleted hosts can restore it. Nothing is changed on the host itself: the worker's key stays authorized there. A host that is the primary file host, runs this stack, has running jobs or is used by an environment can't be deleted.` }}
+                  onClick={() => api.del(`/api/hosts/${host.id}`).then(() => navigate("/admin/hosts"), (e) => setErrs(fromApiError(e)))}>
+                  Delete host
+                </ActionButton>
+              )}
             </Stack>
           </Stack>
         </Paper>

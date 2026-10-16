@@ -137,6 +137,8 @@ def purge_history(db: Session) -> dict[str, int]:
     cfg = appsettings.get(db, "retention")
     now = utcnow()
     out = {"job_logs": 0, "audit": 0, "errors": 0}
+    from . import hostdelete
+    out["deleted_hosts"] = hostdelete.purge_due(db)
     cutoff = now - dt.timedelta(days=cfg.job_logs_days)
     for job in db.scalars(select(Job).where(Job.state.in_(FINISHED), Job.finished_at < cutoff, Job.log_path != "")):
         p = Path(job.log_path)

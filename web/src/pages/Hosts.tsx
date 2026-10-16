@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { Alert, Chip, Link, Stack, Table, TableBody, TableCell, TableHead, TableRow } from "@mui/material";
-import { api, KvmHost } from "../api";
+import { Alert, Chip, Link, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { api, fmtTime, KvmHost } from "../api";
+import { ActionButton } from "../components/Confirm";
 import { hasRole, useAuth } from "../App";
 import { ListHeader } from "../components/PageParts";
 
@@ -14,9 +15,12 @@ export default function Hosts() {
   const isAdmin = hasRole(me, "admin");
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [error, setError] = useState("");
-  useEffect(() => {
+  const [deleted, setDeleted] = useState<{ id: number; name: string; deleted_at: string; deleted_by: string; purge_on: string }[]>([]);
+  const load = () => {
     api.get<KvmHost[]>("/api/hosts").then(setHosts, (e) => setError(e.message));
-  }, []);
+    if (isAdmin) api.get<typeof deleted>("/api/hosts/deleted").then(setDeleted, () => setDeleted([]));
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Stack spacing={2}>
       <ListHeader title="KVM hosts" canAdd={isAdmin} addTo="/admin/hosts/new" addLabel="Register host"
@@ -53,6 +57,32 @@ export default function Hosts() {
           {hosts.length === 0 && <TableRow><TableCell colSpan={7}>No KVM hosts you can use.</TableCell></TableRow>}
         </TableBody>
       </Table>
+      {isAdmin && deleted.length > 0 && (
+        <Stack spacing={1}>
+          <Typography variant="h6">Deleted hosts</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Hidden everywhere. A deleted host can be restored until its day below (Settings → History sets how long); then it is removed for good.
+            Nothing was changed on the hosts themselves.
+          </Typography>
+          <Table size="small">
+            <TableHead><TableRow><TableCell>Name</TableCell><TableCell>Deleted</TableCell><TableCell>By</TableCell><TableCell>Removed for good</TableCell><TableCell /></TableRow></TableHead>
+            <TableBody>
+              {deleted.map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell>{d.name}</TableCell><TableCell>{fmtTime(d.deleted_at)}</TableCell><TableCell>{d.deleted_by}</TableCell>
+                  <TableCell>{fmtTime(d.purge_on)}</TableCell>
+                  <TableCell align="right">
+                    <ActionButton size="small" tip="Bring the host back (turned off until you enable it)"
+                      confirm={{ title: `Restore ${d.name}?`, confirmLabel: "Restore",
+                        body: "The host comes back in the list, turned off. Check its access, then enable it in its settings." }}
+                      onClick={() => api.post(`/api/hosts/${d.id}/restore`).then(load, (e) => setError(e.message))}>Restore</ActionButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Stack>
+      )}
     </Stack>
   );
 }

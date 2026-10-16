@@ -21,7 +21,7 @@ from ..db import get_db
 from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
-from ..engine import hostadmin, hostpools, hostpower
+from ..engine import hostadmin, hostdelete, hostpools, hostpower
 from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
@@ -77,6 +77,43 @@ def _resources(db: Session, host_id: int, demand: dict | None = None) -> dict:
 @router.get("")
 def list_hosts(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     return [{**_out(h), "resources": _resources(db, h.id)} for h in visible_hosts(db, p)]
+
+
+@router.get("/deleted")
+def deleted_hosts(db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
+    """Hosts that were deleted and can still be restored, with the day each is purged (design \u00a755)."""
+    return [{"id": h.id, "name": h.name, "libvirt_uri": h.libvirt_uri, "deleted_at": h.deleted_at, "deleted_by": h.deleted_by,
+             "purge_on": hostdelete.purge_on(db, h)} for h in hostdelete.deleted_hosts(db)]
+
+
+@router.post("/{host_id}/restore")
+def restore_host(host_id: int, request: Request, db: Session = Depends(get_db),
+                 p: Principal = Depends(require_roles("admin"))):
+    """Bring a deleted host back (turned off until you turn it on in its settings)."""
+    h = hostdelete.get_deleted(db, host_id)
+    if h is None:
+        raise HTTPException(status_code=404, detail="No such deleted host (it may have been purged)")
+    if db.scalar(select(KvmHost.id).where(KvmHost.name == h.name)) is not None:
+        raise FieldError("name", f"A host named {h.name} exists now: rename it first.")
+    hostdelete.restore(db, h)
+    audit(db, p.username, "host.restore", object_type="kvm_host", object_id=h.id, detail={"name": h.name}, source_ip=client_ip(request))
+    return _out(h)
+
+
+@router.delete("/{host_id}")
+def delete_host(host_id: int, request: Request, db: Session = Depends(get_db),
+                p: Principal = Depends(require_roles("admin"))):
+    """Delete a host: hidden now, restorable and then purged after the retention period (Settings \u2192 History).
+    Nothing changes on the host itself."""
+    h = _host(db, host_id)
+    problems = hostdelete.blockers(db, h)
+    if problems:
+        raise FieldError("host", "It can't be deleted yet: " + "; ".join(problems) + ".", status_code=409)
+    hostdelete.soft_delete(db, h, p.username)
+    days = hostdelete.retention_days(db)
+    audit(db, p.username, "host.delete", object_type="kvm_host", object_id=h.id,
+          detail={"name": h.name, "purge_on": str(hostdelete.purge_on(db, h))}, source_ip=client_ip(request))
+    return {"ok": True, "retention_days": days, "purge_on": hostdelete.purge_on(db, h)}
 
 
 @router.get("/worker-key")

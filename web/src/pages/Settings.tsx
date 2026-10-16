@@ -11,7 +11,7 @@ import { ActionButton } from "../components/Confirm";
 import { useMaintenance } from "../components/Maintenance";
 
 interface Backup { enabled: boolean; time_of_day: string; retention_days: number; directory: string }
-interface Retention { job_logs_days: number; audit_days: number; errors_days: number }
+interface Retention { job_logs_days: number; audit_days: number; errors_days: number; deleted_hosts_days: number }
 interface Syslog {
   enabled: boolean; host: string; port: number; protocol: "udp" | "tcp" | "tls"; facility: string; app_name: string;
   verify_tls: boolean; client_cert: boolean;
@@ -563,7 +563,7 @@ export default function Settings() {
         )}
       </Section>
 
-      <Section title="History" intro="How long to keep job logs, the audit trail and user errors. The worker purges once a day."
+      <Section title="History" intro="How long to keep job logs, the audit trail, user errors and deleted KVM hosts. The worker purges once a day."
         onSave={async () => { await put("retention", s.retention); return "Retention saved."; }}>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <Field label="Job logs (days)" type="number" value={s.retention.job_logs_days} sx={{ width: 160 }} help="1-3650"
@@ -572,6 +572,9 @@ export default function Settings() {
             onChange={(e) => set("retention", { audit_days: num(e.target.value) })} />
           <Field label="User errors (days)" type="number" value={s.retention.errors_days} sx={{ width: 160 }} help="1-3650"
             onChange={(e) => set("retention", { errors_days: num(e.target.value) })} />
+          <Field label="Deleted KVM hosts (days)" type="number" value={s.retention.deleted_hosts_days} sx={{ width: 200 }}
+            help="1-3650; how long a deleted host can be restored"
+            onChange={(e) => set("retention", { deleted_hosts_days: num(e.target.value) })} />
         </Stack>
       </Section>
 

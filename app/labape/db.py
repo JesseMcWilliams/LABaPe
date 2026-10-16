@@ -4,7 +4,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import event
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, with_loader_criteria
 
 from .config import get_settings
 
@@ -23,6 +24,16 @@ def engine():
         _engine = create_engine(get_settings().database_url, pool_pre_ping=True, future=True)
         _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _hide_deleted_hosts(state) -> None:
+    """A deleted KVM host (design \u00a755) is hidden from every query that selects hosts, so nothing has to remember
+    to filter it; `execution_options={"include_deleted_hosts": True}` shows it (the Deleted hosts list, restore, purge)."""
+    if state.is_select and not state.is_column_load and not state.is_relationship_load \
+            and not state.execution_options.get("include_deleted_hosts"):
+        from .models import KvmHost
+        state.statement = state.statement.options(with_loader_criteria(KvmHost, KvmHost.deleted_at.is_(None), include_aliases=True))
 
 
 def session_factory() -> sessionmaker:
