@@ -7,7 +7,7 @@
 
 ## 0. Update, later on 2026-10-16: Kerberos, time zones, Hyper-V dropped
 
-`main` is at the merge of PR #158 or later; tests **387 passing, 1 skipped**. Merged since the state in §1: PR #157 (below), #158 (D-number note in CLAUDE.md). aPeTemplate PR #8 (the user's personal numbering rules: Q/A for chat, D for document items, reset after 100) is merged too. Nothing is in progress; `[Unreleased]` in `CHANGELOG.md` also holds all of this and still waits for the user's word on a release.
+`main` is at the merge of PR #158 or later; tests **387 passing, 1 skipped**. Merged since the state in §1: PR #157 (below), #158 (D-number note in CLAUDE.md). aPeTemplate PR #8 (the user's personal numbering rules: Q/A for chat, D for document items, reset after 100) is merged too. Nothing is in progress. **v0.5.2 was released** (signed tag on the merge of PR #160; the SBOM is attached) and holds all of this and PRs #151-#154; `[Unreleased]` in `CHANGELOG.md` is empty again. Director (`pi1`) is still on v0.5.1 and needs the Update click.
 
 | What | Where |
 |---|---|
@@ -37,11 +37,10 @@
 
 ## 1. State in one paragraph (as of the first part of 2026-10-16)
 
-`main` is at `ebc96ac` (PR #154), no open PRs, tests **379 passing, 1 skipped** (`pytest app/tests`).
-**v0.5.1** is released (signed tag, release PR #150, SBOM attached). Four changes merged after it and wait in
-`CHANGELOG.md`'s `[Unreleased]` (PRs #151-#154): the rotators' TLS fix with elevated-account health, the installer's
-own-Authentik-login prompt, deleting a KVM host, and the redeploy documentation. **No release is planned yet**:
-the user said "not yet" (2026-10-16) to v0.5.2. No batch is in progress.
+`main` was at `ebc96ac` (PR #154) when this was first written, no open PRs, tests **379 passing, 1 skipped** (`pytest app/tests`).
+**v0.5.1** is released (signed tag, release PR #150, SBOM attached). Four changes merged after it and were
+released in v0.5.2 (PRs #151-#154): the rotators' TLS fix with elevated-account health, the installer's
+own-Authentik-login prompt, deleting a KVM host, and the redeploy documentation. The user then asked for v0.5.2 and it was cut (see §0). No batch is in progress.
 
 ## 2. What was built this session (since v0.4.0)
 
@@ -58,16 +57,16 @@ Design sections are in [Planning_Web-Interface-Design.md](Planning_Web-Interface
 | C1: **Admin page** button per container on the Stack section | #146 | §53.3 | v0.5.1 |
 | D1: **Drive Pools** (mdadm, ZFS, LVM): state, progress, alerts, safe actions | #147 | §53.4 | v0.5.1 |
 | The Authentik administrator (akadmin) password in the secret store: check by signing in, rotate, **Reveal** | #148 | §54 | v0.5.1 |
-| Rotators trust the platform CA; elevated accounts get a weekly check and are restored with akadmin | #151 | §54.1 | **unreleased** |
-| Installer asks for your own Authentik login; `create-admin.sh` | #152 | §54.2 | **unreleased** |
-| Delete a KVM host: soft delete, restore, purge after a retention period (migration 0029) | #153 | §55 | **unreleased** |
-| What a redeploy keeps and when it reinstalls (confirmation, user guide) | #154 | §56 | **unreleased** |
+| Rotators trust the platform CA; elevated accounts get a weekly check and are restored with akadmin | #151 | §54.1 | v0.5.2 |
+| Installer asks for your own Authentik login; `create-admin.sh` | #152 | §54.2 | v0.5.2 |
+| Delete a KVM host: soft delete, restore, purge after a retention period (migration 0029) | #153 | §55 | v0.5.2 |
+| What a redeploy keeps and when it reinstalls (confirmation, user guide) | #154 | §56 | v0.5.2 |
 
 ## 3. What's left
 
 | Item | Where | Note |
 |---|---|---|
-| Release v0.5.2 | `CHANGELOG.md` `[Unreleased]` | Only when the user says. Director then needs the Update click. |
+| Update Director to v0.5.2 | Director's Admin → Updates | The user's click; v0.5.2 is released. The next release: only when the user says. |
 | Director's rotation account | Director's Secrets page | The user is to add the elevated account `authentik-rotator` (token `LABAPE_TEST_ROTATOR_TOKEN` in Director's `tools/authentik-test/.env`) and choose it on the akadmin, directory-token and OIDC rows; steps were given in chat. Until then Director's Authentik rotations are reminders. |
 | Redeploy plan preview | design §56 | A list of VMs a redeploy would replace (an OpenTofu plan before applying) is not built; the user was asked, no answer yet. |
 | Drive Pools actions on real hardware | design §53.4 | Never run on kvm1's RAID10 `md10` (read-only view only); the user was asked, no answer yet. |
