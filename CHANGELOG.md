@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-16
+
+Fixes signing in to Windows machines: the Secrets page and the credentials sheet now show the user name to type (with copy buttons) instead of the secret's name, the downloaded .rdp file names the VM, and the browser RDP window no longer comes up blank on a reconnected session.
+
 ### Fixed
 - An environment's Secrets page has a **Sign in as** column: the user name to type for each account (COMPUTER\Administrator for a Windows member's local account, DOMAIN\user for a domain account), instead of leaving people to type the secret's name (`windows_admin`). The downloaded .rdp file and the credentials sheet name the VM too: a bare `Administrator` on a domain-joined VM is looked up in the client's own domain, so direct RDP failed. Each user name has a copy button, and the environment's credentials sheet shows the Windows local Administrator as `.\Administrator` and each per-VM password with its `COMPUTER\Administrator` user name above it (and masked). The browser session also asks for its size again once connected and fits a reconnected session to the window.
 
