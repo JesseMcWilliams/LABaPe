@@ -1951,3 +1951,13 @@ Questions 167-173. Built batch by batch.
 | Purge | Facts, metrics, stats, samples, alerts, stack status, templates and network attachments of the host are deleted; jobs and remote sessions keep their rows with the host cleared. The row is deleted, or when an environment (even a destroyed one) still points at it, kept as a hidden tombstone (`purged`, name `deleted-<id>`, no addresses), which frees the name. |
 | Not done | Nothing is changed on the host: the worker's key stays authorized there and no software is removed (a later "remove LABaPe from the host" could do that). Migration `0029_host_deleted`. |
 | Verified | pytest (hiding and restore, the refusals, the purge and the tombstone, the setting, the host limit). Live on OZ: the migration applied; deleting kvm1 (primary, this stack's host, used by environments) is refused with the reasons; no real host was deleted (the lab is at its four-host limit, so the full cycle was covered by the tests). |
+
+## 56. What a redeploy replaces (documented 2026-10-16)
+
+| Area | Behavior (from `tofu/modules/vm/libvirt/main.tf`; the Hyper-V module was not checked) |
+|---|---|
+| Reconfigure | Ansible runs again on every VM: managed settings are set back, other changes inside the VM stay. |
+| Reinstall | A VM is a `null_resource` whose triggers are the name, libvirt URI, bridge/network, CPU, memory, disk size, storage path and, for ISO installs, the ISO path and the hash of the rendered answer file (hostname, admin user, addressing, management source, syslog host, Windows edition; the Windows password masked and comments stripped; the Linux files hashed with the SSH key the VM was created with), or, for clones, the template path and the hash of the clone seed. Any change replaces (destroys and recreates) the VM. |
+| Not triggers | The daily VM-key rotation and the Windows bootstrap password rotation (masked), Windows answer-file comments, the MAC address. |
+| Where it comes from | The environment's spec isn't editable after creation (placement and host groups are fixed), so a reinstall in practice follows a change outside it: Settings' management source or syslog address, a new template, a changed network allocation, or a LABaPe update that changes the answer-file templates under `iso/answer-files/` or the clone seed. |
+| Shown to the user | The Redeploy confirmation says this and points to snapshots; the user guide's *What a redeploy keeps*. A plan preview that lists the VMs about to be replaced is not built. |

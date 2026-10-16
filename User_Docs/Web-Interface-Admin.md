@@ -80,7 +80,7 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 **Update and Reboot.** The host's Dashboard has **Update** and **Reboot** buttons, each asking you to confirm first and then following the job.
 - **Update** runs the normal package update (`apt-get update` then `apt-get upgrade`, or `dnf upgrade`; never a release upgrade). The confirmation lists the packages waiting by the host's package lists as they are now; the job refreshes the lists first.
 - **Reboot** waits until no other job is running on that host (and no new job starts there meanwhile), then reboots about a minute later. For a KVM host, LABaPe waits for it to come back and refreshes its facts. On the host this stack runs on, LABaPe is offline until it returns. Running VMs stop with the host.
-- **A reboot from the host itself** (`reboot`, `sudo shutdown`) is not held back by LABaPe: Linux lets root reboot past any lock. Use the Reboot button when jobs may be running.
+- **A reboot from the host itself** (`reboot`, `sudo shutdown`) is not held back by LABaPe: Linux lets root reboot past any lock. Use the Reboot button when jobs may be running (a reboot typed on the host is not held back, by decision).
 
 **Your own Authentik login.** The installer creates an administrator login for you in the Authentik that comes with LABaPe (it asks for the name and a password at the start), so you don't sign in as `akadmin`. On a stack that is already installed run, as the service user on the stack host: `/opt/LABaPe/tools/authentik-test/create-admin.sh <user> <email>` (it asks for the password twice, hidden). The user becomes an Authentik superuser and a LABaPe administrator (group `labape-admins`).
 
