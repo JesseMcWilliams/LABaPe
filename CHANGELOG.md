@@ -7,6 +7,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Fixed
+- An environment's Secrets page has a **Sign in as** column: the user name to type for each account (COMPUTER\Administrator for a Windows member's local account, DOMAIN\user for a domain account), instead of leaving people to type the secret's name (`windows_admin`). The downloaded .rdp file and the credentials sheet name the VM too: a bare `Administrator` on a domain-joined VM is looked up in the client's own domain, so direct RDP failed. Each user name has a copy button, and the environment's credentials sheet shows the Windows local Administrator as `.\Administrator` and each per-VM password with its `COMPUTER\Administrator` user name above it (and masked). The browser session also asks for its size again once connected and fits a reconnected session to the window.
+
 ## [0.5.2] - 2026-10-16
 
 Windows sign-on (Kerberos) for people on domain-joined machines, sign-in that stays on the name the browser used, a time zone for every new environment (which also fixes Windows VMs running hours behind real time), deleting a KVM host, an installer prompt for your own Authentik administrator login, elevated-account health checks, and the decision to drop Hyper-V support.

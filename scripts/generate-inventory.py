@@ -145,6 +145,7 @@ def main() -> int:
     if windows_hosts:
         creds_lines.append(f"## Windows ({', '.join(sorted(windows_hosts))})")
         creds_lines.append("Local Administrator: Administrator")
+        creds_lines.append("On a domain member type the user name as COMPUTER\\Administrator (the VM's name) or .\\Administrator; a bare Administrator is looked up in your PC's own domain or the VM's domain, not on the VM")
         creds_lines.append(
             f"Password: {windows_admin_password}" if windows_admin_password
             else "Password: (not provided to generate-inventory.py — check the vault directly)"

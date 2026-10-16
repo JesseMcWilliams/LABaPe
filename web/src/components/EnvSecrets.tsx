@@ -20,6 +20,7 @@ import { Pager, pageOf, usePageSize } from "./Paging";
 interface EnvSecret {
   name: string; area: "accounts" | "user" | "vm"; vm: string; short: string; store: string; path: string;
   updated_at: string; editable: boolean; rotation: string;
+  login: string;                                                   // the user name to type (not the secret's name)
   connect: { vm: string; protocol: "rdp" | "ssh" | "vnc" }[];      // E2: where the account signs in
   readers: string[];                                               // V2: the VMs that read it themselves
 }
@@ -52,6 +53,7 @@ export default function EnvSecrets({ envId }: { envId: string }) {
   const [data, setData] = useState<SecretList | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState("");
+  const [copiedLogin, setCopiedLogin] = useState("");     // the secret whose user name was just copied
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -104,6 +106,10 @@ export default function EnvSecrets({ envId }: { envId: string }) {
     await copyText(v);
     setCopied(s.name);
     setTimeout(() => setCopied(""), 1500);
+  }, (e) => setError(e.message));
+  const copyLogin = (s: EnvSecret) => copyText(s.login).then(() => {      // a user name isn't a secret: no audit entry
+    setCopiedLogin(s.name);
+    setTimeout(() => setCopiedLogin(""), 1500);
   }, (e) => setError(e.message));
   const save = () => {
     setBusy(true);
@@ -179,7 +185,7 @@ export default function EnvSecrets({ envId }: { envId: string }) {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Name</TableCell><TableCell>VM</TableCell><TableCell>Value</TableCell>
+                      <TableCell>Name</TableCell><TableCell title="The user name to type when you sign in as this account; the Name is only this secret's label">Sign in as</TableCell><TableCell>VM</TableCell><TableCell>Value</TableCell>
                       <TableCell>Changed</TableCell><TableCell>Where</TableCell><TableCell />
                     </TableRow>
                   </TableHead>
@@ -187,6 +193,15 @@ export default function EnvSecrets({ envId }: { envId: string }) {
                     {rows.map((s) => (
                       <TableRow key={s.name}>
                         <TableCell title={s.rotation ? `Rotation: ${s.rotation}` : undefined}>{s.short}</TableCell>
+                        <TableCell sx={{ fontFamily: "monospace", whiteSpace: "nowrap" }}
+                          title={s.login ? "Type this as the user name (the Name column is only this secret's label)" : undefined}>
+                          {s.login || "—"}
+                          {s.login && <Tooltip title={copiedLogin === s.name ? "Copied" : "Copy the user name"}>
+                            <IconButton size="small" aria-label="Copy the user name" onClick={() => copyLogin(s)} sx={{ ml: 0.5 }}>
+                              <ContentCopyIcon fontSize="inherit" color={copiedLogin === s.name ? "success" : undefined} />
+                            </IconButton>
+                          </Tooltip>}
+                        </TableCell>
                         <TableCell title={s.area === "user" && data.vm_access ? "The VMs that read it themselves" : undefined}>
                           {s.vm || (s.area === "user" && data.vm_access ? ((s.readers ?? []).join(", ") || "none") : "—")}
                         </TableCell>
