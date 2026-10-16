@@ -21,6 +21,14 @@
   become: true
   when: ansible_system_vendor | default('') == 'QEMU'
 
+# The environment's time zone (design §52). The VM's hardware clock is UTC, so this only changes how
+# the time is shown; environments from before the option have no labape_timezone and keep UTC.
+- name: Set the environment's time zone
+  community.general.timezone:
+    name: "{{ labape_timezone }}"
+  become: true
+  when: labape_timezone is defined
+
 - name: Union this host's role package lists (raw catalog keys / inline overrides)
   ansible.builtin.set_fact:
     linux_common_raw_packages: "{{ (linux_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"

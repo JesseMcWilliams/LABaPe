@@ -79,7 +79,7 @@ export default function EnvironmentDetail() {
         <Typography variant="h5">{env.name}</Typography>
         <StateChip state={env.status} />
         <Typography variant="body2" color="text.secondary">
-          on {env.kvm_host} · created by {env.created_by} {fmtTime(env.created_at)}
+          on {env.kvm_host}{env.spec.timezone ? ` · ${env.spec.timezone}` : ""} · created by {env.created_by} {fmtTime(env.created_at)}
         </Typography>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}

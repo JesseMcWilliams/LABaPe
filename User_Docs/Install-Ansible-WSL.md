@@ -1,5 +1,7 @@
 # Installing and Configuring Ansible (Windows Host + Hyper-V + WSL2)
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 Same control-machine role as User_Docs/Install-Ansible.md (Ansible doesn't
 run as a control node on Windows, Claude_Docs/Design_System-Overview.md §15) — it just runs inside
 WSL2 on the same physical box as Hyper-V, instead of on a separate

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
 
     # --- service ---
     public_url: str = "https://labape.local"
+    # The other names the stack answers to (comma-separated, container/.env LABAPE_ALT_NAMES): a sign-in
+    # that starts at one of them comes back to it (design §58).
+    alt_names: str = ""
     database_url: str = "postgresql+psycopg://labape:labape@postgres/labape"
     secret_key: str = Field(default="", description="Signs session cookies and encrypts stored secrets")
     session_hours: int = 12

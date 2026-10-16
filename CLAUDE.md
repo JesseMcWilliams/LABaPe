@@ -2,7 +2,7 @@
 
 LABaPe automates end-to-end provisioning and configuration of ephemeral,
 self-hosted lab/test environments (mixed Windows + Linux servers and
-workstations) on Hyper-V or libvirt/KVM, using OpenTofu to provision
+workstations) on libvirt/KVM (Hyper-V support will be dropped, question 175), using OpenTofu to provision
 infrastructure and Ansible to configure the OS, join Active Directory, and
 install software. It's a polyglot repo — OpenTofu/HCL, Bash, Python helpers,
 Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
@@ -15,7 +15,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `HANDOFF.local.md` — session-scratch handoff notes, gitignored (`*.local.md`). Treat as ephemeral, not a source of truth.
 - `Live-Testing.local.md` — gitignored; live-lab connection details, read only for live-testing tasks.
 - `secrets.vault.example.yml` — template shape only; the real `secrets.vault.yml` is gitignored and never committed.
-- `tofu/` — OpenTofu: `backends/{hyperv,libvirt}`, `modules/{vm,network}/{hyperv,libvirt}`, `environments/*.tfvars.example`. Real `.tfvars`/`environment.yml`/state are gitignored.
+- `tofu/` — OpenTofu: `backends/{hyperv,libvirt}`, `modules/{vm,network}/{hyperv,libvirt}` (hyperv is unmaintained and will be removed: don't extend it), `environments/*.tfvars.example`. Real `.tfvars`/`environment.yml`/state are gitignored.
 - `ansible/` — `playbooks/site.yml`, `roles/`, `package_catalog.yml` (committed catalog); real per-run manifests are gitignored.
 - `packer/{windows,linux}/` — base-image templates (Claude_Docs/Design_Base-Images.md).
 - `iso/answer-files/` — unattended-install answer files shared by Packer/direct-ISO-boot/template promotion.
@@ -51,11 +51,11 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Design_Base-Images.md`, `Design_Directory-Objects.md`, `Design_Software-Manifest.md`: detail docs for the matching `Design_System-Overview.md` sections.
   - `Reference_Credentials.md`, `Reference_Networking.md`, `Reference_Validate-Setup.md`: interface contracts / stable checklists.
   - `Reference_SBOM.md` (and `sbom/labape.cdx.json`): every package, tool and image LABaPe uses, with versions and licenses. Generated: after changing a dependency (pyproject, package-lock, Dockerfile, compose, `deploy/labape_deploy/steps.py`) run `python tools/helpers/sbom.py`; for new Python or image versions run `tools/helpers/sbom_snapshot.py` first (needs `LABAPE_LAB_SSH`). A test fails when it is stale, and `release.sh` regenerates it at every release (design §51). Python dependencies are locked in `container/requirements.txt` (hashes; `tools/helpers/lock-python.sh`): change `app/pyproject.toml` or `container/requirements.in`, then re-lock; a test fails when a dependency isn't locked.
-  - `Reference_Backend-Parity.md`: libvirt vs Hyper-V feature/interface matrix and the order to close gaps.
+  - `Reference_Backend-Parity.md`: libvirt vs Hyper-V feature/interface matrix (historical: Hyper-V will be dropped, so the gaps stay open).
   - `Reference_Secrets-Backend-Requirements.md`: what a secret store and its LABaPe provider must offer (interface, paths, TLS, least privilege, rotation, failures, tests).
   - `Planning_Certificate-Authority.md`, `Planning_Environment-Templates.md`: proposals for the `certificate_authority` role and environment templates, not built yet (Design_System-Overview.md §19/§20). The web stack's own platform CA is built (Planning_Web-Interface-Design.md §22.5).
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
-  - `Planning_Backlog.md`: agreed but deferred work (Hyper-V parity, `.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
+  - `Planning_Backlog.md`: agreed but deferred work (`.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
   - `Planning_Lists-Secrets-Settings.md`: the round of 2026-10-14 (paging and exports, filters, a stack's names and SANs, secret health, sections for Secrets and Settings), batch by batch.
   - `Planning_Handoff-2026-10-15.md`: where LABaPe stands (v0.4.0, V2), what's left, the lab's state and the gotchas; read it first when resuming.
   - `Planning_Access-Mail-Updates-Files.md`: the next round's list (2026-10-14): Secrets paging, connecting as an account, a lab mail server, Catalog → Updates, new packages, files per KVM host, monitoring tools; questions 167-173.

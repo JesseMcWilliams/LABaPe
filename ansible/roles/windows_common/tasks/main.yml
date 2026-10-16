@@ -25,6 +25,34 @@
     expected_return_code: [0, 3010]
   when: ansible_system_vendor | default('') == 'QEMU'
 
+# The environment's time zone (design §52). VMs get a UTC hardware clock, so Windows is told to read
+# it as UTC, then given the zone; the clock is corrected from the controller if the install left it
+# off (an install under another clock setting can). Environments from before the option have no
+# labape_timezone and are left alone.
+- name: Tell Windows the hardware clock is UTC
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation
+    name: RealTimeIsUniversal
+    data: 1
+    type: dword
+  when: labape_timezone is defined and ansible_system_vendor | default('') == 'QEMU'
+
+- name: Set the environment's time zone
+  ansible.windows.win_timezone:
+    timezone: "{{ labape_windows_timezone }}"
+  when: labape_timezone is defined
+
+- name: Correct the clock when it is more than two minutes off
+  ansible.windows.win_shell: |
+    $want = [DateTimeOffset]::FromUnixTimeSeconds({{ lookup('pipe', 'date -u +%s') }})
+    if ([Math]::Abs(($want - [DateTimeOffset]::UtcNow).TotalSeconds) -gt 120) {
+      Set-Date -Date $want.LocalDateTime | Out-Null
+      'clock set'
+    }
+  register: windows_common_clock
+  changed_when: "'clock set' in windows_common_clock.stdout"
+  when: labape_timezone is defined and ansible_system_vendor | default('') == 'QEMU'
+
 - name: Union this host's role package lists (raw catalog keys / inline overrides)
   ansible.builtin.set_fact:
     windows_common_raw_packages: "{{ (windows_common_raw_packages | default([])) + (software_manifest_roles[item] | default([])) }}"

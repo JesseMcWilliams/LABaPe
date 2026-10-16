@@ -39,7 +39,7 @@ from ..models import CatalogItem, Environment, HostNetwork, IpAllocation, Job, K
 from ..catalog import expand
 from ..files import iso_paths, roots
 from ..naming import instance_names
-from .. import linux_desktop, mail_server, openbao_vms, spread, vm_passwords
+from .. import linux_desktop, mail_server, openbao_vms, spread, timezones, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
@@ -341,6 +341,10 @@ def prepare(db: Session, env: Environment, host: KvmHost, only: list[dict] | Non
     env_file = work / "environment.yml"
     env_yml = yaml.safe_load(env_file.read_text(encoding="utf-8")) or {}
     env_yml["linux_admin_user"] = spec.get("linux_admin_user") or "labape"
+    # The environment's time zone (design §52): Ansible sets it; environments from before it have none.
+    if spec.get("timezone"):
+        env_yml["timezone"] = spec["timezone"]
+        env_yml["windows_timezone"] = timezones.windows_name(spec["timezone"])
     env_file.write_text(yaml.safe_dump(env_yml, sort_keys=False), encoding="utf-8")
     # The environment's own accounts (design §42) join the directory manifest, their passwords the vault.
     from .. import env_accounts

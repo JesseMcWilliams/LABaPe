@@ -9,10 +9,12 @@ makes the file win again.
 from __future__ import annotations
 
 import hashlib
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from authlib.integrations.starlette_client import OAuth
 from fastapi import HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from .. import ca
@@ -60,6 +62,38 @@ def check_client_secret(client_id: str, secret: str, timeout: float = 15) -> Non
         raise RuntimeError(f"the token endpoint answered HTTP {r.status_code} {error or '(no OAuth error)'}")
 
 
+def stack_names() -> list[str]:
+    """Every name the stack answers to, lower case: LABAPE_HOSTNAME (the public URL's) first, then LABAPE_ALT_NAMES."""
+    s = get_settings()
+    names = [(urlsplit(s.public_url).hostname or "").lower()]
+    names += [n.strip().lower() for n in s.alt_names.split(",") if n.strip()]
+    return [n for i, n in enumerate(names) if n and n not in names[:i]]
+
+
+def request_name(request: Request) -> str:
+    """The name the browser used to reach this stack when it is one of the stack's own, else the main name.
+    Sign-in then stays on that name end to end (Kerberos needs the full host name, design §58)."""
+    host = urlsplit("//" + (request.headers.get("host") or "")).hostname or ""
+    names = stack_names()
+    return host if host in names else (names[0] if names else "")
+
+
+def public_base(request: Request) -> str:
+    """https://<name the browser used>[:port] (the public URL's scheme and port)."""
+    u = urlsplit(get_settings().public_url)
+    name = request_name(request) or (u.hostname or "")
+    return urlunsplit((u.scheme, f"{name}:{u.port}" if u.port else name, "", "", "")).rstrip("/")
+
+
+def _on_name(url: str, name: str) -> str:
+    """`url` with its host replaced by `name` (its port kept): Authentik answers on every name of the stack."""
+    p = urlsplit(url)
+    if not name or (p.hostname or "").lower() == name:
+        return url
+    host = f"[{name}]" if ":" in name else name
+    return urlunsplit((p.scheme, f"{host}:{p.port}" if p.port else host, p.path, p.query, p.fragment))
+
+
 def _client():
     global _oauth
     s = get_settings()
@@ -91,9 +125,14 @@ class OidcProvider(AuthProvider):
 
     async def begin_login(self, request: Request, silent: bool = False):
         """silent: prompt=none, for Reload rights (re-reads groups without a login page)."""
-        redirect_uri = get_settings().public_url.rstrip("/") + "/api/auth/oidc/callback"
+        # The browser goes to Authentik and back on the name it used here (design §58); the server-side calls
+        # (metadata, token, keys) keep using the configured issuer.
+        redirect_uri = public_base(request) + "/api/auth/oidc/callback"
         extra = {"prompt": "none"} if silent else {}
-        return await _client().authorize_redirect(request, redirect_uri, **extra)
+        client = _client()
+        rv = await client.create_authorization_url(redirect_uri, **extra)
+        await client.save_authorize_data(request, redirect_uri=redirect_uri, **rv)
+        return RedirectResponse(_on_name(rv["url"], request_name(request)), status_code=302)
 
     async def complete_login(self, request: Request) -> Identity:
         try:

@@ -12,8 +12,8 @@ Planning_Questions.md.
 
 | # | Batch | What | Why here |
 |---|---|---|---|
-| 16 | Kerberos sign-on | Question 29; question 154: later. The logo (question 68) is done (§44). | Later |
-| 17 | Hyper-V parity | Later (question 155). Questions 11-14; the order inside is in Reference_Backend-Parity.md (interface parity and `deploy.sh`, the boot-order fix, Windows, the Debian family, templates, the ownership guard); physical host or the nested `hvhost1` VM decided when it starts. | |
+| 16 | Kerberos sign-on | Built 2026-10-16 (design §58); still to do: a browser test from `l2win1`, an installer step or Settings page for the domain side. | Built (manual recipe) |
+| 17 | Hyper-V parity | **Dropped (2026-10-16, question 175):** Hyper-V support will be removed, so the gaps are not closed. Questions 11-14 and 155 are superseded; Reference_Backend-Parity.md stays as history. | Dropped |
 | 18 | User docs | The user-docs backlog is done (2026-10-14: Web-Interface-Guide.md and Web-Interface-Admin.md cover everything to §44). The published `.docx` guides wait (question 24: later); `release.sh --docx` makes them from `User_Docs/` with pandoc when they start. | |
 
 **Next round (2026-10-14):** lists, secrets and settings, in [Planning_Lists-Secrets-Settings.md](Planning_Lists-Secrets-Settings.md) (batches L1, L2, N1, S1, S2, S3). v0.4.0 not yet (the user, 2026-10-14).

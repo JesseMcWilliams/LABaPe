@@ -1,5 +1,7 @@
 # Installing and Configuring Ansible (Debian 13)
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 Control-machine only (Claude_Docs/Design_System-Overview.md §15) — Ansible doesn't run as a control
 node on Windows, so this never targets the Hyper-V host or a Windows
 VM, only the same Linux/WSL box `tofu` runs on.
