@@ -22,11 +22,15 @@ fi
 LABAPE_HOSTNAME_ARG=""
 PUBLIC_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
 CONFIGURE=false
+ADMIN_USER=""
+ADMIN_EMAIL=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --labape-hostname) LABAPE_HOSTNAME_ARG="${2:?}"; shift ;;
     --public-host) PUBLIC_HOST="${2:?}"; shift ;;
     --configure-labape) CONFIGURE=true ;;
+    --admin-user) ADMIN_USER="${2:?}"; shift ;;
+    --admin-email) ADMIN_EMAIL="${2:?}"; shift ;;
     --down) $COMPOSE down -v; rm -f .env; echo "authentik-test: removed."; exit 0 ;;
     *) sed -n '2,16p' "$0" >&2; exit 1 ;;
   esac
@@ -112,6 +116,14 @@ role.assign_perms(['authentik_core.view_user', 'authentik_core.change_user', 'au
                   obj=User.objects.get(username='akadmin'))
 print('authentik-test: labape-token-rotator may set the directory token key, the client secret and akadmin password')
 " 2>/dev/null | tail -1 || echo "authentik-test: couldn't grant the rotator its permissions (see $COMPOSE logs worker)" >&2
+
+# Your own administrator login, so akadmin isn't the one people use (--admin-user, --admin-email; the password
+# comes on standard input, from the installer's prompt). Skipped without a user name or a password.
+if [ -n "$ADMIN_USER" ] && [ ! -t 0 ]; then
+  bash ./create-admin.sh "$ADMIN_USER" "${ADMIN_EMAIL:-$ADMIN_USER@$PUBLIC_HOST}" || echo "authentik-test: couldn't create $ADMIN_USER; run tools/authentik-test/create-admin.sh later" >&2
+elif [ -n "$ADMIN_USER" ]; then
+  echo "authentik-test: no password given for $ADMIN_USER; create the login with tools/authentik-test/create-admin.sh $ADMIN_USER <email>"
+fi
 
 # akadmin's first password lives in the stack's secret store from here on (Secrets -> Authentik administrator),
 # where LABaPe checks and rotates it; the plain copy in .env is removed once it is stored. Best effort: with the

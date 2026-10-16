@@ -127,8 +127,10 @@ STEP_NAMES = [s[0] for s in STEPS]
 CONDITIONAL_NEEDS = {
     "Stack.Services": lambda a: ["SyslogBind"] if a.need("InstallSyslog") else [],
     "Stack.Stores": lambda a: ["PlatformStore"] if a.need("InstallConjur") else [],
-    "Stack.Auth": lambda a: [] if a.need("InstallAuthentik") else (
-        ["AuthMode"] + (["OidcIssuer", "OidcClientId"] if a.need("AuthMode") == "existing" else [])),
+    "Stack.Auth": lambda a: ["AuthentikAdminUser"] + (["AuthentikAdminEmail"] if a.answers.get("AuthentikAdminUser") else []) if a.need("InstallAuthentik") else (
+        ["AuthMode"] + (["OidcIssuer", "OidcClientId"] if a.need("AuthMode") == "existing" else [])
+        + (["AuthentikAdminUser"] + (["AuthentikAdminEmail"] if a.answers.get("AuthentikAdminUser") else [])
+           if a.need("AuthMode") == "test-authentik" else [])),
     "Stack.Bootstrap": lambda a: ["RemoteKvmUri"] if a.need("Profile") == "web" else [],
 }
 
@@ -309,6 +311,8 @@ def main(argv=None) -> int:
             print("Nothing changed. Run again to change the answers (the saved ones are kept only after a confirmed run).")
             return 1
     state.save_answer_file(answers_path, a.answers, args.dry_run)
+    if not args.dry_run and any(s[0] == "Stack.Auth" for s in selected):
+        S.ask_authentik_admin_password(a)             # before anything runs; kept in memory only
     print(f"Answers saved to {answers_path} (reuse with --config-file, or --resume after a failure).")
 
     runner = Runner(args.dry_run, a.answers.get("ServiceUser"))

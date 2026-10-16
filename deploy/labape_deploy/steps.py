@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import getpass
 import os
 import platform
 import secrets
@@ -690,6 +691,31 @@ def stack_services(c: Ctx):
     return DONE, f"optional services: {', '.join(chosen) or 'none'}" + ("" if text is None else " (others parked)")
 
 
+def ask_authentik_admin_password(a) -> None:
+    """The password for the Authentik administrator login the installer creates (AuthentikAdminUser), asked once
+    before the steps run: from LABAPE_AUTHENTIK_ADMIN_PASSWORD for an unattended run, else at the terminal (twice,
+    hidden). Kept in memory only (`a.secret_inputs`), never in the answers file or the log."""
+    if not a.answers.get("AuthentikAdminUser") or a.secret_inputs.get("AuthentikAdminPassword"):
+        return
+    pw = os.environ.get("LABAPE_AUTHENTIK_ADMIN_PASSWORD", "")
+    if not pw and a.interactive:
+        while True:
+            pw = getpass.getpass(f"Password for the Authentik login {a.answers['AuthentikAdminUser']} (12 or more characters): ")
+            if len(pw) < 12:
+                print("  at least 12 characters")
+                continue
+            if pw != getpass.getpass("Again: "):
+                print("  the two differ")
+                continue
+            break
+    if len(pw) < 12:
+        print(f"note: no password for the Authentik login {a.answers['AuthentikAdminUser']} (set LABAPE_AUTHENTIK_ADMIN_PASSWORD "
+              "for an unattended run): create it later with tools/authentik-test/create-admin.sh; until then akadmin is the only "
+              "administrator.")
+        return
+    a.secret_inputs["AuthentikAdminPassword"] = pw
+
+
 def stack_auth(c: Ctx):
     cdir = c.repo / "container"
     # Authentik installed with LABaPe is its sign-in provider; otherwise the chosen mode, by
@@ -699,9 +725,14 @@ def stack_auth(c: Ctx):
         return NA, "no sign-in provider; use `labape breakglass enable` for admin access"
     if mode in ("authentik", "test-authentik"):
         # As root: Podman runs rootful here, like the LABaPe stack.
-        c.r.run(["bash", str(c.repo / "tools" / "authentik-test" / "deploy.sh"), "--labape-hostname",
-                 c.a.need("WebHostname"), "--public-host", c.a.need("WebHostname"), "--configure-labape"],
-                env={"COMPOSE": " ".join(c.compose)})
+        admin = c.a.need("AuthentikAdminUser")
+        password = c.a.secret_inputs.get("AuthentikAdminPassword", "") if admin else ""
+        cmd = ["bash", str(c.repo / "tools" / "authentik-test" / "deploy.sh"), "--labape-hostname",
+               c.a.need("WebHostname"), "--public-host", c.a.need("WebHostname"), "--configure-labape"]
+        if admin:
+            cmd += ["--admin-user", admin, "--admin-email", c.a.need("AuthentikAdminEmail")]
+        # The password goes in on standard input (never on a command line or in the answers file).
+        c.r.run(cmd, env={"COMPOSE": " ".join(c.compose)}, input=(password + "\n") if password else "")
         return DONE, ("Authentik installed with LABaPe and wired in (tools/authentik-test)" if mode == "authentik"
                       else "throwaway Authentik deployed and wired in for the first sign-in (tools/authentik-test)")
     _set_env(c, cdir / ".env", {"LABAPE_OIDC_ISSUER": c.a.need("OidcIssuer"),

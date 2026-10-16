@@ -12,6 +12,7 @@ import getpass
 import ipaddress
 import os
 import platform
+import re
 import socket
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -130,6 +131,15 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
            "(break-glass only)", kind="choice", choices=("existing", "test-authentik", "none"), default="test-authentik"),
     Answer("OidcIssuer", "OIDC issuer URL (e.g. https://authentik.example/application/o/labape/)"),
     Answer("OidcClientId", "OIDC client ID", default="labape"),
+    # Your own Authentik administrator login, created with the Authentik that comes with LABaPe, so people don't
+    # sign in as akadmin (which stays for LABaPe's own checks and rotation). The password is asked separately,
+    # once, before the steps run, and is never saved (install-labape.py, steps.ask_authentik_admin_password).
+    Answer("AuthentikAdminUser", "Your own Authentik administrator login (akadmin stays for LABaPe's own use)", default=lambda a: (a.get("ServiceUser") or "").replace("_", "") or "admin", optional=True,
+           validate=lambda v: None if not v or (re.fullmatch(r"[a-z][a-z0-9_.-]{1,31}", str(v)) and v != "akadmin")
+           else "lower case letters, digits, . _ - (2-32, starting with a letter), and not akadmin"),
+    Answer("AuthentikAdminEmail", "Email address for that login",
+           default=lambda a: f"{a.get('AuthentikAdminUser') or 'admin'}@{a.get('WebHostname') or 'labape.local'}",
+           validate=lambda v: None if "@" in str(v) else "an email address"),
     Answer("AdminGroups", "Authentik groups that get the admin role, besides labape-admins", kind="list", default=lambda a: []),
     # Templates are built from the web interface (question 129); an answer file may still list some.
     Answer("TemplatesToBuild", "Templates to build now, as os-key:name (e.g. rocky9:rocky9-base-2026.10); empty for none",
@@ -151,6 +161,7 @@ class Resolver:
     answered: set = field(default_factory=set)
     interactive: bool = True
     prompted: list = field(default_factory=list)       # names asked this run, in order
+    secret_inputs: dict = field(default_factory=dict)  # passwords asked this run: in memory only, never saved
 
     def add(self, source: dict, overwrite: bool = False) -> None:
         for k, v in source.items():

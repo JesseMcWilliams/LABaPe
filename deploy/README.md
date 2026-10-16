@@ -115,6 +115,7 @@ Nothing secret is ever written to the answers file.
 | `PlatformStore` | Which store holds LABaPe's own secrets: `openbao` or `conjur` (asked only when Conjur is installed). Written to `LABAPE_PLATFORM_STORE` in `container/.env`; change it there and re-run `container/stores/stores.sh setup` to move them. | `openbao` |
 | `AuthMode` | Only when Authentik isn't installed with LABaPe: `existing`, `test-authentik` (a throwaway for the first sign-in) or `none` | `test-authentik` |
 | `OidcIssuer`, `OidcClientId` | For `AuthMode=existing` | (prompted), `labape` |
+| `AuthentikAdminUser`, `AuthentikAdminEmail` | Your own Authentik administrator login, created with the Authentik that comes with LABaPe (a superuser and a LABaPe admin). The password is asked once at the start, never saved; unattended runs give it in `LABAPE_AUTHENTIK_ADMIN_PASSWORD`, else the login is skipped with a note | the service user; `<user>@<WebHostname>` |
 | `AdminGroups` | Extra groups mapped to admin | none |
 | `TemplatesToBuild` | Answer file only (templates are built from the web interface), e.g. `["rocky9:rocky9-base-2026.10", "windows_server_2022:win2022-core-2026.10:core"]` | none |
 | `TofuVersion`, `PackerVersion`, `AnsibleCoreVersion` | Toolchain versions (match `container/Dockerfile`) | pinned |
