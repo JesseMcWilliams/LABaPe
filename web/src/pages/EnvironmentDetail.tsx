@@ -112,7 +112,21 @@ export default function EnvironmentDetail() {
               title: `${env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"} ${env.name}?`,
               body: env.status === "destroyed" || env.status === "new"
                 ? `A job creates the ${env.spec.host_groups.reduce((n, g) => n + (g.count ?? 1), 0)} VM(s) on ${env.kvm_host}, then runs Ansible on them. It can take from minutes (templates) to an hour or more (Windows ISO installs).`
-                : "A job runs OpenTofu and Ansible again: missing VMs are created and every VM is reconfigured. Existing VMs aren't reinstalled.",
+                : (
+                  <Stack spacing={1}>
+                    <Typography variant="body2">
+                      A job runs OpenTofu and Ansible again: missing VMs are created and every VM is reconfigured. Things you changed inside a VM stay,
+                      except settings LABaPe manages, which are set back.
+                    </Typography>
+                    <Typography variant="body2">
+                      An existing VM is <b>reinstalled</b> (everything on it is lost) only if what it was installed from changed: its OS image or template,
+                      CPU, memory or disk size, network, host or storage, or its install answers (name, administrator user, addressing, the management and
+                      syslog addresses in Settings, or the answer files that come with a LABaPe update). Rotating the VM key or the Windows bootstrap
+                      password doesn&apos;t reinstall anything.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">Not sure? Snapshot the VMs first.</Typography>
+                  </Stack>
+                ),
               confirmLabel: env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy",
             }}>
             {env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"}

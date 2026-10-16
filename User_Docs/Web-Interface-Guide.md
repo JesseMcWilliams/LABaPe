@@ -92,7 +92,7 @@ The environment's page shows its state, its host groups with each VM's address, 
 
 | Action | What it does |
 |---|---|
-| **Deploy** / **Redeploy** | Runs OpenTofu and Ansible. A redeploy creates missing VMs and reconfigures existing ones; it doesn't reinstall them. |
+| **Deploy** / **Redeploy** | Runs OpenTofu and Ansible. A redeploy creates missing VMs and reconfigures existing ones. It reinstalls an existing VM only if what it was installed from changed (see *What a redeploy keeps*, below). |
 | **Destroy** | Deletes every VM, its disks and the OpenTofu workspace, and releases its addresses. It can't be undone. |
 | **Show credentials** | The tester accounts and passwords (see below). |
 | **Refresh addresses** | Only for environments with DHCP VMs: looks up each DHCP VM's current address and rewrites the inventory and hosts entries. No VM is changed. |
@@ -114,6 +114,11 @@ Linux VMs have no admin password: Ansible signs in with an SSH key (the admin us
 **VMs.** The **VMs** panel lists each VM's state and whether its guest agent answers. Owners can **Start**, **Shut down**, **Restart** and **Force off** one VM or all of them, as a job:
 - A shutdown asks the guest to shut down cleanly and waits (5 minutes by default). Tick **Force off after the timeout** to power off a VM that doesn't. **Force off** is like pulling the plug.
 - **Start order**: VMs start group by group, lowest number first (domain controllers are 1, everything else 2, unless you change it). A group can wait until each of its VMs' guest agents answers, and then a delay, before the next group starts. Shutdowns go in reverse order.
+**What a redeploy keeps.** A redeploy doesn't wipe an existing VM: things you changed inside it stay, files, installed programs and data included. Two things can still change them:
+- **LABaPe manages the setting.** The software roles, accounts, desktop sessions and other configuration of the environment are applied again, so a managed setting you changed by hand is set back to what LABaPe has (a package you installed or a file LABaPe doesn't manage is left alone).
+- **The VM is reinstalled.** A VM is built once from an install recipe, and it is thrown away and built again (everything on it is lost) when that recipe changes: its operating system image or template, its CPU, memory or disk size, its network, host or storage folder, or its install answers: name, administrator user, addressing (IP address, gateway, DNS), the management source and syslog address from Settings, a Windows edition, and the answer files that ship with LABaPe (an update that changes them reinstalls VMs on their next redeploy). Rotating the VM key or the Windows bootstrap password, comments in the Windows answer files, and the VM's MAC address do not.
+If you aren't sure, turn on automatic snapshots before a redeploy (Settings) or snapshot the VMs first. This is how the KVM deployment behaves; Hyper-V's was not checked.
+
 - **RDP** opens a Remote Desktop session to a Windows VM in the browser, **.rdp** downloads a file for your own client (it asks for the password), and **SSH** opens a terminal to a Linux VM in the browser. Your admin may record these sessions (the session page says so) and closes idle ones after a while. Windows VMs deployed before Remote Desktop was turned on need a **Redeploy** first.
 - **Move host group** (with more than one KVM host): moves a group's VMs to another host while they run; memory and disks are copied, so a big disk takes a while. The VMs must be running and have no snapshots, and the other host must carry the group's network. A deploy follows on its own to record the new host. The VMs list shows each VM's KVM host when they're on more than one.
 
