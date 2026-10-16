@@ -100,6 +100,7 @@ virt-install \
   --network "bridge=${BRIDGE_DEVICE},model=${nic_model},mac=${MAC_ADDRESS}" \
   --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
   "${os_variant_args[@]}" \
+  --clock offset=utc \
   "${graphics[@]}" \
   --noautoconsole \
   --metadata "description=${workspace_tag}" \

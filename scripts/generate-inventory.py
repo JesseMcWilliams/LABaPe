@@ -67,6 +67,9 @@ def main() -> int:
             "vars": {
                 "domain_name": domain_name,
                 "netbios_name": netbios_name,
+                # The environment's time zone (design §52); absent for environments from before it.
+                **({"labape_timezone": env["timezone"],
+                    "labape_windows_timezone": env.get("windows_timezone") or "UTC"} if env.get("timezone") else {}),
             },
             "children": {g: {"hosts": {}} for g in ALL_ROLE_GROUPS},
         }

@@ -37,7 +37,7 @@ with akadmin() as ak:
 
     mappings = [m["pk"] for m in ak.get(f"{AK_BASE}/api/v3/propertymappings/source/kerberos/").json()["results"]]
     body = {
-        "name": "lab2 Windows sign-on", "slug": SLUG, "enabled": True, "promoted": False,
+        "name": "Sign in with Windows", "slug": SLUG, "enabled": True, "promoted": True,
         "realm": REALM, "user_property_mappings": mappings,
         "authentication_flow": pk("flows/instances/", slug="default-source-authentication"),
         "enrollment_flow": pk("flows/instances/", slug="default-source-enrollment"),

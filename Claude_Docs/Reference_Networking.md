@@ -1,5 +1,7 @@
 # Networking: Bridged (default), NAT (opt-in), and Pre-flight Checks
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 This documents the mechanics behind Claude_Docs/Design_System-Overview.md §14. Default mode is
 **bridged** — environment VMs go straight on your physical LAN. NAT
 isolation is supported as an opt-in for environments that want it, and

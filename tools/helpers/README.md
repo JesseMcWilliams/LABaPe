@@ -175,3 +175,11 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `live/krb_source.py <env> <DC>` | lab (container) | Create or update (`--remove` deletes) the test Authentik's Kerberos source `lab2-kerberos`; reads the keytab from the DC and deletes it there |
 | `live/krb_negotiate.py <env> <DC> <secret> <user>` | lab (container) | Sign in as an AD user through SPNEGO (`curl --negotiate` in a scheduled task) and finish Authentik's enrollment flow |
 | `live/krb_schema.py`, `krb_users.py`, `ak_admin.py` | lab (container) | Read-only: the Kerberos source's fields; users the source created; the akadmin client the others import |
+| `live/krb_ldap.py <env> <DC> [--remove]` | lab (container) | AD groups `lab2-*` and a bind account on the DC; Authentik's LDAP source `lab2-ad` (users and groups) beside the Kerberos source |
+| `live/krb_groups.py`, `krb_mappings.py` | lab (container) | Read-only: Authentik's groups with their members and the LDAP sync status; the LDAP property mappings |
+| `live/krb_negotiate.py ... --labape https://name` | lab (container) | After the SPNEGO sign-in, sign in to LABaPe on that name and print `/api/auth/me` (user, roles, groups) |
+| `live/role_bind.py list\|add GROUP ROLE` | lab (container) | LABaPe role bindings for groups, through the API |
+| `live/stack_names.sh [add\|remove NAME]` | lab host | The stack's names (`LABAPE_ALT_NAMES`): show, add or remove one, re-sign the certificate, sync Authentik's redirect URIs, recreate the API |
+| `live/sync_redirects.sh` | lab host | Run `tools/authentik-test/sync-redirects.sh` for the stack's current names and show the result |
+| `live/tz_check.ps1` | on a Windows VM | The VM's zone, UTC and local time, and `RealTimeIsUniversal` (design §57) |
+| `live/krb_client_setup.ps1` | on a domain-joined Windows VM | Trust the platform root CA, put the stack's name in the Local intranet zone and allow it for Kerberos in Edge and Chrome (run it with `ad_run.py <env> <vm address> krb_client_setup.ps1 vm/<vm>/windows_admin`); `krb_negotiate.py` takes `--winrm-secret/--winrm-user` to run its test from that VM |

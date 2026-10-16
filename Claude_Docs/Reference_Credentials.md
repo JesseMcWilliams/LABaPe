@@ -1,5 +1,7 @@
 # Credentials: Hypervisor Auth, VM Bootstrap, and the Vault
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 This covers two distinct problems that both have to be solved before any
 Ansible role ever runs, plus how they share one secrets store rather
 than each inventing its own:

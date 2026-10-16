@@ -1,5 +1,7 @@
 # Backend parity: libvirt/KVM vs Hyper-V
 
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+
 Audit of the two OpenTofu backends against each other (2026-10-10, after
 M6 phase C), from the code: `tofu/backends/{libvirt,hyperv}`,
 `tofu/modules/{vm,network}/{libvirt,hyperv}` and the scripts that drive

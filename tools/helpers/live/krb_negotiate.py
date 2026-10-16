@@ -1,6 +1,8 @@
 """Kerberos proof: from the DC, as an AD user, sign in to Authentik through its SPNEGO endpoint and finish the flow.
 
 Usage: krb_negotiate.py <environment id> <DC address> <account secret name, e.g. account/jesse> <user, e.g. jesse> [url]
+                        [--winrm-secret NAME --winrm-user USER]   connect to a member server instead of the DC
+                        [--labape https://name]   then sign in to LABaPe on that name with the Authentik session and print /api/auth/me
 Runs `curl.exe --negotiate` in a scheduled task that runs as that user (a real logon, so Kerberos works), follows
 the redirects, then runs the flow Authentik reached (its executor API) until it redirects or stops. Prints status
 codes, final URLs and flow component names, never a password, cookie or token value.
@@ -12,12 +14,22 @@ import winrm
 from oidc_login import LABAPE, login
 
 env_id, dc, secret, user = sys.argv[1:5]
-url = sys.argv[5] if len(sys.argv) > 5 else "https://auth.labape.test:9443/source/kerberos/lab2-kerberos/"
+def opt(name, default):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
+
+
+wsecret, wuser = opt("--winrm-secret", "domain_admin"), opt("--winrm-user", "Administrator")
+args = [a for a in sys.argv[5:] if not a.startswith("--") and a not in (wsecret, wuser)]
+url = args[0] if args else "https://auth.labape.test:9443/source/kerberos/lab2-kerberos/"
+labape = sys.argv[sys.argv.index("--labape") + 1] if "--labape" in sys.argv else ""
+if labape:
+    args = [a for a in args if a != labape]
+    url = args[0] if args else url
 admin = login("labape-admin")
 base = f"{LABAPE}/api/environments/{env_id}/secrets/reveal"
-dpw = admin.post(base, json={"name": "domain_admin"}).json()["value"]
+dpw = admin.post(base, json={"name": wsecret}).json()["value"]
 upw = admin.post(base, json={"name": secret}).json()["value"]
-s = winrm.Session(f"https://{dc}:5986/wsman", auth=("Administrator", dpw), transport="basic", server_cert_validation="ignore")
+s = winrm.Session(f"https://{dc}:5986/wsman", auth=(wuser, dpw), transport="basic", server_cert_validation="ignore")
 PS = r"""
 $ErrorActionPreference = 'Stop'
 $jar = 'C:\Users\Public\krb_jar.txt'; $out = 'C:\Users\Public\krb_out.txt'; $err = 'C:\Users\Public\krb_err.txt'
@@ -49,9 +61,14 @@ if ($final -match '/if/flow/([^/]+)/\?(.*)$') {
         elseif ($j.component -notlike 'ak-flow-*') { break }
     }
 }
+if ('LABAPEHERE') {
+    (Run-AsUser "-L -c $jar -b $jar -o NUL $w LABAPEHERE/api/auth/oidc/login")
+    $me = Run-AsUser "-c $jar -b $jar LABAPEHERE/api/auth/me"
+    try { $j = $me | ConvertFrom-Json; "me: username=$($j.username) provider=$($j.provider) roles=$($j.roles -join ',') groups=$($j.groups -join ',')" } catch { "me: not JSON: $($me.Substring(0, [Math]::Min(200, $me.Length)))" }
+}
 Remove-Item $jar, $out, $err -ErrorAction SilentlyContinue
 """
-ps = PS.replace("URLHERE", url).replace("USERHERE", user).replace("PWHERE", upw.replace("'", "''"))
+ps = PS.replace("LABAPEHERE", labape).replace("URLHERE", url).replace("USERHERE", user).replace("PWHERE", upw.replace("'", "''"))
 res = s.run_ps(ps)
 print(res.std_out.decode(errors="replace"))
 if res.std_err and not res.std_err.startswith(b"#< CLIXML"):

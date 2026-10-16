@@ -56,6 +56,12 @@ due() {
   [ "$(names | paste -sd, -)" = "$(cat "$TLS/names" 2>/dev/null)" ] || return 0      # the names changed
   ! openssl x509 -checkend $((10 * 86400)) -noout -in "$TLS/web.crt" >/dev/null 2>&1
 }
+# Authentik's LABaPe provider must accept a sign-in coming back at any of the names (design §58).
+redirects() {
+  local ak="$C/../tools/authentik-test"
+  [ -f "$ak/.env" ] && [ -f "$ak/sync-redirects.sh" ] || return 0
+  bash "$ak/sync-redirects.sh" "$(envget LABAPE_HOSTNAME)" "$(envget LABAPE_ALT_NAMES)" || say "couldn't update Authentik's redirect URIs (run tools/authentik-test/sync-redirects.sh)"
+}
 reload() { dc exec -T caddy caddy reload --config /etc/caddy/Caddyfile --force >/dev/null 2>&1 || dc restart caddy >/dev/null; }
 
 timer() {
@@ -95,10 +101,11 @@ case "$MODE" in
     envset LABAPE_CADDYFILE Caddyfile.names
     dc up -d caddy >/dev/null 2>&1 || die "Caddy didn't start with the new certificate (docker compose logs caddy)"
     timer
+    redirects
     say "serving $(names | paste -sd' ' -) with one certificate until $(openssl x509 -enddate -noout -in "$TLS/web.crt" | cut -d= -f2)" ;;
   renew)
     due || exit 0
-    sign; reload; say "certificate renewed for $(names | paste -sd' ' -)" ;;
+    sign; reload; redirects; say "certificate renewed for $(names | paste -sd' ' -)" ;;
   status)
     say "names: $(names | paste -sd' ' -)"
     if [ -s "$TLS/web.crt" ]; then
