@@ -18,6 +18,7 @@ from .. import appsettings, env_accounts, leases, quotas, remote, spread, timezo
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, platforms
 from ..errors import FieldError
+from ..engine import planpreview
 from ..engine.hoststats import assess, demand_of
 from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, MetricSample, Template, utcnow
 from ..naming import HOSTNAME_RE, instance_names
@@ -326,7 +327,7 @@ def _queue(db: Session, e: Environment, job_type: str, p: Principal) -> Job:
     job = Job(type=job_type, params={"environment_id": e.id}, kvm_host_id=e.kvm_host_id, environment_id=e.id,
               requested_by=p.username)
     db.add(job)
-    if job_type != "environment.refresh_addresses":
+    if job_type not in ("environment.refresh_addresses", planpreview.JOB_TYPE):    # read-only jobs
         e.status = "deploying" if job_type == "environment.deploy" else "destroying"
     db.commit()
     return job
@@ -466,6 +467,27 @@ def refresh_addresses(env_id: int, request: Request, db: Session = Depends(get_d
     audit(db, p.username, "environment.refresh_addresses", object_type="environment", object_id=e.id,
           detail={"job": job.id}, source_ip=client_ip(request))
     return {"job_id": job.id}
+
+
+@router.post("/{env_id}/plan")
+def plan_redeploy(env_id: int, request: Request, db: Session = Depends(get_db),
+                  p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Preview a redeploy (design §56.1): OpenTofu plans which VMs it would replace; nothing is applied."""
+    e = _get(db, env_id, p)
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail="Only the environment's owners can preview its redeploy")
+    if e.status not in ("deployed", "failed"):
+        raise HTTPException(status_code=409, detail="Only a deployed (or failed) environment's redeploy can be previewed")
+    job = _queue(db, e, planpreview.JOB_TYPE, p)
+    audit(db, p.username, "environment.plan", object_type="environment", object_id=e.id,
+          detail={"job": job.id}, source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
+@router.get("/{env_id}/plan")
+def latest_plan(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """The newest redeploy preview: {job_id, state, finished_at, plan, stale} or {} when none ran."""
+    return planpreview.latest(db, _get(db, env_id, p)) or {}
 
 
 @router.get("/{env_id}/credentials")

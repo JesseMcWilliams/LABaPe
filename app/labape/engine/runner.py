@@ -45,6 +45,7 @@ from .hoststats import collect_all as collect_host_stats
 from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
+from . import planpreview
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
@@ -487,6 +488,8 @@ def command_for(job: Job, env: Environment | None, work: Path) -> list[str]:
     common = ["libvirt", env.name, PROFILE, "--env-file", str(work / "environment.yml")]
     if job.type == "environment.deploy":
         return ["bash", str(work / "scripts" / "deploy.sh"), *common]
+    if job.type == planpreview.JOB_TYPE:              # OpenTofu plans; nothing is applied (design §56.1)
+        return ["bash", str(work / "scripts" / "deploy.sh"), *common, "--plan-only", str(work / planpreview.PLAN_FILE)]
     if job.type == "environment.destroy":
         return ["bash", str(work / "scripts" / "destroy.sh"), *common, "--yes", "--delete-workspace"]
     if job.type == "environment.refresh_addresses":
@@ -529,7 +532,8 @@ def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
     home = db.get(KvmHost, env.kvm_host_id)
     if not spread.is_spread(env):
         work = prepare(db, env, home)
-        return [Part(home.id, work, command_for(job, env, work), pulls=["ansible/inventory", vm_passwords.APPLIED_DIR])]
+        pulls = [planpreview.PLAN_FILE] if job.type == planpreview.JOB_TYPE else ["ansible/inventory", vm_passwords.APPLIED_DIR]
+        return [Part(home.id, work, command_for(job, env, work), pulls=pulls)]
     parts: list[Part] = []
     outs: list[Path] = []
     hosts = spread.host_ids(env)
@@ -539,7 +543,12 @@ def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
             raise RuntimeError(f"KVM host {hid} (of a host group) is gone")
         work = prepare(db, env, host, spread.groups_on(env, hid))
         ws, envfile = spread.workspace(env, hid), ["--env-file", str(work / "environment.yml")]
-        if job.type == "environment.deploy":
+        pulls = [HOSTS_PART]
+        if job.type == planpreview.JOB_TYPE:
+            cmd = ["bash", str(work / "scripts" / "deploy.sh"), "libvirt", ws, PROFILE, *envfile,
+                   "--plan-only", str(work / planpreview.PLAN_FILE)]
+            pulls = [planpreview.PLAN_FILE]
+        elif job.type == "environment.deploy":
             cmd = ["bash", str(work / "scripts" / "deploy.sh"), "libvirt", ws, PROFILE, *envfile,
                    "--no-ansible", "--hosts-out", str(work / HOSTS_PART)]
         elif job.type == "environment.refresh_addresses":
@@ -552,10 +561,12 @@ def plan_parts(db: Session, job: Job, env: Environment) -> list[Part]:
             raise RuntimeError(f"unknown job type {job.type}")
         (work / HOSTS_PART).unlink(missing_ok=True)
         outs.append(work / HOSTS_PART)
-        parts.append(Part(hid, work, cmd, pulls=[HOSTS_PART], groups=spread.groups_on(env, hid),
+        parts.append(Part(hid, work, cmd, pulls=pulls, groups=spread.groups_on(env, hid),
                           installers=False, keep_going=job.type == "environment.destroy"))
     if job.type == "environment.destroy":
         return parts[1:] + parts[:1]                  # the home's part last
+    if job.type == planpreview.JOB_TYPE:
+        return parts                                  # each host plans its own VMs; no Ansible
     # Ansible from the home host: it reaches every part's VMs over the shared lab networks.
     work = prepare(db, env, home, spread.groups_on(env, home.id))
     merged = work / HOSTS_MERGED
@@ -653,6 +664,12 @@ def run(job_id: int, worker: str) -> None:
                     filedist.to_primary(db, db.get(KvmHost, job.kvm_host_id), name, _PathLog(log_path))
             except Exception as exc:  # noqa: BLE001 — the template is built; only the copy failed
                 _append_path(log_path, f"labape: warning: copying {name} to the primary file host failed: {exc}\n")
+        if rc == 0 and job.type == planpreview.JOB_TYPE:
+            try:
+                planpreview.store(db, job, [pt.work for pt in parts])
+            except Exception as exc:  # noqa: BLE001
+                _append_path(log_path, f"labape: reading the plan failed: {exc}\n")
+                rc = 1
         _finish(db, job, env, rc, work=work)
 
 
@@ -875,7 +892,9 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
         if work is not None:
             shutil.rmtree(work.parent, ignore_errors=True)
     if env is not None:
-        if job.type == "environment.refresh_addresses":
+        if job.type == planpreview.JOB_TYPE:
+            pass                                      # a plan changes nothing: the status stays
+        elif job.type == "environment.refresh_addresses":
             # Read-only for the VMs: the environment's status stays as it was.
             if job.state == "succeeded":
                 _collect_outputs(db, job, env, work)

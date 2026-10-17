@@ -1969,7 +1969,16 @@ Questions 167-173. Built batch by batch.
 | Reinstall | A VM is a `null_resource` whose triggers are the name, libvirt URI, bridge/network, CPU, memory, disk size, storage path and, for ISO installs, the ISO path and the hash of the rendered answer file (hostname, admin user, addressing, management source, syslog host, Windows edition; the Windows password masked and comments stripped; the Linux files hashed with the SSH key the VM was created with), or, for clones, the template path and the hash of the clone seed. Any change replaces (destroys and recreates) the VM. |
 | Not triggers | The daily VM-key rotation and the Windows bootstrap password rotation (masked), Windows answer-file comments, the MAC address. |
 | Where it comes from | The environment's spec isn't editable after creation (placement and host groups are fixed), so a reinstall in practice follows a change outside it: Settings' management source or syslog address, a new template, a changed network allocation, or a LABaPe update that changes the answer-file templates under `iso/answer-files/` or the clone seed. |
-| Shown to the user | The Redeploy confirmation says this and points to snapshots; the user guide's *What a redeploy keeps*. A plan preview that lists the VMs about to be replaced is not built. |
+| Shown to the user | The Redeploy confirmation says this and points to snapshots; the user guide's *What a redeploy keeps*; **Preview redeploy** lists the VMs a redeploy would replace (§56.1). |
+
+### 56.1 Redeploy plan preview (built 2026-10-17)
+
+| Part | Behavior |
+|---|---|
+| Job | `environment.plan` (POST `/api/environments/{id}/plan`; owners with deployer or template_editor; a deployed or failed environment). It runs `deploy.sh ... --plan-only <file>`: vault, `tofu init`, workspace, `tofu plan`, then `scripts/lib/plan_summary.py` and stop. Nothing is applied and Ansible doesn't run; the environment's status doesn't change, whatever the result. A spread environment (§45) plans on each of its hosts, one part each. |
+| Summary | Per VM (the module's `null_resource` `vm_iso_direct` / `vm_from_template`): replace, create, delete, update or none, and for a replacement the names of the triggers that change (or aren't known until apply), never their values. Other resources' changes are only counted. `engine/planpreview.py` merges the parts, turns trigger names into words (`answer_file_md5`/`seed_md5` → install answers) and keeps the result on the job (`params.plan`). |
+| Shown | GET `/api/environments/{id}/plan`: the newest finished preview, with `stale` once a deploy or destroy was queued after it. The environment page's **Preview redeploy** dialog runs one, follows the job and lists each VM with a chip (Reinstalled, Created, Removed, Updated, Kept) and the reasons. |
+| Limits | A plan is a snapshot: Settings or a LABaPe update changed after it can change the next redeploy. Answer-file content is compared by hash, so the reason says *install answers*, not which answer. |
 
 ## 57. An environment's time zone (built 2026-10-16)
 

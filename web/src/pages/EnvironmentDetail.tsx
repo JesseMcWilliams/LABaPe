@@ -14,6 +14,7 @@ import VmPower from "../components/VmPower";
 import EnvAccounts from "../components/EnvAccounts";
 import EnvSecrets from "../components/EnvSecrets";
 import Desktops from "../components/Desktops";
+import RedeployPreview from "../components/RedeployPreview";
 
 export default function EnvironmentDetail() {
   const { id } = useParams();
@@ -22,6 +23,7 @@ export default function EnvironmentDetail() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [creds, setCreds] = useState<CredentialSection[] | null>(null);
   const [promote, setPromote] = useState<{ vm: string; name: string } | null>(null);
+  const [preview, setPreview] = useState(false);
   const { me } = useAuth();
   const canPromote = hasRole(me, "template_editor");
   const doPromote = async () => {
@@ -83,6 +85,7 @@ export default function EnvironmentDetail() {
         </Typography>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
+      <RedeployPreview envId={Number(id)} open={preview} onClose={() => setPreview(false)} />
       {env.lease && (env.lease.enabled || env.lease.expires_at) && env.status !== "destroyed" && (
         <Alert severity={env.lease.phase === "ended" || env.lease.phase === "destroying" ? "error" : env.lease.phase === "expiring" ? "warning" : "info"}
           icon={false}
@@ -131,6 +134,12 @@ export default function EnvironmentDetail() {
             }}>
             {env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"}
           </ActionButton>
+          {(env.status === "deployed" || env.status === "failed") && (
+            <ActionButton onClick={() => setPreview(true)} disabled={busy}
+              tip="Plan a redeploy without applying it: which VMs it would reinstall, create or remove, and why">
+              Preview redeploy
+            </ActionButton>
+          )}
           <ActionButton variant="outlined" color="error" disabled={busy || env.status === "destroyed"}
             tip="Delete every VM in this environment"
             confirm={{ title: `Destroy ${env.name}?`, danger: true, confirmLabel: "Destroy",

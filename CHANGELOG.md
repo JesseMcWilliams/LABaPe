@@ -7,6 +7,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- **Preview redeploy** on an environment's page: a job runs OpenTofu's plan without applying it and lists what a redeploy would do to each VM (reinstalled, created, removed or kept) and why a VM would be reinstalled (its image or template, CPU, memory, disk, network, host, storage or install answers). The command line has the same as `deploy.sh ... --plan-only <file>` (design §56.1).
+
 ### Fixed
 - A fresh install no longer leaves akadmin's first password in plain text in `tools/authentik-test/.env`: a new installer step, `Stack.AuthentikAdmin`, stores it in the secret store once the stack is up and blanks the line. A password already stored (perhaps rotated) is never replaced (`labape authentik-admin-import --keep-existing`).
 - Secrets → Health: a secret that rotates daily (the OIDC client secret) showed "not in use"; it now says **by rotation**. When that rotation is only a reminder (no elevated account chosen), the secret is checked weekly instead of never.
