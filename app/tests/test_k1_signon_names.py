@@ -40,3 +40,15 @@ def test_authentiks_address_follows_the_name_and_keeps_its_port():
     assert oidc._on_name(url, "auth.labape.test") == "https://auth.labape.test:9445/application/o/authorize/?client_id=labape&state=x"
     assert oidc._on_name(url, "172.21.20.11") == url
     assert oidc._on_name(url, "") == url
+
+
+def test_a_write_or_tunnel_from_any_of_the_stacks_names_is_our_own_origin(monkeypatch):
+    _names(monkeypatch, public="https://172.21.20.11:8443")
+    assert oidc.is_own_origin("https://OZ.jlm.abq:8443")
+    assert oidc.is_own_origin("https://172.21.20.11:8443")
+    assert not oidc.is_own_origin("https://oz.jlm.abq")                # another port
+    assert not oidc.is_own_origin("http://oz.jlm.abq:8443")            # another scheme
+    assert not oidc.is_own_origin("https://evil.example:8443")
+    assert not oidc.is_own_origin("https://oz.jlm.abq:8443/x")
+    assert not oidc.is_own_origin("")
+    assert not oidc.is_own_origin(None)

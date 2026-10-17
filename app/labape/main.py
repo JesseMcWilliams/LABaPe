@@ -12,6 +12,7 @@ from .api import (admin, auth, ca, catalog, dashboard, directory, env_secrets, e
                   maintenance, metrics, networks, quotas, remote, reports, secrets, settings, syslog, templates, tokens,
                   update)
 from . import maintenance_mode
+from .auth.oidc import is_own_origin
 from .config import get_settings
 from .db import session_factory
 from .errors import on_http_error, on_validation_error
@@ -38,7 +39,7 @@ def create_app() -> FastAPI:
         if request.method not in SAFE_METHODS:
             req_origin = request.headers.get("origin")
             local = request.headers.get("x-labape-local") == "1"
-            if req_origin and req_origin != origin and not local:
+            if req_origin and req_origin != origin and not is_own_origin(req_origin) and not local:
                 return JSONResponse({"detail": "Cross-origin request refused"}, status_code=403)
             # Maintenance mode (design §23.3): no writes except the allowed few.
             if request.url.path.startswith("/api/") and not maintenance_mode.allowed(request.url.path):
