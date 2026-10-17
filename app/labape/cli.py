@@ -464,6 +464,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8000)
     p.set_defaults(func=cmd_serve)
 
+    p = sub.add_parser("mcp", help="MCP server over stdio for an AI agent (LABAPE_URL, LABAPE_TOKEN)")
+    p.add_argument("rest", nargs=argparse.REMAINDER)
+    p.set_defaults(func=lambda args: __import__("labape.mcp", fromlist=["main"]).main(args.rest))
+
     p = sub.add_parser("worker", help="run the job runner")
     p.add_argument("--slots", type=int, default=None)
     p.set_defaults(func=cmd_worker)

@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import console_access, console_transcripts
 from ..db import get_db
 from ..engine import vmexec
-from ..models import Environment, RemoteSession, utcnow
+from ..models import Environment, KvmHost, RemoteSession, utcnow
 from ..naming import instance_names
 from ..security import Principal, audit, client_ip
 
@@ -76,3 +77,19 @@ def exec_command(env_id: int, vm: str, body: ExecIn, request: Request, db: Sessi
                   "stderr_bytes": len(r.stderr.encode()), "truncated": r.truncated, "timed_out": r.timed_out,
                   "duration": round(r.duration, 3)}, source_ip=client_ip(request))
     return {**r.as_dict(), "session": s.id}
+
+
+@router.get("/console/environments")
+def console_targets(db: Session = Depends(get_db), p: Principal = Depends(console_access.console_principal)):
+    """The environments and VMs this token can open consoles on, and whether it may open KVM host consoles."""
+    out = []
+    for e in db.scalars(select(Environment).order_by(Environment.name)):
+        if console_access.environment_allowed(db, p, e.id):
+            vms = [{"name": n, "os": str(g.get("os", ""))} for g in (e.spec or {}).get("host_groups", [])
+                   for n in instance_names(g)]
+            out.append({"id": e.id, "name": e.name, "status": e.status, "vms": vms})
+    hosts = []
+    if p.scope["host_consoles"] and p.is_admin:
+        hosts = [{"id": h.id, "name": h.name, "ready": h.access_status == "ready"}
+                 for h in db.scalars(select(KvmHost).order_by(KvmHost.name)) if not h.deleted_at]
+    return {"environments": out, "kvm_hosts": hosts, "account_required": p.scope["require_account"]}
