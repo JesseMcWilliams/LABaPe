@@ -614,6 +614,13 @@ class ApiToken(Base):
     last_used_ip: Mapped[str] = mapped_column(String(64), default="")
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by: Mapped[str] = mapped_column(String(255), default="")
+    # Console scope and limits (design §59): `environments` null = every environment the owner can use.
+    environments: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    host_consoles: Mapped[bool] = mapped_column(Boolean, default=False)
+    require_account: Mapped[bool] = mapped_column(Boolean, default=True)
+    rate_per_minute: Mapped[int] = mapped_column(Integer, default=30)
+    max_session_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    max_output_kb: Mapped[int] = mapped_column(Integer, default=256)
 
 
 class VmSnapshot(Base):

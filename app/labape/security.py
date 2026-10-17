@@ -27,6 +27,7 @@ class Principal:
     roles: set[str] = field(default_factory=set)
     breakglass: bool = False
     via_token: bool = False          # signed in with an API token (design §37), not a session
+    scope: dict | None = None        # that token's console scope and limits (design §59)
 
     @property
     def is_admin(self) -> bool:
@@ -69,13 +70,14 @@ def _token_principal(request: Request, db: Session, secret: str) -> Principal:
         raise HTTPException(status_code=401, detail="Invalid, expired or revoked API token")
     ip = client_ip(request)
     tokens.touch(db, t, ip)
-    roles = tokens.effective_roles(t, resolve_roles(db, owner.username, owner.groups or []))
+    owner_roles = resolve_roles(db, owner.username, owner.groups or [])
+    roles = tokens.effective_roles(t, owner_roles)
     name = owner.username if t.kind == "personal" else f"svc:{t.name}"
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         audit(db, name, "token.use", object_type="api_token", object_id=t.id,
               detail={"token": t.name, "method": request.method, "path": request.url.path}, source_ip=ip)
     return Principal(owner.id, name, f"{t.name} (API token)", (owner.groups or []) if t.kind == "personal" else [],
-                     roles, via_token=True)
+                     roles, via_token=True, scope=tokens.scope(t, t.kind == "service" or "admin" in owner_roles))
 
 
 def current_principal(request: Request, db: Session = Depends(get_db)) -> Principal:

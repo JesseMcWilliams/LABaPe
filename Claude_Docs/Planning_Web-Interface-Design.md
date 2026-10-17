@@ -2008,3 +2008,15 @@ Questions 29 and 154 ("later") are now built. Kerberos is Authentik's Kerberos s
 | Verified | pytest (names kept or refused, redirect address, Authentik's address). Live on the lab: as `jesse` (domain admin) in a scheduled task on `l2dc1`, `curl --negotiate` to `https://auth.labape.test:9445/source/kerberos/lab2-kerberos/` finished Authentik's flow, then `https://auth.labape.test/api/auth/oidc/login` signed in to LABaPe: `/api/auth/me` gave `jesse`, provider `oidc`, roles `admin,viewer`, groups `LABAPE.TEST, Domain Admins, lab2-admins`. |
 | Client setup | `krb_client_setup.ps1` (run on `l2win1`): the platform root in the machine store, the name in the Local intranet zone (`ZoneMap\Domains\labape.test\auth`, https = 1) and `AuthServerAllowlist` for Edge and Chrome; checked: the name resolves, 9445 answers, the certificate verifies (the platform CA has no revocation list, so tools must skip that check). The same Kerberos sign-in then ran from `l2win1` as `jesse` and signed in to LABaPe with roles `admin,viewer`. |
 | Not done | A click-through in a real browser on `l2win1` (the scripts above are the setup it needs), an installer step or Settings page for the domain side (the recipe is manual). Hyper-V is dropped (question 175). |
+
+## 59. Console and management access for other AIs (X1-X4; plan: Planning_AI-Console-And-MCP.md)
+
+### 59.1 X1 as built: the `console` role and a token's scope
+
+| Area | As built |
+|---|---|
+| Role | `console` joins `ROLES` (default Authentik group `labape-console`). An admin holds it without a binding: `tokens.held_roles()`, used for the roles a personal token may be given and for `my_roles` on the Tokens page. A personal token with `roles=[console]` made by an admin has the console role only, not admin. |
+| Scope and limits | `api_tokens` (migration `0030`): `environments` (null = every environment the owner can use, else a list of ids), `host_consoles` (default off, admin only), `require_account` (default on), `rate_per_minute` (30, 1-600), `max_session_minutes` (30, 1-480), `max_output_kb` (256, 1-4096). Set at creation (`POST /api/tokens`); shown in the token list and in the `token.create` audit event. The listed environments must exist, and a non-admin may list only environments they own. |
+| Checks | `console_access.py`, used by the console endpoints (X2, X3): `console_principal` (a bearer token holding the role; a browser session is refused), `rate_limit` (per token, per minute, in this process; 429 with `Retry-After`), `check_environment` (404 when off the list or not usable by the owner: an admin's or service token's list is the whole grant, anyone else must also own the environment), `check_account`, `check_host_consoles` (the flag, and the token must still hold admin), `limits`. |
+| UI | Tokens page: when the console role is chosen, the environment choice (all the owner can use, or chosen ones), account requirement, the host consoles option (admins) and the three limits. |
+| Verified | pytest (`test_x1_console_scope.py`: creation and validation, the role needs a token, reach by list and ownership, rate limit, account and host rules). |
