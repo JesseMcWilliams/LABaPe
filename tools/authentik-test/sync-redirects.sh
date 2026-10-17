@@ -16,7 +16,7 @@ from authentik.providers.oauth2.models import OAuth2Provider
 p = OAuth2Provider.objects.get(client_id='labape')
 urls = []
 for n in os.environ['NAMES'].split(','):
-    u = 'https://%s/api/auth/oidc/callback' % n.strip()
+    u = 'https://%s/api/auth/oidc/callback' % n.strip().lower()
     if n.strip() and u not in urls:
         urls.append(u)
 if [u.url for u in p.redirect_uris] != urls:
