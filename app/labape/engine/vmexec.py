@@ -96,11 +96,12 @@ def run_process(argv: list[str], *, env: dict | None = None, timeout: float, cap
                   flag["truncated"], timed_out, time.monotonic() - start)
 
 
-def _ssh_argv(params: dict, command: str, tmp: Path, via: KvmHost | None) -> tuple[list[str], dict, list[str]]:
+def _ssh_argv(params: dict, command: str, tmp: Path, via: KvmHost | None,
+              tty: bool = False) -> tuple[list[str], dict, list[str]]:
     """ssh arguments, extra environment and the secrets to mask."""
     user, address, port = params["username"], params["hostname"], str(params.get("port") or 22)
     argv = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
-            "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-p", port]
+            "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-p", port, *(["-tt"] if tty else [])]
     extra: dict = {}
     secrets: list[str] = []
     if via is not None:
@@ -122,7 +123,7 @@ def _ssh_argv(params: dict, command: str, tmp: Path, via: KvmHost | None) -> tup
         argv += ["-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no",
                  "-o", "NumberOfPasswordPrompts=1"]
         secrets.append(params.get("password", ""))
-    return [*argv, f"{user}@{address}", command], extra, secrets
+    return [*argv, f"{user}@{address}", *([command] if command else [])], extra, secrets
 
 
 def _run_linux(params: dict, command: str, via: KvmHost | None, timeout: float, cap: int) -> Result:
@@ -158,16 +159,23 @@ def _run_windows(host: dict, params: dict, command: str, timeout: float, cap: in
     return Result(r.status_code, out[:cap], err[:cap], truncated, False, time.monotonic() - start)
 
 
-def run(db: Session, env: Environment, vm: str, command: str, *, account: str = "", timeout: float = 60,
-        cap: int = 262144) -> Result:
-    """Run `command` on `vm` as the access user, or as the environment account `account`."""
+@dataclass
+class Plan:
+    """How to reach one VM: the console target, its inventory entry, the KVM host in between (remote
+    environments) and whether it is a Windows VM."""
+    target: dict
+    host: dict
+    via: KvmHost | None
+    windows: bool
+
+
+def plan(db: Session, env: Environment, vm: str, account: str = "") -> Plan:
     from .. import remote, spread
     from .vmaccess import _hosts, _inventory, remote_env
     try:
         target = remote.vm_target(db, env, vm, account=account)
     except remote.RemoteError as exc:
         raise ExecError(str(exc)) from exc
-    params = target["params"]
     host = _hosts(_inventory(db, env)).get(vm) or {}
     windows = target["protocol"] == "rdp" or host.get("ansible_connection") == "winrm"
     via = None
@@ -177,6 +185,13 @@ def run(db: Session, env: Environment, vm: str, command: str, *, account: str = 
             raise ExecError("this VM is on a remote KVM host: an admin sets up that host's SSH access first")
         if windows:
             raise ExecError("commands on Windows VMs of a remote KVM host aren't supported yet (WinRM can't be tunnelled)")
-    if windows:
-        return _run_windows(host, params, command, timeout, cap)
-    return _run_linux(params, command, via, timeout, cap)
+    return Plan(target, host, via, windows)
+
+
+def run(db: Session, env: Environment, vm: str, command: str, *, account: str = "", timeout: float = 60,
+        cap: int = 262144) -> Result:
+    """Run `command` on `vm` as the access user, or as the environment account `account`."""
+    pl = plan(db, env, vm, account)
+    if pl.windows:
+        return _run_windows(pl.host, pl.target["params"], command, timeout, cap)
+    return _run_linux(pl.target["params"], command, pl.via, timeout, cap)
