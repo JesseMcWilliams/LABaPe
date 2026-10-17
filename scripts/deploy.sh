@@ -25,6 +25,10 @@
 #   --hosts-from <path>       Skip OpenTofu: build the inventory from this
 #                             hosts.json (every part's VMs, merged) and run
 #                             Ansible over it (design §45).
+#   --plan-only <path>        Plan only: write what a redeploy would do to each
+#                             VM (replaced, created, removed; JSON from
+#                             scripts/lib/plan_summary.py) there and stop.
+#                             Nothing is applied (design §56.1).
 #
 # Host-group names must be unique across every environment on one libvirt
 # host: VM names are host-global, and create-iso-direct.sh refuses a VM
@@ -32,7 +36,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USAGE="usage: deploy.sh <backend> <environment-instance-name> <profile> [--test] [--env-file <path>] [--directory-manifest <path>] [--no-ansible] [--hosts-out <path>] [--hosts-from <path>]"
+USAGE="usage: deploy.sh <backend> <environment-instance-name> <profile> [--test] [--env-file <path>] [--directory-manifest <path>] [--no-ansible] [--hosts-out <path>] [--hosts-from <path>] [--plan-only <path>]"
 
 BACKEND="${1:?$USAGE}"
 ENV_INSTANCE="${2:?$USAGE}"
@@ -45,11 +49,13 @@ ENV_FILE="$ROOT_DIR/tofu/environment.yml"
 DIRECTORY_MANIFEST=""
 HOSTS_OUT=""
 HOSTS_FROM=""
+PLAN_OUT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --test) TEST_MODE=true ;;
     --no-ansible) RUN_ANSIBLE=false ;;
     --hosts-out) HOSTS_OUT="${2:?--hosts-out needs a path}"; shift ;;
+    --plan-only) PLAN_OUT="$(realpath -m "${2:?--plan-only needs a path}")"; shift ;;
     --hosts-from) HOSTS_FROM="$(realpath "${2:?--hosts-from needs a path}")"; shift ;;
     --env-file) ENV_FILE="$(realpath "${2:?--env-file needs a path}")"; shift ;;
     --directory-manifest) DIRECTORY_MANIFEST="$(realpath "${2:?--directory-manifest needs a path}")"; shift ;;
@@ -132,6 +138,13 @@ if [ -z "$HOSTS_FROM" ]; then
   echo "labape: planning..." >&2
   tofu plan -input=false -var-file="$PROFILE_FILE" -out=tfplan.bin
   tofu show -json tfplan.bin > tfplan.json
+
+  if [ -n "$PLAN_OUT" ]; then
+    python3 "$ROOT_DIR/scripts/lib/plan_summary.py" tfplan.json > "$PLAN_OUT"
+    rm -f tfplan.bin tfplan.json
+    echo "labape: --plan-only: nothing applied. What a redeploy would do: $PLAN_OUT" >&2
+    exit 0
+  fi
 
   echo "labape: address policy check (environment.yml networks:)..." >&2
   python3 "$ROOT_DIR/scripts/lib/check_ip_policy.py" tfplan.json "$ENV_FILE"
