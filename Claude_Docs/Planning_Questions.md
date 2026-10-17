@@ -298,3 +298,12 @@ Also 2026-10-14: Authentik high availability (several server and worker replicas
 174. ~~**A reboot issued on the host (H2).** LABaPe can't hold an OS-issued reboot back with a lock (root ignores it).~~ **Answered (2026-10-16):** (a) leave it. The Reboot button already waits for the host's jobs; a reboot typed on the host is not held back (User_Docs/Web-Interface-Admin.md says so).
 
 175. **Hyper-V.** Keep it as a backend? ~~Open.~~ **Answered (2026-10-16):** No. Hyper-V support will be dropped: LABaPe supports KVM (libvirt) only. Nothing new is built for Hyper-V, parity (questions 11-14, 155) is not pursued, and the documentation says so. The code (`tofu/backends/hyperv`, `tofu/modules/*/hyperv`, `scripts/set-boot-order.sh`) and the Hyper-V notes stay until the removal is done; the removal itself isn't scheduled.
+
+176. ~~**AI console access: commands or sessions (X2, X3).**~~ **Answered (2026-10-17):** both. Running a command and getting its result back, and an interactive text session. Plan: Planning_AI-Console-And-MCP.md.
+177. ~~**AI console access: who can it reach (X1).**~~ **Answered (2026-10-17):** both options. A token is limited either to everything its owner can see or to a list of environments.
+178. ~~**An MCP server (X4).**~~ **Answered (2026-10-17):** yes, over the same REST API.
+179. ~~**Who does a command run as (X2)?**~~ **Answered (2026-10-17):** both. `account` is optional; a new token requires one by default.
+180. ~~**Guardrails on commands (X2, X3).**~~ **Answered (2026-10-17):** agreed: audit and limits only; scope the token to an environment of its own.
+181. ~~**KVM host consoles (X3).**~~ **Answered (2026-10-17):** yes, as an option: a token flag, off by default, admin tokens only.
+182. ~~**Keeping session output (X3).**~~ **Answered (2026-10-17):** agreed: only when recording is on. Transcripts go beside browser recordings and are purged by the same retention (plan §5).
+183. ~~**MCP transport (X4).**~~ **Answered (2026-10-17):** agreed: both stdio and HTTP.
