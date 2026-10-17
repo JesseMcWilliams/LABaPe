@@ -16,9 +16,13 @@ def _p(kind="directory_token", hours=720, **kw):
 
 
 def test_how_often():
-    assert H.check_interval(_p(hours=720)) == dt.timedelta(hours=180)          # a quarter of 30 days
-    assert H.check_interval(_p(hours=72)) == dt.timedelta(hours=24)            # at least a day
-    assert H.check_interval(_p(hours=24)) is None                              # rotates daily: no check
+    rot = {"elevated_ref": "authentik-rotator"}                                  # the directory token needs one to rotate
+    assert H.check_interval(_p(hours=720, **rot)) == dt.timedelta(hours=180)   # a quarter of 30 days
+    assert H.check_interval(_p(hours=72, **rot)) == dt.timedelta(hours=24)     # at least a day
+    assert H.check_interval(_p(hours=24, **rot)) is None                       # rotates daily: no check
+    assert H.check_interval(_p(hours=24)) == dt.timedelta(days=7)              # a reminder without one: checked weekly
+    assert H.check_interval(_p(kind="oidc_client_secret", hours=24, elevated_ref="")) == dt.timedelta(days=7)
+    assert H.describe(_p(kind="oidc_client_secret", hours=24, **rot))["check_every_hours"] is None
     assert H.check_interval(_p(kind="smtp_password", hours=168)) == dt.timedelta(days=7)   # not rotated by LABaPe
     assert H.check_interval(_p(hours=720, enabled=False)) == dt.timedelta(days=7)
     assert H.describe(_p(kind="ca_password"))["recoverable"] is False
@@ -39,7 +43,7 @@ def _run(db, kind, health, monkeypatch):
 def test_outcomes(db_reset, monkeypatch):
     with session_factory()() as db:
         status, p, _ = _run(db, "directory_token", Health(True, "x", lambda db, p: "fine"), monkeypatch)
-        assert status == "ok" and p.check_error == "fine" and p.next_check_at > utcnow() + dt.timedelta(hours=170)
+        assert status == "ok" and p.check_error == "fine" and p.next_check_at > utcnow() + dt.timedelta(hours=160)
 
         def missing(db, p):
             raise NotInUse("not set up")

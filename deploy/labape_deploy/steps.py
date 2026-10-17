@@ -791,6 +791,35 @@ def stack_up(c: Ctx):
     return DONE, f"https://{c.a.need('WebHostname')}/ is up"
 
 
+def stack_authentik_admin(c: Ctx):
+    """akadmin's first password into the secret store, then blank its plain copy in tools/authentik-test/.env
+    (design §54.3). Stack.Auth tries the same, but the stack isn't up yet on a fresh install. Never replaces a
+    stored password (it may have been rotated); a backup's install brings its own."""
+    if c.backup is not None:
+        return NA, "installing from a backup: its Authentik and secret store come with it"
+    env = c.repo / "tools" / "authentik-test" / ".env"
+    if not env.is_file():
+        return NA, "no Authentik installed with LABaPe"
+    password = _get_env(env, "AUTHENTIK_BOOTSTRAP_PASSWORD")
+    if not password:
+        return DONE, "akadmin's password is in the secret store (no plain copy left)"
+    if c.r.dry_run:
+        print(f"[dry-run] would store akadmin's password in the secret store and blank its line in {env}")
+        return DONE, "dry run"
+    # The password goes in on standard input (never on a command line).
+    res = c.r.run(c.compose + ["exec", "-T", "labape-api", "labape", "authentik-admin-import", "--keep-existing"],
+                  cwd=c.repo / "container", input=password + "\n", check=False, capture=True)
+    if res.returncode == 3:
+        return DONE, (f"a different akadmin password is already stored, so the copy in {env} was left; check it "
+                      "(Admin -> Secrets -> Authentik administrator -> Check) and remove the line by hand")
+    if res.returncode != 0:
+        raise StepError("couldn't store akadmin's password: " + (res.stderr or res.stdout or "").strip()[-400:])
+    lines = env.read_text(encoding="utf-8").splitlines()
+    lines = ["AUTHENTIK_BOOTSTRAP_PASSWORD=" if ln.startswith("AUTHENTIK_BOOTSTRAP_PASSWORD=") else ln for ln in lines]
+    c.r.write(env, "\n".join(lines) + "\n", mode=0o600)
+    return DONE, "akadmin's password is in the secret store (Admin -> Secrets -> Authentik administrator); .env copy blanked"
+
+
 def stack_stores(c: Ctx):
     """The stack's own OpenBao and Conjur (design §26): certificates from the
     platform CA, initialize and unseal, policies and logins, LABaPe's store

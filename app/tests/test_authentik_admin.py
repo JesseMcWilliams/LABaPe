@@ -271,3 +271,26 @@ def test_the_restore_needs_akadmins_password_and_a_known_token(client, monkeypat
             elevated.restore(db, "authentik-rotator")
         with pytest.raises(elevated.ElevatedError, match="can't restore"):
             elevated.restore(db, "vault-admin")
+
+
+def test_the_import_keeps_a_stored_password(client, monkeypatch, capsys):
+    """labape authentik-admin-import --keep-existing never replaces a stored (perhaps rotated) password (§54.3)."""
+    import io
+
+    from labape import authentik_admin, cli
+    from labape.db import session_factory
+    from labape.security import get_secret
+
+    def run(value, *flags):
+        monkeypatch.setattr("sys.stdin", io.StringIO(value + "\n"))
+        return cli.main(["authentik-admin-import", *flags])
+
+    assert run("ThisIsMy_FAKE_Password6!", "--keep-existing") == 0            # nothing stored yet: stored
+    assert run("ThisIsMy_FAKE_Password6!", "--keep-existing") == 0            # the same one: nothing to do
+    assert "already in the secret store" in capsys.readouterr().out
+    assert run("Another_FAKE_Password7!", "--keep-existing") == 3             # a different one: left alone
+    with session_factory()() as db:
+        assert get_secret(db, authentik_admin.SECRET) == "ThisIsMy_FAKE_Password6!"
+    assert run("Another_FAKE_Password7!") == 0                                # without the flag it replaces
+    with session_factory()() as db:
+        assert get_secret(db, authentik_admin.SECRET) == "Another_FAKE_Password7!"

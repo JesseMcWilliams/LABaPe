@@ -369,11 +369,13 @@ def cmd_engine_secrets(args) -> int:
     return 0
 
 
-def cmd_authentik_admin_import(_args) -> int:
-    """Store the Authentik administrator's password (read from stdin) in the secret store (design §54)."""
+def cmd_authentik_admin_import(args) -> int:
+    """Store the Authentik administrator's password (read from stdin) in the secret store (design §54).
+    --keep-existing never replaces a stored password (it may have been rotated since): 0 when the same one is
+    already there, 3 when a different one is (design §54.3)."""
     from . import authentik_admin
     from .db import init_db, session_factory
-    from .security import audit, put_secret
+    from .security import audit, get_secret, put_secret
 
     value = sys.stdin.read().strip()
     if len(value) < 8:
@@ -382,6 +384,15 @@ def cmd_authentik_admin_import(_args) -> int:
     init_db()
     with session_factory()() as db:
         try:
+            if getattr(args, "keep_existing", False):
+                stored = get_secret(db, authentik_admin.SECRET)
+                if stored == value:
+                    print("labape: the Authentik administrator's password is already in the secret store")
+                    return 0
+                if stored:
+                    print("labape: a different Authentik administrator password is already stored (rotated?); "
+                          "not replaced", file=sys.stderr)
+                    return 3
             put_secret(db, authentik_admin.SECRET, value)
         except Exception as exc:  # noqa: BLE001 - a store that doesn't answer
             print(f"labape: {exc}", file=sys.stderr)
@@ -523,6 +534,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("authentik-admin-import", help="store the Authentik administrator's (akadmin) password, "
                                                        "read from stdin, in the secret store")
+    p.add_argument("--keep-existing", action="store_true",
+                   help="never replace a stored password (exit 0 if it's the same, 3 if it differs)")
     p.set_defaults(func=cmd_authentik_admin_import)
 
     p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")

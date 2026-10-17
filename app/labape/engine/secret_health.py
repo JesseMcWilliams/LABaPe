@@ -476,10 +476,12 @@ HEALTH: dict[str, Health] = {
 
 def check_interval(p: SecretPolicy) -> dt.timedelta | None:
     """Question 161: a quarter of the rotation period, at least a day; none when it rotates daily or
-    more often; weekly when LABaPe doesn't rotate it."""
+    more often; weekly when LABaPe doesn't rotate it, which includes a rotation that needs an elevated account
+    none is chosen for (a reminder: the OIDC client secret on a stack without one went unchecked)."""
     from .rotation import REGISTRY
     r = REGISTRY.get(p.kind)
-    if r is not None and r.automatic and p.enabled and not p.managed_externally:
+    reminder = r is not None and r.needs_elevated and not p.elevated_ref
+    if r is not None and r.automatic and p.enabled and not p.managed_externally and not reminder:
         if p.interval_hours <= 24:
             return None
         return max(MIN_CHECK, dt.timedelta(hours=p.interval_hours / 4))
