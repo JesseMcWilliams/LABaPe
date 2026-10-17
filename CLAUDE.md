@@ -68,11 +68,12 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Testing_Troubleshooting-Log.md`: open findings and blow-by-blow bug history from M10 on, filed by topic. When it grows past ~500 lines, move fully closed sections into an `Archive_Testing_...` file, as was done for M1-M6.
   - `Archive_<OriginalStage>_<Topic>.md`: finished or superseded material. **Don't read `Archive_*` unless the user asks or the task needs history.** Current: `Archive_Testing_Troubleshooting-Log-M1-M6.md` (closed M1-M6 troubleshooting history).
 - `CHANGELOG.md` (root): release history, `[Unreleased]` at the top. Kept at the root (GitHub/tooling convention). A release is a `vX.Y.Z` tag plus a GitHub release; the image is stamped with `git describe --tags`, and the web dashboard compares it with the latest release.
-- `User_Docs/`: end-user guides. `Web-Interface-Guide.md` (everyone who signs in), `Web-Interface-Admin.md` (admins), `Command-Line.md` (scripts without the web interface), and `Install-OpenTofu.md`/`Install-Ansible.md` with WSL variants. New user-visible changes go to the backlog first, then into the matching guide.
-- `Published_Docs/`: `.docx` deliverables for end users. None exist yet.
-- When you make a user-visible change, add one line for it to `Claude_Docs/Planning_User-Docs-Backlog.md` (create it if it doesn't exist yet).
+- `User_Docs/`: end-user guides. `Web-Interface-Guide.md` (everyone who signs in), `Web-Interface-Admin.md` (admins), `Command-Line.md` (scripts without the web interface), and `Install-OpenTofu.md`/`Install-Ansible.md` with WSL variants. New user-visible changes go to the backlog; the guides are updated from it when a release is made.
+- `Published_Docs/`: `.docx` deliverables for end users, refreshed from `User_Docs/` and `Claude_Docs/` when a release is made. None exist yet.
+- When you make a user-visible change, add one line for it to `Claude_Docs/Planning_User-Docs-Backlog.md` (create it if it doesn't exist yet). Don't edit `User_Docs/` for each change: as long as the backlog tracks it, the guides (and the `.docx` files in `Published_Docs/`) are brought up to date when a release is made, and the backlog lines they cover are removed then. The README carries no counts (tests, endpoints, roles) that each change would have to update.
 - Rename docs with `git mv`, and update every link to them in the same change.
 - If a doc is large, find the target with grep and read a narrow range. Keep table rows to one or two sentences.
+- Docs with very long table lines (`Testing_Troubleshooting-Log.md`, `Planning_Questions.md`, `Planning_Web-Interface-Design.md`): find the target with grep, then read a narrow range or edit by a unique anchor with the Edit tool. Don't grep them without `| cut -c1-200`.
 
 ## Docs: what to update for each kind of change
 | Change | Update |
@@ -82,7 +83,13 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 | Design decision | `Claude_Docs/Design_System-Overview.md`, relevant section, or §17 Open Questions |
 | New gotcha | `Claude_Docs/Testing_Troubleshooting-Log.md`, cross-link from README Known Gaps if user-facing |
 
-- For "verify the docs are updated", use a subagent to diff the branch against this checklist and report the gaps only.
+## File edits
+- The Windows checkout is CRLF (`core.autocrlf=true`), except `*.sh` and `*.py`, which `.gitattributes` keeps LF. Don't use `sed -i` on tracked files; edit with the Edit tool or a Python read-modify-write that keeps each file's line endings.
+
+## Session habits (token cost)
+- One work item per session: when it's committed, suggest `/clear` and bring the handoff (`Claude_Docs/Planning_Handoff-<date>.md`) up to date: where things stand (branches, PRs, test status, highest question number), what's left as a numbered queue, the lab's state and new gotchas.
+- Keep subagent jobs small (2 or 3 files each). For mechanical work such as one test per file, pass `model: "sonnet"` or `"haiku"`.
+- For "verify the docs are updated", use a subagent to diff the branch against the docs checklist above and report the gaps only.
 
 ## Git
 - Don't work directly on `main`. Create a topic branch named `YYYY-MM-DD-<topic>` and open a PR into `main` with `gh`.
