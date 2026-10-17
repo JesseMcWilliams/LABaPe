@@ -7,16 +7,16 @@
 
 ## Update 2026-10-17, later: merged, preview built, lab work waiting
 
-`main` is at the merge of PR #167: PR #166 (the follow-ups below) and PR #167 (CLAUDE.md: aPeTemplate's token-saving items; User_Docs are brought up to date from the backlog at release) are merged, and every merged branch on GitHub was deleted (only `main` is left). **PR #168 is open**: the redeploy plan preview (design §56.1; Q "Redeploy plan preview" answered yes). Not released: `[Unreleased]` holds #166's two fixes and #168's preview.
+`main` is at the merge of PR #168; no PRs are open. PR #166 (the follow-ups below) and PR #167 (CLAUDE.md: aPeTemplate's token-saving items; User_Docs are brought up to date from the backlog at release) are merged, and every merged branch on GitHub was deleted (only `main` is left). **PR #168** (merged) adds the redeploy plan preview (design §56.1; Q "Redeploy plan preview" answered yes): tested by unit tests and a web build only, not yet live or in a browser. Not released: `[Unreleased]` holds #166's two fixes and #168's preview.
 
 **Queue (the user asked for 1-4):**
-1. Live check on the lab: `deploy-web.sh` from `main` (with #168 merged), then OZ's OIDC client secret shows **by rotation**, and **Preview redeploy** on `lab2` lists its VMs as Kept.
+1. Live check on the lab: `deploy-web.sh` from `main`, then OZ's OIDC client secret shows **by rotation**, and **Preview redeploy** on `lab2` lists its VMs as Kept.
 2. Release v0.5.4 (`release.sh` in the background; it needs the lab).
 3. Director (`pi1`) to v0.5.4 with Admin → Updates (the user's click), then its `authentik-rotator` elevated account.
 4. Drive Pools actions on a test VM, never on kvm1's `md10` (the user's answer): extra virtual disks on a nested KVM host (`nkvm1`, environment `nestkvm`, is the candidate) with an mdadm array, a ZFS pool and an LVM volume group, then Check / Take out / Add through the page.
 5. Later: a full installer run; Kerberos domain side as an installer step or Settings page; the Kerberos click-through on `l2win1`.
 
-**Working from Claude's Cowork shell on the Windows machine (2026-10-17):** it's a Linux VM over `C:\Code\LABaPe` with no route to the lab (172.21.20.11: "Network is unreachable") and no access to the lab SSH key under `C:\Users\ladmin\.ssh`, so items 1-4 need another way in. Its git writes LF: use `git -c core.autocrlf=true` for status, add, commit and checkout, and put CRLF back on files a plain `git pull` rewrote. `gh` is in `~/bin` there (signed in with a device code); Python 3.12 comes from `uv` (`~/venv312`), since the system Python is 3.10. The full test suite takes ~6 minutes there with `-n 2`, in chunks (each command is limited to 3 minutes); `test_files.py::test_bad_upload_requests` fails there with a 503 and the syslog reconnect tests fail as in any sandbox.
+**Working from Claude's Cowork shell on the Windows machine (2026-10-17):** it's a Linux VM over `C:\Code\LABaPe` with no route to the lab (172.21.20.11: "Network is unreachable") and no access to the lab SSH key under `C:\Users\ladmin\.ssh`, so items 1-4 need another way in. Open question to the user: run the lab steps from Git Bash on Windows (Claude gives the commands) or open the shell's network (all destinations allowed) and put a lab key it may use in a connected folder. Its git writes LF: use `git -c core.autocrlf=true` for status, add, commit and checkout, and put CRLF back on files a plain `git pull` rewrote. `gh` is in `~/bin` there (signed in with a device code); Python 3.12 comes from `uv` (`~/venv312`), since the system Python is 3.10. The full test suite takes ~6 minutes there with `-n 2`, in chunks (each command is limited to 3 minutes); `test_files.py::test_bad_upload_requests` fails there with a 503 and the syslog reconnect tests fail as in any sandbox.
 
 ## Update 2026-10-17: follow-ups from §3
 
