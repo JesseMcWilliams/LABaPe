@@ -5,6 +5,10 @@
 > LogaPe, aPeSecrets and LABaPe are separate projects with their own handoffs. It follows
 > [Planning_Handoff-2026-10-15.md](Planning_Handoff-2026-10-15.md), which still describes the lab and the rules.
 
+## Update 2026-10-17: follow-ups from §3
+
+Branch `2026-10-17-follow-ups` (not released): follow-up 1 is fixed (installer step `Stack.AuthentikAdmin`, design §54.3); follow-up 4 is explained and fixed (the OIDC client secret rotates daily, so it has no scheduled check; the chip now says "by rotation", and a reminder-only daily rotation is checked weekly); follow-up 3 was driven in a browser against the API on SQLite (Testing_Troubleshooting-Log.md, last section). All 47 remote branches other than `main` are merged and can be deleted (follow-up 7). Still open: 2 (a full installer run), 5 (host deletion live), 6 (a real outside SMTP account), and the live checks of this branch. CLAUDE.md now says LABaPe's letter codes are batch codes, not the kind labels (D#/P#/Q#) of the user-level numbering rules (aPeTemplate PR #9).
+
 ## Latest (end of 2026-10-16): v0.5.3 released
 
 `main` is at the merge of PR #164 (the one after v0.5.3's release commit); tests **390 passing, 1 skipped**; no open PRs, no batch in progress; `[Unreleased]` in `CHANGELOG.md` holds only whatever came after v0.5.3 (nothing yet). **v0.5.2** (Kerberos, time zones, host deletion, the rest of §0 and §2) and **v0.5.3** (below) are released, both signed tags with the SBOM attached.

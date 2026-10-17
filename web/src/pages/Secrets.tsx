@@ -34,6 +34,11 @@ const HEALTH_COLOR: Record<string, "success" | "error" | "warning" | "default"> 
   ok: "success", recovered: "success", failed: "error", recovering: "warning",
 };
 
+/** "none" means two things: nothing to check (not set up), or no scheduled check because a daily rotation proves
+ * the value works (question 161; the OIDC client secret rotates every 24 h). Only the first is "not in use". */
+export const healthLabel = (p: SecretPolicy) =>
+  p.check_status !== "none" ? p.check_status : p.check_every_hours === null ? "by rotation" : "not in use";
+
 /** Whether the stored value still works, when it was checked, and how often (S1). */
 export function HealthCell({ p, onCheck }: { p: SecretPolicy; onCheck?: () => void }) {
   if (!p.checkable) return <Typography variant="caption" color="text.secondary">no check</Typography>;
@@ -42,7 +47,7 @@ export function HealthCell({ p, onCheck }: { p: SecretPolicy; onCheck?: () => vo
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
       <Tooltip title={<>{p.check_error || (p.check_status === "unchecked" ? "Not checked yet" : "")}<br />{p.last_checked_at ? `Last ${fmtTime(p.last_checked_at)}. ` : ""}{when}.{p.next_check_at ? ` Next ${fmtTime(p.next_check_at)}.` : ""}</>}>
-        <Chip size="small" color={HEALTH_COLOR[p.check_status] ?? "default"} label={p.check_status === "none" ? "not in use" : p.check_status} />
+        <Chip size="small" color={HEALTH_COLOR[p.check_status] ?? "default"} label={healthLabel(p)} />
       </Tooltip>
       {onCheck && <Button size="small" onClick={onCheck} title="Check now that the stored value works (recovered if it doesn't and can be)">Check now</Button>}
     </Stack>

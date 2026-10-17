@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Fixed
+- A fresh install no longer leaves akadmin's first password in plain text in `tools/authentik-test/.env`: a new installer step, `Stack.AuthentikAdmin`, stores it in the secret store once the stack is up and blanks the line. A password already stored (perhaps rotated) is never replaced (`labape authentik-admin-import --keep-existing`).
+- Secrets → Health: a secret that rotates daily (the OIDC client secret) showed "not in use"; it now says **by rotation**. When that rotation is only a reminder (no elevated account chosen), the secret is checked weekly instead of never.
+
 ## [0.5.3] - 2026-10-16
 
 Fixes signing in to Windows machines: the Secrets page and the credentials sheet now show the user name to type (with copy buttons) instead of the secret's name, the downloaded .rdp file names the VM, and the browser RDP window no longer comes up blank on a reconnected session.

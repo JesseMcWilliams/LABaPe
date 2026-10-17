@@ -291,3 +291,46 @@ def test_the_authentik_admin_user_is_checked():
     assert v("jesse") is None and v("") is None
     for bad in ("akadmin", "Jesse", "j", "1abc", "a b"):
         assert v(bad)
+
+
+def test_akadmins_first_password_is_stored_after_the_stack_is_up(tmp_path):
+    """Stack.AuthentikAdmin (§54.3): after Stack.Up, akadmin's password goes into the store on stdin and its
+    line in tools/authentik-test/.env is blanked; a different stored password is never replaced."""
+    import subprocess
+    env = tmp_path / "tools" / "authentik-test" / ".env"
+    ran, rc = [], {"code": 0}
+
+    class R:
+        dry_run = False
+
+        def run(self, cmd, **kw):
+            ran.append((cmd, kw.get("input")))
+            return subprocess.CompletedProcess(cmd, rc["code"], "", "")
+
+        def write(self, path, content, mode=0o644, owner=None):
+            Path(path).write_text(content, encoding="utf-8")
+            return True
+
+    class A:
+        def need(self, name):
+            return {"ContainerRuntime": "docker"}[name]
+
+    c = S.Ctx(r=R(), a=A(), repo=tmp_path, deploy_root=tmp_path / "deploy")
+    assert S.stack_authentik_admin(c)[0] == S.NA and ran == []                # no Authentik installed with LABaPe
+    env.parent.mkdir(parents=True)
+    env.write_text("PG_PASS=x\nAUTHENTIK_BOOTSTRAP_PASSWORD=ThisIsMy_FAKE_Password6!\nLABAPE_HOSTNAME=h\n")
+    rc["code"] = 3
+    status, msg = S.stack_authentik_admin(c)
+    assert status == S.DONE and "already stored" in msg and "ThisIsMy_FAKE_Password6!" in env.read_text()
+    rc["code"] = 0
+    assert S.stack_authentik_admin(c)[0] == S.DONE
+    cmd, given = ran[-1]
+    assert cmd[-2:] == ["authentik-admin-import", "--keep-existing"] and given == "ThisIsMy_FAKE_Password6!\n"
+    assert not any("ThisIsMy_FAKE_Password6!" in part for part in cmd)       # never on a command line
+    assert env.read_text() == "PG_PASS=x\nAUTHENTIK_BOOTSTRAP_PASSWORD=\nLABAPE_HOSTNAME=h\n"
+    ran.clear()
+    assert S.stack_authentik_admin(c)[0] == S.DONE and ran == []              # nothing left to store
+    c.backup = tmp_path / "backup.tar"
+    assert S.stack_authentik_admin(c)[0] == S.NA
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Stack.Up") < names.index("Stack.AuthentikAdmin") < names.index("Stack.Restore")

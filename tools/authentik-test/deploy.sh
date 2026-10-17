@@ -122,10 +122,11 @@ fi
 
 # akadmin's first password lives in the stack's secret store from here on (Secrets -> Authentik administrator),
 # where LABaPe checks and rotates it; the plain copy in .env is removed once it is stored. Best effort: with the
-# LABaPe stack not up yet, the line stays and `labape authentik-admin-import` stores it later.
+# LABaPe stack not up yet, the line stays and the installer's Stack.AuthentikAdmin step (or
+# `labape authentik-admin-import`) stores it later. A password already stored (perhaps rotated) is never replaced.
 if grep -q '^AUTHENTIK_BOOTSTRAP_PASSWORD=.' .env; then
   if grep '^AUTHENTIK_BOOTSTRAP_PASSWORD=' .env | cut -d= -f2- \
-       | (cd ../../container && ${LABAPE_COMPOSE:-docker compose} exec -T labape-api labape authentik-admin-import) >/dev/null 2>&1; then
+       | (cd ../../container && ${LABAPE_COMPOSE:-docker compose} exec -T labape-api labape authentik-admin-import --keep-existing) >/dev/null 2>&1; then
     sed -i 's/^AUTHENTIK_BOOTSTRAP_PASSWORD=.*/AUTHENTIK_BOOTSTRAP_PASSWORD=/' .env
     echo "authentik-test: akadmin's password is in the secret store (Secrets -> Authentik administrator -> Reveal)"
   else
