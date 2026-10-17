@@ -59,6 +59,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/stores.py` | lab (container) | Check the stack's secret stores (Test connection, dashboard) |
 | `live/stores_move.py` | lab (container) | Move real secrets between the stores and check them |
 | `live/stores_rotate.py` | lab (container) | Rotate LABaPe's logins to its stores |
+| `live/console.py` | lab (container) | Console API and MCP round trip with a throwaway console token: reach, exec (Linux and Windows), timeout and output cap, a shell and a serial session, `/mcp`, another environment refused, revoke |
 | `live/syslog_settings.py` | lab (container) | Point Settings → Syslog at a collector and send the test message |
 | `live/jobs.py` | lab (container) | List jobs with the Jobs page's filters, as any test user |
 | `live/files.py` | lab (container) | List the Files tab (installers with their OS targets) |
