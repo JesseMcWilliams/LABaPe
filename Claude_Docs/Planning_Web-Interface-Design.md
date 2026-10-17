@@ -2020,3 +2020,18 @@ Questions 29 and 154 ("later") are now built. Kerberos is Authentik's Kerberos s
 | Checks | `console_access.py`, used by the console endpoints (X2, X3): `console_principal` (a bearer token holding the role; a browser session is refused), `rate_limit` (per token, per minute, in this process; 429 with `Retry-After`), `check_environment` (404 when off the list or not usable by the owner: an admin's or service token's list is the whole grant, anyone else must also own the environment), `check_account`, `check_host_consoles` (the flag, and the token must still hold admin), `limits`. |
 | UI | Tokens page: when the console role is chosen, the environment choice (all the owner can use, or chosen ones), account requirement, the host consoles option (admins) and the three limits. |
 | Verified | pytest (`test_x1_console_scope.py`: creation and validation, the role needs a token, reach by list and ownership, rate limit, account and host rules). |
+
+### 59.2 X2 as built: run a command
+
+| Area | As built |
+|---|---|
+| Endpoint | `POST /api/environments/{id}/vms/{vm}/exec` with `{command, timeout (1-3600 s), account}` returns `{exit_code, stdout, stderr, truncated, timed_out, duration, session}`. A bearer token with the console role only (`console_access.console_principal`); the order of checks is rate limit, environment reach (404 when off the token's list), VM in the environment (404), account (400 when the token requires one and none was named). Maintenance mode answers 503 like any write. |
+| Running it | `engine/vmexec.py`. **Linux:** `ssh` as LABaPe's access user (its key) or as an environment account (its stored password, passed through `SSH_ASKPASS` in the environment, never in a command line). A VM on a remote KVM host goes through that host (`ProxyCommand` with `ssh -W`, as the host's access account). **Windows:** WinRM with PowerShell (pywinrm, the inventory's port and transport, certificate not verified as the labs use their own CA); not for VMs on a remote KVM host yet (the call says so). Credentials come from `remote.vm_target`, the same as the browser consoles. |
+| Limits | The timeout is capped at the token's session minutes. Output past the token's output limit stops the command (`truncated`, no exit code); a timeout kills it (`timed_out`). This call's own password and key are replaced by `***` in the output. |
+| Record | Every call is a `remote_sessions` row (protocol `exec`) in the session log, and a `console.exec` audit event with the token, VM, account, the command (first 2,000 characters), exit code, byte counts and whether it was cut short. The output is never in the audit event. |
+
+### 59.3 Transcripts of API console use (question 182)
+
+Kept only while Settings → Remote access → record sessions is on. guacd's volume is read-only in the API, so the API writes `session-<id>.txt` into its own `labape-transcripts` volume (`console_transcripts.py`; mounted in the API and the worker). The worker's daily purge (`maintenance.purge_recordings`) covers both volumes with the same retention, and the auditor's recording download serves a transcript as `labape-session-<id>.txt`. The stack backup does not include transcripts yet.
+
+| Verified | pytest (`test_x2_exec.py`: exit code, output, cap and timeout on real processes; ssh arguments for key, password and a host in between; the endpoint's checks, limits, audit, session row, failure path and transcript). |

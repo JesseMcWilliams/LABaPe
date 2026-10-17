@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, remote
+from .. import appsettings, console_transcripts, remote
 from ..auth.oidc import is_own_origin
 from ..config import get_settings
 from ..db import get_db, session_factory
@@ -172,7 +172,7 @@ def list_sessions(limit: int = 200, username: str | None = None, target: str | N
         q = q.where(RemoteSession.created_at <= until)
     rows = [_out(s) for s in db.scalars(q.limit(min(limit, 2000)))]
     for r in rows:
-        r["has_recording"] = (RECORDINGS / f"session-{r['id']}").is_file()
+        r["has_recording"] = (RECORDINGS / f"session-{r['id']}").is_file() or console_transcripts.path(r["id"]).is_file()
     return rows
 
 
@@ -181,10 +181,13 @@ def recording(session_id: int, request: Request, db: Session = Depends(get_db),
               p: Principal = Depends(require_roles("auditor"))):
     s = db.get(RemoteSession, session_id)
     path = RECORDINGS / f"session-{session_id}"
-    if s is None or not path.is_file():
+    text = console_transcripts.path(session_id)         # an API console session's transcript (design §59.3)
+    if s is None or not (path.is_file() or text.is_file()):
         raise HTTPException(status_code=404, detail="No recording for that session")
     audit(db, p.username, "remote.recording.view", object_type="remote_session", object_id=s.id,
           detail={"target": s.target, "user": s.username}, source_ip=client_ip(request))
+    if not path.is_file():
+        return FileResponse(text, media_type="text/plain; charset=utf-8", filename=f"labape-session-{session_id}.txt")
     return FileResponse(path, media_type="application/octet-stream", filename=f"labape-session-{session_id}.guac")
 
 

@@ -145,6 +145,8 @@ services:
       - ./update:/var/lib/labape-update
       # Remote session recordings that guacd writes (design §28.5), for auditors.
       - labape-recordings:/var/lib/labape-recordings:ro
+      # Text transcripts of API console sessions, written by the API (design §59.3).
+      - labape-transcripts:/var/lib/labape-transcripts
       # The stack syslog collector (design §29.1): its database socket, the settings
       # LABaPe renders for it, and its certificates (the worker issues them).
       - labape-syslog-run:/run/syslog-db
@@ -218,6 +220,7 @@ services:
       - ./update:/var/lib/labape-update
       # Deletes recordings past Settings → Remote access's retention.
       - labape-recordings:/var/lib/labape-recordings
+      - labape-transcripts:/var/lib/labape-transcripts
       # The stack syslog collector (design §29.1): its database socket, the settings
       # LABaPe renders for it, and its certificates (the worker issues them).
       - labape-syslog-run:/run/syslog-db
@@ -348,6 +351,7 @@ secrets:
 
 volumes:
   labape-recordings:
+  labape-transcripts:
   labape-syslog-db:
   labape-syslog-run:
   labape-syslog-conf:
