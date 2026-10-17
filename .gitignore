@@ -82,3 +82,8 @@ tools/authentik-test/trust/
 # The web interface's certificate (design §48.4), made on the host.
 container/caddy/tls/*
 !container/caddy/tls/README.md
+
+# Per-user Claude Code settings, and the token-settings proposal and its backups (aPeTemplate)
+.claude/settings.local.json
+.claude/settings.local.json.bak-*
+.claude/settings.token-proposal.json
