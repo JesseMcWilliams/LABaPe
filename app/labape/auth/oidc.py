@@ -70,6 +70,18 @@ def stack_names() -> list[str]:
     return [n for i, n in enumerate(names) if n and n not in names[:i]]
 
 
+def is_own_origin(origin: str | None) -> bool:
+    """True when `origin` (an Origin header) is the public URL's scheme and port on one of the stack's names."""
+    if not origin:
+        return False
+    u, o = urlsplit(get_settings().public_url), urlsplit(origin)
+    try:
+        return (o.scheme == u.scheme and o.port == u.port and (o.hostname or "").lower() in stack_names()
+                and not (o.path or o.query or o.fragment))
+    except ValueError:
+        return False
+
+
 def request_name(request: Request) -> str:
     """The name the browser used to reach this stack when it is one of the stack's own, else the main name.
     Sign-in then stays on that name end to end (Kerberos needs the full host name, design §58)."""

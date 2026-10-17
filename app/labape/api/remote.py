@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import appsettings, remote
+from ..auth.oidc import is_own_origin
 from ..config import get_settings
 from ..db import get_db, session_factory
 from ..errors import FieldError
@@ -94,7 +95,8 @@ async def tunnel(ws: WebSocket, token: str = "", width: int = 1280, height: int 
     issued to, the page must come from LABaPe's own origin, and the token works once, within
     two minutes."""
     public = urlsplit(get_settings().public_url)
-    if ws.headers.get("origin") != f"{public.scheme}://{public.netloc}":
+    got = ws.headers.get("origin")
+    if got != f"{public.scheme}://{public.netloc}" and not is_own_origin(got):
         await ws.close(code=4403)
         return
     with session_factory()() as db:
