@@ -22,10 +22,12 @@ DEFAULT_ROLE_MAP = {
     "labape-file-managers": "file_manager",
     "labape-viewers": "viewer",
     "labape-auditors": "auditor",
+    "labape-console": "console",
 }
 
 # auditor (question 118): reads the audit log, the remote session log and session recordings.
-ROLES = ("admin", "template_editor", "deployer", "file_manager", "viewer", "auditor")
+# console (design §59): an API token may run commands and open text sessions on VMs; an admin holds it implicitly.
+ROLES = ("admin", "template_editor", "deployer", "file_manager", "viewer", "auditor", "console")
 
 
 def _read_file_var(name: str) -> str | None:
