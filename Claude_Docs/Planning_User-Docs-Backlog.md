@@ -9,3 +9,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment page: **Preview redeploy** (which VMs a redeploy would reinstall, create or remove, and why; nothing is applied) and `deploy.sh --plan-only <file>` for the command line (design §56.1).
 - Secrets → Health: the **by rotation** status (a secret that rotates daily, so its rotation is its check) next to **not in use**.
 - API tokens: the **console** role and its options on the New token dialog (only chosen environments, must name an account, KVM host consoles for admins, calls per minute, session minutes, output KB); the Authentik group `labape-console` (design §59.1).
+- Console API: `POST /api/environments/{id}/vms/{vm}/exec` for tokens with the console role (command, timeout, account; the result, limits and the session log entry); recordings are transcripts (`.txt`) for API sessions (design §59.2).

@@ -152,7 +152,8 @@ def purge_history(db: Session) -> dict[str, int]:
         UserError.at < now - dt.timedelta(days=cfg.errors_days))).rowcount or 0
     db.commit()
     purge_backups(appsettings.get(db, "backup"))
-    out["recordings"] = purge_recordings(appsettings.get(db, "remote").keep_recordings_days)
+    keep = appsettings.get(db, "remote").keep_recordings_days
+    out["recordings"] = purge_recordings(keep) + purge_recordings(keep, TRANSCRIPTS)
     from .. import syslogstack
     try:
         out["syslog"] = syslogstack.purge(db)
@@ -162,6 +163,7 @@ def purge_history(db: Session) -> dict[str, int]:
 
 
 RECORDINGS = Path("/var/lib/labape-recordings")
+TRANSCRIPTS = Path("/var/lib/labape-transcripts")       # API console transcripts (design §59.3)
 
 
 def purge_recordings(days: int, root: Path = RECORDINGS) -> int:
