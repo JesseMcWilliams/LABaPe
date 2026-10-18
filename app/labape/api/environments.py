@@ -16,11 +16,11 @@ from sqlalchemy.orm import Session
 
 from .. import appsettings, env_accounts, leases, quotas, remote, spread, timezones
 from ..db import get_db
-from ..catalog import CatalogError, expand, installer_mismatch, platforms
+from ..catalog import CatalogError, expand, installer_mismatch, package_platforms, platforms
 from ..errors import FieldError
 from ..engine import planpreview
 from ..engine.hoststats import assess, demand_of
-from ..models import Environment, Grant, HostStats, IpAllocation, Job, KvmHost, MetricSample, Template, utcnow
+from ..models import CatalogItem, Environment, Grant, HostStats, IpAllocation, Job, KvmHost, MetricSample, Template, utcnow
 from ..naming import HOSTNAME_RE, instance_names
 from ..netpolicy import PolicyError, allocate, resolve
 from ..permissions import add_owner, can_see, is_owner, visible_ids
@@ -32,10 +32,10 @@ ROLE_NAMES = Literal["domain_controller", "windows_server", "windows_workstation
 
 
 class HostGroup(BaseModel):
-    name: str = Field(pattern=r"^[a-z][a-z0-9]{0,11}$")
+    name: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,11}$")      # mixed case is fine; VM names are compared without case
     count: int = Field(default=1, ge=1, le=20)
     os: str = Field(pattern=r"^[a-z0-9_]+$")
-    roles: list[ROLE_NAMES] = Field(min_length=1)
+    roles: list[ROLE_NAMES] = Field(min_length=1, max_length=1)      # one role per host group
     image_source: Literal["iso_direct", "packer_template"] | None = None
     template: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]+$")
     cpu_count: int = Field(default=2, ge=1, le=32)
@@ -254,9 +254,14 @@ def _check_catalog(db: Session, groups: list[dict]) -> None:
     for i, g in enumerate(groups):
         family = "windows" if g.get("os", "").startswith("windows") else "linux"
         try:
-            chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
+            chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []), family)
         except CatalogError as exc:
             raise FieldError(f"host_groups.{i}.{exc.field}", str(exc)) from exc
+        for pkg in g.get("packages", []):
+            item = db.scalar(select(CatalogItem).where(CatalogItem.kind == "package", CatalogItem.name == pkg))
+            if item is not None and family not in package_platforms(db, item.definition):
+                raise FieldError(f"host_groups.{i}.packages", f"Package {pkg} has nothing to install on {family}; "
+                                 f"remove it from this {g.get('os')} group.")
         for kind in ("services", "applications"):
             for name, definition in chosen[kind].items():
                 if family not in platforms(kind[:-1], definition):
@@ -360,10 +365,11 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
                          status_code=409)
     seen: dict[str, int] = {}
     for i, g in enumerate(body.host_groups):
-        if g.name in seen:
+        if g.name.lower() in seen:
             raise FieldError(f"host_groups.{i}.name", f"Group name {g.name} is also used by host group "
-                                                      f"{seen[g.name] + 1}. Group names must be unique.")
-        seen[g.name] = i
+                                                      f"{seen[g.name.lower()] + 1} (names are compared without case). "
+                                                      "Group names must be unique.")
+        seen[g.name.lower()] = i
         if g.image_source == "packer_template" and not g.template:
             raise FieldError(f"host_groups.{i}.template", "Building from a template needs a template; choose one.")
         if len(g.names) > g.count:
@@ -1016,7 +1022,7 @@ def set_desktops(env_id: int, body: DesktopsIn, request: Request, db: Session = 
 
 
 class MoveIn(BaseModel):
-    group: str = Field(pattern=r"^[a-z][a-z0-9]{0,11}$")
+    group: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,11}$")
     kvm_host_id: int
 
 

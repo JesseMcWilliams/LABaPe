@@ -12,3 +12,5 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Console API: `POST /api/environments/{id}/vms/{vm}/exec` for tokens with the console role (command, timeout, account; the result, limits and the session log entry); recordings are transcripts (`.txt`) for API sessions (design §59.2).
 - Console API: interactive text sessions (`/api/console/sessions`: open, input, output by long poll or event stream, close), serial consoles, host shells for tokens allowed them; session length, idle time and the output buffer (design §59.4).
 - MCP server: `labape mcp` (stdio) and `POST /mcp` (HTTP), the tools offered by role, and the reference in Reference_Console-API-And-MCP.md (design §59.5).
+- Catalog → Packages → New package: the **Contents** picker (services, applications and packages from the catalog, with a Windows/Linux filter), and that every catalog choice in a new host group, packages included, is limited to the group's OS (design §60).
+- New environment: host group names may mix upper and lower case, and a host group has one role (a single choice) (design §60.1).

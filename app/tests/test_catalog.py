@@ -133,3 +133,41 @@ def test_syslog_collector_service(client, tmp_root):
         write_catalog_inputs(db, db.get(Environment, r.json()["environment"]["id"]), work)
     hv = yaml.safe_load((work / "ansible/inventory/host_vars/logs1.yml").read_text())
     assert hv["labape_services"]["syslog_collector"]["linux"]["role"] == "syslog_collector"
+
+
+def test_a_package_is_offered_for_the_os_families_its_members_support(client):
+    _admin_session(client)
+    _host(client)
+    _item(client, "application", "both", {"apt": "both", "chocolatey": "both"})
+    _item(client, "application", "linuxonly", {"apt": "lo"})
+    _item(client, "service", "iisish", {"windows": {"features": ["Web-Server"]}})
+    pk = lambda name, *members: _item(client, "package", name, {"items": [{"kind": k, "name": n} for k, n in members]})  # noqa: E731
+    pk("mixed", ("application", "linuxonly"), ("service", "iisish"))
+    pk("lin", ("application", "linuxonly"))
+    nested = pk("wrap", ("package", "lin"), ("service", "iisish"))
+    plats = {i["name"]: i["platforms"] for i in client.get("/api/catalog?kind=package").json()}
+    assert plats["mixed"] == ["linux", "windows"] and plats["lin"] == ["linux"] and plats["wrap"] == ["linux", "windows"]
+    assert client.get(f"/api/catalog/{nested}").json()["platforms"] == ["linux", "windows"]
+    g = {"name": "g", "os": "rocky9", "roles": ["linux_server"], "image_source": "packer_template", "template": "rocky9-base"}
+    w = {**g, "name": "win", "os": "windows_server_2022", "roles": ["windows_server"]}
+    # a mixed package is accepted on both families, a Linux-only one is refused on Windows
+    assert client.post("/api/environments", json={"name": "pk1", "kvm_host_id": 1, "host_groups": [
+        {**g, "packages": ["mixed"]}, {**w, "packages": ["mixed"]}]}).status_code == 201
+    r = client.post("/api/environments", json={"name": "pk2", "kvm_host_id": 1, "host_groups": [{**w, "name": "win2", "packages": ["lin"]}]})
+    assert r.status_code == 422 and r.json()["errors"][0]["field"] == "host_groups.0.packages"
+    assert "nothing to install on windows" in r.json()["errors"][0]["message"]
+
+
+def test_expanding_a_package_skips_the_members_for_the_other_family(client):
+    from labape.catalog import expand
+    _admin_session(client)
+    _item(client, "application", "linuxonly", {"apt": "lo"})
+    _item(client, "service", "iisish", {"windows": {"features": ["Web-Server"]}})
+    _item(client, "package", "mixed", {"items": [{"kind": "application", "name": "linuxonly"}, {"kind": "service", "name": "iisish"}]})
+    with session_factory()() as db:
+        assert sorted(expand(db, [], [], ["mixed"])["services"]) == ["iisish"]                   # no family: everything
+        lin, win = expand(db, [], [], ["mixed"], "linux"), expand(db, [], [], ["mixed"], "windows")
+        assert (lin["applications"].keys(), lin["services"].keys()) == ({"linuxonly"}, set())
+        assert (win["applications"].keys(), win["services"].keys()) == (set(), {"iisish"})
+        direct = expand(db, ["iisish"], [], [], "linux")                                          # chosen directly: kept
+        assert "iisish" in direct["services"]

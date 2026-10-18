@@ -49,10 +49,15 @@ export default function EnvironmentNew() {
   useEffect(() => {
     api.get<CatalogItem[]>("/api/catalog").then((items) => setCatalog(items.filter((i) => i.status === "published")), () => setCatalog([]));
   }, []);
-  // Published items that support this group's OS family (packages: any member does).
-  const catalogFor = (g: HostGroup, kind: CatalogItem["kind"]) => {
-    const family = g.os.startsWith("windows") ? "windows" : "linux";
-    return catalog.filter((i) => i.kind === kind && (kind === "package" || i.platforms.includes(family)));
+  // Published items that support an OS family (a package: when any of its members does; the API works that out).
+  const familyOf = (os: string) => (os.startsWith("windows") ? "windows" : "linux");
+  const catalogFor = (g: HostGroup, kind: CatalogItem["kind"]) =>
+    catalog.filter((i) => i.kind === kind && i.platforms.includes(familyOf(g.os)));
+  // Changing a group's OS drops the choices that don't fit the new one.
+  const fitting = (g: HostGroup, os: string): Partial<HostGroup> => {
+    const keep = (kind: CatalogItem["kind"], names: string[] | undefined) =>
+      (names ?? []).filter((n) => catalog.some((i) => i.kind === kind && i.name === n && i.platforms.includes(familyOf(os))));
+    return { os, services: keep("service", g.services), applications: keep("application", g.applications), packages: keep("package", g.packages) };
   };
   const [groups, setGroups] = useState<HostGroup[]>([blankGroup()]);
   const [summary, setSummary] = useState("");
@@ -254,16 +259,16 @@ export default function EnvironmentNew() {
             <Stack spacing={1}>
               <Stack direction="row" spacing={2} useFlexGap sx={row}>
                 <Field label="Group name" value={g.name} onChange={(e) => setGroup(i, { name: e.target.value })}
-                  required error={err(`${at}.name`)} help="1-12 lower-case letters and digits" />
+                  required error={err(`${at}.name`)} help="1-12 letters and digits" />
                 <Field label="Count" type="number" value={g.count} sx={{ width: 90 }} error={err(`${at}.count`)}
                   onChange={(e) => setGroup(i, { count: Number(e.target.value) })} />
                 <Field select label="OS" value={g.os} sx={{ minWidth: 200 }} error={err(`${at}.os`)}
-                  onChange={(e) => setGroup(i, { os: e.target.value })}>
+                  onChange={(e) => setGroup(i, fitting(g, e.target.value))}>
                   {OS_KEYS.map((k) => <MenuItem key={k} value={k}>{k}</MenuItem>)}
                 </Field>
-                <Field select label="Roles" value={g.roles} sx={{ minWidth: 220 }} error={err(`${at}.roles`)}
-                  slotProps={{ select: { multiple: true } }}
-                  onChange={(e) => setGroup(i, { roles: e.target.value as unknown as string[] })}>
+                <Field select label="Role" value={g.roles[0] ?? ""} sx={{ minWidth: 220 }} error={err(`${at}.roles`)}
+                  help="One role per host group"
+                  onChange={(e) => setGroup(i, { roles: [e.target.value] })}>
                   {ROLES.map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
                 </Field>
                 <ActionIconButton tip="Remove this host group from the form" disabled={groups.length === 1} sx={{ mt: 0.5 }}
