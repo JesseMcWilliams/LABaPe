@@ -87,3 +87,5 @@ container/caddy/tls/*
 .claude/settings.local.json
 .claude/settings.local.json.bak-*
 .claude/settings.token-proposal.json
+# built MCP bundle (tools/helpers/build_mcpb.py)
+/dist/

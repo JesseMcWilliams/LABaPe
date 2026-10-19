@@ -97,6 +97,20 @@ def test_bad_calls_and_rest_errors_are_tool_errors():
     assert _rpc(s, "tools/call", {})["error"]["code"] == -32602
 
 
+def test_a_token_that_cant_be_read_says_why():
+    async def refused(method, path, params, body):
+        return 401, {"detail": "Invalid, expired or revoked API token"}
+    s = mcp.Session(refused)
+    assert _rpc(s, "tools/list")["result"]["tools"] == []
+    r = _rpc(s, "tools/call", {"name": "run_command", "arguments": {"environment_id": 1, "vm": "x", "command": "id"}})
+    assert r["result"]["isError"] and "HTTP 401" in r["result"]["content"][0]["text"] and "revoked" in r["result"]["content"][0]["text"]
+
+    async def down(method, path, params, body):
+        return 502, "Can't reach LABaPe at https://x: connection refused"
+    r = _rpc(mcp.Session(down), "tools/call", {"name": "console_targets"})
+    assert "Can't reach LABaPe" in r["result"]["content"][0]["text"]
+
+
 def test_stdio_answers_one_line_per_request():
     lines = [json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
              json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}), "not json",

@@ -14,3 +14,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - MCP server: `labape mcp` (stdio) and `POST /mcp` (HTTP), the tools offered by role, and the reference in Reference_Console-API-And-MCP.md (design §59.5).
 - Catalog → Packages → New package: the **Contents** picker (services, applications and packages from the catalog, with a Windows/Linux filter), and that every catalog choice in a new host group, packages included, is limited to the group's OS (design §60).
 - New environment: host group names may mix upper and lower case, and a host group has one role (a single choice) (design §60.1).
+- Claude Desktop bundle: `build_mcpb.py`, importing the `.mcpb`, the address/token/CA settings it asks for (design §59.7).
