@@ -86,7 +86,7 @@ def test_plan_job_previews_without_changing_the_environment(client, tmp_path):
         job, env = db.get(Job, plan_id), db.get(Environment, env_id)
         assert job.type == planpreview.JOB_TYPE and env.status == "deployed"
         cmd = command_for(job, env, Path("/w"))
-        assert cmd[1].endswith("deploy.sh") and cmd[-2:] == ["--plan-only", f"/w/{planpreview.PLAN_FILE}"]
+        assert cmd[1].endswith("deploy.sh") and cmd[-2:] == ["--plan-only", str(Path("/w") / planpreview.PLAN_FILE)]      # the OS's separator
         # Two hosts' parts, as for a spread environment.
         for i, vms in enumerate(([{"name": "pv1", "action": "replace", "changed": ["answer_file_md5"]}],
                                  [{"name": "pv2", "action": "none", "changed": []}])):
