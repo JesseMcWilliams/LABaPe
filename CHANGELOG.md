@@ -9,6 +9,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Fixed
 - Session log: an API console session's recording is a text transcript, which the player can't open ("can't access property 'size'"). **Play** now shows only for a browser session's recording, and every recording has a **Download** button.
+- Console API: **run a command** as an environment's domain account (or the domain admin) on a Windows VM failed with "the specified credentials were rejected": it signed in with WinRM Basic, which takes local accounts only. A domain login now uses NTLM.
 - Drive Pools: the drives offered for **Add** no longer include the small empty partition (9) that ZFS makes on every whole disk it uses; a partition is offered only when nothing else on its disk is in use.
 
 ## [0.5.4] - 2026-10-19
