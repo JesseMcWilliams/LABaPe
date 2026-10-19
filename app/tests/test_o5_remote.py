@@ -94,7 +94,7 @@ def _env(client):
     return eid
 
 
-def test_targets_sessions_rdp_file_and_permissions(client):
+def test_targets_sessions_rdp_file_and_permissions(client, tmp_path, monkeypatch):
     _admin_session(client)
     eid = _env(client)
     with session_factory()() as db:
@@ -120,6 +120,22 @@ def test_targets_sessions_rdp_file_and_permissions(client):
     assert "password" not in rdp.text.lower().replace("prompt for credentials", "")
     assert client.get(f"/api/remote/rdp?environment_id={eid}&vm=lin1").status_code == 422
     assert client.get("/api/remote/sessions").json()[0]["target"] == "win1"
+    # Which recordings play in the page (a browser session's .guac) and which only download (an API transcript).
+    from labape import console_transcripts
+    from labape.api import remote as remote_api
+    monkeypatch.setattr(remote_api, "RECORDINGS", tmp_path / "rec")
+    monkeypatch.setattr(console_transcripts, "DIR", tmp_path / "txt")
+    sid = body["id"]
+    row = lambda: next(x for x in client.get("/api/remote/sessions").json() if x["id"] == sid)   # noqa: E731
+    assert (row()["has_recording"], row()["recording_kind"]) == (False, None)
+    (tmp_path / "txt").mkdir()
+    console_transcripts.path(sid).write_text("$ id\nuid=0(root)\n", encoding="utf-8")
+    assert (row()["has_recording"], row()["recording_kind"]) == (True, "text")
+    got = client.get(f"/api/remote/sessions/{sid}/recording")
+    assert got.status_code == 200 and got.headers["content-type"].startswith("text/plain") and "uid=0" in got.text
+    (tmp_path / "rec").mkdir()
+    (tmp_path / "rec" / f"session-{sid}").write_bytes(b"4.size,1.0;")
+    assert row()["recording_kind"] == "video"
     assert client.get("/api/admin/audit?action=remote.session.create").json()
 
     # A viewer who can see nothing, and an auditor (reads the session log and the audit log, opens nothing).
