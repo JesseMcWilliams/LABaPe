@@ -109,6 +109,18 @@ def test_unused_disks_leave_out_what_is_in_use():
     assert [d["path"] for d in hostpools.unused_disks(facts())] == ["/dev/sdc"]
 
 
+def test_a_zfs_member_disk_offers_no_free_partition():
+    # ZFS on a whole disk makes a data partition (1) and an empty 8 MB partition (9); found live on nkvm1, 2026-10-19.
+    zdisk = lambda d: {"name": d, "path": f"/dev/{d}", "type": "disk", "size": "2147483648", "children": [
+        {"name": f"{d}1", "path": f"/dev/{d}1", "type": "part", "size": "2136997888", "fstype": "zfs_member"},
+        {"name": f"{d}9", "path": f"/dev/{d}9", "type": "part", "size": "8388608", "fstype": None}]}
+    f = facts()
+    f["disks"] += [zdisk("vdd"), zdisk("vde"),
+                   {"name": "vdi", "path": "/dev/vdi", "type": "disk", "size": "4000", "children": [
+                       {"name": "vdi1", "path": "/dev/vdi1", "type": "part", "size": "3999", "fstype": None}]}]
+    assert [d["path"] for d in hostpools.unused_disks(f)] == ["/dev/sdc", "/dev/vdi1"]
+
+
 def test_action_scripts_are_checked():
     (p,) = hostpools.build(facts())
     assert hostpools.action_script(p, "check", None) == "echo check > /sys/block/md0/md/sync_action"

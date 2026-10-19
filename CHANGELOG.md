@@ -7,6 +7,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Fixed
+- Drive Pools: the drives offered for **Add** no longer include the small empty partition (9) that ZFS makes on every whole disk it uses; a partition is offered only when nothing else on its disk is in use.
+
 ## [0.5.4] - 2026-10-19
 
 Console and management access for other AIs and scripts. An API token with the new `console` role can run a command on a VM and open interactive text sessions (a shell, a VM's serial console or, for admin tokens allowed it, a KVM host's shell), within the environments and limits set on the token; everything is audited and the session log shows each use. An MCP server (`labape mcp`, `POST /mcp`, or a Claude Desktop bundle built with `tools/helpers/build_mcpb.py`, which also works with the Microsoft Store version of Claude Desktop) offers the same, plus environment and job tools, by the token's roles. Also: Preview redeploy, a contents picker for catalog packages, every catalog choice for a host group limited to its OS, mixed-case host group names with one role per group, and fixes for sign-in and SSH/RDP sessions on a stack name written with capitals or an alternative name.

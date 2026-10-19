@@ -200,13 +200,19 @@ def unused_disks(facts: dict | None) -> list[dict]:
     taken = pool_members(build(facts))
     out = []
 
-    def walk(nodes):
+    def busy(n: dict) -> bool:
+        return bool(n.get("children") or [m for m in n.get("mountpoints") or [] if m] or n.get("fstype")
+                    or n.get("path") in taken or n.get("name") in taken)
+
+    def walk(nodes, siblings_busy: bool = False):
         for n in nodes:
-            if n.get("type") in ("disk", "part") and not n.get("children") and not [m for m in n.get("mountpoints") or [] if m] \
-                    and not n.get("fstype") and n.get("path") not in taken and n.get("name") not in taken:
+            # A partition is free only when nothing else on its disk is in use: a ZFS whole-disk member leaves an
+            # empty 8 MB partition 9 beside its data partition, which is part of that pool, not a spare.
+            if n.get("type") in ("disk", "part") and not busy(n) and not (n.get("type") == "part" and siblings_busy):
                 out.append({"path": n.get("path") or f"/dev/{n.get('name')}", "size": _int(n.get("size")),
                             "model": n.get("model") or ""})
-            walk(n.get("children") or [])
+            kids = n.get("children") or []
+            walk(kids, any(busy(k) for k in kids))
     walk(facts.get("disks") or [])
     return out
 
