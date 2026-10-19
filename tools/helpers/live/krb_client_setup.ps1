@@ -33,5 +33,8 @@ foreach ($k in 'HKLM:\SOFTWARE\Policies\Microsoft\Edge', 'HKLM:\SOFTWARE\Policie
 # 4. Check: the name resolves, port 9445 answers, and the certificate now verifies.
 "dns: $((Resolve-DnsName $name -Type A).IPAddress -join ',')"
 "port 9445: $((Test-NetConnection $name -Port 9445 -WarningAction SilentlyContinue).TcpTestSucceeded)"
-$r = & curl.exe -sS --ssl-no-revoke -o NUL -w '%{http_code} verify=%{ssl_verify_result}' "https://${name}:9445/" 2>&1
-"https://${name}:9445/ -> $r (verify=0 means the certificate is trusted; the platform CA publishes no revocation list, so the check is skipped)"
+# .NET's own check (curl.exe 8.8's Schannel refuses --ssl-no-revoke over WinRM, and the platform CA publishes
+# no revocation list): an HTTP status means the certificate is trusted.
+try { $q = [Net.HttpWebRequest]::Create("https://${name}:9445/"); $q.AllowAutoRedirect = $false; $resp = $q.GetResponse(); $code = [int]$resp.StatusCode; $resp.Close() }
+catch [Net.WebException] { if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode } else { $code = "error: $($_.Exception.Message)" } }
+"https://${name}:9445/ -> $code (an HTTP status means the certificate is trusted)"
