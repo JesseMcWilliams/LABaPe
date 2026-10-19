@@ -57,7 +57,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Backlog.md`: agreed but deferred work (`.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
   - `Planning_Lists-Secrets-Settings.md`: the round of 2026-10-14 (paging and exports, filters, a stack's names and SANs, secret health, sections for Secrets and Settings), batch by batch.
-  - `Planning_Handoff-2026-10-16.md` (and the older `Planning_Handoff-2026-10-15.md` it builds on): where LABaPe stands (v0.5.3: Kerberos, time zones, Hyper-V dropped, sign-in names), what's left, the lab's state and the gotchas; read them first when resuming.
+  - `Planning_Handoff-2026-10-19.md` (and the older `Planning_Handoff-2026-10-16.md` and `-15.md` it builds on): where LABaPe stands (v0.5.3 released; console API, MCP and catalog changes since), what's left, the lab's state and the gotchas; read them first when resuming.
   - `Planning_Access-Mail-Updates-Files.md`: the next round's list (2026-10-14): Secrets paging, connecting as an account, a lab mail server, Catalog → Updates, new packages, files per KVM host, monitoring tools; questions 167-173.
   - `Reference_Console-API-And-MCP.md`: how another AI or script gets a token and uses the console API (commands, text sessions) and the MCP server.
   - `Planning_AI-Console-And-MCP.md`: plan for letting other AIs run commands and open text sessions on VMs and manage environments through the API, plus an MCP server (batches X1-X4, questions 176-183, all answered).

@@ -15,14 +15,14 @@ Planning_Questions.md.
 | 16 | Kerberos sign-on | Built 2026-10-16 (design §58); still to do: a browser test from `l2win1`, an installer step or Settings page for the domain side. | Built (manual recipe) |
 | 17 | Hyper-V parity | **Dropped (2026-10-16, question 175):** Hyper-V support will be removed, so the gaps are not closed. Questions 11-14 and 155 are superseded; Reference_Backend-Parity.md stays as history. | Dropped |
 | 18 | User docs | The user-docs backlog is done (2026-10-14: Web-Interface-Guide.md and Web-Interface-Admin.md cover everything to §44). The published `.docx` guides wait (question 24: later); `release.sh --docx` makes them from `User_Docs/` with pandoc when they start. | |
-| 19 | AI console access and MCP | Planned 2026-10-17 (batches X1-X4: token scope and `console` role, run a command, interactive text sessions, MCP server); questions 176-183 answered. | [Planning_AI-Console-And-MCP.md](Planning_AI-Console-And-MCP.md) |
+| 19 | AI console access and MCP | **Built 2026-10-17** (batches X1-X4, design §59; the Claude Desktop bundle §59.7); questions 176-183 answered. Still to do: sessions through a remote KVM host, environment accounts and host consoles are untried live; the `labape-console` Authentik group isn't created; not released. | [Planning_AI-Console-And-MCP.md](Planning_AI-Console-And-MCP.md) |
 
 **Next round (2026-10-14):** lists, secrets and settings, in [Planning_Lists-Secrets-Settings.md](Planning_Lists-Secrets-Settings.md) (batches L1, L2, N1, S1, S2, S3). v0.4.0 not yet (the user, 2026-10-14).
 
 **Release v0.3.0:** when the user says so; proposed after batch 8 (question 150). The release key
 is in place (`deploy/allowed_signers`, 2026-10-12): tags are signed with it.
 
-## Operations round (added 2026-10-15; the user agreed all of it, in this order)
+## Operations round (added 2026-10-15; all built: P1 with batch L1 (design §34), H2 §53.1, S4 §53.2, C1 §53.3, D1 §53.4)
 
 | # | Item | What |
 |---|---|---|

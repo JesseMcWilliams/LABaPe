@@ -9,10 +9,18 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Added
 - **Preview redeploy** on an environment's page: a job runs OpenTofu's plan without applying it and lists what a redeploy would do to each VM (reinstalled, created, removed or kept) and why a VM would be reinstalled (its image or template, CPU, memory, disk, network, host, storage or install answers). The command line has the same as `deploy.sh ... --plan-only <file>` (design §56.1).
+- **Console access for other AIs and scripts** (design §59, `Reference_Console-API-And-MCP.md`). A new `console` role and, on an API token: the environments it may reach (or all its owner can use), whether it must name an account, an admin-only option for KVM host consoles, and limits (calls per minute, session length, output size). With it: run a command on a VM and get the exit code and output (`POST /api/environments/{id}/vms/{vm}/exec`: SSH on Linux, WinRM PowerShell on Windows); interactive text sessions (`/api/console/sessions`: a shell, a VM's serial console or, for allowed tokens, a KVM host's shell; input, output by long poll or event stream); every call is a session-log row and an audit event, and a text transcript is kept when recording is on (a new `labape-transcripts` volume, purged with the recordings).
+- **An MCP server** over the same API, with no new authority: `labape mcp` (stdio) and `POST /mcp` (HTTP), offering only the tools the token's roles allow (consoles, environment and job reads, deploy, plan, refresh, destroy).
+- **A Claude Desktop bundle** for it: `python tools/helpers/build_mcpb.py` builds an `.mcpb` that asks for the LABaPe address and the token, needs only Python, and works with the Microsoft Store version of Claude Desktop.
+- **Catalog → Packages → New package** has a **Contents** picker for services, applications and other packages (with a Windows/Linux filter) instead of raw JSON.
+- A host group's **name may mix upper and lower case** (1-12 letters and digits, unique without case) and a host group has **one role**, a single choice.
 
 ### Fixed
 - A fresh install no longer leaves akadmin's first password in plain text in `tools/authentik-test/.env`: a new installer step, `Stack.AuthentikAdmin`, stores it in the secret store once the stack is up and blanks the line. A password already stored (perhaps rotated) is never replaced (`labape authentik-admin-import --keep-existing`).
 - Secrets → Health: a secret that rotates daily (the OIDC client secret) showed "not in use"; it now says **by rotation**. When that rotation is only a reminder (no elevated account chosen), the secret is checked weekly instead of never.
+- Signing in on a stack name written with capitals (`LABAPE_ALT_NAMES=OZ.jlm.abq`) failed at Authentik with "redirect_uri_no_match": browsers lowercase the host and Authentik compares redirect addresses exactly. `sync-redirects.sh` now lowercases each name.
+- Opening an SSH or RDP session on any stack name other than the main one was refused with "Cross-origin request refused": the write check and the Guacamole tunnel compared the browser's origin with the single public address. Both now accept the public URL's scheme and port on any of the stack's names.
+- Every catalog choice for a new host group is limited to the group's OS: packages were offered for any OS, and changing a group's OS kept choices that no longer fit. A package is offered where any of its items fits and skips the others there.
 
 ## [0.5.3] - 2026-10-16
 
