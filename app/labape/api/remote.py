@@ -172,7 +172,10 @@ def list_sessions(limit: int = 200, username: str | None = None, target: str | N
         q = q.where(RemoteSession.created_at <= until)
     rows = [_out(s) for s in db.scalars(q.limit(min(limit, 2000)))]
     for r in rows:
-        r["has_recording"] = (RECORDINGS / f"session-{r['id']}").is_file() or console_transcripts.path(r["id"]).is_file()
+        video, text = (RECORDINGS / f"session-{r['id']}").is_file(), console_transcripts.path(r["id"]).is_file()
+        r["has_recording"] = video or text
+        # A browser session's recording plays in the page; an API console session's is a text transcript, download only.
+        r["recording_kind"] = "video" if video else "text" if text else None
     return rows
 
 

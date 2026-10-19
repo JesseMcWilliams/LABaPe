@@ -12,7 +12,7 @@ import { DateRangeFields, FilterBar, toQuery, useUrlFilters } from "../component
 
 interface Row {
   id: number; username: string; target_type: string; target: string; address: string; protocol: string; state: string;
-  recorded: boolean; has_recording: boolean; error: string; client_ip: string; created_at: string;
+  recorded: boolean; has_recording: boolean; recording_kind: "video" | "text" | null; error: string; client_ip: string; created_at: string;
   started_at: string | null; ended_at: string | null;
 }
 
@@ -110,7 +110,15 @@ export default function Sessions() {
               <TableCell>{dur(r.started_at, r.ended_at)}</TableCell>
               <TableCell><Chip size="small" label={r.state} color={r.state === "failed" ? "error" : r.state === "open" ? "success" : "default"} title={r.error} /></TableCell>
               <TableCell>{r.client_ip}</TableCell>
-              <TableCell>{r.has_recording && <Button size="small" onClick={() => setPlaying(r)} title="Play the recording (audited)">Play</Button>}</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>
+                {r.recording_kind === "video" && <Button size="small" onClick={() => setPlaying(r)} title="Play the recording (audited)">Play</Button>}
+                {r.has_recording && (
+                  <Button size="small" href={`/api/remote/sessions/${r.id}/recording`}
+                    title={r.recording_kind === "text" ? "Download the session's text transcript (audited)" : "Download the raw Guacamole recording (audited)"}>
+                    Download
+                  </Button>
+                )}
+              </TableCell>
             </TableRow>
           ))}
           {rows.length === 0 && <TableRow><TableCell colSpan={9}>No sessions{f.active ? " match" : " yet"}.</TableCell></TableRow>}
