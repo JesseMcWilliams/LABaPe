@@ -28,6 +28,7 @@ scripts/destroy.sh <backend> <instance> <profile> [options]
 | `--env-file <path>` | both | Use this `environment.yml` instead of `tofu/environment.yml`, for example for a second domain. Destroy with the same file. |
 | `--directory-manifest <path>` | deploy | Use this directory manifest instead of `ansible/directory-manifest.yml` (its DNs are domain-specific) |
 | `--no-ansible` | deploy | Stop after OpenTofu and the inventory |
+| `--plan-only <file>` | deploy | Don't change anything: write what a redeploy would do to each VM (replaced, created, removed) to `<file>` as JSON, and stop. The web interface's **Preview redeploy** runs this. |
 | `--yes` | destroy | Don't ask for confirmation |
 | `--delete-workspace` | destroy | Delete the OpenTofu workspace afterwards |
 

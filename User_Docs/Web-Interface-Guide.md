@@ -63,21 +63,22 @@ Choose **Environments → New environment** (deployers and template editors). Th
 |---|---|
 | Name | 3-40 lower-case letters, digits and hyphens. It's also the environment's OpenTofu workspace. |
 | KVM host | Only enabled hosts are offered. The bars below show the host's load **with this environment added**. With more than one host, **Suggest best host** ranks them for your host groups (memory and CPU in use, running jobs, whether the templates are already there), picks the best and shows why. |
+| Time zone | The VMs' time zone (by default your browser's, or UTC). It's shown on the environment's page and can't be changed later. |
 | Host groups | One or more groups of identical VMs. **Add host group** adds another. |
 
 Each host group sets:
 
 | Field | Notes |
 |---|---|
-| Group name | 1-12 lower-case letters and digits |
+| Group name | 1-12 letters and digits, starting with a letter. Upper and lower case may mix (`Web` gives `Web1`), but two groups of one environment can't differ only in case. |
 | KVM host | Shown when there's more than one host. **Same as the environment** keeps the group with the rest; another host puts this group's VMs there (one environment spread over hosts). The group's networks and templates then come from that host. The hosts must carry the same lab network, so the VMs reach each other and the domain controller. Each VM keeps its host: power, snapshots, details and consoles go to it. |
 | Count | 1-20 VMs |
-| OS and Roles | Roles: `domain_controller`, `windows_server`, `windows_workstation`, `linux_server`, `linux_workstation` |
+| OS and Role | One role per host group: `domain_controller`, `windows_server`, `windows_workstation`, `linux_server` or `linux_workstation` |
 | Image source | **Build from template** clones a template (minutes). **Build from ISO** installs from the OS's ISO (up to an hour or more for Windows). |
 | Template | The templates on that host for that OS, with their description. An info icon shows the template's notes (quirks, after-tasks). |
 | vCPUs, Memory, Disk | An amber warning appears when you go below the template's minimums. A disk smaller than the template's is raised to the template's size. |
 | Network, Addressing | Only the networks attached to the host that you may use, and only the modes that network allows. **Static** addresses come from the network's pool automatically; **DHCP** addresses are found after the VM boots. Domain controllers are always static. |
-| Services, Applications, Packages | Catalog items added on top of the template (see [§8](#8-the-catalog-services-applications-and-packages)). Only published items with something for this OS are offered. |
+| Services, Applications, Packages | Catalog items added on top of the template (see [§8](#8-the-catalog-services-applications-and-packages)). Only published items with something for the group's OS are offered, packages included; changing the OS drops the choices that no longer fit. A package with members for both Windows and Linux installs only those for the group's OS. |
 | Host names | One box per VM. Leave a box blank for `<group><n>` (for example `web1`). Names must be unique across every environment's VMs on the same KVM host, and Windows allows at most 15 characters. |
 
 **Load limits.** The form warns above 4 vCPUs per CPU, above 90% of the host's RAM committed, or below 15% free VM storage. It refuses an environment that would commit more than 100% of the host's RAM, and **Create and deploy** stays disabled.
@@ -93,6 +94,7 @@ The environment's page shows its state, its host groups with each VM's address, 
 | Action | What it does |
 |---|---|
 | **Deploy** / **Redeploy** | Runs OpenTofu and Ansible. A redeploy creates missing VMs and reconfigures existing ones. It reinstalls an existing VM only if what it was installed from changed (see *What a redeploy keeps*, below). |
+| **Preview redeploy** | Shows what a redeploy would do to each VM (reinstall, create, remove, update or keep) and why, without applying anything. It's a snapshot: a later change to Settings or a LABaPe update can change the next redeploy. From the command line: `deploy.sh ... --plan-only <file>` ([Command-Line.md §1](Command-Line.md#1-deploying-and-destroying)). |
 | **Destroy** | Deletes every VM, its disks and the OpenTofu workspace, and releases its addresses. It can't be undone. |
 | **Show credentials** | The tester accounts and passwords (see below). |
 | **Refresh addresses** | Only for environments with DHCP VMs: looks up each DHCP VM's current address and rewrites the inventory and hosts entries. No VM is changed. |
@@ -117,7 +119,7 @@ Linux VMs have no admin password: Ansible signs in with an SSH key (the admin us
 **What a redeploy keeps.** A redeploy doesn't wipe an existing VM: things you changed inside it stay, files, installed programs and data included. Two things can still change them:
 - **LABaPe manages the setting.** The software roles, accounts, desktop sessions and other configuration of the environment are applied again, so a managed setting you changed by hand is set back to what LABaPe has (a package you installed or a file LABaPe doesn't manage is left alone).
 - **The VM is reinstalled.** A VM is built once from an install recipe, and it is thrown away and built again (everything on it is lost) when that recipe changes: its operating system image or template, its CPU, memory or disk size, its network, host or storage folder, or its install answers: name, administrator user, addressing (IP address, gateway, DNS), the management source and syslog address from Settings, a Windows edition, and the answer files that ship with LABaPe (an update that changes them reinstalls VMs on their next redeploy). Rotating the VM key or the Windows bootstrap password, comments in the Windows answer files, and the VM's MAC address do not.
-If you aren't sure, turn on automatic snapshots before a redeploy (Settings) or snapshot the VMs first. This is how the KVM deployment behaves; Hyper-V's was not checked.
+If you aren't sure, choose **Preview redeploy** first, or turn on automatic snapshots before a redeploy (Settings) or snapshot the VMs first. This is how the KVM deployment behaves; Hyper-V's was not checked.
 
 - **RDP** opens a Remote Desktop session to a Windows VM in the browser, **.rdp** downloads a file for your own client (it asks for the password), and **SSH** opens a terminal to a Linux VM in the browser. Your admin may record these sessions (the session page says so) and closes idle ones after a while. Windows VMs deployed before Remote Desktop was turned on need a **Redeploy** first.
 - **Move host group** (with more than one KVM host): moves a group's VMs to another host while they run; memory and disks are copied, so a big disk takes a while. The VMs must be running and have no snapshots, and the other host must carry the group's network. A deploy follows on its own to record the new host. The VMs list shows each VM's KVM host when they're on more than one.
@@ -134,7 +136,7 @@ If you aren't sure, turn on automatic snapshots before a redeploy (Settings) or 
 - VMs that boot with UEFI can't have snapshots (the page says so).
 - Your admin may have every VM snapshotted automatically before a redeploy (`auto-before-job-<n>`, the newest few kept).
 
-**Secrets.** Owners (and admins) see the environment's **Secrets** panel: LABaPe's own (the admin and account passwords, the credentials sheet, the inventory) and any the owners stored. Values stay masked until you choose **Show** or **Copy**, and each time is in the audit log. Search and the Group, VM and Store filters narrow the list; it pages like the other lists. An account has **Connect**: choose a VM and LABaPe opens RDP (Windows) or SSH (Linux) in the browser signed in as that account, without showing its password. A local account connects to its own VM; a domain account to the member servers and the Linux VMs, and domain admins to the domain controllers too.
+**Secrets.** Owners (and admins) see the environment's **Secrets** panel: LABaPe's own (the admin and account passwords, the credentials sheet, the inventory) and any the owners stored. Values stay masked until you choose **Show** or **Copy**, and each time is in the audit log. Search and the Group, VM and Store filters narrow the list; it pages like the other lists. **Sign in as** shows the user name to type for each account, with a copy button: for a Windows VM's local Administrator that's the VM's name in front (`L2WIN1\Administrator`, or `.\Administrator`), since a bare `Administrator` is completed with your own computer's domain; on a domain controller it's the domain's. The credentials sheet and the **.rdp** file name the VM the same way. An account has **Connect**: choose a VM and LABaPe opens RDP (Windows) or SSH (Linux) in the browser signed in as that account, without showing its password. A local account connects to its own VM; a domain account to the member servers and the Linux VMs, and domain admins to the domain controllers too.
 
 **Mail server.** Add the catalog service **Mail server (Mailpit)** to a Linux host group to give the environment a mail server for testing: point applications at the SMTP address the Secrets panel shows (port 25, STARTTLS available), and read what arrived in its web UI (HTTPS on port 8025, user `mailpit`, password `vm/<vm>/mailpit` on the Secrets panel). Mail stays there unless your admin set up the lab mail relay for particular recipients.
 
@@ -226,6 +228,8 @@ Scripts and CI can call LABaPe's API with a token instead of signing in. Open yo
 
 - Everything a token changes is in the audit log. A token can't make other tokens.
 - **Revoke** stops it at once. The list shows each token's first characters, expiry and last use.
+
+A token with the **console** role can run commands and open text sessions on your environments' VMs, for scripts and AI agents (see [Web-Interface-Admin.md §20](Web-Interface-Admin.md#20-console-access-and-the-mcp-server-for-ais-and-scripts)).
 
 Admins can also make **service tokens**, which aren't tied to a person (see [Web-Interface-Admin.md §18](Web-Interface-Admin.md#18-api-tokens-and-metrics)).
 
