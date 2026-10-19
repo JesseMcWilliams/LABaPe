@@ -5,7 +5,8 @@ roles, the token's scope and limits, rate limits, audit and maintenance mode all
 script. `tools/list` offers only the tools the token's roles allow. Two transports share this module:
 
 - `labape mcp` / `python -m labape.mcp` (stdio): for a local agent; LABAPE_URL and LABAPE_TOKEN say where and
-  as whom (LABAPE_CA_FILE trusts the stack's platform CA). It imports only httpx.
+  as whom (LABAPE_CA_FILE trusts the stack's platform CA, LABAPE_INSECURE=1 skips verification). It needs only
+  Python's standard library, which is also what the Claude Desktop bundle (tools/helpers/build_mcpb.py) ships.
 - `POST /mcp` (streamable HTTP, JSON responses): for a remote agent; the same bearer token, forwarded to the
   API in-process (`api/mcp.py`).
 
@@ -179,11 +180,18 @@ class Session:
     def __init__(self, send: Send):
         self.send = send
         self._roles: set[str] | None = None
+        self.problem = ""                 # why the token's roles couldn't be read (a bad token, an unreachable stack)
 
     async def roles(self) -> set[str]:
         if self._roles is None:
             status, data = await self.send("GET", "/api/auth/me", {}, None)
-            self._roles = set(data.get("roles", [])) if status == 200 and isinstance(data, dict) else set()
+            if status == 200 and isinstance(data, dict):
+                self._roles = set(data.get("roles", []))
+            else:
+                detail = data.get("detail") if isinstance(data, dict) else data
+                self.problem = f"LABaPe refused the token (HTTP {status}): {detail}" if status < 500 else str(detail)
+                print(f"labape mcp: {self.problem}", file=sys.stderr, flush=True)
+                return set()                                  # not cached: the next call tries again
         return self._roles
 
     async def handle(self, msg: dict) -> dict | None:
@@ -207,7 +215,12 @@ class Session:
         if method == "tools/call":
             if not isinstance(params.get("name"), str):
                 return _error(id_, -32602, "tools/call needs a tool name")
-            result = await call_tool(params["name"], params.get("arguments") or {}, await self.roles(), self.send)
+            roles = await self.roles()
+            if self.problem and not roles:
+                return {"jsonrpc": "2.0", "id": id_, "result": {
+                    "isError": True, "content": [{"type": "text", "text": self.problem}]}}
+            self.problem = ""
+            result = await call_tool(params["name"], params.get("arguments") or {}, roles, self.send)
             return {"jsonrpc": "2.0", "id": id_, "result": result}
         return _error(id_, -32601, f"Method not found: {method}")
 
@@ -215,20 +228,37 @@ class Session:
 # --- stdio transport -----------------------------------------------------------------------------
 
 def http_sender(url: str, token: str, ca_file: str = "", verify: bool = True):
-    import httpx
-    client = httpx.AsyncClient(base_url=url.rstrip("/"), headers={"Authorization": f"Bearer {token}"}, timeout=120,
-                               verify=ca_file or verify)
+    """A `send` that calls LABaPe with urllib, so stdio needs nothing but Python (the MCP bundle relies on it)."""
+    import ssl
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    base = url.rstrip("/")
+    ctx = ssl.create_default_context(cafile=ca_file or None)
+    if not verify:
+        ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+
+    def call(method: str, path: str, params: dict, body: dict | None) -> tuple[int, object]:
+        query = "?" + urllib.parse.urlencode(params) if params else ""
+        req = urllib.request.Request(
+            base + path + query, method=method, data=None if body is None else json.dumps(body).encode(),
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json",
+                     "Content-Type": "application/json", "User-Agent": "labape-mcp"})
+        try:
+            with urllib.request.urlopen(req, timeout=120, context=ctx) as r:
+                status, raw = r.status, r.read()
+        except urllib.error.HTTPError as exc:
+            status, raw = exc.code, exc.read()
+        except (urllib.error.URLError, OSError) as exc:
+            return 502, f"Can't reach LABaPe at {url}: {getattr(exc, 'reason', exc)}"
+        text = raw.decode("utf-8", errors="replace")
+        try:
+            return status, json.loads(text)
+        except ValueError:
+            return status, text
 
     async def send(method, path, params, body):
-        try:
-            r = await client.request(method, path, params=params or None, json=body)
-        except httpx.HTTPError as exc:
-            return 502, f"Can't reach LABaPe at {url}: {exc}"
-        try:
-            return r.status_code, r.json()
-        except ValueError:
-            return r.status_code, r.text
-    send.client = client
+        return await asyncio.get_running_loop().run_in_executor(None, call, method, path, params, body)
     return send
 
 
@@ -265,7 +295,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--token-file", default=os.environ.get("LABAPE_TOKEN_FILE", ""),
                     help="a file holding the API token (else LABAPE_TOKEN)")
     ap.add_argument("--ca-file", default=os.environ.get("LABAPE_CA_FILE", ""), help="the stack's platform CA (LABAPE_CA_FILE)")
+    ap.add_argument("--insecure", action="store_true", default=os.environ.get("LABAPE_INSECURE", "").lower() in ("1", "true", "yes"),
+                    help="don't verify the server's certificate (LABAPE_INSECURE=1)")
     args = ap.parse_args(argv)
+    if args.ca_file.startswith("${"):                     # an optional setting the client left unfilled
+        args.ca_file = ""
     token = os.environ.get("LABAPE_TOKEN", "")
     if args.token_file:
         with open(args.token_file, encoding="utf-8") as f:
@@ -273,7 +307,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.url or not token:
         print("labape mcp: set LABAPE_URL and LABAPE_TOKEN (or --token-file)", file=sys.stderr)
         return 2
-    asyncio.run(serve_stdio(http_sender(args.url, token, args.ca_file)))
+    for stream in (sys.stdin, sys.stdout):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")          # Windows would otherwise use the console code page
+    asyncio.run(serve_stdio(http_sender(args.url, token, args.ca_file, not args.insecure)))
     return 0
 
 

@@ -33,10 +33,11 @@ def _open(sid=1, token=1, target="t", cap=1000, seconds=30, idle=30, argv=None):
                                          buffer_cap=cap, seconds=seconds, idle_seconds=idle)
 
 
-def _wait(s, text, after=0, tries=50):
+def _wait(s, text, after=0, tries=100):
     for _ in range(tries):
-        r = s.read(after, 0.2)
-        if text in r["data"]:
+        r = s.read(after, 0.1)
+        time.sleep(0.1)                  # a read that already has data returns at once: don't spin through the tries
+        if text + "\n" in r["data"].replace("\r\n", "\n"):          # the whole line, not the part that arrived first
             return r
     raise AssertionError(f"never saw {text!r}: {r}")
 
@@ -63,7 +64,7 @@ def test_the_buffer_keeps_the_newest_bytes_and_says_what_was_lost():
     s = _open(cap=50)
     for i in range(10):
         s.write(f"line-number-{i}\n")
-    _wait(s, "echo:line-number-9", s.end)
+    _wait(s, "echo:line-number-9", 0)
     late = s.read(0)
     assert late["lost"] > 0 and late["next"] == s.end and len(late["data"].encode()) <= 50
 
