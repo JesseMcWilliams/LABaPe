@@ -22,6 +22,8 @@ This guide is for LABaPe admins (the `admin` role, `labape-admins` by default). 
 16. [Remote access and auditors](#16-remote-access-and-auditors)
 17. [The syslog collector](#17-the-syslog-collector)
 18. [API tokens and metrics](#18-api-tokens-and-metrics)
+19. [Windows sign-on and the stack's names](#19-windows-sign-on-and-the-stacks-names)
+20. [Console access and the MCP server for AIs and scripts](#20-console-access-and-the-mcp-server-for-ais-and-scripts)
 
 ## 1. Installing
 
@@ -123,6 +125,7 @@ LABaPe refuses ranges outside the CIDR, pools that overlap the DHCP scope, the r
 
 Admins create, edit, publish and retire **services**, **applications** and **packages** (Catalog → the tab → Add). A new item starts as a draft.
 - **Publish** makes it available in deploy forms. A package can be published only when everything in it is.
+- **A package's contents.** The package form's **Contents** box picks services, applications and packages from the catalog, with a Windows/Linux filter and each item's platforms beside it. A package can't hold a package that already holds packages (one level only), and retired items aren't offered. A package's platforms come from its members, and a host group gets only the members for its OS.
 - **Retire** stops offering it. Environments already using it keep it on redeploy.
 - **Export** downloads the selected items, or everything, as `labape_catalog` YAML, including what packages need. **Import** reads such a file as drafts or published, skipping or overwriting existing names.
 - **Requests**: users ask for new items here. Accept, decline or close each one with a note; the requester sees it.
@@ -186,7 +189,7 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 
 **Secrets** has three tabs: **Stack** (the stack's own secrets), **KVM hosts** (the worker's key and each host's LABaPe access account) and **Environments** (each environment's accounts and passwords, its credentials sheet and inventory, filtered by environment, store, VM, local or domain, password or key, and when it last changed). Each tab lists what it is, which store holds it, its class, rotation interval, last and next rotation, and status. Open one to change its interval, turn scheduled rotation off, choose an elevated account or add notes; **Rotate now** rotates it at once. Every rotation and every change is audited.
 
-**Health and recovery.** LABaPe checks that each stored secret still works (a sign-in, an API call, a key that opens what it locks): every quarter of its rotation period, at least daily; not at all for one that rotates every day (each rotation proves it); weekly for one LABaPe doesn't rotate. **Health** shows the result (ok, recovered, failed, not in use) with the last and next check; **Check now** checks at once. **Recoverable** says what happens when a check fails:
+**Health and recovery.** LABaPe checks that each stored secret still works (a sign-in, an API call, a key that opens what it locks): every quarter of its rotation period, at least daily; not at all for one that rotates every day (each rotation proves it); weekly for one LABaPe doesn't rotate. **Health** shows the result (ok, recovered, failed, not in use, or **by rotation** for a secret that rotates daily, whose rotation is its check) with the last and next check; **Check now** checks at once. **Recoverable** says what happens when a check fails:
 - **Yes**: LABaPe puts a working value back by itself, with an earlier value it kept or a new one set with another credential it holds (the rotation, the update agent, a host's access account), then checks again. The tooltip says how.
 - **No**: there's no way back for LABaPe if the value is lost (the data key, the master key, the CA password, the domain Administrator, the SMTP password). The secret shows **failed**, an alert is raised (dashboard, syslog, email), and the tooltip says what a person must do.
 A check that can't reach what it tests (a VM that's off) doesn't count as a failure.
@@ -376,7 +379,7 @@ Each link shows whether it answers, when it last did and a one-line summary. **C
 LABaPe opens **SSH**, **RDP** and **VNC/serial consoles** in the browser through its own gateway: the credentials stay on the server. Owners and admins open sessions to an environment's VMs; admins open SSH to KVM hosts.
 
 - **Settings → Remote access**: record every session's screen (off by default), close sessions after N idle minutes (default 30), keep recordings N days (default 90).
-- **Admin → Remote sessions**: who opened what, when, and how it ended, with **Play** for recordings (each play is audited).
+- **Admin → Remote sessions**: who opened what, when, and how it ended, with **Play** for recordings (each play is audited). A browser session's recording plays in the page (**Play**); an API console session's recording is a text transcript ([§20](#20-console-access-and-the-mcp-server-for-ais-and-scripts)); every recording can be downloaded (**Download**).
 - The **auditor** role (group `labape-auditors`) reads the audit log, the syslog messages and the remote-session log, and plays recordings; it changes nothing and can't open sessions.
 - Windows VMs allow Remote Desktop (with Network Level Authentication) from the deploy that added it on; redeploy older environments to turn it on.
 - VM consoles go through the KVM host's access account, so the host needs SSH access set up.
@@ -392,7 +395,7 @@ The stack runs a syslog collector: UDP and TCP 514 and TLS 6514 on the host (`LA
 
 ## 18. API tokens and metrics
 
-**API tokens** (account menu → API tokens): every user makes **personal** tokens ([Web-Interface-Guide.md §11](Web-Interface-Guide.md#11-api-tokens)). Admins also make **service** tokens: exactly the roles given, acting as `svc:<name>`, not tied to anyone's groups. With **Everyone's, and service tokens** ticked, admins see and revoke every token. Only a token's hash is kept; every write made with a token is audited as `token.use`.
+**API tokens** (account menu → API tokens): every user makes **personal** tokens ([Web-Interface-Guide.md §11](Web-Interface-Guide.md#11-api-tokens)). Admins also make **service** tokens: exactly the roles given, acting as `svc:<name>`, not tied to anyone's groups. With **Everyone's, and service tokens** ticked, admins see and revoke every token. Only a token's hash is kept; every write made with a token is audited as `token.use`. Tokens with the **console** role have options of their own ([§20](#20-console-access-and-the-mcp-server-for-ais-and-scripts)).
 
 **Prometheus metrics** at `/api/metrics`, for auditors and admins: make a service token with the **auditor** role, then:
 
@@ -408,4 +411,44 @@ scrape_configs:
 ```
 
 The metrics: `labape_info{version}`, `labape_maintenance`; per KVM host (`host`, `role`) `labape_host_enabled`, `labape_host_up`, `_cpus`, `_cpu_percent`, `_memory_bytes`, `_memory_used_bytes`, `_vm_disk_bytes`, `_vm_disk_free_bytes`, `_vms_running`, `_vms_defined`, `_collected_timestamp_seconds`; `labape_environments{status}`, `labape_jobs{state}`, `labape_jobs_failed_24h`, `labape_alerts_open{level}`; per linked stack `labape_link_up` and `labape_link_last_ok_timestamp_seconds`; `labape_backup_last_timestamp_seconds{kind}` and `labape_backup_last_check_ok`. A scrape reads only what LABaPe already collects. If your Prometheus doesn't trust the platform CA, give it the root (dashboard → Download the root certificate).
+
+## 19. Windows sign-on and the stack's names
+
+**Sign-in follows the name used.** The stack answers on its main name and every name in `LABAPE_ALT_NAMES` ([§9](#9-updating-labape)). Whichever name a browser opened, sign-in stays on that name, Authentik's page included. To add a name, add it to `LABAPE_ALT_NAMES` in `container/.env`, then run `bash caddy/web-tls.sh renew`: it signs the certificate again with the new name and updates Authentik's redirect addresses.
+
+**Windows sign-on (Kerberos).** People on domain-joined Windows computers can sign in without a password through Authentik's Kerberos source; LABaPe sees an ordinary sign-in. There's no installer step or Settings page for it yet. On the domain and in Authentik:
+- **DNS**: a record for the stack's full host name. Kerberos works only on that name; the address and short name keep working with a password.
+- **Service account and keytab**: a service account with the SPN `HTTP/<fqdn>`, and its AES256 keytab from `ktpass ... +rndPass -mapOp set` (not `-setupn`, which breaks the key). Put the keytab in Authentik's Kerberos source (server name `HTTP@<fqdn>`), then delete it from the domain controller. The source names the KDC by its address in its `krb5.conf`, since the container can't resolve the domain.
+- **Kerberos and LDAP sources**: a Kerberos sign-in alone carries one group, the realm (such as `LABAPE.TEST`). For AD groups, add an LDAP source that syncs users (by sAMAccountName) and groups; the Kerberos source matches users by name, so the sign-in brings the user's AD groups. With the Kerberos source promoted, Authentik's login page offers **Sign in with Windows**.
+- **Role bindings**: map the AD groups to LABaPe roles (Admin → role bindings). Binding the realm group to viewer lets any domain user look.
+
+Each user's computer needs DNS for the stack's name, the platform root CA trusted, and the name in the browser's intranet zone (Edge and Chrome: Local intranet, or the policy `AuthServerAllowlist`). Kerberos fails when clocks are more than 5 minutes apart.
+
+## 20. Console access and the MCP server for AIs and scripts
+
+Scripts and AI agents can run commands on an environment's VMs and open text sessions through the API, with a token that has the **console** role. The details, with every call, are in [Reference_Console-API-And-MCP.md](../Claude_Docs/Reference_Console-API-And-MCP.md).
+
+**The console role.** Its default Authentik group is `labape-console`. Admins hold it without the group; a personal token an admin makes with only the console role has that role, not admin. Console calls take a token only, never a browser session.
+
+**Token options.** Choosing the console role on **New token** adds:
+
+| Option | Meaning |
+|---|---|
+| Only chosen environments | The token reaches only these; otherwise every environment its owner can use. A non-admin can choose only their own. |
+| Must name an account | Each call names the environment account to run as. Off lets the token use LABaPe's own access account on the VM (root-level on most VMs). On by default. |
+| KVM host consoles | Admins only, off by default; the token must still hold admin when used. |
+| Calls per minute, session minutes, output KB | Limits (30, 30 and 256 by default). A call over the rate gets 429; output past the limit stops a command and rolls a session's buffer. |
+
+**Run a command.** `POST /api/environments/{id}/vms/{vm}/exec` with the command, a timeout (1-3600 s, at most the token's session minutes) and the account. Linux VMs run it in a shell over SSH, Windows VMs in PowerShell over WinRM (not yet for Windows VMs on a remote KVM host). It returns the exit code and output, and says whether the output was cut short or the command timed out.
+
+**Text sessions.** `/api/console/sessions` opens a shell on a Linux VM, a Linux VM's serial console, or a KVM host's shell (tokens allowed host consoles), then takes input and returns output by long poll or as an event stream until closed. Windows VMs have no text session; use the command call. One session per token per target. A session ends when closed, when its process exits, at the token's session length, or after the idle time in Settings → Remote access; it also ends if the API restarts.
+
+**What is recorded.** Every command and session is in Admin → Remote sessions and the audit log (typed input only as a size; output never in the audit log). With recording on, the output is kept as a text transcript (`.txt`) that auditors download from the session log. The stack backup doesn't include transcripts yet.
+
+**The MCP server.** AI agents can use the same calls as MCP tools:
+- **Local (stdio)**: `labape mcp`, with `LABAPE_URL`, `LABAPE_TOKEN` and, for the platform CA, `LABAPE_CA_FILE`.
+- **Remote (HTTP)**: `https://<stack>/mcp` with the header `Authorization: Bearer lpat_...`.
+- The tools offered depend on the token's roles: the console tools for the console role, reading environments, VMs, hosts and jobs for any role, and deploy, redeploy preview, refresh addresses, destroy and cancel for deployers. Each tool is one API call with the caller's token, so it adds no rights.
+
+**Claude Desktop.** `python tools/helpers/build_mcpb.py` builds `dist/labape-mcp-<version>.mcpb`; import it in Claude Desktop. It asks for the LABaPe address and the token (kept in the system's secret store), and optionally a CA file and a switch to skip certificate checks. It needs Python 3.9 or newer on the computer. A wrong token or an unreachable stack is reported on the first tool call.
 
