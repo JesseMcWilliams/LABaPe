@@ -16,6 +16,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - A host group's **name may mix upper and lower case** (1-12 letters and digits, unique without case) and a host group has **one role**, a single choice.
 
 ### Fixed
+- The MCP server's session tools (`session_input`, `session_output`, `close_session`) take the session as `session`: the Claude desktop app's bridge dropped an argument named `session_id`, so every call failed with "missing argument(s): session_id". `session_id` is still accepted.
 - A fresh install no longer leaves akadmin's first password in plain text in `tools/authentik-test/.env`: a new installer step, `Stack.AuthentikAdmin`, stores it in the secret store once the stack is up and blanks the line. A password already stored (perhaps rotated) is never replaced (`labape authentik-admin-import --keep-existing`).
 - Secrets → Health: a secret that rotates daily (the OIDC client secret) showed "not in use"; it now says **by rotation**. When that rotation is only a reminder (no elevated account chosen), the secret is checked weekly instead of never.
 - Signing in on a stack name written with capitals (`LABAPE_ALT_NAMES=OZ.jlm.abq`) failed at Authentik with "redirect_uri_no_match": browsers lowercase the host and Authentik compares redirect addresses exactly. `sync-redirects.sh` now lowercases each name.
