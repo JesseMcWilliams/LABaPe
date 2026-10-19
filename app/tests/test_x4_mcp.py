@@ -75,7 +75,7 @@ def test_a_call_becomes_one_rest_request():
     assert "isError" not in r["result"]
     assert json.loads(r["result"]["content"][0]["text"])["stdout"] == "hi\n"
     calls.clear()
-    _rpc(s, "tools/call", {"name": "session_output", "arguments": {"session_id": 9, "after": 4, "wait": 2}})
+    _rpc(s, "tools/call", {"name": "session_output", "arguments": {"session": 9, "after": 4, "wait": 2}})
     _rpc(s, "tools/call", {"name": "list_jobs", "arguments": {"state": "failed", "limit": 5}})
     _rpc(s, "tools/call", {"name": "close_session", "arguments": {"session_id": 9}})
     assert calls == [("GET", "/api/console/sessions/9/output", {"after": 4, "wait": 2}, None),

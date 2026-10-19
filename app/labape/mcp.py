@@ -86,15 +86,15 @@ TOOLS: list[Tool] = [
           "kvm_host_id": _int("A KVM host's id, instead of environment_id and vm"),
           "kind": _str("shell or serial", enum=["shell", "serial"]), "account": _str("An environment account to sign in as")}),
     Tool("session_input", "Type text into a session. End a line with a newline; \\u0003 is Ctrl-C.",
-         "POST", "/api/console/sessions/{session_id}/input", CONSOLE,
-         {"session_id": _int("The session id"), "data": _str("The text to type")}, ("session_id", "data")),
+         "POST", "/api/console/sessions/{session}/input", CONSOLE,
+         {"session": _int("The session id (from open_session)"), "data": _str("The text to type")}, ("session", "data")),
     Tool("session_output", "Read what a session printed after offset `after` (start with 0, then pass back `next`). "
          "`wait` (seconds, up to 30) holds the call for new output. `lost` counts bytes that were dropped.",
-         "GET", "/api/console/sessions/{session_id}/output", CONSOLE,
-         {"session_id": _int("The session id"), "after": _int("Offset to read from"), "wait": {"type": "number",
-          "description": "Seconds to wait for output, 0-30"}}, ("session_id",), read_only=True),
-    Tool("close_session", "Close a session.", "DELETE", "/api/console/sessions/{session_id}", CONSOLE,
-         {"session_id": _int("The session id")}, ("session_id",)),
+         "GET", "/api/console/sessions/{session}/output", CONSOLE,
+         {"session": _int("The session id (from open_session)"), "after": _int("Offset to read from"), "wait": {"type": "number",
+          "description": "Seconds to wait for output, 0-30"}}, ("session",), read_only=True),
+    Tool("close_session", "Close a session.", "DELETE", "/api/console/sessions/{session}", CONSOLE,
+         {"session": _int("The session id (from open_session)")}, ("session",)),
     Tool("list_sessions", "This token's open sessions.", "GET", "/api/console/sessions", CONSOLE, read_only=True),
     Tool("list_environments", "Environments you can see (id, name, status, owner, lease).", "GET", "/api/environments",
          READ, read_only=True),
@@ -156,8 +156,12 @@ async def call_tool(name: str, args: dict, roles: set[str], send: Send) -> dict:
     tool = BY_NAME.get(name)
     if tool is None or not offered(tool, roles):
         return {"isError": True, "content": [{"type": "text", "text": f"No such tool: {name}"}]}
+    args = dict(args or {})
+    if "session_id" in args and "session" in tool.props and "session" not in args:
+        # The old name: some MCP hosts (the Claude desktop app's bridge) drop an argument called session_id.
+        args["session"] = args.pop("session_id")
     try:
-        path, query, body = build_request(tool, args or {})
+        path, query, body = build_request(tool, args)
     except ValueError as exc:
         return {"isError": True, "content": [{"type": "text", "text": str(exc)}]}
     status, data = await send(tool.method, path, query, body)
