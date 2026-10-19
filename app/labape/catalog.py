@@ -58,6 +58,22 @@ def platforms(kind: str, definition: dict) -> list[str]:
     return sorted(out)
 
 
+def package_platforms(db: Session, definition: dict, _depth: int = 0) -> list[str]:
+    """Where a package has something to install: the platforms of its members (a package is offered for an OS
+    family when any member supports it; the others are skipped there, see `expand`)."""
+    out: set[str] = set()
+    for it in (definition or {}).get("items", []) or []:
+        ref = db.scalar(select(CatalogItem).where(CatalogItem.kind == it.get("kind"), CatalogItem.name == it.get("name")))
+        if ref is None:
+            continue
+        if ref.kind == "package":
+            if _depth < 1:
+                out |= set(package_platforms(db, ref.definition, _depth + 1))
+        else:
+            out |= set(platforms(ref.kind, ref.definition))
+    return sorted(out)
+
+
 def validate(db: Session, kind: str, definition: dict) -> None:
     d = definition or {}
     if kind == "application":
@@ -142,9 +158,12 @@ def installer_mismatch(db: Session, definition: dict, os_key: str) -> str | None
     return f"its installer {f.name} targets {ostargets.describe(f.targets or [])}"
 
 
-def expand(db: Session, services: list[str], applications: list[str], packages: list[str]) -> dict:
+def expand(db: Session, services: list[str], applications: list[str], packages: list[str],
+           family: str | None = None) -> dict:
     """A host group's choices, with packages expanded, as published items:
-    {"services": {name: definition}, "applications": {name: definition}}."""
+    {"services": {name: definition}, "applications": {name: definition}}. With `family` ("windows" or
+    "linux"), the members of a package that have nothing to install there are left out; services and
+    applications chosen directly are kept (the deploy check refuses the ones that don't fit)."""
     pub = {(i.kind, i.name): i for i in db.scalars(select(CatalogItem).where(CatalogItem.status == "published"))}
     out = {"services": {}, "applications": {}}
 
@@ -157,6 +176,8 @@ def expand(db: Session, services: list[str], applications: list[str], packages: 
                 return
             for it in (item.definition or {}).get("items", []):
                 add(it["kind"], it["name"], depth + 1)
+        elif depth and family and family not in platforms(kind, item.definition):
+            return                                  # a package member for the other OS family
         else:
             out[f"{kind}s"][name] = item.definition
     for n in services:

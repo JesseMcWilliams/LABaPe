@@ -6,6 +6,7 @@ import { hasRole, useAuth } from "../App";
 import { DetailHeader, Facts } from "../components/PageParts";
 import { ActionButton } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
+import PackageMembers, { Member } from "../components/PackageMembers";
 import { CatalogItem, EXAMPLES } from "./Catalog";
 
 // One catalog item (design §21.4, §22.2): admins create, edit, publish and
@@ -22,6 +23,20 @@ export default function CatalogItemPage() {
   const [form, setForm] = useState({ name: "", display_name: "", description: "", notes: "", definition: EXAMPLES[kind] ?? "{}" });
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [saved, setSaved] = useState("");
+  // A package is built from a picker over the catalog; its JSON stays available under it.
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [showJson, setShowJson] = useState(false);
+  useEffect(() => {
+    if (kind === "package" && isAdmin) api.get<CatalogItem[]>("/api/catalog").then(setCatalogItems, () => setCatalogItems([]));
+  }, [kind, isAdmin]);
+  const members = (): Member[] => {
+    try { const d = JSON.parse(form.definition); return Array.isArray(d?.items) ? d.items : []; } catch { return []; }
+  };
+  const setMembers = (items: Member[]) => {
+    let d: Record<string, unknown> = {};
+    try { d = JSON.parse(form.definition) ?? {}; } catch { /* the JSON was being edited by hand: start over */ }
+    setForm({ ...form, definition: JSON.stringify({ ...d, items }, null, 2) });
+  };
 
   const load = () => api.get<CatalogItem>(`/api/catalog/${id}`).then((i) => {
     setItem(i);
@@ -114,11 +129,18 @@ export default function CatalogItemPage() {
           <Field label="Description" value={form.description} fullWidth onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <Field label="Notes" value={form.notes} fullWidth multiline minRows={2} help="Quirks, licensing, after-tasks"
             onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <Field label="Definition (JSON)" value={form.definition} fullWidth multiline minRows={10} error={errs.fields.definition ?? errs.fields.items}
+          {kind === "package" && (
+            <PackageMembers value={members()} onChange={setMembers} items={catalogItems} selfName={item?.name}
+              error={errs.fields.items?.message} />
+          )}
+          {kind === "package" && !showJson && (
+            <Box><Button size="small" onClick={() => setShowJson(true)} title="Edit the package's definition as JSON">Edit as JSON</Button></Box>
+          )}
+          {(kind !== "package" || showJson) && <Field label="Definition (JSON)" value={form.definition} fullWidth multiline minRows={kind === "package" ? 6 : 10} error={errs.fields.definition ?? errs.fields.items}
             slotProps={{ input: { sx: { fontFamily: "monospace", fontSize: 13 } } }}
             help={kind === "application" ? "chocolatey/apt/dnf/zypper names, or windows/linux installers {type, source: url|local, url|path, arguments, product_id}"
               : kind === "service" ? "windows: {features, services}; linux: {packages: {dnf, apt}, units, role}" : "items: [{kind, name}]"}
-            onChange={(e) => setForm({ ...form, definition: e.target.value })} />
+            onChange={(e) => setForm({ ...form, definition: e.target.value })} />}
           <Stack direction="row" spacing={2}>
             <ActionButton variant="contained" onClick={save} tip="Save the item; its status doesn't change"
               confirm={{ title: isNew ? `Create ${form.name || "this item"}?` : `Save ${item?.display_name ?? form.name}?`,

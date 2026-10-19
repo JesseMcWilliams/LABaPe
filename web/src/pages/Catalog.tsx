@@ -30,7 +30,7 @@ interface CatalogRequest {
 const KINDS = [
   { key: "service", label: "Services", help: "Roles and features added on top of the template: Windows features, or Linux packages, systemd units and an optional configuration role (e.g. syslog_collector)." },
   { key: "application", label: "Applications", help: "Software to install: package-manager names (Chocolatey, apt, dnf) or installers from the Files tab." },
-  { key: "package", label: "Packages", help: "Named groups of services, applications and other packages (one level deep)." },
+  { key: "package", label: "Packages", help: "Named groups of services, applications and other packages (one level deep), picked from the catalog. A package is offered for an OS when any of its items supports it; the others are skipped there." },
 ] as const;
 
 // Starting points for the definition editor, one per kind.
@@ -38,7 +38,7 @@ export const EXAMPLES: Record<string, string> = {
   service: JSON.stringify({ windows: { features: ["Web-Server"], services: ["W3SVC"] },
     linux: { packages: { dnf: ["nginx"], apt: ["nginx"] }, units: ["nginx"] } }, null, 2),
   application: JSON.stringify({ chocolatey: "7zip", apt: "p7zip-full", dnf: { package: "p7zip", repo: "epel" } }, null, 2),
-  package: JSON.stringify({ items: [{ kind: "application", name: "sevenzip" }, { kind: "service", name: "iis" }] }, null, 2),
+  package: JSON.stringify({ items: [] }, null, 2),       // filled in with the contents picker
 };
 
 function RequestDialog({ kind, onClose }: { kind: string; onClose: (sent: boolean) => void }) {

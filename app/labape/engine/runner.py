@@ -198,7 +198,8 @@ def write_catalog_inputs(db: Session, env: Environment, work: Path) -> None:
     shutil.rmtree(hv, ignore_errors=True)
     hv.mkdir(parents=True, exist_ok=True)
     for g in (env.spec or {}).get("host_groups", []):
-        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
+        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []),
+                        "windows" if str(g.get("os", "")).startswith("windows") else "linux")
         if not chosen["services"] and not chosen["applications"]:
             continue
         for vm in instance_names(g):
@@ -855,7 +856,8 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
     packages = (catalog or {}).get("packages") or {}
     wanted = set()
     for g in (env.spec or {}).get("host_groups", []):
-        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []))
+        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []),
+                        "windows" if str(g.get("os", "")).startswith("windows") else "linux")
         for app in chosen["applications"]:
             for spec in (packages.get(app) or {}).values():
                 if isinstance(spec, dict) and spec.get("source") in ("local", "update") and spec.get("path"):

@@ -9,9 +9,9 @@ import yaml
 from fastapi import APIRouter, Depends, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from ..catalog import KINDS, CatalogError, platforms, validate
+from ..catalog import KINDS, CatalogError, package_platforms, platforms, validate
 from ..db import get_db
 from ..errors import FieldError
 from ..models import CatalogItem, CatalogRequest, utcnow
@@ -24,7 +24,10 @@ EXPORT_FORMAT = 1
 
 
 def _out(i: CatalogItem) -> dict:
-    return {f: getattr(i, f) for f in FIELDS}
+    out = {f: getattr(i, f) for f in FIELDS}
+    if i.kind == "package":              # from its members as they are now, so a change to one shows at once
+        out["platforms"] = package_platforms(object_session(i), i.definition)
+    return out
 
 
 @router.get("")

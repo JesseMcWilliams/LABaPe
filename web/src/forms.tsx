@@ -79,8 +79,8 @@ export const rules = {
   envName: (v: string) =>
     /^[a-z][a-z0-9-]{2,39}$/.test(v) && !v.startsWith("test-") ? "" :
       "Use 3-40 lower-case letters, digits and hyphens, starting with a letter. Names starting with test- are reserved.",
-  groupName: (v: string) => /^[a-z][a-z0-9]{0,11}$/.test(v) ? "" :
-    "Use 1-12 lower-case letters and digits, starting with a letter.",
+  groupName: (v: string) => /^[A-Za-z][A-Za-z0-9]{0,11}$/.test(v) ? "" :
+    "Use 1-12 letters and digits, starting with a letter.",
   hostName: (v: string) => !v || /^[A-Za-z][A-Za-z0-9-]{0,14}$/.test(v) ? "" :
     "Use 1-15 letters, digits and hyphens, starting with a letter (Windows limits names to 15).",
   intRange: (lo: number, hi: number, unit = "") => (v: number) =>

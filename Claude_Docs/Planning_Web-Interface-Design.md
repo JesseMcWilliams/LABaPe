@@ -2060,3 +2060,23 @@ Kept only while Settings → Remote access → record sessions is on. guacd's vo
 ### 59.6 Verified live (2026-10-17, kvm1, environment lab2, `tools/helpers/live/console.py`)
 
 A 1-day console token limited to lab2, made as labape-admin: it listed lab2's three VMs; `id; hostname` on l2lin1 returned as the `labape` account; a 2 s timeout killed `sleep 20` (`timed_out`); `yes | head -c 2000000` was stopped at the token's 256 KB (`truncated`); a shell session took `echo from-session; hostname; exit` and ended with the process (exit 0); the serial console opened; PowerShell on l2win1 returned `L2WIN1` over WinRM, and a text session on it was refused (400); `/mcp` listed only the seven console tools and `run_command` through it returned the hostname; another environment answered 404; after revoking the token, 401. Not exercised: a session through a remote KVM host, accounts (the token did not require one), host consoles.
+
+## 60. Catalog packages: a contents picker, and every choice filtered by OS (built 2026-10-17)
+
+Asked 2026-10-17: Catalog → Packages → New package should let you pick several services and applications, and every catalog option offered for a new host group should be filtered by the group's OS.
+
+| Area | As built |
+|---|---|
+| Picker | The package form (`CatalogItem.tsx`, `components/PackageMembers.tsx`) has a **Contents** box: a multi-select over the catalog grouped into Services, Applications and Packages, with a Windows/Linux toggle to narrow the list and each item's platforms beside it. Retired items, the package itself and packages that already hold packages (one level only) are not offered; drafts are shown but a package can be published only when everything in it is. A new package starts empty; **Edit as JSON** shows the definition under the picker. |
+| Package platforms | A package's `platforms` are now worked out from its members when it is read (`catalog.package_platforms`; a nested package counts too), so a change to a member shows at once and the stored column is no longer used for packages. Before, they were empty, which is why the host-group form listed every package whatever the OS. |
+| Host-group form | `EnvironmentNew.tsx`: services, applications **and packages** are all filtered to the group's OS family. Changing a group's OS drops the choices that no longer fit. |
+| Mixed packages | A package is offered for an OS family when **any** member supports it. On a group of the other family its other members are left out: `catalog.expand(..., family)` is used by the deploy check and both runner call sites. Services and applications chosen directly for the wrong OS are still refused with "has nothing to install on <family>"; so is a package with nothing to install there. |
+| Verified | pytest (`test_catalog.py`: package platforms from members and nesting, a mixed package accepted on both families and a Linux-only one refused on Windows, `expand` skipping the other family's members). The web build with its type-check passed on the lab; the page itself was not opened in a browser. |
+
+### 60.1 Host group names and roles (built 2026-10-17)
+
+| Area | As built |
+|---|---|
+| Names | A host group's name may mix upper and lower case (1-12 letters and digits, starting with a letter): `HostGroup.name` and the move call, the form's check and hint. Two groups of one environment may not differ only in case, and the VM names made from them (`Web1`) are already compared without case across the whole KVM host. Environment names and catalog names stay lower case (they become workspace and file names). |
+| Roles | One role per host group: the form's Roles box is a single-choice Role, and the API takes exactly one (`roles` has `max_length=1`). Existing environments with several roles keep them; only creating and the placement preview check this. |
+| Verified | pytest (`test_host_group_form.py`: a mixed-case group, case-only duplicates and bad names refused, the VM-name clash, two roles and none refused). |
