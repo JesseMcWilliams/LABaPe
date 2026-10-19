@@ -142,8 +142,12 @@ def _run_windows(host: dict, params: dict, command: str, timeout: float, cap: in
     port = int(host.get("ansible_port") or 5986)
     scheme = "https" if port != 5985 else "http"
     start = time.monotonic()
+    # The inventory's transport is Basic, which WinRM allows only for local accounts: a domain login
+    # (an environment's domain account, or the domain admin) goes over NTLM.
+    domain_login = "\\" in login or "@" in login
+    transport = "ntlm" if domain_login else str(host.get("ansible_winrm_transport") or "ntlm")
     session = winrm.Session(f"{scheme}://{params['hostname']}:{port}/wsman", auth=(login, params.get("password", "")),
-                            transport=str(host.get("ansible_winrm_transport") or "ntlm"),
+                            transport=transport,
                             server_cert_validation="ignore", operation_timeout_sec=max(5, int(timeout)),
                             read_timeout_sec=max(10, int(timeout) + 10))
     secrets = [params.get("password", "")]

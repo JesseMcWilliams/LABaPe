@@ -84,6 +84,28 @@ def _fake(monkeypatch, result=None, seen=None):
     monkeypatch.setattr(vmexec, "run", run)
 
 
+def test_a_domain_login_goes_over_ntlm_a_local_one_keeps_the_inventorys(monkeypatch):
+    seen = []
+
+    class Resp:
+        status_code, std_out, std_err = 0, b"ok", b""
+
+    class FakeSession:
+        def __init__(self, url, auth, transport, **kw):
+            seen.append((auth[0], transport))
+
+        def run_ps(self, command):
+            return Resp()
+
+    monkeypatch.setitem(sys.modules, "winrm", type(sys)("winrm"))
+    sys.modules["winrm"].Session = FakeSession
+    host = {"ansible_winrm_transport": "basic"}
+    vmexec._run_windows(host, {"hostname": "h", "username": "jesse", "domain": "LABAPE", "password": "p"}, "x", 5, 100)
+    vmexec._run_windows(host, {"hostname": "h", "username": "jesse@labape.test", "password": "p"}, "x", 5, 100)
+    vmexec._run_windows(host, {"hostname": "h", "username": "Administrator", "domain": "", "password": "p"}, "x", 5, 100)
+    assert seen == [("LABAPE\\jesse", "ntlm"), ("jesse@labape.test", "ntlm"), ("Administrator", "basic")]
+
+
 def test_exec_runs_audits_and_logs_the_session(client, monkeypatch):
     with session_factory()() as db:
         env_id = _env(db)
