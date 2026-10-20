@@ -2084,3 +2084,15 @@ Asked 2026-10-17: Catalog → Packages → New package should let you pick sever
 | Names | A host group's name may mix upper and lower case (1-12 letters and digits, starting with a letter): `HostGroup.name` and the move call, the form's check and hint. Two groups of one environment may not differ only in case, and the VM names made from them (`Web1`) are already compared without case across the whole KVM host. Environment names and catalog names stay lower case (they become workspace and file names). |
 | Roles | One role per host group: the form's Roles box is a single-choice Role, and the API takes exactly one (`roles` has `max_length=1`). Existing environments with several roles keep them; only creating and the placement preview check this. |
 | Verified | pytest (`test_host_group_form.py`: a mixed-case group, case-only duplicates and bad names refused, the VM-name clash, two roles and none refused). |
+
+## 61. Environment records, disk floors, passwordless sudo, installer environment (built 2026-10-20)
+
+From the 2026-10-19 live runs (the full installer on `stack1`, the Windows 11 client `krbw11`).
+
+| Area | As built |
+|---|---|
+| Delete a record | `DELETE /api/environments/{id}` (owners; deployer or template_editor), `engine/envdelete.py`. Allowed only for `destroyed` or `new` environments with no queued or running job (409 with the reasons otherwise), so no VM is left behind. Deletes the `environment/<id>/` secrets (external stores' copies best effort), the rotation policies whose `params.environment_id` is it, IP allocations, snapshot records and grants; console tokens drop its id; jobs and remote sessions keep their rows with the environment cleared; audit `environment.delete` with the counts. Nothing on a host changes (the destroy already removed the VMs, disks and workspace). The page shows **Delete** for owners when the status allows it. |
+| Disk floor | `ostargets.MIN_DISK_GB` (`windows_11`: 64) mirrors `min_disk_gb` in `tofu/backends/libvirt/main.tf` (a test compares them); `HostGroup` refuses a smaller `disk_gb` at creation (422), and the New environment form checks the same floor. |
+| Passwordless sudo | A local environment account may have `sudo_nopasswd` when its hosts include a Linux role (refused for Windows-only accounts). It reaches the directory manifest's `local_users`; `linux_common` writes every such account on the host into one file, `/etc/sudoers.d/90-labape-accounts` (0440, `visudo -cf`), and removes the file when none has it, so taking the flag or the account away takes the sudo away at the next deploy. The accounts dialog has a **Sudo, no password** column. |
+| Installer environment | `util.settle_process()` at the start of `main`: `umask 022`, and as root `HOME` = root's home. `repo_version` runs `git describe --dirty` as the checkout's owner (with that user's `HOME`): `--dirty` rewrites `.git/index` even with `--no-optional-locks`. |
+| Verified | pytest (`test_z1_env_admin.py`, `test_y2_installer.py`). Live: see the troubleshooting log entry of 2026-10-20. |

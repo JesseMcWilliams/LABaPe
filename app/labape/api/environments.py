@@ -10,11 +10,11 @@ import subprocess
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import appsettings, env_accounts, leases, quotas, remote, spread, timezones
+from .. import appsettings, env_accounts, leases, ostargets, quotas, remote, spread, timezones
 from ..db import get_db
 from ..catalog import CatalogError, expand, installer_mismatch, package_platforms, platforms
 from ..errors import FieldError
@@ -65,6 +65,14 @@ class HostGroup(BaseModel):
     # E3 (question 168): desktop sessions on a Linux group's VMs: xrdp (RDP for every account) and/or
     # VNC (a display per local account).
     remote_desktop: list[Literal["xrdp", "vnc"]] = Field(default=[], max_length=2)
+
+    @model_validator(mode="after")
+    def _disk_floor(self) -> "HostGroup":
+        # Refused here, at creation, rather than by OpenTofu's precondition when the deploy plans.
+        floor = ostargets.MIN_DISK_GB.get(self.os, 0)
+        if self.disk_gb < floor:
+            raise ValueError(f"disk_gb {self.disk_gb} is below the {floor} GB {ostargets.OSES[self.os][2]} needs")
+        return self
 
     @field_validator("names")
     @classmethod
@@ -448,6 +456,24 @@ def redeploy(env_id: int, request: Request, db: Session = Depends(get_db),
     return {"job_id": job.id}
 
 
+@router.delete("/{env_id}")
+def delete_record(env_id: int, request: Request, db: Session = Depends(get_db),
+                  p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Delete a destroyed (or never deployed) environment's record, freeing its name (2026-10-20 round)."""
+    from ..engine import envdelete
+    e = _get(db, env_id, p)
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail="Only the environment's owners can delete it")
+    why = envdelete.blockers(db, e)
+    if why:
+        raise HTTPException(status_code=409, detail="Can't delete it: " + "; ".join(why) + ".")
+    counts = envdelete.delete(db, e)
+    db.commit()
+    audit(db, p.username, "environment.delete", object_type="environment", object_id=env_id, detail=counts,
+          source_ip=client_ip(request))
+    return {"deleted": env_id, **counts}
+
+
 @router.post("/{env_id}/destroy")
 def destroy(env_id: int, request: Request, db: Session = Depends(get_db),
             p: Principal = Depends(require_roles("deployer", "template_editor"))):
@@ -825,6 +851,7 @@ class AccountIn(BaseModel):
     groups: list[str] = Field(default_factory=list, max_length=20)
     display_name: str = Field(default="", max_length=64)
     ou: str = Field(default="", max_length=255)
+    sudo_nopasswd: bool = False            # local accounts on Linux hosts (2026-10-20 round)
 
 
 class AccountsIn(BaseModel):

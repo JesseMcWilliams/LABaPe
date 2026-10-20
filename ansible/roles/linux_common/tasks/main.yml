@@ -264,6 +264,34 @@
   no_log: true
   tags: [directory_objects, local_user]
 
+# Passwordless sudo for the local users that ask for it (`sudo_nopasswd`, 2026-10-20 round), all
+# in one file so an account taken off the list, or switched off, loses it on the next deploy.
+- name: Passwordless sudo for local users that have it
+  vars:
+    labape_nopasswd: >-
+      {{ (directory_manifest.local_users | default([])) | for_host_group(group_names)
+         | selectattr('sudo_nopasswd', 'defined') | selectattr('sudo_nopasswd') | map(attribute='name') | list }}
+  block:
+    - name: Write the sudoers drop-in
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-labape-accounts
+        content: |
+          # LABaPe: environment accounts with passwordless sudo (managed; edits are overwritten).
+          {% for u in labape_nopasswd %}
+          {{ u }} ALL=(ALL) NOPASSWD: ALL
+          {% endfor %}
+        mode: "0440"
+        owner: root
+        group: root
+        validate: /usr/sbin/visudo -cf %s
+      when: labape_nopasswd | length > 0
+    - name: Remove it when no account has it
+      ansible.builtin.file:
+        path: /etc/sudoers.d/90-labape-accounts
+        state: absent
+      when: labape_nopasswd | length == 0
+  tags: [directory_objects, local_user]
+
 # Linux has no group-into-group nesting (a Unix group's members are
 # always users, unlike AD) and no local equivalent of Windows' explicit
 # local-group membership for a domain principal — realmd/sssd's own

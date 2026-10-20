@@ -7,7 +7,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- **Delete** on a destroyed (or never deployed) environment's page: its record, stored secrets, password rotations, snapshot records and grants go, and its name is free again; its jobs and the audit log stay (`DELETE /api/environments/{id}`).
+- Environment accounts: **Sudo, no password** for a local account on Linux hosts, so scripted root work (the console API's **run a command**) needs no password. One managed file, `/etc/sudoers.d/90-labape-accounts`, written at the next deploy and removed when no account has it.
+
 ### Fixed
+- New environment: a disk below the OS's minimum (Windows 11: 64 GB) is refused when the environment is created, instead of failing the deploy's plan.
+- Installer: it sets its own umask (022) and, as root, root's own `HOME`, so a caller's `umask 077` or `sudo -E` no longer leaves files the service user can't read or owns; and `git describe` runs as the checkout's owner, so `.git/index` is no longer left owned by root.
 - Session log: an API console session's recording is a text transcript, which the player can't open ("can't access property 'size'"). **Play** now shows only for a browser session's recording, and every recording has a **Download** button.
 - Console API: **run a command** as an environment's domain account (or the domain admin) on a Windows VM failed with "the specified credentials were rejected": it signed in with WinRM Basic, which takes local accounts only. A domain login now uses NTLM.
 - Drive Pools: the drives offered for **Add** no longer include the small empty partition (9) that ZFS makes on every whole disk it uses; a partition is offered only when nothing else on its disk is in use.

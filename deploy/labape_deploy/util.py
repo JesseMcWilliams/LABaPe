@@ -13,6 +13,20 @@ class StepError(RuntimeError):
     pass
 
 
+def settle_process(environ=os.environ, euid: int | None = None) -> None:
+    """Make the run independent of how it was started: files it creates are readable by the service
+    user whatever the caller's umask (a `umask 077` left /opt/labape/venv unreadable), and as root it
+    uses root's own HOME (under `sudo -E` it kept the caller's, and root then owned that user's
+    ~/.ansible, ~/.config and ~/.cache)."""
+    os.umask(0o022)
+    euid = os.geteuid() if euid is None else euid
+    if euid == 0:
+        try:
+            environ["HOME"] = pwd.getpwuid(0).pw_dir
+        except (KeyError, AttributeError):
+            environ["HOME"] = "/root"
+
+
 class Runner:
     def __init__(self, dry_run: bool, service_user: str | None = None):
         self.dry_run = dry_run

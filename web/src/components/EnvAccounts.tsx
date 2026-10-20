@@ -9,7 +9,7 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete";
 import { api } from "../api";
 
-interface Account { name: string; kind: "domain" | "local"; hosts: string[]; groups: string[]; display_name?: string; ou?: string }
+interface Account { name: string; kind: "domain" | "local"; hosts: string[]; groups: string[]; display_name?: string; ou?: string; sudo_nopasswd?: boolean }
 interface AccountList { accounts: Account[]; roles: string[]; can_edit: boolean }
 
 export default function EnvAccounts({ envId }: { envId: string }) {
@@ -46,7 +46,7 @@ export default function EnvAccounts({ envId }: { envId: string }) {
         {error && !draft && <Alert severity="error">{error}</Alert>}
         <Box>
           {data.accounts.map((a) => (
-            <Chip key={a.name} sx={{ mr: 1, mb: 1 }} label={a.kind === "domain" ? `${a.name} (domain)` : `${a.name} (local on ${a.hosts.join(", ")})`}
+            <Chip key={a.name} sx={{ mr: 1, mb: 1 }} label={a.kind === "domain" ? `${a.name} (domain)` : `${a.name} (local on ${a.hosts.join(", ")}${a.sudo_nopasswd ? "; sudo without password" : ""})`}
               title={a.groups.length ? `Groups: ${a.groups.join(", ")}` : undefined} />
           ))}
           {data.accounts.length === 0 && <Typography variant="body2">None.</Typography>}
@@ -57,14 +57,14 @@ export default function EnvAccounts({ envId }: { envId: string }) {
         {draft && <DialogContent>
           <Table size="small">
             <TableHead>
-              <TableRow><TableCell>Name</TableCell><TableCell>Kind</TableCell><TableCell>Hosts (local)</TableCell><TableCell>Groups</TableCell><TableCell /></TableRow>
+              <TableRow><TableCell>Name</TableCell><TableCell>Kind</TableCell><TableCell>Hosts (local)</TableCell><TableCell>Groups</TableCell><TableCell>Sudo, no password</TableCell><TableCell /></TableRow>
             </TableHead>
             <TableBody>
               {draft.map((a, i) => (
                 <TableRow key={i}>
                   <TableCell><TextField size="small" value={a.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="jdoe" /></TableCell>
                   <TableCell>
-                    <TextField select size="small" value={a.kind} onChange={(e) => set(i, { kind: e.target.value as Account["kind"], hosts: [] })}>
+                    <TextField select size="small" value={a.kind} onChange={(e) => set(i, { kind: e.target.value as Account["kind"], hosts: [], sudo_nopasswd: false })}>
                       <MenuItem value="domain" disabled={!hasDc}>Domain</MenuItem><MenuItem value="local">Local</MenuItem>
                     </TextField>
                   </TableCell>
@@ -76,6 +76,13 @@ export default function EnvAccounts({ envId }: { envId: string }) {
                   </TableCell>
                   <TableCell><TextField size="small" value={a.groups.join(", ")} placeholder={a.kind === "domain" ? "Domain Admins" : "wheel"}
                     onChange={(e) => set(i, { groups: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} /></TableCell>
+                  <TableCell>
+                    {a.kind === "local" && a.hosts.some((r) => r.startsWith("linux_")) ? (
+                      <Checkbox size="small" checked={!!a.sudo_nopasswd}
+                        title="Linux hosts: the account runs sudo without its password (for scripted root work, e.g. the console API)"
+                        onChange={(e) => set(i, { sudo_nopasswd: e.target.checked })} />
+                    ) : "—"}
+                  </TableCell>
                   <TableCell><IconButton size="small" onClick={() => setDraft(draft.filter((_, j) => j !== i))} title="Remove from the list (not from the VMs)"><DeleteIcon fontSize="small" /></IconButton></TableCell>
                 </TableRow>
               ))}

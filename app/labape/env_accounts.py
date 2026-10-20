@@ -26,6 +26,7 @@ NAME = re.compile(r"^[a-z][a-z0-9._-]{0,19}$")          # 20: the Windows (SAM) 
 RESERVED = {"administrator", "admin", "root", "labape", "guest", "krbtgt", "defaultaccount", "wdagutilityaccount",
             "nobody", "ansible"}
 ROLES = ("domain_controller", "windows_server", "windows_workstation", "linux_server", "linux_workstation")
+LINUX_ROLES = {"linux_server", "linux_workstation"}
 SECTION = "## Environment accounts"
 
 
@@ -74,7 +75,13 @@ def validate(env: Environment, items: list[dict]) -> list[dict]:
             if not hosts or bad:
                 raise AccountError(f"{where}: choose the roles whose hosts get it, from this environment's: "
                                    f"{', '.join(sorted(local_roles)) or 'none (only domain controllers)'}")
-            out.append({"name": name, "kind": "local", "hosts": hosts, "groups": groups})
+            entry = {"name": name, "kind": "local", "hosts": hosts, "groups": groups}
+            if a.get("sudo_nopasswd"):
+                # Passwordless sudo (2026-10-20 round): Linux hosts only; Windows has no equivalent.
+                if not set(hosts) & LINUX_ROLES:
+                    raise AccountError(f"{where}: passwordless sudo is for accounts on Linux hosts")
+                entry["sudo_nopasswd"] = True
+            out.append(entry)
         else:
             raise AccountError(f"{where}: the kind is domain or local")
     return out
@@ -115,6 +122,8 @@ def merge_manifest(path, env: Environment, domain_name: str) -> int:
             u = {"name": a["name"], "hosts": a["hosts"], "password_vault_key": vault_key(a["name"])}
             if a.get("groups"):
                 u["groups"] = a["groups"]
+            if a.get("sudo_nopasswd"):
+                u["sudo_nopasswd"] = True
             data.setdefault("local_users", []).append(u)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
