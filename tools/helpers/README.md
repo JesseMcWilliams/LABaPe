@@ -38,6 +38,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `lab.sh` | sourced | Shared settings for the two above |
 | `live/oidc_login.py` | lab (container) | Sign in through the test Authentik; imported by the others |
 | `live/env_create.py` | lab (container) | Create a one-VM environment (optionally with catalog applications, `--apps`, and services, `--services`) and wait for its deploy |
+| `live/env_plan.py` | lab (container) | Preview a redeploy of an environment (design §56.1): queues the plan job, waits, and prints each VM's action (reinstalled, created, removed or kept) with the reasons. Nothing is applied |
 | `live/env_job.py` | lab (container) | Deploy, refresh or destroy an environment and wait |
 | `live/env_secrets.py` | lab (container) | An environment's secrets on its page: list, or a store/replace/reveal/delete round trip (V1a) |
 | `live/env_secrets_move.py` | lab (container) | Move an environment's secrets to another store and check they read the same |
