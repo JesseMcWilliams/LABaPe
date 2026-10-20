@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-20
+
+Environment records can be deleted once destroyed, a local Linux environment account can have passwordless sudo, a disk below the OS minimum is refused when the environment is created, and the installer no longer depends on the caller's umask or HOME. Also three fixes found in live testing, and the user guides brought up to date: the session log plays only browser recordings and offers every recording, an API console session's text transcript included, for download; Drive Pools no longer offers the small partition ZFS makes on each of its disks as a free drive; running a command as a domain account on a Windows VM now signs in over NTLM (WinRM refused it over Basic); and the 2026-10 features (time zones, Windows sign-on, Preview redeploy, the console role and API, the MCP server and its Claude Desktop bundle, the catalog's Contents picker) are now in the Web Interface and Command Line guides.
+
 ### Added
 - **Delete** on a destroyed (or never deployed) environment's page: its record, stored secrets, password rotations, snapshot records and grants go, and its name is free again; its jobs and the audit log stay (`DELETE /api/environments/{id}`).
 - Environment accounts: **Sudo, no password** for a local account on Linux hosts, so scripted root work (the console API's **run a command**) needs no password. One managed file, `/etc/sudoers.d/90-labape-accounts`, written at the next deploy and removed when no account has it.
