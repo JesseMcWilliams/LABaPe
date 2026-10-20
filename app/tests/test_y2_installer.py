@@ -334,3 +334,36 @@ def test_akadmins_first_password_is_stored_after_the_stack_is_up(tmp_path):
     assert S.stack_authentik_admin(c)[0] == S.NA
     names = [s[0] for s in _installer().STEPS]
     assert names.index("Stack.Up") < names.index("Stack.AuthentikAdmin") < names.index("Stack.Restore")
+
+
+def test_the_run_sets_its_own_umask_and_roots_home(monkeypatch):
+    from labape_deploy import util
+    seen = {}
+    monkeypatch.setattr(util.os, "umask", lambda m: seen.setdefault("umask", m))
+    env = {"HOME": "/home/caller"}
+    util.settle_process(env, euid=0)
+    assert seen["umask"] == 0o022 and env["HOME"] != "/home/caller"
+    env = {"HOME": "/home/caller"}
+    util.settle_process(env, euid=1000)                      # not root: HOME stays
+    assert env["HOME"] == "/home/caller"
+
+
+def test_repo_version_runs_git_as_the_checkouts_owner(monkeypatch, tmp_path):
+    seen = {}
+
+    class Done:
+        stdout = "v0.5.4-10-g98f9cfb\n"
+
+    def fake_run(cmd, **kw):
+        seen.update(kw)
+        return Done()
+
+    class St:
+        st_uid, st_gid = 1001, 1002
+
+    monkeypatch.setattr(S.subprocess, "run", fake_run)
+    monkeypatch.setattr(S.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(S.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": "/home/svc"})(), raising=False)
+    monkeypatch.setattr(type(tmp_path), "stat", lambda self, **kw: St())
+    assert S.repo_version(tmp_path) == "v0.5.4-10-g98f9cfb"
+    assert seen["user"] == 1001 and seen["group"] == 1002 and seen["env"]["HOME"] == "/home/svc"

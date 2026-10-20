@@ -64,6 +64,16 @@ export default function EnvironmentDetail() {
     }
   };
 
+  const deleteRecord = async () => {
+    setError("");
+    try {
+      await api.del(`/api/environments/${id}`);
+      navigate("/environments");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const showCreds = async () => {
     try {
       setCreds((await api.get<{ sections: CredentialSection[] }>(`/api/environments/${id}/credentials`)).sections);
@@ -147,6 +157,15 @@ export default function EnvironmentDetail() {
             onClick={() => act("destroy")}>
             Destroy
           </ActionButton>
+          {env.is_owner && (env.status === "destroyed" || env.status === "new") && (
+            <ActionButton variant="outlined" color="error"
+              tip="Remove this environment from LABaPe and free its name (it has no VMs)"
+              confirm={{ title: `Delete ${env.name}?`, danger: true, confirmLabel: "Delete",
+                body: "The environment's record, its stored secrets, password rotations and snapshot records are deleted, and its name can be used again. Its jobs and the audit log are kept. This can't be undone." }}
+              onClick={deleteRecord}>
+              Delete
+            </ActionButton>
+          )}
           <ActionButton onClick={showCreds} disabled={env.status !== "deployed"}
             tip="Show the tester accounts and passwords (each view is audited)">
             Show credentials

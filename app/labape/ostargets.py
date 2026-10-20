@@ -26,6 +26,9 @@ OSES: dict[str, tuple[str, str, str]] = {
     "windows_11": ("windows", "windows-client", "Windows 11"),
     "windows_10": ("windows", "windows-client", "Windows 10"),
 }
+# The smallest disk an OS installs on, in GB; it must match `min_disk_gb` in
+# tofu/backends/libvirt/main.tf (a test checks), which refuses smaller ones at plan time.
+MIN_DISK_GB: dict[str, int] = {"windows_11": 64}
 PLATFORMS = {"windows": "Windows (any)", "linux": "Linux (any)"}
 FAMILIES = {"windows-server": "Windows Server", "windows-client": "Windows client",
             "rhel-family": "RHEL family (Rocky, RHEL, Alma)", "debian-family": "Debian family (Debian, Ubuntu)"}

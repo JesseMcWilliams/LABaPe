@@ -16,6 +16,8 @@ const OS_KEYS = [
   "rocky9", "ubuntu_lts", "ubuntu_26", "debian_latest",
   "windows_server_2019", "windows_server_2022", "windows_server_2025", "windows_11", "windows_10",
 ];
+// The smallest disk an OS installs on (GB); matches ostargets.MIN_DISK_GB and the OpenTofu catalog.
+const MIN_DISK_GB: Record<string, number> = { windows_11: 64 };
 const ROLES = ["domain_controller", "windows_server", "windows_workstation", "linux_server", "linux_workstation"];
 
 const blankGroup = (): HostGroup => ({
@@ -143,7 +145,7 @@ export default function EnvironmentNew() {
       entries.push([`host_groups.${i}.count`, `${at}: Count`, rules.intRange(1, 20)(g.count)]);
       entries.push([`host_groups.${i}.cpu_count`, `${at}: vCPUs`, rules.intRange(1, 32)(g.cpu_count)]);
       entries.push([`host_groups.${i}.memory_mb`, `${at}: Memory`, rules.intRange(512, 262144, "MB")(g.memory_mb)]);
-      entries.push([`host_groups.${i}.disk_gb`, `${at}: Disk`, rules.intRange(10, 2048, "GB")(g.disk_gb)]);
+      entries.push([`host_groups.${i}.disk_gb`, `${at}: Disk`, rules.intRange(MIN_DISK_GB[g.os] ?? 10, 2048, "GB")(g.disk_gb)]);
       if (g.image_source === "packer_template" && !g.template) {
         entries.push([`host_groups.${i}.template`, `${at}: Template`, "Choose a template for this OS."]);
       }

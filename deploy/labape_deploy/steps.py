@@ -8,6 +8,7 @@ import ipaddress
 import json
 import getpass
 import os
+import pwd
 import platform
 import secrets
 import shutil
@@ -757,9 +758,18 @@ def stack_auth(c: Ctx):
 def repo_version(repo: Path) -> str:
     """`git describe --tags` of the checkout (e.g. v0.2.0-3-gabc1234), or "dev"."""
     try:
-        # As root on the service user's checkout: git refuses it as "dubious ownership" otherwise.
-        out = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "describe", "--tags", "--always", "--dirty"],
-                             capture_output=True, text=True, timeout=15, check=False)
+        # As the checkout's owner: `--dirty` refreshes and rewrites .git/index, which as root left it
+        # owned by root. safe.directory covers a root run on a checkout git calls "dubious ownership".
+        st = repo.stat()
+        as_owner = {}
+        if hasattr(os, "geteuid") and os.geteuid() == 0 and st.st_uid != 0:
+            try:
+                home = pwd.getpwuid(st.st_uid).pw_dir
+            except KeyError:
+                home = "/"
+            as_owner = {"user": st.st_uid, "group": st.st_gid, "env": {**os.environ, "HOME": home}}
+        out = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "describe", "--tags", "--always",
+                              "--dirty"], capture_output=True, text=True, timeout=15, check=False, **as_owner)
     except OSError:
         return "dev"
     return out.stdout.strip() or "dev"

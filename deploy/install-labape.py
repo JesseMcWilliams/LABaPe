@@ -34,7 +34,7 @@ sys.path.insert(0, str(DEPLOY_ROOT))
 from labape_deploy import state  # noqa: E402
 from labape_deploy import steps as S  # noqa: E402
 from labape_deploy.answers import ANSWERS, Resolver  # noqa: E402
-from labape_deploy.util import Runner, StepError  # noqa: E402
+from labape_deploy.util import Runner, StepError, settle_process  # noqa: E402
 
 
 def cli(a: Resolver) -> bool:
@@ -219,6 +219,7 @@ def summary(a: Resolver) -> str:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    settle_process()
     a = Resolver(interactive=sys.stdin.isatty() and not args.non_interactive)
 
     # Precedence: --set, then --config-file, then a backup's answers, then saved answers (partial runs).
