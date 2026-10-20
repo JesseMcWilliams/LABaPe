@@ -4,7 +4,7 @@
 
 ## 1. State
 
-`main` is at the merge of this handoff's PR, after #186 (`98f9cfb`). **v0.5.4 is the latest release**; **v0.5.5 is queued** (section 3). `CHANGELOG.md` `[Unreleased]` holds the three fixes since v0.5.4. No question is unanswered; new questions continue from **184**.
+`main` is at the merge of PR #191, the release commit (`5f94c51`). **v0.5.5 is the latest release** (signed tag, GitHub release with the SBOM, 2026-10-20), cut from `lab-exchange` request 02. `CHANGELOG.md` `[Unreleased]` is empty again. No question is unanswered; new questions continue from **184**.
 
 | PR | What |
 |---|---|
@@ -30,8 +30,8 @@
 
 ## 3. What's left
 
-1. **Release v0.5.5:** `C:\Code\lab-exchange\requests\02-release-0.5.5.sh` runs `release.sh 0.5.5` on Windows (the signing key is there), dry run first, `--resume` if it stops; summary in `data/release-0.5.5-summary.md`. Waiting on the other agent. Then update the stack to the tag (Admin → Updates, or the deploy script below).
-2. **Windows test run:** `requests/01-windows-tests.sh` (pull, `test_redeploy_preview.py`, then the full suite). Waiting on the other agent; results land in `results/`.
+1. **Done 2026-10-20: release v0.5.5** (`lab-exchange` request 02; the first run stopped at its dry run because `main` had moved after the lab image was built, the second, after `deploy-web.sh` from clean `main`, released). The stack on OZ runs `v0.5.5`.
+2. **Done 2026-10-20: Windows test run** (`lab-exchange` request 01): `test_redeploy_preview.py` passes on Windows (PR #182 fixed it); the full suite is 443 passed, 1 skipped, 0 failed.
 3. **Kerberos click-through (the user):** RDP to `krbw1` (environment `krbwin11`) as `LABAPE\jesse`, open Edge at `https://auth.labape.test:9445/` and sign in to LABaPe with Windows credentials (design §58). Then destroy environment 31 and delete the computer account `KRBW1` in `labape.test`.
 4. **Done 2026-10-20 (PR #188, design §61):** installer umask/HOME and `.git/index` ownership; the disk floor at creation; deleting a destroyed environment's record; passwordless sudo per local Linux account.
 5. **Browser checks still open** (only type-checked): the Tokens page console options (only chosen environments, an account must be named, KVM host consoles, calls per minute, session minutes, output KB); Catalog → New package (the Contents picker with its Windows/Linux filter); the New environment form (OS filter on catalog choices, a single Role, mixed-case group names, time zone). From PR #188: **Delete** on a destroyed environment (try it on `sudotest`, 32, destroyed 2026-10-20), the accounts dialog's **Sudo, no password** column, and the form's 64 GB floor for Windows 11.
@@ -43,7 +43,7 @@
 
 | Thing | State |
 |---|---|
-| kvm1 / OZ (host 1) | Stack rebuilt from `main` `98f9cfb` (PR #186) (`v0.5.4-10-g98f9cfb`) with the deploy script below, health ok. `~/LABaPe-web` is detached at `origin/main` with no local changes; `.env` has `LABAPE_MAX_KVM_HOSTS=6`. |
+| kvm1 / OZ (host 1) | Stack rebuilt from the `v0.5.5` release commit (`5f94c51`) with the deploy script below, health ok. `~/LABaPe-web` is detached at `origin/main` with no local changes; `.env` has `LABAPE_MAX_KVM_HOSTS=6`. |
 | Hosts | kvm1, nkvm1, pi1 (Director), garagepc. The test host record `nkvm1-deltest` was purged. |
 | Environments | `lab2` (3), `syslog1`, `nestkvm`, `agent1`, `testweb`, `krbwin11` (31, joined to `labape.test`, local admin account `krbadmin`); `stackhost` (14) and `krbw11` (30) destroyed. |
 | lab-exchange | `C:\Code\lab-exchange`: `README.md` (how the other agent runs a request and writes a result), `requests/01-windows-tests.sh`, `requests/02-release-0.5.5.sh`, `data/release-0.5.5-summary.md`, `requests/archive/00-check-access.sh`. |
