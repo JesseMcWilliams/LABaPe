@@ -11,6 +11,7 @@ import { hasRole, useAuth } from "../App";
 import { StateChip } from "../components";
 import { ActionButton } from "../components/Confirm";
 import VmPower from "../components/VmPower";
+import AddHosts from "../components/AddHosts";
 import EnvAccounts from "../components/EnvAccounts";
 import EnvSecrets from "../components/EnvSecrets";
 import Desktops from "../components/Desktops";
@@ -144,6 +145,9 @@ export default function EnvironmentDetail() {
             }}>
             {env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"}
           </ActionButton>
+          {(env.status === "deployed" || env.status === "failed") && (
+            <AddHosts env={env} disabled={busy} onStarted={(jobId) => navigate(`/jobs/${jobId}`)} />
+          )}
           {(env.status === "deployed" || env.status === "failed") && (
             <ActionButton onClick={() => setPreview(true)} disabled={busy}
               tip="Plan a redeploy without applying it: which VMs it would reinstall, create or remove, and why">
