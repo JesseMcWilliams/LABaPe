@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import tokens
 from ..config import ROLES
 from ..db import get_db
-from ..models import ApiToken, Environment, User
+from ..models import ApiToken, Environment, User, utcnow
 from ..permissions import is_owner
 from ..security import Principal, audit, client_ip, current_principal
 
@@ -32,8 +32,13 @@ class TokenIn(BaseModel):
 
 
 @router.get("")
-def list_tokens(all: bool = False, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+def list_tokens(all: bool = False, inactive: bool = False, db: Session = Depends(get_db),
+                p: Principal = Depends(current_principal)):
+    """`inactive` adds the revoked and expired tokens, which are otherwise hidden (and removed after the retention
+    period in Settings → History)."""
     q = select(ApiToken, User.username).join(User, User.id == ApiToken.user_id).order_by(ApiToken.created_at.desc())
+    if not inactive:
+        q = q.where(ApiToken.revoked_at.is_(None), ApiToken.expires_at > utcnow())
     if not (all and p.is_admin):
         q = q.where(ApiToken.user_id == p.user_id, ApiToken.kind == "personal")
     return {"roles": list(ROLES), "my_roles": sorted(tokens.held_roles(p.roles)),

@@ -54,7 +54,7 @@ def validate(env: Environment, items: list[dict]) -> list[dict]:
     roles, seen, out = env_roles(env), set(), []
     for i, a in enumerate(items):
         name, kind = str(a.get("name", "")).strip(), a.get("kind")
-        where = f"account {i + 1}"
+        where = f"account {i + 1}" + (f" ({name})" if name else "")
         if not NAME.match(name) or name in RESERVED:
             raise AccountError(f"{where}: a name is a lowercase letter, then letters, digits, dots, dashes or "
                                "underscores, up to 20, and not a built-in account")

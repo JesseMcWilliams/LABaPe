@@ -85,11 +85,11 @@ export default function Syslog() {
       <FilterBar onApply={() => f.apply()} onClear={f.clear} active={f.active}>
         <Field label="Host" value={f.draft.host} sx={{ width: 160 }} help="Host name contains" onChange={(e) => f.set("host", e.target.value)} />
         <Field label="From" value={f.draft.from_ip} sx={{ width: 150 }} help="Sender address starts with" onChange={(e) => f.set("from_ip", e.target.value)} />
-        <Field select label="Facility" value={f.draft.facility} sx={{ width: 130 }} onChange={(e) => f.set("facility", e.target.value)}>
+        <Field select label="Facility" value={f.draft.facility} sx={{ width: 130 }} onChange={(e) => { f.set("facility", e.target.value); f.apply(); }}>
           <MenuItem value="">Any</MenuItem>
           {(status?.facilities ?? []).map((x) => <MenuItem key={x} value={x}>{x}</MenuItem>)}
         </Field>
-        <Field select label="Severity at least" value={f.draft.min_severity} sx={{ width: 160 }} onChange={(e) => f.set("min_severity", e.target.value)}>
+        <Field select label="Severity at least" value={f.draft.min_severity} sx={{ width: 160 }} onChange={(e) => { f.set("min_severity", e.target.value); f.apply(); }}>
           <MenuItem value="">Any</MenuItem>
           {(status?.severities ?? []).map((x) => <MenuItem key={x} value={x}>{x}</MenuItem>)}
         </Field>

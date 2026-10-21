@@ -861,8 +861,12 @@ class AccountsIn(BaseModel):
 @router.get("/{env_id}/accounts")
 def env_account_list(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     e = _get(db, env_id, p)
+    role_vms: dict[str, list[str]] = {}
+    for g in (e.spec or {}).get("host_groups", []):
+        for r in g.get("roles") or []:
+            role_vms.setdefault(r, []).extend(instance_names(g))
     return {"accounts": env_accounts.accounts(e), "roles": sorted(env_accounts.env_roles(e) & set(env_accounts.ROLES)),
-            "can_edit": is_owner(db, p, "environment", e.id)}
+            "role_vms": role_vms, "can_edit": is_owner(db, p, "environment", e.id)}
 
 
 @router.put("/{env_id}/accounts")

@@ -10,7 +10,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { api } from "../api";
 
 interface Account { name: string; kind: "domain" | "local"; hosts: string[]; groups: string[]; display_name?: string; ou?: string; sudo_nopasswd?: boolean }
-interface AccountList { accounts: Account[]; roles: string[]; can_edit: boolean }
+interface AccountList { accounts: Account[]; roles: string[]; role_vms?: Record<string, string[]>; can_edit: boolean }
 
 export default function EnvAccounts({ envId }: { envId: string }) {
   const [data, setData] = useState<AccountList | null>(null);
@@ -27,6 +27,9 @@ export default function EnvAccounts({ envId }: { envId: string }) {
     load();
   }, (e) => setError(e.message));
   const set = (i: number, patch: Partial<Account>) => setDraft(draft!.map((a, j) => (j === i ? { ...a, ...patch } : a)));
+  // An account is bound to a role (every host with it); the VM names say which machines that is.
+  const vmsOf = (r: string) => (data.role_vms?.[r] ?? []).join(", ");
+  const roleLabel = (r: string) => (vmsOf(r) ? `${r} (${vmsOf(r)})` : r);
   const hasDc = data.roles.includes("domain_controller");
   const localRoles = data.roles.filter((r) => r !== "domain_controller");      // a DC has no local accounts
 
@@ -46,7 +49,7 @@ export default function EnvAccounts({ envId }: { envId: string }) {
         {error && !draft && <Alert severity="error">{error}</Alert>}
         <Box>
           {data.accounts.map((a) => (
-            <Chip key={a.name} sx={{ mr: 1, mb: 1 }} label={a.kind === "domain" ? `${a.name} (domain)` : `${a.name} (local on ${a.hosts.join(", ")}${a.sudo_nopasswd ? "; sudo without password" : ""})`}
+            <Chip key={a.name} sx={{ mr: 1, mb: 1 }} label={a.kind === "domain" ? `${a.name} (domain)` : `${a.name} (local on ${a.hosts.map(roleLabel).join(", ")}${a.sudo_nopasswd ? "; sudo without password" : ""})`}
               title={a.groups.length ? `Groups: ${a.groups.join(", ")}` : undefined} />
           ))}
           {data.accounts.length === 0 && <Typography variant="body2">None.</Typography>}
@@ -57,7 +60,7 @@ export default function EnvAccounts({ envId }: { envId: string }) {
         {draft && <DialogContent>
           <Table size="small">
             <TableHead>
-              <TableRow><TableCell>Name</TableCell><TableCell>Kind</TableCell><TableCell>Hosts (local)</TableCell><TableCell>Groups</TableCell><TableCell>Sudo, no password</TableCell><TableCell /></TableRow>
+              <TableRow><TableCell>Name</TableCell><TableCell>Kind</TableCell><TableCell title="A local account is created on every host with the role; the machines are named beside it">Hosts (local)</TableCell><TableCell>Groups</TableCell><TableCell>Sudo, no password</TableCell><TableCell /></TableRow>
             </TableHead>
             <TableBody>
               {draft.map((a, i) => (
@@ -70,8 +73,12 @@ export default function EnvAccounts({ envId }: { envId: string }) {
                   </TableCell>
                   <TableCell>
                     {a.kind === "local" ? localRoles.map((r) => (
-                      <FormControlLabel key={r} label={r} control={<Checkbox size="small" checked={a.hosts.includes(r)}
-                        onChange={(e) => set(i, { hosts: e.target.checked ? [...a.hosts, r] : a.hosts.filter((x) => x !== r) })} />} />
+                      <FormControlLabel key={r} label={roleLabel(r)} control={<Checkbox size="small" checked={a.hosts.includes(r)}
+                        onChange={(e) => {
+                          const hosts = e.target.checked ? [...a.hosts, r] : a.hosts.filter((x) => x !== r);
+                          // Passwordless sudo is for Linux hosts: without one the flag (and its checkbox) goes.
+                          set(i, { hosts, ...(hosts.some((h) => h.startsWith("linux_")) ? {} : { sudo_nopasswd: false }) });
+                        }} />} />
                     )) : "—"}
                   </TableCell>
                   <TableCell><TextField size="small" value={a.groups.join(", ")} placeholder={a.kind === "domain" ? "Domain Admins" : "wheel"}

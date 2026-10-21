@@ -7,6 +7,19 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+- **Revoked and expired API tokens** are hidden from the Tokens page unless **Show revoked and expired** is ticked, and are removed after a retention period (Settings → History → *Revoked and expired tokens (days)*, default 30).
+- New environment: group names are checked as they are typed (and two names that differ only in case are flagged), and the minimum disk for the OS shows at once instead of on Create.
+- The accounts dialog and the account chips show the VM names beside each role.
+
+### Fixed
+- Saving a **published** catalog package that includes a draft item is refused (as publishing it already was); a draft package may still hold drafts.
+- A filter drop-down (Jobs, Catalog, Environments, Files, Errors, Syslog and the rest) applies as soon as a choice is made, without pressing **Filter**.
+- The host-load bars on the New environment form and the host pages line up when a caption wraps.
+- New environment: the **Role** box offers only the roles of the group's OS and follows an OS change; two groups named alike but for case are flagged as group names (not as a clash of VM names); a catalog option already chosen is no longer offered again.
+- Environment accounts: switching off the last Linux host of an account also clears its passwordless sudo, and a refusal names the account.
+- The API token dialog does not offer destroyed environments, and its limit errors use the boxes' names.
+
 ## [0.5.5] - 2026-10-20
 
 Environment records can be deleted once destroyed, a local Linux environment account can have passwordless sudo, a disk below the OS minimum is refused when the environment is created, and the installer no longer depends on the caller's umask or HOME. Also three fixes found in live testing, and the user guides brought up to date: the session log plays only browser recordings and offers every recording, an API console session's text transcript included, for download; Drive Pools no longer offers the small partition ZFS makes on each of its disks as a free drive; running a command as a domain account on a Windows VM now signs in over NTLM (WinRM refused it over Basic); and the 2026-10 features (time zones, Windows sign-on, Preview redeploy, the console role and API, the MCP server and its Claude Desktop bundle, the catalog's Contents picker) are now in the Web Interface and Command Line guides.

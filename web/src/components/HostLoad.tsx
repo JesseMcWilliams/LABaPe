@@ -14,7 +14,7 @@ function Bar({ label, value, max, warnAt, blockAt, detail }: {
   const color = blockAt !== undefined && ratio > blockAt ? "error" : ratio > warnAt ? "warning" : "success";
   return (
     <Box sx={{ minWidth: 220, flex: 1 }}>
-      <Stack direction="row" sx={{ justifyContent: "space-between" }}>
+      <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between", alignItems: "flex-end" }}>
         <Typography variant="caption" color="text.secondary">{label}</Typography>
         <Typography variant="caption">{detail}</Typography>
       </Stack>
@@ -51,7 +51,7 @@ export default function HostLoad({ resources, demand, compact }: {
             running{s.load.length ? ` · load ${s.load.map((x) => x.toFixed(1)).join(" ")}` : ""}
           </Typography>
         )}
-        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", alignItems: "flex-end" }}>
           <Bar label="vCPUs allocated" value={s.vcpus_allocated + d.vcpus} max={s.cpus * t.vcpu_per_cpu_warn}
             warnAt={1} detail={`${s.vcpus_allocated + d.vcpus} = ${a.vcpu_ratio}/CPU${plus(d.vcpus, "")}`} />
           <Bar label="RAM committed" value={s.memory_committed_mb + d.memory_mb} max={s.memory_total_mb}
