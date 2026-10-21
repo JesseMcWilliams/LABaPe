@@ -81,4 +81,10 @@ def sign_certificate(body: SignIn, request: Request, db: Session = Depends(get_d
         raise FieldError("csr", str(exc), status_code=422) from exc
     audit(db, job.requested_by, "ca.sign", object_type="job", object_id=job.id,
           detail={"host": body.host, "environment": env.name}, source_ip=client_ip(request))
+    try:
+        from .. import certs
+        certs.record(db, chain, requested_by=job.requested_by, source="engine", environment_id=env.id if env else None,
+                     host=body.host)
+    except Exception:  # noqa: BLE001 — the register is a record; a failure to add to it must not fail a deploy
+        db.rollback()
     return {"certificate": chain, "root": ca.root_pem(), "renew_url": get_settings().ca_renew_url}

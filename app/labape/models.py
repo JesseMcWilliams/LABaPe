@@ -438,6 +438,33 @@ class DiskSample(Base):
     data: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class Certificate(Base):
+    """A certificate the platform CA signed (design §65): who asked, for which names, until when, and whether it was
+    revoked. The register is LABaPe's own: step-ca has no list to read. Only the public certificate is kept."""
+
+    __tablename__ = "certificates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    serial: Mapped[str] = mapped_column(String(80), unique=True, index=True)      # decimal, as step-ca's `revoke` takes it
+    subject: Mapped[str] = mapped_column(String(255), default="")
+    sans: Mapped[list] = mapped_column(JSON, default=list)
+    not_before: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    not_after: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    issuer: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(8), default="active")               # active | revoked
+    requested_by: Mapped[str] = mapped_column(String(255), default="", index=True)
+    environment_id: Mapped[int | None] = mapped_column(ForeignKey("environments.id"), nullable=True, index=True)
+    host: Mapped[str] = mapped_column(String(64), default="")
+    source: Mapped[str] = mapped_column(String(16), default="request")             # request | engine | stack | imported
+    note: Mapped[str] = mapped_column(Text, default="")
+    pem: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by: Mapped[str] = mapped_column(String(255), default="")
+    revoke_reason: Mapped[str] = mapped_column(String(255), default="")
+
+
 class UserError(Base):
     """A request the API refused (validation, policy, permission), kept so
     admins can see where users struggle (design §21, question 59)."""

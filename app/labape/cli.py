@@ -282,6 +282,11 @@ def cmd_ca_sign(args) -> int:
     with session_factory()() as db:
         audit(db, _who(), "ca.sign", object_type="certificate", object_id=cn,
               detail={"dns": sorted(dns), "ips": sorted(ips), "hours": args.hours, "via": "cli"})
+        try:
+            from .certs import record
+            record(db, chain, requested_by=_who(), source="stack", note=f"labape ca-sign ({', '.join(sorted(dns | ips)) or cn})")
+        except Exception:  # noqa: BLE001 — the register is a record, not a gate
+            db.rollback()
     sys.stdout.write(chain if chain.endswith("\n") else chain + "\n")
     if args.with_root:
         sys.stdout.write(root_pem())

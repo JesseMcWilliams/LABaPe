@@ -309,6 +309,15 @@ class RemoteSettings(BaseModel):
     keep_recordings_days: int = Field(default=90, ge=1, le=3650)
 
 
+class CertificateSettings(BaseModel):
+    """Who may ask the platform CA for what (design §65, question 195). The stack's own names and the parent domain of
+    its address are always allowed; CA administrators are not limited by these lists."""
+    allowed_domains: list[str] = Field(default_factory=list, max_length=50)       # a name is allowed if it is, or ends in, one of these
+    allowed_networks: list[str] = Field(default_factory=lambda: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], max_length=50)
+    default_days: int = Field(default=30, ge=1, le=90)
+    max_days: int = Field(default=90, ge=1, le=90)                                 # step-ca allows up to 90 days
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "backup": BackupSettings,
     "stack_backup": StackBackupSettings,
@@ -326,6 +335,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "secret_stores": SecretStoreSettings,
     "templates": TemplateSettings,
     "remote": RemoteSettings,
+    "certificates": CertificateSettings,
     "syslog_collector": SyslogCollectorSettings,
     "file_distribution": FileDistributionSettings,
     "monitoring": MonitoringSettings,

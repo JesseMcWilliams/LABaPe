@@ -98,6 +98,47 @@ def sign(csr_pem: str, hours: int = LEAF_HOURS) -> str:
         return crt.read_text(encoding="ascii")
 
 
+def revoke(serial: str, reason: str = "") -> None:
+    """Revoke a certificate by its serial number (decimal) with the same provisioner. step-ca's revocation is
+    passive: the CA refuses to renew it and answers revocation checks, but a client that never asks keeps trusting it."""
+    s = get_settings()
+    if not configured():
+        raise CaError("the platform CA isn't set up (LABAPE_CA_URL, root or password missing)")
+    if not serial.isdigit():
+        raise CaError("a certificate serial number is digits")
+    with tempfile.TemporaryDirectory() as d:
+        env = {"HOME": str(Path(d)), "STEPPATH": str(Path(d) / ".step"), "PATH": "/usr/local/bin:/usr/bin:/bin"}
+        common = ["--ca-url", s.ca_url, "--root", str(s.ca_root)]
+        # `step ca revoke` takes a token, not a provisioner: mint a revocation token for this serial first (the step
+        # CLI stops reading flags at the first positional argument, so the serial goes last in both commands).
+        tok = subprocess.run(["step", "ca", "token", "--revoke", *common, "--provisioner", PROVISIONER,
+                              "--provisioner-password-file", str(s.ca_password_file), serial],
+                             capture_output=True, text=True, timeout=60, check=False, env=env)
+        token = tok.stdout.strip().splitlines()[-1] if tok.returncode == 0 and tok.stdout.strip() else ""
+        if not token:
+            raise CaError(f"step ca token failed: {(tok.stderr or tok.stdout).strip()[-400:]}")
+        cmd = ["step", "ca", "revoke", *common, "--token", token]
+        if reason:
+            cmd += ["--reason", reason[:100]]
+        cmd.append(serial)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False, env=env)
+        if r.returncode != 0:
+            raise CaError(f"step ca revoke failed: {(r.stderr or r.stdout).strip()[-400:]}".replace(token, "***"))
+
+
+def provisioners() -> list[dict]:
+    """The CA's provisioners (public list): [{type, name}], or [] when it can't be asked."""
+    import httpx
+    s = get_settings()
+    if not s.ca_url:
+        return []
+    try:
+        r = httpx.get(f"{s.ca_url.rstrip('/')}/provisioners", params={"limit": 100}, verify=trust(), timeout=10)
+        return [{"type": p.get("type", ""), "name": p.get("name", "")} for p in r.json().get("provisioners", [])]
+    except (httpx.HTTPError, ValueError):
+        return []
+
+
 # --- the signing provisioner's key (phase R3) --------------------------------
 # step-ca stores labape-runner's private JWK as a compact JWE encrypted with
 # the CA password (PBES2-HS256+A128KW, A256GCM). `step crypto jwe encrypt`
