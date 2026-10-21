@@ -19,6 +19,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - New environment: the **Role** box offers only the roles of the group's OS and follows an OS change; two groups named alike but for case are flagged as group names (not as a clash of VM names); a catalog option already chosen is no longer offered again.
 - Environment accounts: switching off the last Linux host of an account also clears its passwordless sudo, and a refusal names the account.
 - The API token dialog does not offer destroyed environments, and its limit errors use the boxes' names.
+- Secrets: a rotation past its date by more than an hour is **overdue**: the row is tinted, the Next date shows an "overdue" chip, the section tab counts them and a warning lists them (rotations that restart a service wait for the maintenance window).
+- The top bar stays at the top of the window while the page scrolls.
 
 ## [0.5.5] - 2026-10-20
 

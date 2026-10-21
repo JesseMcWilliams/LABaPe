@@ -108,7 +108,7 @@ export default function App() {
     <AuthContext.Provider value={{ me, refresh, appName, setAppName, logo, setLogo }}>
       <MaintenanceProvider signedIn={Boolean(me)}>
       {me && (
-        <AppBar position="static">
+        <AppBar position="sticky">
           <Toolbar sx={{ gap: 1 }}>
             <Typography variant="h6" component={RouterLink} to="/" title="Dashboard: load, environments and platform health"
               sx={{ mr: 2, color: "inherit", textDecoration: "none", display: "flex", alignItems: "center", gap: 1 }}>
