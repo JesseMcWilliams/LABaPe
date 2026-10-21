@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .api import (admin, auth, ca, catalog, console, console_text, dashboard, mcp as mcp_api, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
+from .api import (admin, auth, ca, catalog, console, console_text, dashboard, env_hosts, mcp as mcp_api, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
                   maintenance, metrics, networks, quotas, remote, reports, secrets, settings, syslog, templates, tokens,
                   update)
 from . import maintenance_mode
@@ -57,7 +57,7 @@ def create_app() -> FastAPI:
     for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, env_secrets.router, mail.router, package_updates.router, jobs.router,
               admin.router, reports.router, files.router, catalog.router, settings.router, directory.router,
               dashboard.router, settings.public_router, ca.router, maintenance.router, secrets.router,
-              update.router, remote.router, console.router, console_text.router, mcp_api.router, syslog.router, links.router, tokens.router, metrics.router, quotas.router):
+              update.router, remote.router, console.router, console_text.router, env_hosts.router, mcp_api.router, syslog.router, links.router, tokens.router, metrics.router, quotas.router):
         app.include_router(r)
 
     @app.get("/api/health")

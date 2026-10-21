@@ -8,3 +8,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - New environment: the Role box follows the OS; the accounts dialog clears passwordless sudo when the last Linux host is unticked.
 - Secrets: overdue rotations are highlighted (tinted row, overdue chip, tab count and a warning); the top bar is sticky.
 - Secrets: **Rotate overdue now** (what it does, the confirmation that services will stop, the order, stopping at a failure, the progress banner) (design §62.1).
+- Environment page: **Add host** (more hosts in a group, or a new group like an existing one; the checks; that it starts a redeploy) (design §63).
