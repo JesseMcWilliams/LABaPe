@@ -13,7 +13,7 @@ from .. import stores
 from ..db import get_db
 from ..engine.rotation import (ELEVATED_PREFIX, ENV_KINDS, REGISTRY, RESTART_INTERVAL_HOURS, RotationError,
                                ensure_elevated_policies, ensure_policies, policy_secret, request_agent, uses_agent)
-from ..engine import secret_health
+from ..engine import rotate_overdue, secret_health
 from ..errors import FieldError
 from ..models import Environment, Job, Secret, SecretPolicy
 from ..naming import instance_names
@@ -57,6 +57,38 @@ def list_policies(db: Session = Depends(get_db), _: Principal = Depends(require_
     jobs = _last_jobs(db)
     return {"policies": [_out(db, p, jobs) for p in db.scalars(select(SecretPolicy).order_by(SecretPolicy.name))],
             "elevated": _elevated(db), "stores": stores.available(db)}
+
+
+class OverdueIn(BaseModel):
+    acknowledge_restart: bool = False
+
+
+@router.get("/secrets/rotate-overdue")
+def overdue_plan(db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """What **Rotate overdue now** would rotate, in order, and the state of the last or current run."""
+    return {"plan": rotate_overdue.plan(db), "queue": rotate_overdue.status(db)}
+
+
+@router.post("/secrets/rotate-overdue")
+def overdue_start(body: OverdueIn, request: Request, db: Session = Depends(get_db),
+                  p: Principal = Depends(require_roles("admin"))):
+    """Rotate every overdue secret now, one at a time. Some restart LABaPe's services (the API and worker, the CA,
+    the database): the caller must say it knows (`acknowledge_restart`)."""
+    plan = rotate_overdue.plan(db)
+    restarting = [x["label"] for x in plan if x["restart"]]
+    if restarting and not body.acknowledge_restart:
+        raise FieldError("acknowledge_restart", "Rotating " + ", ".join(restarting) + " stops services (the API and "
+                         "worker restart, so everyone signs in again, and maintenance mode is on meanwhile). "
+                         "Confirm that they may stop.")
+    try:
+        return rotate_overdue.start(db, p.username)
+    except RotationError as exc:
+        raise FieldError("policy", str(exc), status_code=409) from exc
+
+
+@router.delete("/secrets/rotate-overdue")
+def overdue_cancel(db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    return rotate_overdue.cancel(db, p.username)
 
 
 @router.get("/secrets/{policy_id}")

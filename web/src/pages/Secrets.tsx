@@ -7,6 +7,7 @@ import {
 import { api, fmtTime, KvmHost } from "../api";
 import { ListHeader } from "../components/PageParts";
 import StoredSecrets from "../components/StoredSecrets";
+import { RotateOverdueButton, RotateOverdueStatus } from "../components/RotateOverdue";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 
 // Settings > Secrets (design §24): every internal secret, how it's rotated,
@@ -161,6 +162,7 @@ export default function Secrets() {
     .then(setData, (e) => setError(e.message));
   useEffect(() => { load(); }, []);
   const late = (data?.policies ?? []).filter(overdue);
+  const [queueTick, setQueueTick] = useState(0);              // bumped when a bulk rotation is started
   return (
     <Stack spacing={2}>
       <ListHeader title="Secrets"
@@ -168,8 +170,9 @@ export default function Secrets() {
         <AddElevated onDone={load} />
       </ListHeader>
       {error && <Alert severity="error">{error}</Alert>}
+      <RotateOverdueStatus refreshKey={queueTick} onChange={load} />
       {late.length > 0 && (
-        <Alert severity="warning">
+        <Alert severity="warning" action={<RotateOverdueButton onStarted={() => { setQueueTick((n) => n + 1); load(); }} />}>
           {late.length} secret{late.length === 1 ? " is" : "s are"} past {late.length === 1 ? "its" : "their"} rotation date:{" "}
           {late.map((p) => `${p.label} (${lateBy(p.next_due_at!)} late${p.needs_restart ? ", waits for the maintenance window" : ""})`).join("; ")}.
         </Alert>
