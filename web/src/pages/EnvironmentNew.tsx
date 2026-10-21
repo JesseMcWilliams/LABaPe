@@ -19,6 +19,8 @@ const OS_KEYS = [
 // The smallest disk an OS installs on (GB); matches ostargets.MIN_DISK_GB and the OpenTofu catalog.
 const MIN_DISK_GB: Record<string, number> = { windows_11: 64 };
 const ROLES = ["domain_controller", "windows_server", "windows_workstation", "linux_server", "linux_workstation"];
+// A role belongs to one OS family; the Role box offers only the group's own, and an OS change picks a fitting one.
+const roleFamily = (r: string) => (r.startsWith("linux_") ? "linux" : "windows");
 
 const blankGroup = (): HostGroup => ({
   name: "", count: 1, os: "rocky9", roles: ["linux_server"], image_source: "packer_template", template: "",
@@ -59,11 +61,18 @@ export default function EnvironmentNew() {
   const fitting = (g: HostGroup, os: string): Partial<HostGroup> => {
     const keep = (kind: CatalogItem["kind"], names: string[] | undefined) =>
       (names ?? []).filter((n) => catalog.some((i) => i.kind === kind && i.name === n && i.platforms.includes(familyOf(os))));
-    return { os, services: keep("service", g.services), applications: keep("application", g.applications), packages: keep("package", g.packages) };
+    const roles = g.roles.filter((r) => roleFamily(r) === familyOf(os));
+    return {
+      os, roles: roles.length ? roles : [familyOf(os) === "windows" ? "windows_server" : "linux_server"],
+      services: keep("service", g.services), applications: keep("application", g.applications), packages: keep("package", g.packages),
+    };
   };
   const [groups, setGroups] = useState<HostGroup[]>([blankGroup()]);
   const [summary, setSummary] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
+  // Fields the user has edited since the last Create: they show the live check, not an older answer from the server.
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+  const touch = (...keys: string[]) => setTouched((t) => new Set([...t, ...keys]));
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -113,6 +122,10 @@ export default function EnvironmentNew() {
   const templateOf = (g: HostGroup) => tplsOf(g).find((t) => t.name === g.template);
 
   const setGroup = (i: number, patch: Partial<HostGroup>) => {
+    touch(...Object.keys(patch).map((k) => `host_groups.${i}.${k}`),
+      ...(patch.os ? [`host_groups.${i}.disk_gb`, `host_groups.${i}.template`] : []),     // a new OS can change the minimum disk
+      ...(patch.names || patch.count !== undefined ? Array.from({ length: 20 }, (_, k) => `host_groups.${i}.names.${k}`) : []),
+      ...(patch.names || patch.count !== undefined || patch.name !== undefined ? [`host_groups.${i}.name`] : []));
     setGroups(groups.map((g, j) => {
       if (j !== i) return g;
       const next = { ...g, ...patch };
@@ -139,9 +152,13 @@ export default function EnvironmentNew() {
   const validate = (): FieldProblem[] => {
     const entries: [string, string, string][] = [["name", "Name", rules.envName(name)]];
     const seen = new Map<string, string>();
+    const groupNames = new Map<string, number>();                       // compared without case, as the server does
     groups.forEach((g, i) => {
       const at = `Host group ${i + 1}`;
-      entries.push([`host_groups.${i}.name`, `${at}: Group name`, rules.groupName(g.name)]);
+      const dup = g.name && groupNames.has(g.name.toLowerCase())
+        ? `Also used by host group ${(groupNames.get(g.name.toLowerCase()) ?? 0) + 1} (names are compared without case); group names must be unique.` : "";
+      if (g.name) groupNames.set(g.name.toLowerCase(), groupNames.get(g.name.toLowerCase()) ?? i);
+      entries.push([`host_groups.${i}.name`, `${at}: Group name`, rules.groupName(g.name) || dup]);
       entries.push([`host_groups.${i}.count`, `${at}: Count`, rules.intRange(1, 20)(g.count)]);
       entries.push([`host_groups.${i}.cpu_count`, `${at}: vCPUs`, rules.intRange(1, 32)(g.cpu_count)]);
       entries.push([`host_groups.${i}.memory_mb`, `${at}: Memory`, rules.intRange(512, 262144, "MB")(g.memory_mb)]);
@@ -154,7 +171,8 @@ export default function EnvironmentNew() {
       });
       Array.from({ length: g.count }, (_, k) => (g.names?.[k] || generated(g, k)).toLowerCase()).forEach((n, k) => {
         const where = `host_groups.${i}.${g.names?.[k] ? `names.${k}` : "name"}`;
-        if (seen.has(n)) entries.push([where, `${at}: Host name`, `The VM name ${n} is used twice.`]);
+        const nameIsDup = !g.names?.[k] && groupNames.has(g.name.toLowerCase()) && groupNames.get(g.name.toLowerCase()) !== i;
+        if (seen.has(n) && !nameIsDup) entries.push([where, `${at}: Host name`, `The VM name ${n} is used twice.`]);
         seen.set(n, where);
       });
     });
@@ -165,6 +183,7 @@ export default function EnvironmentNew() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSummary("");
+    setTouched(new Set());
     const problems = validate();
     setErrors(toFieldErrors(problems));
     if (problems.length) {
@@ -201,7 +220,10 @@ export default function EnvironmentNew() {
     }
   };
 
-  const err = (f: string) => errors[f];
+  // A field the user has edited shows the live check (so a bad group name or a too-small disk is flagged as it is
+  // typed); the others show what Create or the server last said.
+  const live = toFieldErrors(validate());
+  const err = (f: string) => (touched.has(f) ? live[f] : errors[f]);
   const row = { alignItems: "flex-start", flexWrap: "wrap" } as const;
   // Best fit (design §43): rank the hosts for these host groups and pick the first that fits.
   const [placement, setPlacement] = useState<{ id: number; name: string; ok: boolean; reasons: string[] }[] | null>(null);
@@ -229,7 +251,7 @@ export default function EnvironmentNew() {
         <Alert severity="warning">This host has no networks you may deploy on; an admin attaches them under Hosts.</Alert>
       )}
       <Stack direction="row" spacing={2} useFlexGap sx={row}>
-        <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} required error={err("name")}
+        <Field label="Name" value={name} onChange={(e) => { touch("name"); setName(e.target.value); }} required error={err("name")}
           help="3-40 lower-case letters, digits, hyphens; also the OpenTofu workspace" />
         <Field select label="KVM host" value={hostId} onChange={(e) => setHostId(Number(e.target.value))}
           sx={{ minWidth: 200 }} required error={err("kvm_host_id")}>
@@ -271,7 +293,7 @@ export default function EnvironmentNew() {
                 <Field select label="Role" value={g.roles[0] ?? ""} sx={{ minWidth: 220 }} error={err(`${at}.roles`)}
                   help="One role per host group"
                   onChange={(e) => setGroup(i, { roles: [e.target.value] })}>
-                  {ROLES.map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
+                  {ROLES.filter((r) => roleFamily(r) === familyOf(g.os)).map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
                 </Field>
                 <ActionIconButton tip="Remove this host group from the form" disabled={groups.length === 1} sx={{ mt: 0.5 }}
                   confirm={{ title: `Remove host group ${g.name || i + 1}?`, confirmLabel: "Remove",
@@ -363,7 +385,7 @@ export default function EnvironmentNew() {
                   const options = catalogFor(g, kind);
                   const fe = err(`${at}.${key}`);
                   return (
-                    <Autocomplete key={kind} multiple size="small" sx={{ minWidth: 280, flex: 1 }}
+                    <Autocomplete key={kind} multiple filterSelectedOptions size="small" sx={{ minWidth: 280, flex: 1 }}
                       options={options.map((o) => o.name)} value={g[key] ?? []}
                       getOptionLabel={(n) => options.find((o) => o.name === n)?.display_name ?? n}
                       onChange={(_, v) => setGroup(i, { [key]: v } as Partial<HostGroup>)}

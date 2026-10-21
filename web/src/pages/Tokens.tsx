@@ -15,7 +15,7 @@ interface Token {
   state: string; environments: number[] | null; host_consoles: boolean; require_account: boolean;
   rate_per_minute: number; max_session_minutes: number; max_output_kb: number;
 }
-interface EnvName { id: number; name: string }
+interface EnvName { id: number; name: string; status?: string }
 interface TokenList { roles: string[]; my_roles: string[]; tokens: Token[] }
 
 const STATE_COLOR: Record<string, "success" | "default" | "error"> = { active: "success", expired: "default", revoked: "error" };
@@ -24,6 +24,7 @@ export default function Tokens() {
   const { me } = useAuth();
   const admin = !!me?.roles.includes("admin");
   const [all, setAll] = useState(false);
+  const [inactive, setInactive] = useState(false);       // revoked and expired tokens are hidden unless asked for
   const [data, setData] = useState<TokenList | null>(null);
   const [error, setError] = useState("");
   const [making, setMaking] = useState(false);
@@ -36,8 +37,8 @@ export default function Tokens() {
   const [made, setMade] = useState<(Token & { secret: string }) | null>(null);
   const [formError, setFormError] = useState("");
 
-  const load = () => api.get<TokenList>(`/api/tokens${all ? "?all=true" : ""}`).then(setData, (e) => setError(e.message));
-  useEffect(() => { load(); }, [all]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = () => api.get<TokenList>(`/api/tokens?all=${all}&inactive=${inactive}`).then(setData, (e) => setError(e.message));
+  useEffect(() => { load(); }, [all, inactive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { api.get<EnvName[]>("/api/environments").then(setEnvs, () => setEnvs([])); }, []);
 
   const create = () => api.post<Token & { secret: string }>("/api/tokens", form).then((t) => {
@@ -57,6 +58,8 @@ export default function Tokens() {
       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
         <Typography variant="h5">API tokens</Typography>
         <Box sx={{ flexGrow: 1 }} />
+        <FormControlLabel label="Show revoked and expired" title="They are removed after the retention period in Settings → History"
+          control={<Checkbox checked={inactive} onChange={(e) => setInactive(e.target.checked)} />} />
         {admin && <FormControlLabel label="Everyone's, and service tokens" control={<Checkbox checked={all} onChange={(e) => setAll(e.target.checked)} />} />}
         <Button variant="contained" disabled={me?.breakglass} onClick={() => { setFormError(""); setMaking(true); }}
           title="A token for a script or CI to call the LABaPe API without a browser sign-in">New token</Button>
@@ -132,7 +135,7 @@ export default function Tokens() {
                     slotProps={{ select: { multiple: true } }}
                     onChange={(e) => setForm({ ...form, environments: (e.target.value as unknown as number[]) })}
                     helperText="The token reaches only these. With none chosen it reaches no environment.">
-                    {envs.map((e) => <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>)}
+                    {envs.filter((e) => e.status !== "destroyed").map((e) => <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>)}
                   </TextField>
                 )}
                 {form.environments === null && (

@@ -63,6 +63,15 @@ def _apply(db: Session, i: CatalogItem, body: ItemIn) -> None:
     i.platforms = platforms(body.kind, body.definition)
 
 
+def _require_published_members(db: Session, definition: dict, field: str) -> None:
+    """A package that is (or becomes) published may include only published items."""
+    for it in (definition or {}).get("items", []):
+        ref = db.scalar(select(CatalogItem).where(CatalogItem.kind == it["kind"], CatalogItem.name == it["name"]))
+        if ref is None or ref.status != "published":
+            raise FieldError(field, f"Publish {it['kind']} {it['name']} first; a published package can only include "
+                                    "published items. (Save it as a draft, or take that item out.)")
+
+
 @router.post("", status_code=201)
 def create_item(body: ItemIn, request: Request, db: Session = Depends(get_db),
                 p: Principal = Depends(require_roles("admin"))):
@@ -85,6 +94,8 @@ def update_item(item_id: int, body: ItemIn, request: Request, db: Session = Depe
         raise FieldError("name", "No such catalog item.", status_code=404)
     if (body.kind, body.name) != (i.kind, i.name):
         raise FieldError("name", "Kind and name can't change; create a new item instead.")
+    if i.status == "published" and i.kind == "package":
+        _require_published_members(db, body.definition, "items")
     _apply(db, i, body)
     i.updated_by = p.username
     db.commit()
@@ -105,11 +116,7 @@ def set_status(item_id: int, body: StatusIn, request: Request, db: Session = Dep
     if i is None:
         raise FieldError("status", "No such catalog item.", status_code=404)
     if body.status == "published" and i.kind == "package":
-        for it in (i.definition or {}).get("items", []):
-            ref = db.scalar(select(CatalogItem).where(CatalogItem.kind == it["kind"], CatalogItem.name == it["name"]))
-            if ref is None or ref.status != "published":
-                raise FieldError("status", f"Publish {it['kind']} {it['name']} first; a package can only include "
-                                           "published items.")
+        _require_published_members(db, i.definition, "status")
     i.status = body.status
     i.updated_by = p.username
     db.commit()

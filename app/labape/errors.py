@@ -56,6 +56,7 @@ LABELS = {
     "allowed_roles": "Limit to roles", "allowed_groups": "Limit to groups", "kvm_host_id": "KVM host",
     "libvirt_uri": "libvirt URI", "vm_storage_path": "VM storage path",
     "template_storage_path": "Template storage path", "concurrency_limit": "Concurrent jobs",
+    "rate_per_minute": "Calls per minute", "max_session_minutes": "Session minutes", "max_output_kb": "Output KB",
 }
 
 

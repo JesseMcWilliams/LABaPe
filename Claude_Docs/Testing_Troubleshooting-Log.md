@@ -661,3 +661,33 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 **Playing an API console session's recording failed with "can't access property 'size', A is undefined" (2026-10-19):** the session log showed **Play** for every session with a recording, and the player (Guacamole's `SessionRecording`) was handed the text transcript an API console session writes (design §59.3). The list now says which kind each recording is (`recording_kind`: `video` or `text`); **Play** is offered for `video` only and **Download** for both.
 
 **`run_command` as a domain account was refused by WinRM (2026-10-19):** on `lab2`, `account/jesse` and `domain_admin` got "the specified credentials were rejected by the server" on `l2dc1` and `l2win1`, while the VM's local `windows_admin` worked and `account/jesse` signed in to `l2lin1` over SSH. The Security log on `l2win1` (event 4625) showed the user name `LABAPE\Administrator` with the domain `L2WIN1`: `vmexec._run_windows` used the inventory's `ansible_winrm_transport`, which is `basic` (generate-inventory.py), and WinRM's Basic authentication takes local accounts only. A login with a domain (`DOMAIN\user` or `user@domain`) now uses NTLM.
+
+## Manual checks of v0.5.5, first run (2026-10-20)
+
+Checks 1-5 of [Testing_Manual-Checks-v0.5.5.md](Testing_Manual-Checks-v0.5.5.md) were run in a browser; what the tester found, and what was done.
+
+| Check | Finding | Cause and result |
+|---|---|---|
+| 1 | Revoked tokens stay on the Tokens list for ever. | They were never hidden or removed. The list now hides revoked and expired tokens unless **Show revoked and expired** is ticked, and the daily history purge removes them after Settings → History → *Revoked and expired tokens (days)* (default 30). |
+| 2 | **Save as Published** on a published package accepted a draft item. | Only changing the status checked the members. Saving a published package now checks them too ("Publish application X first..."); a draft package may still hold drafts. |
+| 3 (3.5) | The group-name check was not applied while typing. | The form checked only when **Create** was pressed. The form now checks edited fields as they are typed, and also flags two group names that differ only in case. |
+| 3 (3.7) | The Windows 11 64 GB disk message appeared only on Create. | Same cause and fix; changing the OS re-checks the disk. |
+| 3 | The host-load bars (VM storage and others) sat at different heights when a caption wrapped. | The bars were top-aligned in a wrapping row. They now line up at the bottom. |
+| 4 (4.3) | The accounts dialog showed `linux_server` / `windows_server`, not machine names. | Accounts are bound to roles. The dialog and the account chips now show the VM names beside each role; binding to individual VMs is a question (D186). |
+| 5 | A filter drop-down needed the **Filter** button. | Drop-down choices (every `SelectFilter`, and Syslog's facility and severity) now apply at once; typed text still waits for Filter or Enter. |
+| 3 | No way to choose domain member or standalone; no draft or duplicate for environments; no way to add a host to an environment. | Feature requests, not defects: questions D184, D185 and D187. |
+
+## Browser run of the fixes (lab-exchange requests 03-09, 2026-10-21)
+
+The browser agent re-ran the manual checks against the build with the fixes (`v0.5.5-2-ge564ffe-dirty`): requests 03 (sign-in, version), 04 (tokens), 07 (accounts), 08 (filters) and 09 (stack health) passed in full; 06 (New environment form) passed except 06.5; 05 (catalog package) stopped at 05.7 because the request reused `zz-test-pkg`, a name still held by the package retired on 2026-10-20 (a retired item keeps its name); it is rerun as request 10. What the run found, and what was done:
+
+| Where | Finding | Cause and result |
+|---|---|---|
+| 06.5 | Two groups `Web` and `web`: the message under the second name was "The VM name web1 is used twice." instead of the group-name message. | Both checks wrote the same field and the later one won. The group-name duplicate is the cause, so it now takes precedence. |
+| 06 | Changing the OS from `rocky9` to `windows_server_2022` left **Role** at `linux_server`, with no message. | The Role box was not tied to the OS. It now offers only the roles of the group's OS family, and an OS change keeps a fitting role or picks `linux_server` / `windows_server`. |
+| 06 | A catalog option already chosen was still listed in its box. | The boxes now hide the chosen options. |
+| 07 | Unticking the only Linux host hid the sudo checkbox but kept the flag, so Save was refused for something the user could not see; the message said "account 3". | The flag is cleared when no Linux host is left, and the message names the account ("account 3 (zzsudo)"). |
+| 04 | The token dialog's environment list offered destroyed environments; an invalid limit was reported as "Rate per minute" while the box says "Calls per minute"; the History intro did not mention tokens. | Destroyed environments are left out; the error labels match the boxes (Calls per minute, Session minutes, Output KB); the intro mentions revoked and expired tokens. |
+| 08 | On Syslog a drop-down change sent the same request twice. | Not changed (harmless); noted. |
+| 05, 06 | The published package `winiis` lists "linux, windows" although its name suggests Windows only. | By design: a package is offered for an OS when any member fits (design §60); the name is just a name. Its Windows-only members are skipped on Linux. |
+| 09 | Three rotations past their Next date with status ok (Platform CA key password, Master key, PostgreSQL password, all "/ restart"); `kvm1: /dev/sdc` shows 76 reallocated and 3960 pending sectors (open since 2026-10-14). | Not LABaPe defects. The rotations probably wait for a restart window; the disk is failing and should be replaced. For the user. |
