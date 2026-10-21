@@ -21,6 +21,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - The API token dialog does not offer destroyed environments, and its limit errors use the boxes' names.
 - Secrets: a rotation past its date by more than an hour is **overdue**: the row is tinted, the Next date shows an "overdue" chip, the section tab counts them and a warning lists them (rotations that restart a service wait for the maintenance window).
 - The top bar stays at the top of the window while the page scrolls.
+- Secrets: **Rotate overdue now** on the overdue warning rotates every overdue secret one at a time, restarting services as needed, outside the maintenance window. It asks first and says plainly which rotations stop services; it stops at the first failure and a banner follows the run, through the restarts.
 
 ## [0.5.5] - 2026-10-20
 

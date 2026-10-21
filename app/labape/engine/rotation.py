@@ -571,8 +571,10 @@ def _aware(t: dt.datetime | None) -> dt.datetime | None:
     return t if t is None or t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
-def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
-    """Policies LABaPe should rotate now. Restart-needing ones wait for the window."""
+def due(db: Session, now: dt.datetime | None = None, *, any_time: bool = False,
+        late: dt.timedelta | None = None) -> list[SecretPolicy]:
+    """Policies LABaPe should rotate now. Restart-needing ones wait for the window, unless `any_time` (a person
+    asked: rotate_overdue). `late` keeps only those whose date passed at least that long ago."""
     from ..api.maintenance import next_window
     now = now or utcnow()
     window = next_window(db, now)
@@ -583,7 +585,9 @@ def due(db: Session, now: dt.datetime | None = None) -> list[SecretPolicy]:
             continue
         if p.next_due_at and _aware(p.next_due_at) > now:
             continue
-        if p.needs_restart and not (window and window["in_window"]):
+        if late is not None and not (p.next_due_at and now - _aware(p.next_due_at) >= late):
+            continue
+        if p.needs_restart and not any_time and not (window and window["in_window"]):
             continue
         if p.kind in ENV_KINDS and not _env_deployed(db, p):
             continue
@@ -636,6 +640,8 @@ def schedule(db: Session, now: dt.datetime | None = None) -> list[int]:
     """Queue a rotation job for each due policy that hasn't one queued or running;
     restart-needing ones go to the host agent instead (it restarts the worker)."""
     reconcile_agent(db)
+    from . import rotate_overdue
+    rotate_overdue.advance(db)                      # a person's "rotate everything overdue" in progress
     busy = {(j.params or {}).get("policy_id") for j in db.scalars(
         select(Job).where(Job.type == "secret.rotate", Job.state.in_(("queued", "running"))))}
     queued = []
