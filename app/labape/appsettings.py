@@ -79,6 +79,7 @@ class RetentionSettings(BaseModel):
     errors_days: int = Field(default=90, ge=1, le=3650)
     deleted_hosts_days: int = Field(default=30, ge=1, le=3650)   # how long a deleted KVM host can be restored
     inactive_tokens_days: int = Field(default=30, ge=1, le=3650)   # how long a revoked or expired API token stays listed
+    disk_history_days: int = Field(default=365, ge=7, le=3650)     # how long a drive's SMART readings are kept
 
 
 class SyslogSettings(BaseModel):

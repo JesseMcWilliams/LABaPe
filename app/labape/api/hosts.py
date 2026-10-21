@@ -363,7 +363,8 @@ def _stack(db: Session, h: KvmHost) -> dict | None:
     alerts = db.scalars(select(MonitorAlert).where(MonitorAlert.kvm_host_id == h.id, MonitorAlert.cleared_at.is_(None)))
     return {"self": stackmon.is_self(h), "checked_at": st.checked_at if st else None, "error": st.error if st else "",
             "status": (st.data if st else {}) or {},
-            "alerts": [{"level": a.level, "message": a.message, "started_at": a.started_at} for a in alerts]}
+            "alerts": [{"level": a.level, "message": a.message, "started_at": a.started_at,
+                        "disk": hostadmin.disk_of(a.message)} for a in alerts]}
 
 
 @router.post("/{host_id}/admin/refresh")

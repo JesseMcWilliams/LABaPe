@@ -40,7 +40,7 @@ ACCOUNT_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 PUBKEY_RE = re.compile(r"^ssh-ed25519 [A-Za-z0-9+/=]+( [\w@.:-]+)?$")
 METRICS_EVERY = dt.timedelta(minutes=5)
 FACTS_EVERY = dt.timedelta(hours=1)
-SMART_EVERY = dt.timedelta(hours=24)
+SMART_EVERY = dt.timedelta(hours=6)          # question 189: pending sectors can jump within a day
 KEEP_METRICS = dt.timedelta(days=7)
 PROTECTED = {"root", "localadmin01"}           # never deleted or locked from LABaPe
 
@@ -343,14 +343,21 @@ if out["available"]:
             j = json.loads(r.stdout)
         except ValueError:
             continue
-        attrs = {a["name"]: a.get("raw", {}).get("value") for a in j.get("ata_smart_attributes", {}).get("table", [])}
+        table = j.get("ata_smart_attributes", {}).get("table", [])
+        attrs = {a["name"]: a.get("raw", {}).get("value") for a in table}
+        detail = [{"id": a.get("id"), "name": a.get("name"), "value": a.get("value"), "worst": a.get("worst"),
+                   "thresh": a.get("thresh"), "raw": a.get("raw", {}).get("string") or a.get("raw", {}).get("value"),
+                   "failed": a.get("when_failed", "")} for a in table]
         nv = j.get("nvme_smart_health_information_log", {})
         out["disks"].append({"device": d["name"], "model": j.get("model_name", ""), "serial": j.get("serial_number", ""),
                              "passed": j.get("smart_status", {}).get("passed"),
                              "temperature": j.get("temperature", {}).get("current"),
                              "power_on_hours": j.get("power_on_time", {}).get("hours"),
                              "reallocated": attrs.get("Reallocated_Sector_Ct"), "pending": attrs.get("Current_Pending_Sector"),
-                             "wear_pct": nv.get("percentage_used"), "media_errors": nv.get("media_errors")})
+                             "uncorrectable": attrs.get("Offline_Uncorrectable"),
+                             "wear_pct": nv.get("percentage_used"), "media_errors": nv.get("media_errors"),
+                             "interface": (j.get("device") or {}).get("protocol", ""), "rpm": j.get("rotation_rate"),
+                             "size_bytes": (j.get("user_capacity") or {}).get("bytes"), "attributes": detail, "nvme": nv})
 print(json.dumps(out))
 '''
 
@@ -393,6 +400,35 @@ print(json.dumps({"cpu": cpu, "mem_total_kb": mem.get("MemTotal", 0), "mem_avail
 '''
 
 
+SAMPLE_KEYS = ("passed", "temperature", "power_on_hours", "reallocated", "pending", "uncorrectable", "wear_pct", "media_errors")
+
+
+def record_samples(db: Session, host_id: int, smart: dict, at: dt.datetime) -> int:
+    """Keep this SMART reading for the drives' history (design §64). A reading identical to the previous one and
+    under an hour old (Read now pressed twice) is not stored again."""
+    from ..models import DiskSample
+    n = 0
+    for d in (smart or {}).get("disks", []):
+        key = d.get("serial") or d.get("device")
+        if not key:
+            continue
+        data = {k: d.get(k) for k in SAMPLE_KEYS}
+        last = db.scalar(select(DiskSample).where(DiskSample.kvm_host_id == host_id, DiskSample.disk == key)
+                         .order_by(DiskSample.at.desc()).limit(1))
+        if last is not None and last.data == data and at - _aware(last.at) < dt.timedelta(hours=1):
+            continue
+        db.add(DiskSample(kvm_host_id=host_id, disk=key, device=d.get("device", ""), at=at, data=data))
+        n += 1
+    return n
+
+
+def disk_of(message: str) -> str:
+    """The device a drive warning is about ("kvm1: /dev/sdc: 76 reallocated ..." -> "/dev/sdc"), else ""."""
+    import re
+    m = re.search(r"(?:^|: )(/dev/[A-Za-z0-9/_.-]+?)(?=[: (]|$)", message or "")
+    return m.group(1) if m else ""
+
+
 def collect_facts(db: Session, h: KvmHost, smart: bool = False) -> HostFacts:
     row = db.get(HostFacts, h.id) or HostFacts(kvm_host_id=h.id, facts={}, smart={})
     db.add(row)
@@ -402,6 +438,7 @@ def collect_facts(db: Session, h: KvmHost, smart: bool = False) -> HostFacts:
         row.collected_at, row.error = utcnow(), ""
         if smart or row.smart_at is None or utcnow() - _aware(row.smart_at) > SMART_EVERY:
             row.smart, row.smart_at = ssh.python(SMART, {}, timeout=300), utcnow()
+            record_samples(db, h.id, row.smart, row.smart_at)
     except (AdminError, subprocess.TimeoutExpired, ValueError) as exc:
         row.error = str(exc)[:1000]
     db.commit()
@@ -501,12 +538,15 @@ def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) 
     w = hostpools.warnings(facts)
     for d in (smart or {}).get("disks", []):
         if d.get("passed") is False:
-            w.append({"level": "error", "message": f"{d['device']} ({d.get('model')}): SMART overall health FAILED"})
+            w.append({"level": "error", "disk": d["device"],
+                      "message": f"{d['device']} ({d.get('model')}): SMART overall health FAILED"})
         if (d.get("reallocated") or 0) > 0 or (d.get("pending") or 0) > 0:
-            w.append({"level": "warning", "message": f"{d['device']}: {d.get('reallocated') or 0} reallocated, "
-                                                     f"{d.get('pending') or 0} pending sectors"})
+            w.append({"level": "warning", "disk": d["device"],
+                      "message": f"{d['device']}: {d.get('reallocated') or 0} reallocated, "
+                                 f"{d.get('pending') or 0} pending sectors"})
         if (d.get("wear_pct") or 0) >= 80:
-            w.append({"level": "warning", "message": f"{d['device']}: {d['wear_pct']}% of its rated wear used"})
+            w.append({"level": "warning", "disk": d["device"],
+                      "message": f"{d['device']}: {d['wear_pct']}% of its rated wear used"})
     for name, t in ((latest or {}).get("temps") or {}).items():
         if isinstance(t, (int, float)) and t >= 85:
             w.append({"level": "warning", "message": f"{name} at {t:.0f} °C"})

@@ -2,7 +2,7 @@
 // host's LABaPe access account (questions 113-115), with accounts and groups
 // managed by admins (question 120).
 import { Fragment, ReactNode, useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, LinearProgress, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
@@ -18,7 +18,7 @@ import { ConnectButton } from "./Connect";
 type Any = any;
 export interface AdminView {
   host: KvmHost; collected_at: string | null; smart_at: string | null; error: string;
-  facts: Any; smart: Any; latest: Any; warnings: { level: "error" | "warning" | "info"; message: string }[];
+  facts: Any; smart: Any; latest: Any; warnings: { level: "error" | "warning" | "info"; message: string; disk?: string }[];
   series: Record<string, (number | null)[]> & { t: string[] }; resources: Any; stack?: Any;
   pools?: Pool[]; pool_candidates?: { path: string; size: number; model: string }[];
 }
@@ -116,7 +116,10 @@ export function StackSection({ view }: { view: AdminView }) {
   })();
   return (
     <Stack spacing={2}>
-      {(st.alerts ?? []).map((a: Any, i: number) => <Alert key={i} severity={a.level === "error" ? "error" : "warning"}>{a.message} (since {fmtTime(a.started_at)})</Alert>)}
+      {(st.alerts ?? []).map((a: Any, i: number) => (
+        <Alert key={i} severity={a.level === "error" ? "error" : "warning"}
+          action={a.disk ? <DiskLink host={view.host.id} disk={a.disk} /> : undefined}>{a.message} (since {fmtTime(a.started_at)})</Alert>
+      ))}
       {st.error && <Alert severity="warning">Last check failed: {st.error}</Alert>}
       <Typography variant="body2" color="text.secondary">
         {st.self ? "The stack this page comes from." : view.host.stack_url ? `Another stack, at ${view.host.stack_url}.` : "A stack host."}
@@ -275,7 +278,9 @@ export function DashboardSection({ view }: { view: AdminView }) {
   return (
     <Stack spacing={2}>
       {view.warnings.length > 0
-        ? view.warnings.map((w, i) => <Alert key={i} severity={w.level}>{w.message}</Alert>)
+        ? view.warnings.map((w, i) => (
+          <Alert key={i} severity={w.level} action={w.disk ? <DiskLink host={view.host.id} disk={w.disk} /> : undefined}>{w.message}</Alert>
+        ))
         : view.collected_at && <Alert severity="success">No problems found.</Alert>}
       <Facts rows={[
         ["OS", `${os.name ?? "—"} · kernel ${os.kernel ?? "—"}`],
@@ -317,16 +322,26 @@ export function DashboardSection({ view }: { view: AdminView }) {
   );
 }
 
-function DiskRows({ devs, depth = 0 }: { devs: Any[]; depth?: number }): ReactNode {
+/** A link to a drive's page (history, SMART attributes), for a drive's alert or a row of a table. */
+export function DiskLink({ host, disk, metric, label = "Drive details" }: { host: number; disk: string; metric?: string; label?: string }) {
+  return (
+    <Button size="small" color="inherit" component={RouterLink} to={`/hosts/${host}/disks/${encodeURIComponent(disk)}${metric ? `?metric=${metric}` : ""}`}
+      title="Open this drive's page: SMART attributes and a history of its numbers">{label}</Button>
+  );
+}
+
+function DiskRows({ devs, depth = 0, host }: { devs: Any[]; depth?: number; host?: number }): ReactNode {
   return devs.map((d) => (
     <Fragment key={d.path ?? d.name}>
       <TableRow>
-        <TableCell sx={{ pl: 2 + depth * 3, fontFamily: "monospace" }}>{d.name}</TableCell>
+        <TableCell sx={{ pl: 2 + depth * 3, fontFamily: "monospace" }}>
+          {host && d.type === "disk" && d.path ? <RouterLink to={`/hosts/${host}/disks/${encodeURIComponent(d.serial || d.path)}`} title="Open this drive's page">{d.name}</RouterLink> : d.name}
+        </TableCell>
         <TableCell>{d.type}</TableCell><TableCell>{gb(d.size)}</TableCell>
         <TableCell>{[d.model, d.tran, d.rota === false || d.rota === "0" ? "SSD" : d.type === "disk" ? "HDD" : ""].filter(Boolean).join(" · ")}</TableCell>
         <TableCell>{d.fstype ?? ""}</TableCell><TableCell>{(d.mountpoints ?? []).filter(Boolean).join(", ")}</TableCell>
       </TableRow>
-      {d.children && <DiskRows devs={d.children} depth={depth + 1} />}
+      {d.children && <DiskRows devs={d.children} depth={depth + 1} host={host} />}
     </Fragment>
   ));
 }
@@ -493,7 +508,7 @@ export function DrivesSection({ view }: { view: AdminView }) {
       </Stack>
       <Table size="small">
         <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Type</TableCell><TableCell>Size</TableCell><TableCell>Model</TableCell><TableCell>FS</TableCell><TableCell>Mounted</TableCell></TableRow></TableHead>
-        <TableBody><DiskRows devs={showLoop ? disks : disks.filter((d) => d.type !== "loop")} /></TableBody>
+        <TableBody><DiskRows devs={showLoop ? disks : disks.filter((d) => d.type !== "loop")} host={view.host.id} /></TableBody>
       </Table>
       <Typography variant="subtitle1">Disk health (SMART)</Typography>
       {!smart.available ? <Alert severity="info">smartctl isn&apos;t installed on the host (package smartmontools).</Alert> : (
@@ -502,7 +517,8 @@ export function DrivesSection({ view }: { view: AdminView }) {
           <TableBody>
             {(smart.disks ?? []).map((d: Any) => (
               <TableRow key={d.device}>
-                <TableCell>{d.device}</TableCell><TableCell>{d.model} <Typography variant="caption" color="text.secondary">{d.serial}</Typography></TableCell>
+                <TableCell><RouterLink to={`/hosts/${view.host.id}/disks/${encodeURIComponent(d.serial || d.device)}`} title="Open this drive's page: history and SMART attributes">{d.device}</RouterLink></TableCell>
+                <TableCell>{d.model} <Typography variant="caption" color="text.secondary">{d.serial}</Typography></TableCell>
                 <TableCell><Chip size="small" label={d.passed === false ? "FAILED" : d.passed ? "passed" : "unknown"} color={d.passed === false ? "error" : d.passed ? "success" : "default"} /></TableCell>
                 <TableCell>{d.temperature != null ? `${d.temperature} °C` : "—"}</TableCell>
                 <TableCell>{d.power_on_hours != null ? `${Math.round(d.power_on_hours / 24)} d` : "—"}</TableCell>

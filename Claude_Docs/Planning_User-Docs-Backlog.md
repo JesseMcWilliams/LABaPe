@@ -9,3 +9,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Secrets: overdue rotations are highlighted (tinted row, overdue chip, tab count and a warning); the top bar is sticky.
 - Secrets: **Rotate overdue now** (what it does, the confirmation that services will stop, the order, stopping at a failure, the progress banner) (design §62.1).
 - Environment page: **Add host** (more hosts in a group, or a new group like an existing one; the checks; that it starts a redeploy) (design §63).
+- KVM hosts: the drive page (SMART history charts, when the numbers moved, attribute table), the links to it from Drives and volumes and from a drive's alert, SMART every 6 hours, and the Drive history retention in Settings → History (design §64).

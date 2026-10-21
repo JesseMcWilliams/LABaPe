@@ -423,6 +423,21 @@ class MetricSample(Base):
     data: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class DiskSample(Base):
+    """One SMART reading of one physical drive of a KVM or stack host (design §64, question 189): the numbers worth a
+    trend line (reallocated, pending and uncorrectable sectors, temperature, wear). Read every 6 hours and on demand,
+    kept `disk_history_days` (Settings → History)."""
+
+    __tablename__ = "disk_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), index=True)
+    disk: Mapped[str] = mapped_column(String(128), index=True)        # the drive's serial number (else its device name)
+    device: Mapped[str] = mapped_column(String(64), default="")
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class UserError(Base):
     """A request the API refused (validation, policy, permission), kept so
     admins can see where users struggle (design §21, question 59)."""
