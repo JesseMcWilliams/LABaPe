@@ -40,6 +40,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/env_create.py` | lab (container) | Create a one-VM environment (optionally with catalog applications, `--apps`, and services, `--services`) and wait for its deploy |
 | `live/env_plan.py` | lab (container) | Preview a redeploy of an environment (design §56.1): queues the plan job, waits, and prints each VM's action (reinstalled, created, removed or kept) with the reasons. Nothing is applied |
 | `live/disk_detail.py` | lab (container) | A drive's page data (design §64): current SMART numbers, readings in the history, when they moved, open alerts; `read` reads the host's drives first |
+| `live/certs.py` | lab (container) | Certificates round trip with the real platform CA (sign a 1-day test certificate, download, revoke) and the register; `cleanup` revokes the leftover tests |
 | `live/env_job.py` | lab (container) | Deploy, refresh or destroy an environment and wait |
 | `live/env_secrets.py` | lab (container) | An environment's secrets on its page: list, or a store/replace/reveal/delete round trip (V1a) |
 | `live/env_secrets_move.py` | lab (container) | Move an environment's secrets to another store and check they read the same |

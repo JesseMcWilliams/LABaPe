@@ -18,6 +18,7 @@ import Settings from "./pages/Settings";
 import Files from "./pages/Files";
 import Catalog from "./pages/Catalog";
 import CatalogItemPage from "./pages/CatalogItem";
+import Certificates from "./pages/Certificates";
 import DiskDetail from "./pages/DiskDetail";
 import HostDetail from "./pages/HostDetail";
 import NetworkDetail from "./pages/NetworkDetail";
@@ -128,6 +129,9 @@ export default function App() {
             <Button color="inherit" component={RouterLink} to="/catalog" title="Services, applications and packages to add to host groups">
               Catalog
             </Button>
+            <Button color="inherit" component={RouterLink} to="/certificates" title="Certificates from the platform CA: yours and your environments', requesting and (for CA administrators) revoking">
+              Certificates
+            </Button>
             {(hasRole(me, "admin") || hasRole(me, "auditor")) && (
               <Button color="inherit" component={RouterLink} to="/syslog" title="Messages the stack's syslog collector received (admins and auditors)">
                 Syslog
@@ -193,6 +197,7 @@ export default function App() {
           <Route path="/files" element={<Files />} />
           <Route path="/files/:id" element={<FileDetail />} />
           <Route path="/templates/:id" element={<TemplateDetail />} />
+          <Route path="/certificates" element={<Certificates />} />
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/catalog/:id" element={<CatalogItemPage />} />
           <Route path="*" element={<Typography>Not found.</Typography>} />
