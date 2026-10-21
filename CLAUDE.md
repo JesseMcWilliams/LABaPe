@@ -57,7 +57,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Backlog.md`: agreed but deferred work (`.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
   - `Planning_Lists-Secrets-Settings.md`: the round of 2026-10-14 (paging and exports, filters, a stack's names and SANs, secret health, sections for Secrets and Settings), batch by batch.
-  - `Planning_Handoff-2026-10-19.md` (and the older `Planning_Handoff-2026-10-16.md` and `-15.md` it builds on): where LABaPe stands (v0.5.3 released; console API, MCP and catalog changes since), what's left, the lab's state and the gotchas; read them first when resuming.
+  - `Planning_Handoff-2026-10-21.md` (and the older `-19`, `-16` and `-15` it builds on): where LABaPe stands (v0.5.5 released; rotation, add host, drive pages and certificates since, unreleased), what's left, the lab's state and the gotchas; read them first when resuming.
   - `Planning_Access-Mail-Updates-Files.md`: the next round's list (2026-10-14): Secrets paging, connecting as an account, a lab mail server, Catalog → Updates, new packages, files per KVM host, monitoring tools; questions 167-173.
   - `Reference_Console-API-And-MCP.md`: how another AI or script gets a token and uses the console API (commands, text sessions) and the MCP server.
   - `Planning_Rotation-Hosts-Disks-CA.md`: plan for overdue-rotation handling (a bulk rotate), adding a host to an environment, disk details with SMART history and a link from the alert, and a Certificates page for the platform CA with two new roles (batches R2, E2, H3, C2, all built 2026-10-21; questions 187-195, answered).
