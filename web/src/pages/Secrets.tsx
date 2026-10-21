@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import {
-  Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, Table, TableBody, TableCell,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, Tab, Tabs, Tooltip, Typography,
 } from "@mui/material";
 import { api, fmtTime, KvmHost } from "../api";
@@ -63,6 +63,15 @@ export function RecoverableCell({ p }: { p: SecretPolicy }) {
 }
 
 export const interval = (h: number) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hours`);
+
+// A rotation is overdue when its date passed more than an hour ago (the worker rotates within minutes; the ones
+// that restart a service wait for the maintenance window and stay overdue until then).
+export const overdue = (p: SecretPolicy) => p.automatic && p.enabled && !p.managed_externally && !!p.next_due_at
+  && Date.now() - new Date(p.next_due_at).getTime() > 3600_000;
+export const lateBy = (iso: string) => {
+  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3600_000);
+  return h >= 48 ? `${Math.floor(h / 24)} days` : `${h} hours`;
+};
 
 export function StatusChip({ p }: { p: SecretPolicy }) {
   if (p.managed_externally) return <Chip size="small" label="external store" />;
@@ -151,6 +160,7 @@ export default function Secrets() {
   const load = () => api.get<{ policies: SecretPolicy[]; elevated: string[] }>("/api/admin/secrets")
     .then(setData, (e) => setError(e.message));
   useEffect(() => { load(); }, []);
+  const late = (data?.policies ?? []).filter(overdue);
   return (
     <Stack spacing={2}>
       <ListHeader title="Secrets"
@@ -158,11 +168,20 @@ export default function Secrets() {
         <AddElevated onDone={load} />
       </ListHeader>
       {error && <Alert severity="error">{error}</Alert>}
+      {late.length > 0 && (
+        <Alert severity="warning">
+          {late.length} secret{late.length === 1 ? " is" : "s are"} past {late.length === 1 ? "its" : "their"} rotation date:{" "}
+          {late.map((p) => `${p.label} (${lateBy(p.next_due_at!)} late${p.needs_restart ? ", waits for the maintenance window" : ""})`).join("; ")}.
+        </Alert>
+      )}
       {data && data.elevated.length > 0 && (
         <Alert severity="info" icon={false}>Elevated accounts: {data.elevated.join(", ")}</Alert>
       )}
       <Tabs value={section} onChange={(_, v) => setParams({ section: v }, { replace: true })}>
-        {SECTIONS.map((s) => <Tab key={s.key} value={s.key} label={s.label} />)}
+        {SECTIONS.map((s) => {
+          const n = late.filter((p) => p.section === s.key).length;
+          return <Tab key={s.key} value={s.key} label={n ? `${s.label} (${n} overdue)` : s.label} sx={n ? { color: "warning.main" } : undefined} />;
+        })}
       </Tabs>
       <Typography variant="body2" color="text.secondary">{SECTIONS.find((s) => s.key === section)?.help}</Typography>
       <Typography variant="h6">Rotation and health</Typography>
@@ -176,7 +195,7 @@ export default function Secrets() {
         </TableHead>
         <TableBody>
           {data?.policies.filter((p) => p.section === section).map((p) => (
-            <TableRow key={p.id} hover sx={{ opacity: p.enabled ? 1 : 0.5 }}>
+            <TableRow key={p.id} hover sx={{ opacity: p.enabled ? 1 : 0.5, ...(overdue(p) ? { backgroundColor: "rgba(237,108,2,0.12)" } : {}) }}>
               <TableCell>
                 <Link component={RouterLink} to={`/admin/secrets/${p.id}`}>{p.label}</Link>
                 {p.revealable && <RevealButton p={p} onError={setError} />}
@@ -186,7 +205,18 @@ export default function Secrets() {
               <TableCell>{p.store}</TableCell>
               <TableCell>{interval(p.interval_hours)}</TableCell>
               <TableCell>{fmtTime(p.last_rotated_at) || "never"}</TableCell>
-              <TableCell>{p.automatic && p.enabled && !p.managed_externally ? fmtTime(p.next_due_at) : "—"}</TableCell>
+              <TableCell>
+                {p.automatic && p.enabled && !p.managed_externally ? (
+                  overdue(p) ? (
+                    <>
+                      <Box component="span" sx={{ color: "warning.main", fontWeight: 600 }}>{fmtTime(p.next_due_at)}</Box>
+                      <Tooltip title={p.needs_restart ? "Past its date: it restarts a service, so it waits for the maintenance window" : "Past its date: check the worker and its last job"}>
+                        <Chip size="small" color="warning" label={`overdue ${lateBy(p.next_due_at!)}`} sx={{ ml: 0.5 }} />
+                      </Tooltip>
+                    </>
+                  ) : fmtTime(p.next_due_at)
+                ) : "—"}
+              </TableCell>
               <TableCell>
                 <StatusChip p={p} />
                 {p.status === "failed" && <Tooltip title={p.last_error}><Chip size="small" variant="outlined" color="error" label="why?" sx={{ ml: 0.5 }} /></Tooltip>}

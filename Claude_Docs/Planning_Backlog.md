@@ -16,6 +16,7 @@ Planning_Questions.md.
 | 17 | Hyper-V parity | **Dropped (2026-10-16, question 175):** Hyper-V support will be removed, so the gaps are not closed. Questions 11-14 and 155 are superseded; Reference_Backend-Parity.md stays as history. | Dropped |
 | 18 | User docs | The user-docs backlog is done (2026-10-14: Web-Interface-Guide.md and Web-Interface-Admin.md cover everything to §44). The published `.docx` guides wait (question 24: later); `release.sh --docx` makes them from `User_Docs/` with pandoc when they start. | |
 | 19 | AI console access and MCP | **Built 2026-10-17** (batches X1-X4, design §59; the Claude Desktop bundle §59.7); questions 176-183 answered. Still to do: sessions through a remote KVM host, environment accounts and host consoles are untried live; the `labape-console` Authentik group isn't created; not released. | [Planning_AI-Console-And-MCP.md](Planning_AI-Console-And-MCP.md) |
+| 20 | Rotation, hosts, disks, CA | Planned 2026-10-21 (batches R2 rotate overdue now, E2 add a host to an environment, H3 disk details and SMART history, C2 a Certificates page with `ca_admin` and `ca_requester` roles); the sticky header and the overdue highlighting are built. Questions 188-195 open (and 187). | [Planning_Rotation-Hosts-Disks-CA.md](Planning_Rotation-Hosts-Disks-CA.md) |
 
 **Next round (2026-10-14):** lists, secrets and settings, in [Planning_Lists-Secrets-Settings.md](Planning_Lists-Secrets-Settings.md) (batches L1, L2, N1, S1, S2, S3). v0.4.0 not yet (the user, 2026-10-14).
 
