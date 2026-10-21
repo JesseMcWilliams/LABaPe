@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from .. import appsettings, notify
 from ..config import get_settings
 from ..db import session_factory
-from ..models import ApiToken, AuditLog, Job, Setting, User, UserError, utcnow
+from ..models import ApiToken, AuditLog, DiskSample, Job, Setting, User, UserError, utcnow
 from ..security import get_secret
 
 log = logging.getLogger("labape.maintenance")
@@ -136,7 +136,7 @@ def purge_history(db: Session) -> dict[str, int]:
     """Apply the retention settings: job log files, audit rows, user errors."""
     cfg = appsettings.get(db, "retention")
     now = utcnow()
-    out = {"job_logs": 0, "audit": 0, "errors": 0, "tokens": 0}
+    out = {"job_logs": 0, "audit": 0, "errors": 0, "tokens": 0, "disk_samples": 0}
     from . import hostdelete
     out["deleted_hosts"] = hostdelete.purge_due(db)
     cutoff = now - dt.timedelta(days=cfg.job_logs_days)
@@ -153,6 +153,8 @@ def purge_history(db: Session) -> dict[str, int]:
     gone = now - dt.timedelta(days=cfg.inactive_tokens_days)      # revoked, or expired and never revoked, that long ago
     out["tokens"] = db.execute(delete(ApiToken).where(
         (ApiToken.revoked_at < gone) | (ApiToken.revoked_at.is_(None) & (ApiToken.expires_at < gone)))).rowcount or 0
+    out["disk_samples"] = db.execute(delete(DiskSample).where(
+        DiskSample.at < now - dt.timedelta(days=cfg.disk_history_days))).rowcount or 0
     db.commit()
     purge_backups(appsettings.get(db, "backup"))
     keep = appsettings.get(db, "remote").keep_recordings_days

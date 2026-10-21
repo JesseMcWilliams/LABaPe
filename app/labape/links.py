@@ -249,8 +249,9 @@ def summary(db: Session) -> dict:
     jobs = {s: db.scalar(select(func.count()).select_from(Job).where(Job.state == s)) or 0 for s in ("running", "queued")}
     jobs["failed_24h"] = db.scalar(select(func.count()).select_from(Job).where(Job.state == "failed",
                                                                                  Job.created_at >= day)) or 0
+    from .engine.hostadmin import disk_of
     alerts = [{"level": a.level, "message": a.message, "started_at": a.started_at.isoformat(),
-               "acked": a.acked_at is not None}
+               "acked": a.acked_at is not None, "host_id": a.kvm_host_id, "disk": disk_of(a.message)}
               for a in db.scalars(select(MonitorAlert).where(MonitorAlert.cleared_at.is_(None))
                                   .order_by(MonitorAlert.started_at.desc()).limit(100))]
     m = maintenance_mode.get(db)

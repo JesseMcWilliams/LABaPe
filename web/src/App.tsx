@@ -18,6 +18,7 @@ import Settings from "./pages/Settings";
 import Files from "./pages/Files";
 import Catalog from "./pages/Catalog";
 import CatalogItemPage from "./pages/CatalogItem";
+import DiskDetail from "./pages/DiskDetail";
 import HostDetail from "./pages/HostDetail";
 import NetworkDetail from "./pages/NetworkDetail";
 import FileDetail from "./pages/FileDetail";
@@ -172,6 +173,7 @@ export default function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route path="hosts" element={<Hosts />} />
             <Route path="hosts/:id" element={<HostDetail />} />
+            <Route path="hosts/:id/disks/:disk" element={<DiskDetail />} />
             <Route path="networks" element={<Networks />} />
             <Route path="networks/:id" element={<NetworkDetail />} />
             <Route path="settings" element={<Settings />} />

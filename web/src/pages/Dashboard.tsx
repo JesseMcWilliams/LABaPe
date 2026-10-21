@@ -239,7 +239,7 @@ interface StackSummary {
   hosts: { name: string; role: string; enabled: boolean }[];
   totals: { cpus: number; memory_total_mb: number; memory_used_mb: number; disk_total_gb: number; disk_free_gb: number; vms_running: number; vms_defined: number };
   environments: { name: string; status: string }[]; jobs: { running: number; queued: number; failed_24h: number };
-  alerts: { level: string; message: string }[];
+  alerts: { level: string; message: string; host_id?: number | null; disk?: string }[];
 }
 interface AllStacks {
   stacks: { self: boolean; id: number | null; url: string; status: string; last_ok_at: string | null; error: string; summary: StackSummary | null }[];
@@ -297,7 +297,17 @@ function AllStacksPanel({ d }: { d: AllStacks }) {
                     {m.alerts.length > 0 && (
                       <Box sx={{ mt: 0.5 }}>
                         <Chip size="small" color={errs ? "error" : "warning"} label={`${m.alerts.length} open alerts`} sx={{ mr: 1 }} />
-                        <Typography variant="caption" color="text.secondary">{m.alerts.slice(0, 2).map((a) => a.message).join(" · ")}</Typography>
+                        <Typography variant="caption" color="text.secondary" component="span">
+                          {m.alerts.slice(0, 2).map((a, k) => (
+                            <Fragment key={k}>
+                              {k > 0 ? " · " : ""}{a.message}
+                              {a.disk && a.host_id ? (
+                                <> (<a href={`${s.self ? "" : s.url.replace(/\/$/, "")}/hosts/${a.host_id}/disks/${encodeURIComponent(a.disk)}`}
+                                  title="Open the drive's page: SMART attributes and a history of its numbers">drive details</a>)</>
+                              ) : null}
+                            </Fragment>
+                          ))}
+                        </Typography>
                       </Box>
                     )}
                   </Typography>
