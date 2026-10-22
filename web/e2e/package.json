@@ -1,0 +1,19 @@
+{
+  "name": "labape-web-e2e",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "login": "playwright test --project=login --headed",
+    "test": "playwright test --project=read-only",
+    "test:writes": "cross-env E2E_ALLOW_WRITES=1 playwright test --project=read-only",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.54.2",
+    "@types/node": "^22.0.0",
+    "cross-env": "^10.1.0",
+    "typescript": "~5.9.2"
+  }
+}

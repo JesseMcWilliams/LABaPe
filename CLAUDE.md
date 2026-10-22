@@ -34,6 +34,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `scripts/test/run-all.sh` — runs every check (tools/collections installed, Ansible syntax, `tofu validate`, libvirt/WinRM connectivity, vault+SSH key consistency), prints a PASS/FAIL summary.
 - Individual checks: `scripts/test/test-opentofu-config.sh`, `scripts/test/test-ansible-playbook-syntax.sh`, `python3 scripts/test/test-winrm-connectivity.py`.
 - Web backend: `pip install -e app pytest` in a venv, then `python -m pytest app/tests` (SQLite, no services needed). Web UI type-check/build: `npm ci && npm run build` in `web/` (no Node on the Windows box; build in a `node:22` container on the lab host).
+- Browser tests: `web/e2e/` (Playwright, against a live stack, run in the Playwright container; see its README). Written and run 2026-10-21 (Node on the Windows box; 41 pass with writes).
 - Redirect test output to a file and read only the summary or failures. Don't stream full test output into the conversation.
 <!-- TODO: pytest covers only the web backend (app/tests); no Molecule for roles yet. tflint/ansible-lint/Molecule are Claude_Docs/Design_System-Overview.md §16 goals, not implemented. -->
 

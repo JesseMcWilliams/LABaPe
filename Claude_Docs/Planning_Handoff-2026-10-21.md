@@ -19,6 +19,8 @@
 
 Plan for the four batches: [Planning_Rotation-Hosts-Disks-CA.md](Planning_Rotation-Hosts-Disks-CA.md) (all built). Manual checks: [Testing_Manual-Checks-v0.5.5.md](Testing_Manual-Checks-v0.5.5.md) and the findings in `Testing_Troubleshooting-Log.md`.
 
+**Playwright browser tests** (`web/e2e/`, branch `2026-10-21-playwright-tests`, run 2026-10-21 against OZ with Node on the Windows box): **41 pass and 1 skips** with `npm run test:writes`, 38 pass and 4 skip with `npm run test`; see `web/e2e/README.md`. The writes run left `zz-draft-*` and `zz-pkg-*` draft items in the catalog and saved lab2's accounts once. The skip is the Rotate overdue now dialog (§3 item 2).
+
 ## 2. How much of it has been seen
 
 | Thing | Checked how |
@@ -32,16 +34,17 @@ Plan for the four batches: [Planning_Rotation-Hosts-Disks-CA.md](Planning_Rotati
 
 ## 3. What's left (in order)
 
-1. **Run browser requests 10-16** with the browser agent (README of `lab-exchange`; `data/browser-testing-common.md`), then fix what they find. The user wants a better way to run these (fewer "allow" clicks): Planning_Backlog.md row 21.
-2. **Release v0.5.6** when the user says (`release.sh` on Windows, where the signing key is; `deploy-web.sh` from clean `main` first; the 2026-10-20 request `02-release-0.5.5.sh` is the pattern). `[Unreleased]` is tidied (features under Added, fixes under Fixed). Fold the user-docs backlog (about 20 lines) into `User_Docs/` at that release.
-3. **Rotate overdue now, for real** (the user): Admin → Secrets → the warning's button; watch the banner through the restarts; the three rotations should clear.
-4. **Replace the failing disk** `kvm1: /dev/sdc` (76 reallocated, 3,960 pending sectors, open since 2026-10-14). The drive page now records its trend; history starts 2026-10-21, so the chart needs a day or two.
-5. **Authentik groups** `labape-console`, `labape-ca-admins` and `labape-ca-requesters` are mapped to roles by default but not created in Authentik; create them and bind users.
-6. **A real Add host** on a throwaway environment (creates VMs on the lab), and a **request by a `ca_requester`** who is not an admin, to see the name limits live.
-7. **Kerberos click-through** (the user): RDP to `krbw1` (environment `krbwin11`, 31) as `LABAPE\jesse`, Edge to `https://auth.labape.test:9445/`, sign in to LABaPe with Windows credentials (design §58); then destroy environment 31 and delete the computer account `KRBW1` in `labape.test`.
-8. **Director (`pi1`)**: check its version and update it with Admin → Updates (the user's click) once the next release exists.
-9. **Open questions:** D184 domain member or standalone per host group; D185 save a new environment as a draft, and duplicate an environment; D186 bind a local account to individual VMs. Recommendations are in `Planning_Questions.md`.
-10. **Later:** the Kerberos domain side as an installer step or Settings page; the published `.docx` guides (D24); mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
+1. **Commit and PR the Playwright tests** (branch `2026-10-21-playwright-tests`), then update Planning_Backlog.md row 21 as done. Run them again after UI changes: `LABAPE_URL=... npm run test` in `web/e2e` (sign in first with `npm run login`).
+2. **Rotate overdue now lists less than its warning** (found 2026-10-21): the Secrets warning counts every enabled automatic policy past due (`overdue` in `web/src/pages/Secrets.tsx`), but `rotation.due()` also skips secrets of environments not deployed, ones needing an elevated account not yet set, and external stores not ready; with three destroyed-environment secrets overdue the dialog said "Nothing is overdue any more". Decide: make the warning use the same rule (an API flag per policy), or say in the dialog which are skipped and why.
+3. **Release v0.5.6** when the user says (`release.sh` on Windows, where the signing key is; `deploy-web.sh` from clean `main` first; the 2026-10-20 request `02-release-0.5.5.sh` is the pattern). `[Unreleased]` is tidied (features under Added, fixes under Fixed). Fold the user-docs backlog (about 20 lines) into `User_Docs/` at that release.
+4. **Rotate overdue now, for real** (the user): Admin → Secrets → the warning's button; watch the banner through the restarts; the three rotations should clear.
+5. **Replace the failing disk** `kvm1: /dev/sdc` (76 reallocated, 3,960 pending sectors, open since 2026-10-14). The drive page now records its trend; history starts 2026-10-21, so the chart needs a day or two.
+6. **Authentik groups** `labape-console`, `labape-ca-admins` and `labape-ca-requesters` are mapped to roles by default but not created in Authentik; create them and bind users.
+7. **A real Add host** on a throwaway environment (creates VMs on the lab), and a **request by a `ca_requester`** who is not an admin, to see the name limits live.
+8. **Kerberos click-through** (the user): RDP to `krbw1` (environment `krbwin11`, 31) as `LABAPE\jesse`, Edge to `https://auth.labape.test:9445/`, sign in to LABaPe with Windows credentials (design §58); then destroy environment 31 and delete the computer account `KRBW1` in `labape.test`.
+9. **Director (`pi1`)**: check its version and update it with Admin → Updates (the user's click) once the next release exists.
+10. **Open questions:** D184 domain member or standalone per host group; D185 save a new environment as a draft, and duplicate an environment; D186 bind a local account to individual VMs. Recommendations are in `Planning_Questions.md`.
+11. **Later:** the Kerberos domain side as an installer step or Settings page; the published `.docx` guides (D24); mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
 
 ## 4. Lab state (2026-10-21)
 
@@ -69,6 +72,6 @@ Plan for the four batches: [Planning_Rotation-Hosts-Disks-CA.md](Planning_Rotati
 |---|---|
 | Rotate overdue, add host, drive pages, certificates | design §62-§65; `engine/rotate_overdue.py`, `api/env_hosts.py`, `api/host_disks.py`, `certs.py`, `api/certificates.py`; web: `components/RotateOverdue.tsx`, `AddHosts.tsx`, `LineChart.tsx`, `pages/DiskDetail.tsx`, `Certificates.tsx` |
 | Live checks | `tools/helpers/live/` (`certs.py`, `disk_detail.py`, `env_plan.py`, `console.py`, `catalog_platforms.py`) through `tools/helpers/lab-live.sh` |
-| The browser tests | `C:\Code\lab-exchange\README.md`, `data/browser-testing-common.md`, `requests/` |
+| The browser tests | `web/e2e/README.md` (Playwright, not yet run); the older agent route: `C:\Code\lab-exchange\README.md`, `data/browser-testing-common.md`, `requests/` |
 | Console API and MCP | Reference_Console-API-And-MCP.md (design §59) |
 | Everything else | the 2026-10-19 and 2026-10-16 handoffs §7 |
