@@ -19,6 +19,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Drive pages with history**: click a drive in Drives and volumes (or the "Drive details" button on a drive's alert, or the link in the dashboard's alert list) for its SMART attributes, layout and charts of pending, reallocated and uncorrectable sectors, temperature and wear over 7 days to a year, with a table of when the numbers moved. SMART is now read every 6 hours (was daily) and on Read now; readings are kept 365 days (Settings → History → Drive history).
 - **Certificates** table has an **Issued** column; the Dashboard marks the stack you are connected to (**you are here**, a highlighted border) and no longer dims it.
 - **Domain member or standalone** per host group: a **Domain** choice on each non-domain-controller group of the New environment form (shown when the environment has a domain controller). A standalone group's VMs are left out of the domain join.
+- **Save as draft** on the New environment form: the environment is kept (status new) without deploying, using no quota or addresses; **Edit draft** and **Deploy** on its page. **Duplicate** starts a new environment from a copy of any environment's host groups.
 
 ### Fixed
 - The Secrets page no longer warns about overdue secrets that **Rotate overdue now** would skip (an environment that is not deployed, an elevated account not set yet, a store not ready): the warning and the plan use one rule.

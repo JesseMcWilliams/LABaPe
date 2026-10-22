@@ -13,3 +13,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Certificates page (list and filters, details, request with or without a CSR, renew, revoke and what passive revocation means, the CA tab and its settings), the roles `ca_admin` and `ca_requester` and their Authentik groups, who sees which certificates (design §65).
 - Certificates: the Issued column. Dashboard: the linked-stacks card of the stack you are on says **you are here**.
 - New environment: the Domain choice (Member / Standalone) on a host group, when it applies (design §66).
+- New environment: **Save as draft** (what a draft is, who sees it, that it takes no quota), **Edit draft** and **Deploy** on its page, and **Duplicate** (what is and isn't copied) (design §66).
