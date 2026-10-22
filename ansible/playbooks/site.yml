@@ -95,7 +95,7 @@
   gather_facts: true
   roles:
     - role: linux_domain_join
-      when: groups['domain_controller'] | length > 0
+      when: groups['domain_controller'] | length > 0 and (labape_domain_member | default(true))   # D184: standalone groups stay out
   tags: [domain_join]
 
 - name: Join Windows hosts to the domain
@@ -106,7 +106,7 @@
   gather_facts: true
   roles:
     - role: windows_domain_join
-      when: groups['domain_controller'] | length > 0 and 'domain_controller' not in group_names
+      when: groups['domain_controller'] | length > 0 and 'domain_controller' not in group_names and (labape_domain_member | default(true))
   tags: [domain_join]
 
 # --- Per-role configuration (software + local accounts) ---

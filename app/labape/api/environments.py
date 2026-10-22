@@ -65,6 +65,15 @@ class HostGroup(BaseModel):
     # E3 (question 168): desktop sessions on a Linux group's VMs: xrdp (RDP for every account) and/or
     # VNC (a display per local account).
     remote_desktop: list[Literal["xrdp", "vnc"]] = Field(default=[], max_length=2)
+    # D184: a member host joins the environment's domain (when it has a domain controller); a standalone one
+    # does not. Domain controllers are always part of their domain.
+    domain_member: bool = True
+
+    @model_validator(mode="after")
+    def _standalone_dc(self) -> "HostGroup":
+        if not self.domain_member and "domain_controller" in self.roles:
+            raise ValueError("a domain controller can't be standalone")
+        return self
 
     @model_validator(mode="after")
     def _disk_floor(self) -> "HostGroup":

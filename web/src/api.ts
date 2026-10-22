@@ -195,6 +195,7 @@ export interface HostGroup {
   windows_core: boolean;
   windows_datacenter: boolean;
   remote_desktop?: ("xrdp" | "vnc")[];   // E3: desktop sessions on a Linux group's VMs
+  domain_member?: boolean;               // D184: false = standalone, not joined to the environment's domain (default true)
   network?: string;
   addressing: "static" | "dhcp";
   names?: string[];

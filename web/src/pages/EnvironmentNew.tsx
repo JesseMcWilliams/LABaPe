@@ -116,6 +116,7 @@ export default function EnvironmentNew() {
 
   const netOf = (g: HostGroup) =>
     netsOf(g).find((n) => n.name === g.network) ?? netsOf(g).find((n) => n.is_default) ?? netsOf(g)[0];
+  const hasDc = groups.some((g) => g.roles.includes("domain_controller"));   // D184: the Domain choice only matters then
   const modesFor = (g: HostGroup) =>
     (netOf(g)?.addressing ?? ["static"]).filter((m) => m === "static" || !g.roles.includes("domain_controller"));
   const templatesFor = (g: HostGroup) => tplsOf(g).filter((t) => !t.os_key || t.os_key === g.os);
@@ -204,6 +205,7 @@ export default function EnvironmentNew() {
         windows_core: g.os.startsWith("windows_server") ? g.windows_core : false,
         windows_datacenter: g.os.startsWith("windows_server") ? g.windows_datacenter : false,
         remote_desktop: g.os.startsWith("windows") ? [] : (g.remote_desktop ?? []),
+        domain_member: hasDc && !g.roles.includes("domain_controller") ? g.domain_member !== false : true,
         names: (g.names ?? []).slice(0, g.count),
         kvm_host_id: g.kvm_host_id && g.kvm_host_id !== hostId ? g.kvm_host_id : undefined,
       }));
@@ -359,6 +361,13 @@ export default function EnvironmentNew() {
                   onChange={(e) => setGroup(i, { addressing: e.target.value as HostGroup["addressing"] })}>
                   {modesFor(g).map((m) => <MenuItem key={m} value={m}>{m === "dhcp" ? "DHCP" : "Static"}</MenuItem>)}
                 </Field>
+                {hasDc && !g.roles.includes("domain_controller") && (
+                  <Field select label="Domain" value={g.domain_member === false ? "standalone" : "member"} sx={{ minWidth: 150 }}
+                    help={g.domain_member === false ? "Not joined to the domain" : "Joins the domain"}
+                    onChange={(e) => setGroup(i, { domain_member: e.target.value === "member" })}>
+                    <MenuItem value="member">Member</MenuItem><MenuItem value="standalone">Standalone</MenuItem>
+                  </Field>
+                )}
                 {!g.os.startsWith("windows") && (["xrdp", "vnc"] as const).map((k) => (
                   <FormControlLabel key={k} label={k === "xrdp" ? "xrdp (RDP)" : "VNC"} sx={{ mt: 0.5 }}
                     title={k === "xrdp" ? "A desktop over RDP for every account, local or domain, like Windows"
