@@ -174,8 +174,8 @@ def out(db: Session, c: Certificate, with_pem: bool = False) -> dict:
 # --- who sees what ------------------------------------------------------------------------------------------
 
 def sees_all(p: Principal) -> bool:
-    """Admins, CA administrators and auditors see every certificate (question 193)."""
-    return p.has_role("ca_admin", "auditor")
+    """Admins, CA administrators, CA auditors and auditors see every certificate (question 193)."""
+    return p.has_role("ca_admin", "ca_auditor", "auditor")
 
 
 def visible(db: Session, p: Principal, everything: bool = True):

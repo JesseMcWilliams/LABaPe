@@ -31,6 +31,9 @@ Open the address your admin gave you and choose the sign-in button (usually **Au
 | template_editor | `labape-template-editors` | Everything a deployer can do, plus build, refresh, promote and edit VM templates |
 | file_manager | `labape-file-managers` | Upload, download from a URL, edit and delete files |
 | auditor | `labape-auditors` | Read the audit log, the syslog messages and the remote-session log, and play session recordings; change nothing |
+| ca_requester | `labape-ca-requesters` | Request certificates from the platform CA ([§12](#12-certificates)) |
+| ca_auditor | `labape-ca-auditors` | See every certificate and the CA's details; change nothing |
+| ca_admin | `labape-ca-admins` | Manage the platform CA: see every certificate, revoke, edit its settings |
 | admin | `labape-admins` | Everything, including hosts, networks, the catalog, settings and secrets |
 
 Everyone signed in can browse files, the catalog, and the hosts and networks they may use.
@@ -243,13 +246,15 @@ Scripts and CI can call LABaPe's API with a token instead of signing in. Open yo
 - Everything a token changes is in the audit log. A token can't make other tokens.
 - **Revoke** stops it at once. The list shows each token's first characters, expiry and last use.
 
+A token may also carry the CA roles (`ca_requester`, `ca_auditor`, `ca_admin`) to request, list and revoke certificates through the API.
+
 A token with the **console** role can run commands and open text sessions on your environments' VMs, for scripts and AI agents (see [Web-Interface-Admin.md §20](Web-Interface-Admin.md#20-console-access-and-the-mcp-server-for-ais-and-scripts)).
 
 Admins can also make **service tokens**, which aren't tied to a person (see [Web-Interface-Admin.md §18](Web-Interface-Admin.md#18-api-tokens-and-metrics)).
 
 ## 12. Certificates
 
-**Certificates** (top bar) lists certificates signed by the platform CA: the ones you requested and those of environments you own. CA administrators and auditors can tick **Everyone's certificates**. Search by name, address, serial, requester or host, and filter by state (active, expiring, expired, revoked) and source (asked for here, a deploy, the stack's own); the filters apply as soon as you choose. Each row shows when it was **issued**, when it **expires** (and the days left), its state, who requested it and for which environment. Open one to see its details, including its **Uses** (what it may be used for), the PEM, and **Download**.
+**Certificates** (top bar) lists certificates signed by the platform CA: the ones you requested and those of environments you own. CA administrators, CA auditors and auditors can tick **Everyone's certificates**. Search by name, address, serial, requester or host, and filter by state (active, expiring, expired, revoked) and source (asked for here, a deploy, the stack's own); the filters apply as soon as you choose. Each row shows when it was **issued**, when it **expires** (and the days left), its state, who requested it and for which environment. Open one to see its details, including its **Uses** (what it may be used for), the PEM, and **Download**.
 
 **Requesting a certificate** (the `ca_requester` role; admins hold it too). On the **Request** tab choose **LABaPe makes the key** (give a common name, more DNS names and addresses: LABaPe makes a key pair and shows the private key **once**, for you to download; it is not kept) or **I have a CSR** (paste your request; only the certificate comes back). You may ask for names under the stack's own names and the domains the CA administrator allowed, no wildcards, and for addresses in the allowed networks; the page says which. The lifetime is 30 days by default, at most 90. Tie the certificate to an environment and its owners see it too. Trust the CA's root (download it from the result or the dashboard) on the machines that use the certificate.
 
@@ -257,7 +262,7 @@ Admins can also make **service tokens**, which aren't tied to a person (see [Web
 
 **Renew…** on a certificate opens a new request with the same names: a new key, a new certificate. **Revoke…** (CA administrators) marks a certificate revoked with a reason. Revocation is **passive**: the CA refuses to renew it and answers a revocation check, but a client that never checks keeps trusting it until it expires.
 
-CA administrators (`ca_admin`) also see **The CA** tab: whether the CA answers, its address, root certificate and fingerprint, the register counts, the lists of allowed names and networks and the lifetimes, and **Add to the register** for a certificate the CA signed outside LABaPe. In Authentik the groups `labape-ca-admins` and `labape-ca-requesters` give the two roles.
+CA administrators (`ca_admin`) also see **The CA** tab: whether the CA answers, its address, root certificate and fingerprint, the register counts, the lists of allowed names and networks and the lifetimes, and **Add to the register** for a certificate the CA signed outside LABaPe. CA auditors (`ca_auditor`) see the same tab and every certificate but change nothing. In Authentik the groups `labape-ca-admins`, `labape-ca-requesters` and `labape-ca-auditors` give the three roles.
 
 ## 13. Help
 

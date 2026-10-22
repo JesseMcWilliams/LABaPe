@@ -21,7 +21,7 @@ from .models import ApiToken, User, utcnow
 
 PREFIX = {"personal": "lpat_", "service": "lpst_"}
 MAX_DAYS = 365
-IMPLIED_BY_ADMIN = {"console"}            # roles an admin holds without a binding (design §59)
+IMPLIED_BY_ADMIN = {"console", "ca_admin", "ca_requester", "ca_auditor"}   # roles an admin holds without a binding (design §59, §65)
 LIMITS = {"rate_per_minute": (1, 600), "max_session_minutes": (1, 480), "max_output_kb": (1, 4096)}
 TOUCH_EVERY = dt.timedelta(minutes=1)
 

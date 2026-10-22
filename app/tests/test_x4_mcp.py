@@ -171,3 +171,18 @@ def test_mcp_over_http_uses_the_callers_token(client, monkeypatch):
     # a bad token is the REST API's 401, reported as a tool error
     bad = _call(client, "lpat_nope", "tools/list")
     assert bad["result"]["tools"] == []
+
+
+def test_certificate_tools_follow_the_ca_roles():
+    names = lambda roles: {t["name"] for t in _rpc(mcp.Session(_fake_send(roles)), "tools/list")["result"]["tools"]}  # noqa: E731
+    cert = {"list_certificates", "get_certificate", "ca_info", "request_certificate", "revoke_certificate"}
+    assert cert <= names(["admin"])
+    assert names(["ca_requester"]) & cert == {"list_certificates", "get_certificate", "request_certificate"}
+    assert names(["ca_auditor"]) & cert == {"list_certificates", "get_certificate", "ca_info"}
+    assert names(["ca_admin"]) & cert == cert
+    assert names(["console"]) & cert == set()
+    calls = []
+    s = mcp.Session(_fake_send(["ca_admin"], calls, body={"state": "revoked"}))
+    r = _rpc(s, "tools/call", {"name": "revoke_certificate", "arguments": {"certificate_id": 7, "reason": "leaked"}})
+    assert not r["result"].get("isError")
+    assert calls[-1][:2] == ("POST", "/api/certificates/7/revoke") and calls[-1][3] == {"reason": "leaked"}

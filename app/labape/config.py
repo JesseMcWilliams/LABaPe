@@ -25,12 +25,15 @@ DEFAULT_ROLE_MAP = {
     "labape-console": "console",
     "labape-ca-admins": "ca_admin",
     "labape-ca-requesters": "ca_requester",
+    "labape-ca-auditors": "ca_auditor",
 }
 
 # auditor (question 118): reads the audit log, the remote session log and session recordings.
 # console (design §59): an API token may run commands and open text sessions on VMs; an admin holds it implicitly.
-# ca_admin manages the platform CA and sees every certificate; ca_requester may request certificates (design §65).
-ROLES = ("admin", "template_editor", "deployer", "file_manager", "viewer", "auditor", "console", "ca_admin", "ca_requester")
+# ca_admin manages the platform CA and sees every certificate; ca_requester may request certificates (design §65);
+# ca_auditor sees every certificate and the CA's details and changes nothing.
+ROLES = ("admin", "template_editor", "deployer", "file_manager", "viewer", "auditor", "console", "ca_admin", "ca_requester",
+         "ca_auditor")
 
 
 def _read_file_var(name: str) -> str | None:

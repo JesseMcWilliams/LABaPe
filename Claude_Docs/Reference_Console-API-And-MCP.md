@@ -30,6 +30,26 @@ Send it as `Authorization: Bearer lpat_...`. Console calls take a token only, ne
 | `DELETE /api/console/sessions/{id}` | Close. A session also ends at the token's session length or after the idle time in Settings → Remote access. |
 | `GET /api/console/environments` | What the token can reach. |
 
+## Certificates (the CA roles)
+
+A token may carry the roles **`ca_requester`**, **`ca_admin`** and **`ca_auditor`** (a personal token only those its owner holds; an admin's may carry all three). They give access to the platform CA's REST API, `/api/certificates`:
+
+| Role | May |
+|---|---|
+| `ca_requester` | request certificates, list and read its owner's own and their environments' certificates |
+| `ca_auditor` | list and read every certificate (`scope=all`) and see the CA's details (`GET /api/certificates/ca`); changes nothing |
+| `ca_admin` | everything: also revoke, edit the settings, add certificates to the register; not limited by the name lists |
+
+| Call | |
+|---|---|
+| `GET /api/certificates?scope=mine\|all&q=&state=&source=&limit=` | The certificates the token may see (`scope=all` for `ca_admin`, `ca_auditor` and the auditor role). Each row has `uses`, `state`, `not_before`, `not_after`. |
+| `GET /api/certificates/{id}` | One certificate with its PEM chain. |
+| `POST /api/certificates` | `{common_name, dns[], ips[], days, environment_id, csr, uses[]}`: with names LABaPe makes a P-256 key pair and returns it once in `key`; with `csr` only the certificate comes back. Names must be under the stack's names and the allowed domains and addresses in the allowed networks (not for `ca_admin`). `uses` (`server_auth`, `client_auth`, `code_signing`, `email_protection`, `time_stamping`, `ocsp_signing`, `smartcard_logon`, `signing`, `encryption`) works only when a CA administrator turned extra attributes on; none chosen is the CA's default. |
+| `POST /api/certificates/{id}/revoke` | `{reason}` (`ca_admin`). Passive: a client that never checks keeps trusting it. |
+| `GET /api/certificates/ca` | Whether the CA answers, its root and fingerprint, provisioners, register counts. |
+
+The MCP tools are `list_certificates`, `get_certificate`, `ca_info`, `request_certificate` and `revoke_certificate`, offered by the same roles. A request's private key is in the tool result: the agent must store it, LABaPe does not.
+
 ## MCP
 
 - **Local agent (stdio):** run `labape mcp` (or `python -m labape.mcp`) with `LABAPE_URL=https://<stack>`, `LABAPE_TOKEN=...` and, for the platform CA, `LABAPE_CA_FILE=<root.crt>`. As an MCP client entry: `{"command": "labape", "args": ["mcp"], "env": {"LABAPE_URL": "...", "LABAPE_TOKEN": "..."}}`.

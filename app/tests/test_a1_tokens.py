@@ -79,3 +79,12 @@ def test_a_personal_token_never_exceeds_its_owners_current_roles(client):
         assert tokens.effective_roles(t, {"viewer"}) == set()                    # granted admin, has only viewer
         t2, _ = tokens.create(db, u, "all", "personal", [], 10)
         assert tokens.effective_roles(t2, {"viewer", "deployer"}) == {"viewer", "deployer"}
+
+
+def test_an_admins_token_may_carry_the_ca_roles():
+    from types import SimpleNamespace
+
+    from labape import tokens
+    t = SimpleNamespace(kind="personal", roles=["ca_admin", "ca_requester", "ca_auditor"])
+    assert tokens.effective_roles(t, {"admin"}) == {"ca_admin", "ca_requester", "ca_auditor"}
+    assert tokens.effective_roles(t, {"viewer", "ca_auditor"}) == {"ca_auditor"}              # only what the owner holds

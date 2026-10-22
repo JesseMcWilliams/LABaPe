@@ -124,7 +124,7 @@ def test_who_sees_which_certificates(client, fake_ca):
     assert client.get(f"/api/certificates/{mine}").status_code == 404
     assert client.get(f"/api/certificates/{theirs}").status_code == 200 and "pem" in client.get(f"/api/certificates/{theirs}").json()
     assert client.get("/api/certificates", params={"scope": "all"}).status_code == 403
-    for role in ("auditor", "ca_admin", "admin"):
+    for role in ("auditor", "ca_admin", "ca_auditor", "admin"):
         _as(client, "x" + role, role, uid=60)
         assert ids("x", scope="all") == sorted([mine, theirs]), role
     _as(client, "xauditor", "auditor", uid=61)
@@ -228,3 +228,16 @@ def test_extra_attributes_need_the_switch_and_are_checked_after_signing(client, 
     assert r.json()["certificate"]["uses"] == ["client_auth", "code_signing"]
     r = client.post("/api/certificates", json={"common_name": "app3.jlm.abq", "uses": ["nope"]})
     assert r.status_code == 422
+
+
+def test_a_ca_auditor_sees_everything_and_changes_nothing(client, fake_ca):
+    _config(client)
+    _as(client, "bob", "ca_requester")
+    cid = client.post("/api/certificates", json={"common_name": "aud.jlm.abq"}).json()["certificate"]["id"]
+    _as(client, "carol", "ca_auditor", uid=70)
+    assert [c["id"] for c in client.get("/api/certificates", params={"scope": "all"}).json()] == [cid]
+    assert client.get(f"/api/certificates/{cid}").status_code == 200 and client.get("/api/certificates/ca").status_code == 200
+    assert client.post("/api/certificates", json={"common_name": "no.jlm.abq"}).status_code == 403
+    assert client.post(f"/api/certificates/{cid}/revoke", json={}).status_code == 403
+    assert client.put("/api/certificates/settings", json={"allowed_domains": []}).status_code == 403
+    assert client.get("/api/certificates/settings").json()["can_edit"] is False
