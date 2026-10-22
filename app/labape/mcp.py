@@ -30,13 +30,19 @@ MAX_RESULT_CHARS = 60000
 READ = ("viewer", "deployer", "template_editor", "file_manager", "auditor")      # any of these, or admin
 DEPLOY = ("deployer", "template_editor")
 CONSOLE = ("console",)
+CERT_READ = READ + ("ca_requester", "ca_admin", "ca_auditor")     # everyone lists their own certificates
+CERT_ALL = ("ca_admin", "ca_auditor")                              # the CA's own details (and auditors)
+CERT_REQUEST = ("ca_requester", "ca_admin")
+CERT_ADMIN = ("ca_admin",)
 
 INSTRUCTIONS = (
     "LABaPe manages lab environments (VMs on KVM hosts). Start with console_targets (token with the console role) "
     "or list_environments to find environment ids and VM names. run_command runs one command and returns its "
     "result; open_session gives an interactive shell or serial console: send text with session_input and read "
     "with session_output, passing back the `next` offset each time (wait up to 30 s for output). Close sessions "
-    "when done. Everything is audited and limited by the token; output may contain secrets the console prints.")
+    "when done. With a CA role the certificate tools ask the stack's platform CA for certificates (request_certificate), "
+    "list and read them, show the CA, and revoke (ca_admin only). Everything is audited and limited by the token; "
+    "output may contain secrets the console prints; a certificate request returns its private key once, so keep it.")
 
 
 @dataclass
@@ -114,6 +120,34 @@ TOOLS: list[Tool] = [
          ("job_id",), read_only=True),
     Tool("latest_plan", "The newest redeploy preview of an environment.", "GET", "/api/environments/{environment_id}/plan",
          READ, ENV, ("environment_id",), read_only=True),
+    Tool("list_certificates", "Certificates signed by the platform CA that this token may see: its owner's own and those of "
+         "their environments (scope 'all' lists everyone's for CA administrators and auditors). Filter by text, state "
+         "(active, expiring, expired, revoked) and source.", "GET", "/api/certificates", CERT_READ,
+         {"scope": _str("mine (default) or all", enum=["mine", "all"]), "q": _str("Text in a name, serial, requester or host"),
+          "state": _str("active, expiring, expired or revoked"), "source": _str("request, engine, stack or imported"),
+          "limit": _int("How many (default 200)")}, read_only=True),
+    Tool("get_certificate", "One certificate: names, validity, state, requester, its Uses and the PEM chain.", "GET",
+         "/api/certificates/{certificate_id}", CERT_READ, {"certificate_id": _int("The certificate's id")},
+         ("certificate_id",), read_only=True),
+    Tool("ca_info", "The platform CA: whether it answers, its root certificate and fingerprint, its provisioners and "
+         "the register counts.", "GET", "/api/certificates/ca", CERT_ALL + ("auditor",), read_only=True),
+    Tool("request_certificate", "Ask the platform CA for a certificate. Give common_name (and dns, ips) and LABaPe makes "
+         "the key pair and returns the private key once in `key`; or give a PEM `csr` and only the certificate comes back. "
+         "Names must be under the stack's names and the allowed domains (CA administrators are not limited). `uses` asks "
+         "for extra attributes (server_auth, client_auth, code_signing, email_protection, time_stamping, ocsp_signing, "
+         "smartcard_logon, signing, encryption) and works only when a CA administrator turned extra attributes on.",
+         "POST", "/api/certificates", CERT_REQUEST,
+         {"common_name": _str("The main DNS name"), "dns": {"type": "array", "items": {"type": "string"},
+                                                           "description": "More DNS names"},
+          "ips": {"type": "array", "items": {"type": "string"}, "description": "IP addresses"},
+          "days": _int("Lifetime in days (default 30, at most 90)"), "csr": _str("A PEM certificate request, instead of the names"),
+          "environment_id": _int("Tie it to an environment, so its owners see it"),
+          "uses": {"type": "array", "items": {"type": "string"}, "description": "Extra attributes (see above)"}}),
+    Tool("revoke_certificate", "Revoke a certificate (CA administrators). Revocation is passive: the CA refuses to renew it "
+         "and answers a check, but a client that never checks keeps trusting it until it expires.", "POST",
+         "/api/certificates/{certificate_id}/revoke", CERT_ADMIN,
+         {"certificate_id": _int("The certificate's id"), "reason": _str("Why (up to 200 characters)")},
+         ("certificate_id",), destructive=True),
     Tool("deploy_environment", "Deploy (or redeploy) an environment. Returns the job id; follow it with get_job.", "POST",
          "/api/environments/{environment_id}/deploy", DEPLOY, ENV, ("environment_id",)),
     Tool("plan_redeploy", "Preview which VMs a redeploy would replace; nothing is applied. Returns a job id.", "POST",

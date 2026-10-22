@@ -11,7 +11,7 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { api, fmtTime } from "../api";
 import Sparkline from "../components/Sparkline";
-import UpdateDialog from "../components/UpdateDialog";
+import UpdateDialog, { UpdateInfo } from "../components/UpdateDialog";
 import { hasRole, useAuth } from "../App";
 
 type Series = Record<string, (number | null)[]> & { t: string[] };
@@ -433,6 +433,16 @@ export default function Dashboard() {
   const [all, setAll] = useState<AllStacks | null>(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
+  // The update agent's state, so the banner can say an update is running (read faster while one is).
+  const [agent, setAgent] = useState<UpdateInfo["agent"] | null>(null);
+  const updating = Boolean(agent && (agent.state === "running" || agent.pending));
+  useEffect(() => {
+    if (!health) return;
+    const read = () => api.get<UpdateInfo>("/api/admin/update").then((u) => setAgent(u.agent), () => undefined);
+    read();
+    const t = setInterval(read, updating ? 5000 : 60000);
+    return () => clearInterval(t);
+  }, [Boolean(health), updating]); // eslint-disable-line react-hooks/exhaustive-deps
   const [updateOpen, setUpdateOpen] = useState(false);
 
   const load = () => {
@@ -475,8 +485,13 @@ export default function Dashboard() {
 
       <UpdateDialog open={updateOpen} onClose={() => setUpdateOpen(false)} />
       {v && (
-        <Alert severity={v.update_available ? "info" : "success"} icon={false}
-          action={<Button size="small" disabled={checking} onClick={checkNow} title="Check GitHub for newer releases and pre-releases, and see the update and rollback choices">Check now</Button>}>
+        <Alert severity={updating ? "warning" : v.update_available ? "info" : "success"} icon={false}
+          action={updating
+            ? <Button size="small" onClick={() => setUpdateOpen(true)} title="An update is running: see its progress">Update running…</Button>
+            : <Button size="small" disabled={checking} onClick={checkNow} title="Check GitHub for newer releases and pre-releases, and see the update and rollback choices">Check now</Button>}>
+          {updating && <Typography variant="body2" component="div" sx={{ fontWeight: 600 }}>
+            An update{agent?.to ? ` to ${agent.to}` : ""} is running{agent?.step ? ` (${agent.step})` : ""}: the page may drop for a minute.
+          </Typography>}
           LABaPe <b>{v.current}</b>
           {v.update_available ? (
             <> · <Link href={v.url} target="_blank" rel="noreferrer">{v.latest}</Link> is available</>

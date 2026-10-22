@@ -62,10 +62,10 @@ def manifest() -> dict:
         "name": "labape",
         "display_name": "LABaPe",
         "version": version(),
-        "description": "Run commands and open text sessions on LABaPe lab VMs, and manage lab environments.",
+        "description": "Run commands and open text sessions on LABaPe lab VMs, manage lab environments, and request certificates.",
         "long_description": ("Connects Claude to a LABaPe stack with an API token. The tools offered depend on the "
                              "token's roles: a console token gets commands and text sessions; tokens with the "
-                             "deployer or read roles also get environment, host and job tools."),
+                             "deployer or read roles also get environment, host and job tools, and the CA roles (ca_requester, ca_admin, ca_auditor) the certificate tools."),
         "author": {"name": "LABaPe"},
         "license": "AGPL-3.0-only",
         "server": {

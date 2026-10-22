@@ -1,6 +1,6 @@
 // Certificates from the platform CA (design §65, batch C2): the register, requesting, and the CA's own details.
 // Everyone sees the certificates they requested and those of their environments; CA administrators and auditors
-// see all; requesting needs the ca_requester (or ca_admin) role; revoking and the settings need ca_admin.
+// see all (CA auditors too); requesting needs the ca_requester (or ca_admin) role; revoking and the settings need ca_admin.
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Stack, Tab, Tabs,
@@ -47,14 +47,14 @@ const save = (name: string, text: string) => {
 export default function Certificates() {
   const { me } = useAuth();
   const has = (r: string) => Boolean(me?.roles.includes(r) || me?.roles.includes("admin"));
-  const seesAll = has("ca_admin") || has("auditor");
+  const seesAll = has("ca_admin") || has("ca_auditor") || has("auditor");
   const canRequest = has("ca_requester") || has("ca_admin");
   const [tab, setTab] = useState<"list" | "request" | "ca">("list");
   const [prefill, setPrefill] = useState<Cert | null>(null);
   return (
     <Stack spacing={2}>
       <ListHeader title="Certificates"
-        intro="Certificates signed by the platform CA. You see the ones you requested and those of your environments; CA administrators and auditors see all." />
+        intro="Certificates signed by the platform CA. You see the ones you requested and those of your environments; CA administrators, CA auditors and auditors see all." />
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
         <Tab value="list" label="Certificates" />
         {canRequest && <Tab value="request" label="Request" />}

@@ -7,6 +7,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **CA roles for API tokens:** `ca_requester`, `ca_admin` and the new read-only **`ca_auditor`** (Authentik group `labape-ca-auditors`) can be put on a token (an admin's token may carry all three), and the MCP server has certificate tools (`list_certificates`, `get_certificate`, `ca_info`, `request_certificate`, `revoke_certificate`) offered by those roles. The CA auditor sees every certificate and the CA tab and changes nothing.
+
+### Fixed
+
+- **Update dialog and banner:** after **Continue** the dialog shows "Waiting for the update agent to start…" instead of the last run's status, and drops an error from the API restarting; while an update runs the Dashboard banner says so (version, step) and its button reads **Update running…** instead of **Check now**.
+
 ## [0.5.6] - 2026-10-21
 
 v0.5.6 adds a Help section (the guides served inside the web interface, with a link from every page), linked stacks' templates and files (listed, copied, and chosen in the New environment form), a Certificates page with attributes and an Issued column, saving an environment as a draft and duplicating one, a domain member or standalone choice per host group, local accounts bound to chosen VMs, Rotate overdue now, Add host, drive pages with SMART history, and Playwright browser tests. The certificate attributes and linked copies are covered by unit tests only and have not been run against a live CA or between two stacks; the notes say how to try them.

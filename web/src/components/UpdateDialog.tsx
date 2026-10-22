@@ -26,14 +26,20 @@ export default function UpdateDialog({ open, onClose }: { open: boolean; onClose
   const [choice, setChoice] = useState("");
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
+  // What the agent reported when Continue was pressed: until it differs (or says running or pending), the status on
+  // screen is the last run's, not this one's, so it is not shown.
+  const [before, setBefore] = useState("");
+  const stamp = (x?: AgentStatus) => (x ? `${x.state}|${x.started_at ?? ""}|${x.finished_at ?? ""}|${x.message ?? ""}` : "");
 
   const load = () => api.get<UpdateInfo>("/api/admin/update").then((i) => {
     setInfo(i);
+    setError("");                      // an error from the API restarting mid-update is not news once it answers again
     setChoice((c) => c || i.release?.tag || i.prerelease?.tag || (i.previous ? "rollback" : ""));
   }, (e) => setError(e.message));
   useEffect(() => {
     if (!open) return;
     setStarted(false);
+    setBefore("");
     setError("");
     load();
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -49,7 +55,9 @@ export default function UpdateDialog({ open, onClose }: { open: boolean; onClose
     try {
       if (choice === "rollback") await api.post("/api/admin/update/rollback");
       else await api.post("/api/admin/update", { target: choice });
+      setBefore(stamp(info?.agent));
       setStarted(true);
+      setInfo(null);                    // the old status goes; the new one is read as it arrives
       load();
     } catch (e) { setError(fromApiError(e).summary); }
   };
@@ -64,6 +72,7 @@ export default function UpdateDialog({ open, onClose }: { open: boolean; onClose
         : "The previous version is on standby: no rebuild, no data lost." },
   ].filter(Boolean) as { value: string; label: string; notes: string; note: string }[] : [];
   const a = info?.agent;
+  const stale = started && !running && a !== undefined && stamp(a) === before;   // still the last run's status
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -77,7 +86,8 @@ export default function UpdateDialog({ open, onClose }: { open: boolean; onClose
               Running <b>{info.current}</b> · database layout {info.db_revision ?? "not stamped"}
             </Typography>
             {info.error && <Alert severity="warning" sx={{ my: 1 }}>{info.error}</Alert>}
-            {(started || running || (a && a.state !== "idle")) && a && (
+            {stale && <Alert severity="info" sx={{ my: 1 }}>Waiting for the update agent to start…<LinearProgress sx={{ mt: 1 }} /></Alert>}
+            {!stale && (started || running || (a && a.state !== "idle")) && a && (
               <Alert severity={a.state === "succeeded" ? "success" : a.state === "running" || a.pending ? "info" : "error"} sx={{ my: 1 }}>
                 {a.pending && a.state !== "running" ? "Waiting for the update agent to start…" : <>
                   <b>{a.state}</b>{a.step ? ` (${a.step})` : ""}: {a.message}

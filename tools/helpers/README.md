@@ -28,6 +28,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | Script | Runs | What it does |
 |---|---|---|
 | `ship.sh` | locally | Commit, push, open a PR, merge, update `main` |
+| `authentik_groups.py` | locally → Authentik | Create LABaPe's role groups (including `labape-ca-admins`, `labape-ca-requesters`, `labape-ca-auditors`, `labape-console`) that are missing, with an Authentik token that may create groups (`AUTHENTIK_URL`, `AUTHENTIK_TOKEN`; `--dry-run` first). Adds no members |
 | `lock-python.sh` | locally | Refresh `container/requirements.txt`, the hash-pinned list of every Python package the worker image installs (`--upgrade` moves them all to the newest allowed). Needs uv. Then rebuild (`deploy-web.sh`), test, refresh the SBOM |
 | `sbom.py` | locally | Write the software bill of materials: `Claude_Docs/Reference_SBOM.md` and `sbom/labape.cdx.json` (CycloneDX). `--check` says whether they're stale; a test fails when they are |
 | `sbom_snapshot.py` | locally → lab | Take the worker image's inventory (`sbom/image-snapshot.json`) over SSH (`LABAPE_LAB_SSH`); `sbom_probe.py` is the part that runs inside the worker. `release.sh` runs it |
