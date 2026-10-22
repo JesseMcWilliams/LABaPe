@@ -48,6 +48,8 @@ def test_versions_and_docs(tmp_path):
     (tmp_path / "User_Docs").mkdir()
     (tmp_path / "User_Docs" / "Guide.md").write_text("Sign-in over HTTPS (from the release after v0.3.0).\n")
     (tmp_path / "CHANGELOG.md").write_text(CL)
+    (tmp_path / "Claude_Docs").mkdir()
+    (tmp_path / "Claude_Docs" / "Planning_Handoff-2026-10-20.md").write_text("# h\n\n**Latest release:** v0.3.0 (2026-10-14)\n")
     summary = tmp_path / "s.txt"
     summary.write_text("Summary.")
     assert R.main(["v0.4.0", str(summary), "--repo", str(tmp_path)]) == 0
@@ -57,5 +59,25 @@ def test_versions_and_docs(tmp_path):
     assert json.loads((tmp_path / "web" / "package.json").read_text())["version"] == "0.4.0"
     assert (tmp_path / "User_Docs" / "Guide.md").read_text() == "Sign-in over HTTPS (from v0.4.0).\n"
     assert "## [0.4.0] - " in (tmp_path / "CHANGELOG.md").read_text()
+    assert "**Latest release:** v0.4.0 (" in (tmp_path / "Claude_Docs" / "Planning_Handoff-2026-10-20.md").read_text()
     assert R.main(["0.4", str(summary), "--repo", str(tmp_path)]) == 2                    # not X.Y.Z
     assert R.main(["0.5.0", str(summary), "--repo", str(tmp_path), "--check"]) == 1       # nothing unreleased
+
+
+def test_the_handoff_is_stamped_and_required(tmp_path):
+    docs = tmp_path / "Claude_Docs"
+    docs.mkdir()
+    with pytest.raises(R.ReleaseError, match="no Planning_Handoff"):
+        R.handoff(tmp_path, "0.5.8", dt.date(2026, 10, 23))
+    old = docs / "Planning_Handoff-2026-10-21.md"
+    old.write_text("# old\n\n**Latest release:** v0.5.5 (2026-10-20)\n", encoding="utf-8")
+    new = docs / "Planning_Handoff-2026-10-22.md"
+    new.write_text("# new\n\nNo marker yet.\n", encoding="utf-8")
+    with pytest.raises(R.ReleaseError, match="Latest release"):                     # the newest one is the one checked
+        R.handoff(tmp_path, "0.5.8", dt.date(2026, 10, 23))
+    new.write_bytes(b"# new\r\n\r\n**Latest release:** v0.5.7 (2026-10-22)\r\n\r\nMore.\r\n")
+    assert R.handoff(tmp_path, "0.5.8", dt.date(2026, 10, 23), write=False) == []        # a check changes nothing
+    assert R.handoff(tmp_path, "0.5.8", dt.date(2026, 10, 23)) == ["Claude_Docs/Planning_Handoff-2026-10-22.md"]
+    text = new.read_bytes().decode()
+    assert "**Latest release:** v0.5.8 (2026-10-23)\r\n" in text and "More." in text      # line endings kept
+    assert "v0.5.5" in old.read_text(encoding="utf-8")                                   # older ones are left alone

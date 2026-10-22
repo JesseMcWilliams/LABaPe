@@ -93,6 +93,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - The Windows checkout is CRLF (`core.autocrlf=true`), except `*.sh` and `*.py`, which `.gitattributes` keeps LF. Don't use `sed -i` on tracked files; edit with the Edit tool or a Python read-modify-write that keeps each file's line endings.
 
 ## Session habits (token cost)
+- A release includes the handoff: update `Claude_Docs/Planning_Handoff-<date>.md` (state, what's left, lab state, gotchas) before `release.sh`, which refuses an unchanged one and stamps its `**Latest release:**` line.
 - One work item per session: when it's committed, suggest `/clear` and bring the handoff (`Claude_Docs/Planning_Handoff-<date>.md`) up to date: where things stand (branches, PRs, test status, highest question number), what's left as a numbered queue, the lab's state and new gotchas.
 - Keep subagent jobs small (2 or 3 files each). For mechanical work such as one test per file, pass `model: "sonnet"` or `"haiku"`.
 - For "verify the docs are updated", use a subagent to diff the branch against the docs checklist above and report the gaps only.

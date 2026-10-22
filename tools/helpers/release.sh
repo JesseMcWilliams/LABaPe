@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--dry-run] [--resume]
+# release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--skip-handoff] [--dry-run] [--resume]
 # Cut a LABaPe release (question 24; releases only at milestones, which the user decides):
-#   1. checks: on main, clean, up to date; the tag doesn't exist; [Unreleased] has entries;
+#   1. checks: on main, clean, up to date; the tag doesn't exist; [Unreleased] has entries; the newest
+#      Claude_Docs/Planning_Handoff-*.md has changed since the previous release (the handoff is part of a release:
+#      update it first; --skip-handoff overrides) and has its "**Latest release:**" line, which release_prep stamps;
 #   2. on a YYYY-MM-DD-release-X.Y.Z branch, release_prep.py: the CHANGELOG section
 #      `## [X.Y.Z] - <today>` (SUMMARY_FILE's paragraph first), the versions in
 #      app/pyproject.toml and web/package*.json, "the release after v<previous>" in the docs;
@@ -28,17 +30,18 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-USAGE="usage: release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--dry-run] [--resume]"
+USAGE="usage: release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--skip-handoff] [--dry-run] [--resume]"
 VERSION="${1:?$USAGE}"; VERSION="${VERSION#v}"
 SUMMARY="${2:?$USAGE}"
 shift 2
-PRE=false DOCX=false DRY=false SKIP_SBOM=false SBOM_ANYWAY=false RESUME=false
+PRE=false DOCX=false DRY=false SKIP_SBOM=false SBOM_ANYWAY=false SKIP_HANDOFF=false RESUME=false
 for a in "$@"; do
   case "$a" in
     --prerelease) PRE=true ;;
     --docx) DOCX=true ;;
     --skip-sbom) SKIP_SBOM=true ;;
     --sbom-anyway) SBOM_ANYWAY=true ;;
+    --skip-handoff) SKIP_HANDOFF=true ;;
     --dry-run) DRY=true ;;
     --resume) RESUME=true ;;
     *) echo "$USAGE" >&2; exit 2 ;;
@@ -103,6 +106,15 @@ if $RESUME; then      # the release PR merged but the run stopped before the tag
   exit 0
 fi
 "$PY" "$HERE/release_prep.py" "$VERSION" "$SUMMARY" --check
+# The handoff is part of a release: the newest one must have changed since the previous release's tag.
+if ! $SKIP_HANDOFF; then
+  PREV_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
+  HANDOFF="$(ls Claude_Docs/Planning_Handoff-*.md | sort | tail -1)"
+  if [ -n "$PREV_TAG" ] && git diff --quiet "$PREV_TAG" HEAD -- "$HANDOFF"; then
+    echo "release: $HANDOFF hasn't changed since $PREV_TAG: bring the handoff up to date first (or pass --skip-handoff)" >&2
+    exit 1
+  fi
+fi
 if $DOCX && ! command -v pandoc >/dev/null 2>&1; then
   echo "release: --docx needs pandoc" >&2; exit 1
 fi

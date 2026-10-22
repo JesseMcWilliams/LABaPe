@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **The handoff is part of a release:** `release.sh` refuses a release whose newest `Planning_Handoff-*.md` hasn't changed since the previous release (`--skip-handoff` overrides) and the release stamps its `**Latest release:**` line.
+
 ## [0.5.7] - 2026-10-22
 
 v0.5.7 fixes the update dialog and banner (the dialog no longer shows the last run's status after Continue, and the Dashboard banner says an update is running), adds the read-only CA auditor role and puts the CA roles on API tokens, adds certificate tools to the MCP server, ships a Claude skill for LABaPe, and makes each release attach the Claude Desktop bundle and the skill. Certificate attributes and linked-stack copies from v0.5.6 are still unit-tested only.
