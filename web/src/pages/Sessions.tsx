@@ -24,13 +24,14 @@ const dur = (a: string | null, b: string | null) => {
 const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 
 function Player({ row, onClose }: { row: Row; onClose: () => void }) {
-  const holder = useRef<HTMLDivElement>(null);
+  const [holder, setHolder] = useState<HTMLDivElement | null>(null);   // set once the dialog has mounted its content
   const rec = useRef<Guacamole.SessionRecording | null>(null);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!holder) return;
     let alive = true;
     // guacamole-common-js 1.5.0 never stores a Blob handed to SessionRecording (it reads an unset variable), so the
     // recording is streamed through a tunnel instead; the request is the same audited GET.
@@ -38,11 +39,9 @@ function Player({ row, onClose }: { row: Row; onClose: () => void }) {
     const recording = new Guacamole.SessionRecording(tunnel);
     rec.current = recording;
     const display = recording.getDisplay();
-    if (holder.current) {
-      holder.current.innerHTML = "";
-      holder.current.appendChild(display.getElement());
-    }
-    display.onresize = () => display.scale(Math.min(1, (holder.current?.clientWidth ?? 900) / Math.max(display.getWidth(), 1)));
+    holder.innerHTML = "";
+    holder.appendChild(display.getElement());
+    display.onresize = () => display.scale(Math.min(1, (holder.clientWidth || 900) / Math.max(display.getWidth(), 1)));
     recording.onprogress = (d: number) => alive && setDuration(d);
     recording.onload = () => alive && setDuration(recording.getDuration());
     recording.onplay = () => setPlaying(true);
@@ -52,14 +51,14 @@ function Player({ row, onClose }: { row: Row; onClose: () => void }) {
     tunnel.onerror = (st: Guacamole.Status) => alive && setError(`The recording couldn't be loaded (${st.message || st.code}).`);
     recording.connect();
     return () => { alive = false; rec.current?.pause(); rec.current?.disconnect(); };
-  }, [row.id]);
+  }, [row.id, holder]);
   return (
     <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>Session #{row.id}: {row.username} on {row.target} ({row.protocol.toUpperCase()}), {fmtTime(row.started_at)}</DialogTitle>
       <DialogContent>
         <Stack spacing={1}>
           {error && <Alert severity="error">{error}</Alert>}
-          <Box ref={holder} sx={{ bgcolor: "black", minHeight: 300, overflow: "hidden" }} />
+          <Box ref={setHolder} sx={{ bgcolor: "black", minHeight: 300, overflow: "hidden" }} />
           <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
             <Button variant="contained" size="small" onClick={() => (playing ? rec.current?.pause() : rec.current?.play())}
               title={playing ? "Pause" : "Play the recording"}>{playing ? "Pause" : "Play"}</Button>
