@@ -691,3 +691,7 @@ The browser agent re-ran the manual checks against the build with the fixes (`v0
 | 08 | On Syslog a drop-down change sent the same request twice. | Not changed (harmless); noted. |
 | 05, 06 | The published package `winiis` lists "linux, windows" although its name suggests Windows only. | By design: a package is offered for an OS when any member fits (design §60); the name is just a name. Its Windows-only members are skipped on Linux. |
 | 09 | Three rotations past their Next date with status ok (Platform CA key password, Master key, PostgreSQL password, all "/ restart"); `kvm1: /dev/sdc` shows 76 reallocated and 3960 pending sectors (open since 2026-10-14). | Not LABaPe defects. The rotations probably wait for a restart window; the disk is failing and should be replaced. For the user. |
+
+## Playwright run of the browser checks (2026-10-21)
+
+First run of `web/e2e/` against OZ: the failures were wrong selectors and stale expectations in the specs, fixed there (see the README). One finding in the app: **Rotate overdue now lists less than the Secrets warning**. The warning counts every enabled automatic policy past due; the plan skips secrets of environments that are not deployed, ones that need an elevated account not yet set, and external stores that are not ready. With three destroyed-environment secrets overdue the dialog said "Nothing is overdue any more" and the button read "Rotate 0 now". Open: use one rule for both, or name the skipped ones in the dialog.
