@@ -89,7 +89,7 @@ function CertList({ seesAll, canRevoke, canRequest, onRenew }: { seesAll: boolea
       </FilterBar>
       <Pager total={shown.length} page={page} onPage={setPage} />
       <Table size="small">
-        <TableHead><TableRow><TableCell>Name</TableCell><TableCell>Expires</TableCell><TableCell>State</TableCell><TableCell>Requested by</TableCell><TableCell>For</TableCell><TableCell>Source</TableCell></TableRow></TableHead>
+        <TableHead><TableRow><TableCell>Name</TableCell><TableCell>Issued</TableCell><TableCell>Expires</TableCell><TableCell>State</TableCell><TableCell>Requested by</TableCell><TableCell>For</TableCell><TableCell>Source</TableCell></TableRow></TableHead>
         <TableBody>
           {pageOf(shown, page, pageSize).map((c) => (
             <TableRow key={c.id} hover sx={{ cursor: "pointer", opacity: c.state === "revoked" ? 0.6 : 1 }} onClick={() => setOpen(c)}>
@@ -97,6 +97,7 @@ function CertList({ seesAll, canRevoke, canRequest, onRenew }: { seesAll: boolea
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>{c.subject || c.serial_hex}</Typography>
                 <Typography variant="caption" color="text.secondary">{c.sans.filter((s) => s !== c.subject).join(", ")}</Typography>
               </TableCell>
+              <TableCell>{fmtTime(c.not_before)}</TableCell>
               <TableCell>{fmtTime(c.not_after)}{c.state === "active" || c.state === "expiring" ? <Typography variant="caption" color="text.secondary" component="div">{c.days_left} days left</Typography> : null}</TableCell>
               <TableCell><Chip size="small" color={STATE_COLOR[c.state]} label={c.state} /></TableCell>
               <TableCell>{c.requested_by}</TableCell>

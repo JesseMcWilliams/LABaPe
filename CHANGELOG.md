@@ -17,6 +17,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Add host** on a deployed environment's page: more VMs in a host group, or a new group that copies an existing one, with optional VM names. It runs the checks of a new environment (names, capacity, quotas, software), updates the environment and starts a redeploy that creates only the new VMs.
 - Secrets: **Rotate overdue now** on the overdue warning rotates every overdue secret one at a time, restarting services as needed, outside the maintenance window. It asks first and says plainly which rotations stop services; it stops at the first failure and a banner follows the run, through the restarts.
 - **Drive pages with history**: click a drive in Drives and volumes (or the "Drive details" button on a drive's alert, or the link in the dashboard's alert list) for its SMART attributes, layout and charts of pending, reallocated and uncorrectable sectors, temperature and wear over 7 days to a year, with a table of when the numbers moved. SMART is now read every 6 hours (was daily) and on Read now; readings are kept 365 days (Settings → History → Drive history).
+- **Certificates** table has an **Issued** column; the Dashboard marks the stack you are connected to (**you are here**, a highlighted border) and no longer dims it.
 
 ### Fixed
 - The Secrets page no longer warns about overdue secrets that **Rotate overdue now** would skip (an environment that is not deployed, an elevated account not set yet, a store not ready): the warning and the plan use one rule.
