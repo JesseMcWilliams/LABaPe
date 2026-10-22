@@ -280,13 +280,14 @@ function AllStacksPanel({ d }: { d: AllStacks }) {
             const st = STACK_STATUS[s.status] ?? STACK_STATUS.never;
             const errs = m?.alerts.filter((a) => a.level === "error").length ?? 0;
             return (
-              <Paper key={s.url} variant="outlined" sx={{ p: 1.5, flex: "1 1 260px", maxWidth: 420, opacity: s.status === "ok" ? 1 : 0.85 }}>
+              <Paper key={s.url} variant="outlined" sx={{ p: 1.5, flex: "1 1 260px", maxWidth: 420, opacity: s.self || s.status === "ok" ? 1 : 0.85,
+                  ...(s.self ? { borderColor: "primary.main", borderWidth: 2 } : {}) }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                   <Link href={s.self ? "/" : `${s.url}/`} target={s.self ? undefined : "_blank"} rel="noreferrer" variant="subtitle1"
                     sx={{ fontWeight: 600 }} title={s.self ? "This stack" : `Open ${s.url} (its own sign-in)`}>
                     {m?.name ?? s.url}
                   </Link>
-                  {s.self ? <Chip size="small" label="this stack" /> : <Chip size="small" color={st.color} label={st.label} title={s.error || undefined} />}
+                  {s.self ? <Chip size="small" color="primary" label="you are here" title="The stack you are connected to" /> : <Chip size="small" color={st.color} label={st.label} title={s.error || undefined} />}
                   {m?.maintenance.active && <Chip size="small" label="maintenance" title={m.maintenance.reason} />}
                 </Stack>
                 {m ? (

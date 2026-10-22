@@ -14,6 +14,7 @@ test("the top bar has Certificates and the page has its three tabs", async ({ pa
 test("the list filters at once and clears", async ({ page }) => {
   await expect(page.getByLabel("Everyone's certificates")).toBeChecked();
   await expect(page.getByText(/\d+ certificates?/).first()).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Issued" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Expires" })).toBeVisible();
 
   const rows = page.getByRole("row").filter({ hasText: "zz-cert-test" });
