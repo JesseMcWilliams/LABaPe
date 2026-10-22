@@ -10,6 +10,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ### Added
 
 - **CA roles for API tokens:** `ca_requester`, `ca_admin` and the new read-only **`ca_auditor`** (Authentik group `labape-ca-auditors`) can be put on a token (an admin's token may carry all three), and the MCP server has certificate tools (`list_certificates`, `get_certificate`, `ca_info`, `request_certificate`, `revoke_certificate`) offered by those roles. The CA auditor sees every certificate and the CA tab and changes nothing.
+- **A Claude skill** for LABaPe (`skills/labape/SKILL.md`): the rules and workflow for using the MCP tools and the certificate tools.
 
 ### Fixed
 

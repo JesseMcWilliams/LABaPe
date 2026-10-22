@@ -58,6 +58,10 @@ The MCP tools are `list_certificates`, `get_certificate`, `ca_info`, `request_ce
 - The session tools take the id from `open_session` as `session` (`session_id` is accepted too, but the Claude desktop app's bridge drops an argument by that name).
 - The tools offered depend on the token's roles; each is one REST call with that token. Management tools (deploy, destroy, jobs, hosts) need the matching roles on the token, so a console-only token sees only the console tools.
 
+## The skill
+
+`skills/labape/SKILL.md` is a Claude skill that goes with the MCP server: when to use each tool, the rules (look first, ask before destroying, preview a redeploy, name an account), how a job is followed, and the certificate caveats (the private key is shown once, revocation is passive). The MCP server gives the abilities and enforces the token's roles; the skill is only guidance. Copy the `skills/labape` folder into a Claude skills folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`) to use it.
+
 ## What is recorded
 
 Every command and session is a row in the session log (protocols `exec` and `text`) and an audit event (token, VM, account, command line or session id, exit code, byte counts; typed input only as a size). Output is kept only as a transcript when Settings → Remote access has recording on; auditors download it from the session log. A console can still print a secret that isn't in the vault.
