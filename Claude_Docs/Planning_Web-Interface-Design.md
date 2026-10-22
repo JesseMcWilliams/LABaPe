@@ -2152,3 +2152,10 @@ Asked 2026-10-21; plan in [Planning_Rotation-Hosts-Disks-CA.md](Planning_Rotatio
 ### 65.1 Verified live (2026-10-21, OZ, `tools/helpers/live/certs.py roundtrip`)
 
 Against the real step-ca: a request as `labape-admin` for `zz-cert-test.auth.labape.test` (1 day) came back signed with the chain of two certificates, the private key once, and the root; it was in the register as `request` with its names and expiry; the download held no private key; **revoke** worked. Two first attempts showed how `step ca revoke` behaves and were fixed: the step CLI stops reading flags at the first positional argument (the serial goes last), and `step ca revoke` has no provisioner flags: it takes a token minted with `step ca token --revoke` (now two commands in `ca.revoke`, with a test of the order). The three test certificates were revoked and stay in the register as `revoked`. Not run live: a request by a `ca_requester` who is not a CA administrator (the name and lifetime limits are covered by tests), and the stack's own certificates entering by `labape ca-sign` at their next renewal.
+
+## 66. The 2026-10-22 round (built 2026-10-22)
+
+The user answered questions 184-186 ("agree") and asked for the backlog items to be built batch by batch.
+
+- **Issued column, you-are-here (rows 26, 23).** The Certificates table shows when each certificate was issued (`not_before`). The Dashboard's linked-stacks card for the stack you are connected to is no longer dimmed: it has a highlighted border and a **you are here** chip.
+- **Domain member or standalone (question 184).** `domain_member` (default true) on a host group (`HostGroup` in `api/environments.py`; a domain controller can't be standalone). A standalone group's VMs get the host variable `labape_domain_member: false` (`domain_member.py`, written by the runner with the other host variables), and the two join plays in `site.yml` skip them. The New environment form shows a **Domain** choice (Member / Standalone) on each non-DC group, only when some group is a domain controller.
