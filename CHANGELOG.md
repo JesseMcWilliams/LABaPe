@@ -21,6 +21,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Domain member or standalone** per host group: a **Domain** choice on each non-domain-controller group of the New environment form (shown when the environment has a domain controller). A standalone group's VMs are left out of the domain join.
 - **Save as draft** on the New environment form: the environment is kept (status new) without deploying, using no quota or addresses; **Edit draft** and **Deploy** on its page. **Duplicate** starts a new environment from a copy of any environment's host groups.
 - **Accounts on chosen VMs:** the environment accounts dialog has **Only these VMs** under a local account's roles; blank keeps today's behaviour (every VM of the roles).
+- **Certificate attributes:** a request can ask for code signing, email protection, time stamping, OCSP signing, smart-card logon, client authentication and the key usages Signing and Encryption; the register shows each certificate's **Uses**. Off until a CA administrator ticks **The CA applies extra attributes** after running `container/ca/enable-attributes.sh` once (not yet run against the live CA).
 
 ### Fixed
 - The Secrets page no longer warns about overdue secrets that **Rotate overdue now** would skip (an environment that is not deployed, an elevated account not set yet, a store not ready): the warning and the plan use one rule.

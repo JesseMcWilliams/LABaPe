@@ -28,6 +28,7 @@ class RequestIn(BaseModel):
     days: int | None = Field(default=None, ge=1, le=90)
     csr: str = Field(default="", max_length=20000)          # a CSR of the requester's own; else LABaPe makes the key
     environment_id: int | None = None
+    uses: list[str] = Field(default_factory=list, max_length=20)   # extra attributes (certs.USES); none = the CA's default
 
     @field_validator("dns", "ips", mode="before")
     @classmethod
@@ -63,6 +64,7 @@ class SettingsIn(BaseModel):
     allowed_networks: list[str] = Field(default_factory=list, max_length=50)
     default_days: int = Field(default=30, ge=1, le=90)
     max_days: int = Field(default=90, ge=1, le=90)
+    attributes_enabled: bool = False
 
 
 @router.get("/settings")
@@ -85,7 +87,7 @@ def put_settings(body: SettingsIn, request: Request, db: Session = Depends(get_d
     model = appsettings.CertificateSettings(
         allowed_domains=[d.strip().lower().strip(".") for d in body.allowed_domains if d.strip()],
         allowed_networks=[n.strip() for n in body.allowed_networks if n.strip()],
-        default_days=body.default_days, max_days=body.max_days)
+        default_days=body.default_days, max_days=body.max_days, attributes_enabled=body.attributes_enabled)
     appsettings.put(db, "certificates", model)
     audit(db, p.username, "certificate.settings", detail=model.model_dump(), source_ip=client_ip(request))
     return model.model_dump()
@@ -139,19 +141,25 @@ def request_certificate(body: RequestIn, request: Request, db: Session = Depends
         env = db.get(Environment, body.environment_id)
         if env is None or not can_see_object(db, p, "environment", env.id):
             raise FieldError("environment_id", "No such environment.", status_code=404)
+    try:
+        uses = certs.check_uses(body.uses, cfg.attributes_enabled)
+    except certs.CertError as exc:
+        raise FieldError("uses", str(exc)) from exc
     key_pem = ""
     csr = body.csr
     try:
         if not csr.strip():
-            key_pem, csr = certs.make_request(cn or (dns[0] if dns else ips[0]), [n for n in dns if n], ips)
-        chain = ca.sign(csr, hours=days * 24)
+            key_pem, csr = certs.make_request(cn or (dns[0] if dns else ips[0]), [n for n in dns if n], ips, uses)
+        tpl = certs.sign_vars(uses)
+        chain = ca.sign(csr, hours=days * 24, **({"uses": tpl} if tpl else {}))
+        certs.verify_uses(chain, uses)
         row = certs.record(db, chain, requested_by=p.username, source="request", environment_id=body.environment_id)
     except (ca.CaError, certs.CertError) as exc:
         audit(db, p.username, "certificate.request", outcome="failed", detail={"names": [*dns, *ips], "error": str(exc)[:300]},
               source_ip=client_ip(request))
         raise FieldError("csr", str(exc), status_code=502) from exc
     audit(db, p.username, "certificate.request", object_type="certificate", object_id=row.id,
-          detail={"subject": row.subject, "names": row.sans, "days": days, "own_csr": bool(body.csr.strip())},
+          detail={"subject": row.subject, "names": row.sans, "days": days, "own_csr": bool(body.csr.strip()), "uses": uses},
           source_ip=client_ip(request))
     return {"certificate": certs.out(db, row, with_pem=True), "chain": chain, "key": key_pem, "root": _root()}
 

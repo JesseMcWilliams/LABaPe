@@ -9,6 +9,7 @@ before anything is signed. VMs renew directly against step-ca (mTLS).
 from __future__ import annotations
 
 import ipaddress
+import json
 import ssl
 import subprocess
 import tempfile
@@ -80,17 +81,23 @@ def check_names(csr_pem: str, host: str, allowed_dns: set[str], allowed_ips: set
         ipaddress.ip_address(i)
 
 
-def sign(csr_pem: str, hours: int = LEAF_HOURS) -> str:
-    """Sign a CSR with the JWK provisioner; returns the leaf and intermediate (PEM)."""
+def sign(csr_pem: str, hours: int = LEAF_HOURS, uses: dict | None = None) -> str:
+    """Sign a CSR with the JWK provisioner; returns the leaf and intermediate (PEM). `uses` ({"eku": [...], "ku": [...]})
+    goes to the provisioner's template as token data (container/ca/leaf.tpl); without it step-ca applies its defaults."""
     s = get_settings()
     if not configured():
         raise CaError("the platform CA isn't set up (LABAPE_CA_URL, root or password missing)")
     with tempfile.TemporaryDirectory() as d:
         csr, crt = Path(d) / "req.csr", Path(d) / "host.crt"
         csr.write_text(csr_pem, encoding="ascii")
+        extra: list[str] = []
+        if uses:
+            vars_file = Path(d) / "uses.json"
+            vars_file.write_text(json.dumps(uses), encoding="ascii")
+            extra = ["--set-file", str(vars_file)]
         r = subprocess.run(["step", "ca", "sign", str(csr), str(crt), "--ca-url", s.ca_url, "--root", str(s.ca_root),
                             "--provisioner", PROVISIONER, "--provisioner-password-file", str(s.ca_password_file),
-                            "--not-after", f"{hours}h", "--force"],
+                            "--not-after", f"{hours}h", "--force", *extra],
                            capture_output=True, text=True, timeout=60, check=False,
                            env={"HOME": str(Path(d)), "STEPPATH": str(Path(d) / ".step"), "PATH": "/usr/local/bin:/usr/bin:/bin"})
         if r.returncode != 0:
