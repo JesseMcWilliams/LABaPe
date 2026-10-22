@@ -702,6 +702,6 @@ Run on OZ's step-ca 0.30.2. Found: (1) the flag is `--x509-template`, not `--x50
 
 ## Linked stacks' templates and files: not yet run between two stacks (2026-10-22)
 
-Partly run live 2026-10-22 (OZ and the Director): the peer listing works; a copy of a file or template OZ already has is refused cleanly (file: job fails with "already exists; delete it first"; template: "not copying it"). **Still never run:** a real download (Range, resume) and the deploy-time copy, because OZ already holds everything the Director has; it needs an item only the Director has.
+Partly run live 2026-10-22 (OZ and the Director): the peer listing works; a copy of a file or template OZ already has is refused cleanly (file: job fails with "already exists; delete it first"; template: "not copying it"). A real file copy ran later the same day (`node-v24.22.1-x64.msi`, 32 MB, SHA-256 matched). **Still never run:** a cancelled and resumed copy, a template download, and the deploy-time copy.
 
 Covered by unit tests only (design §66): the peer listing and download with Range, the `linked.copy` job and the deploy-time copy with a fake fetch. To try it for real: with two linked stacks, open Files → Linked stacks on one, **Copy here** an ISO and a template, watch the job log (a resumed copy after cancelling mid-way too), then create an environment whose group picks the other stack's template and check that the deploy log says "template ... comes from the linked stack".
