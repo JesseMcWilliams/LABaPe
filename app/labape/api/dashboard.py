@@ -79,6 +79,7 @@ def _host_out(h: KvmHost, row: HostStats | None, samples) -> dict:
         "memory_total_mb": s.get("memory_total_mb"),
         "memory_used_mb": (s["memory_total_mb"] - s["memory_available_mb"]) if s.get("memory_total_mb") else None,
         "disk_total_gb": vm.get("total_gb"), "disk_free_gb": vm.get("free_gb"),
+        "storage_error": vm.get("error") or ("" if vm.get("total_gb", 1) else "no size reported"), "storage_path": vm.get("path"),
         "disk_read_bps": io.get("read_bps"), "disk_write_bps": io.get("write_bps"),
         "vms_running": s.get("vms_running"), "vms_defined": s.get("vms_defined"),
         "series": _series(samples, ("cpu_pct", "memory_used_pct", "disk_free_gb", "read_bps", "write_bps")),

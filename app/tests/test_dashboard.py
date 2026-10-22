@@ -122,6 +122,16 @@ def test_dashboard_visibility(client):
     assert d["is_admin"] and [h["name"] for h in d["hosts"]] == ["kvm1"]
     h = d["hosts"][0]
     assert h["memory_used_mb"] == 8192 and h["cpu_pct"] == 12.5 and len(h["series"]["t"]) >= 1
+    assert h["storage_error"] == "" and h["storage_path"] is None
+    # A storage path the account can't read says why, instead of an empty bar.
+    with session_factory()() as db:
+        row = db.get(HostStats, 1)
+        row.stats = {**row.stats, "storage": {"vm": {"path": "/data/VMs", "total_gb": 0, "free_gb": 0, "error": "Permission denied"}}}
+        db.commit()
+    h = client.get("/api/dashboard").json()["hosts"][0]
+    assert (h["storage_error"], h["storage_path"]) == ("Permission denied", "/data/VMs")
+    with session_factory()() as db:
+        _stats(db)
     env = d["environments"][0]
     assert env["host_count"] == 2 and env["online"] == 1 and env["not_responding"] == 1
     assert [v["state"] for v in env["vms"]] == ["running", "missing"] and env["series"]["disk_write_bps"]
