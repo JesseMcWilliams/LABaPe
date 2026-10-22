@@ -131,6 +131,10 @@ RUN set -eux; \
 
 COPY --from=web /web/dist /opt/labape/web
 
+# The user guides the Help page serves (backlog row 24); a checkout reads User_Docs/ itself.
+COPY User_Docs/Web-Interface-Guide.md User_Docs/Web-Interface-Admin.md User_Docs/Command-Line.md /opt/labape/help/
+RUN chmod -R a+rX /opt/labape/help
+
 # The release this image was built from (`git describe --tags`), shown on
 # the admin dashboard and compared with the latest GitHub release. Last, so
 # a new version doesn't invalidate the cached layers above.

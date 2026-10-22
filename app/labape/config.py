@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="", description="Signs session cookies and encrypts stored secrets")
     session_hours: int = 12
     web_dir: Path = Path("/opt/labape/web")            # the built single-page app
+    help_dir: Path = Path("/opt/labape/help")          # the user guides the Help page serves (User_Docs/ in a checkout)
 
     # --- OpenID Connect (Authentik by default) ---
     oidc_issuer: str = ""          # e.g. https://authentik.example/application/o/labape/
