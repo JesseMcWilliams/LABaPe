@@ -30,7 +30,7 @@ def fake_ca(monkeypatch):
             .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True).sign(key, hashes.SHA256()))
     calls = {"revoked": []}
 
-    def sign(csr_pem, hours=720):
+    def sign(csr_pem, hours=720, uses=None):
         csr = x509.load_pem_x509_csr(csr_pem.encode())
         b = (x509.CertificateBuilder().subject_name(csr.subject).issuer_name(name).public_key(csr.public_key())
              .serial_number(x509.random_serial_number()).not_valid_before(now)
@@ -210,3 +210,21 @@ def test_revoking_mints_a_token_first_and_puts_the_serial_last(monkeypatch, tmp_
     assert revoke_cmd[revoke_cmd.index("--reason") + 1] == "key leaked"
     with pytest.raises(ca.CaError):
         ca.revoke("12a", "")                                                       # a serial is digits
+
+
+def test_extra_attributes_need_the_switch_and_are_checked_after_signing(client, fake_ca):
+    _config(client)
+    _as(client, "bob", "ca_requester")
+    ask = {"common_name": "app2.jlm.abq", "uses": ["client_auth", "code_signing"]}
+    r = client.post("/api/certificates", json=ask)
+    assert r.status_code == 422 and "turns them on" in r.text                  # the CA is not set up for them yet
+    _as(client, "root", "admin", "ca_admin", uid=1)
+    r = client.put("/api/certificates/settings", json={"allowed_domains": ["jlm.abq"], "allowed_networks": ["172.21.0.0/16"],
+                                                      "default_days": 30, "max_days": 60, "attributes_enabled": True})
+    assert r.status_code == 200 and r.json()["attributes_enabled"] is True
+    _as(client, "bob", "ca_requester")
+    r = client.post("/api/certificates", json=ask)
+    assert r.status_code == 201, r.text
+    assert r.json()["certificate"]["uses"] == ["client_auth", "code_signing"]
+    r = client.post("/api/certificates", json={"common_name": "app3.jlm.abq", "uses": ["nope"]})
+    assert r.status_code == 422

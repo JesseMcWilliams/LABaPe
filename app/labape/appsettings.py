@@ -316,6 +316,9 @@ class CertificateSettings(BaseModel):
     allowed_networks: list[str] = Field(default_factory=lambda: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], max_length=50)
     default_days: int = Field(default=30, ge=1, le=90)
     max_days: int = Field(default=90, ge=1, le=90)                                 # step-ca allows up to 90 days
+    # Extra key usages and extended key usages on a request (row 25). Off until the CA's provisioner carries the
+    # template that applies them (container/ca/enable-attributes.sh); without it step-ca ignores them.
+    attributes_enabled: bool = False
 
 
 SECTIONS: dict[str, type[BaseModel]] = {

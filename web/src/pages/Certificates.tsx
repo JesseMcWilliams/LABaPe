@@ -16,14 +16,23 @@ import { pageOf, Pager, usePageSize } from "../components/Paging";
 interface Cert {
   id: number; serial: string; serial_hex: string; subject: string; sans: string[]; not_before: string; not_after: string; days_left: number;
   state: "active" | "expiring" | "expired" | "revoked"; fingerprint: string; issuer: string; requested_by: string; environment: string; environment_id: number | null;
-  host: string; source: string; note: string; created_at: string; revoked_at: string | null; revoked_by: string; revoke_reason: string; pem?: string;
+  host: string; source: string; note: string; uses?: string[]; created_at: string; revoked_at: string | null; revoked_by: string; revoke_reason: string; pem?: string;
 }
 interface CaInfo {
   configured: boolean; healthy: boolean | null; health: string; url: string; total: number; counts: Record<string, number>;
   root: { subject: string; serial: string; not_before: string; not_after: string; fingerprint: string } | null; provisioners: { type: string; name: string }[];
 }
-interface CertSettings { allowed_domains: string[]; allowed_networks: string[]; default_days: number; max_days: number; always_allowed: string[]; can_edit: boolean }
+interface CertSettings { allowed_domains: string[]; allowed_networks: string[]; default_days: number; max_days: number; attributes_enabled: boolean; always_allowed: string[]; can_edit: boolean }
 interface Issued { certificate: Cert; chain: string; key: string; root: string }
+
+// Extra attributes a request may ask for (certs.USES in the API): extended key usages, then key usages.
+const USES: [string, string][] = [
+  ["server_auth", "Server authentication"], ["client_auth", "Client authentication"], ["code_signing", "Code signing"],
+  ["email_protection", "Email protection (S/MIME)"], ["time_stamping", "Time stamping"], ["ocsp_signing", "OCSP signing"],
+  ["smartcard_logon", "Smart-card logon"], ["signing", "Signing (digital signature, non-repudiation)"],
+  ["encryption", "Encryption (key and data encipherment)"],
+];
+const useLabel = (k: string) => USES.find(([key]) => key === k)?.[1] ?? k;
 
 const STATE_COLOR: Record<string, "success" | "warning" | "error" | "default"> = { active: "success", expiring: "warning", expired: "error", revoked: "default" };
 const lines = (v: string) => v.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
@@ -137,6 +146,7 @@ function CertDialog({ id, canRevoke, canRequest, onClose, onChanged, onRenew }: 
                 ["Names", c.sans.join(", ") || "—"], ["Valid", `${fmtTime(c.not_before)} to ${fmtTime(c.not_after)} (${c.state})`],
                 ["Serial (hex)", c.serial_hex], ["SHA-256 fingerprint", c.fingerprint], ["Issuer", c.issuer],
                 ["Requested by", `${c.requested_by} (${c.source})`], ["For", [c.environment, c.host].filter(Boolean).join(" / ") || "—"],
+                ...(c.uses?.length ? [["Uses", c.uses.map(useLabel).join(", ")] as [string, string]] : []),
                 ...(c.note ? [["Note", c.note] as [string, string]] : []),
               ]} />
               <Typography variant="subtitle2">Certificate and chain (PEM)</Typography>
@@ -181,6 +191,7 @@ function RequestForm({ prefill, onDone }: { prefill: Cert | null; onDone: () => 
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<Issued | null>(null);
+  const [uses, setUses] = useState<string[]>([]);
   useEffect(() => {
     api.get<typeof envs>("/api/environments").then((e) => setEnvs(e.filter((x) => x.status !== "destroyed")), () => setEnvs([]));
     api.get<CertSettings>("/api/certificates/settings").then(setCfg, () => setCfg(null));
@@ -189,7 +200,7 @@ function RequestForm({ prefill, onDone }: { prefill: Cert | null; onDone: () => 
     setBusy(true); setErrs({ summary: "", fields: {} });
     try {
       const body = { common_name: cn, dns: lines(dns), ips: lines(ips), days: days === "" ? undefined : days, environment_id: env === "" ? undefined : env,
-        csr: how === "csr" ? csr : "" };
+        csr: how === "csr" ? csr : "", uses };
       setIssued(await api.post<Issued>("/api/certificates", body));
     } catch (e) { setErrs(fromApiError(e)); } finally { setBusy(false); }
   };
@@ -224,6 +235,22 @@ function RequestForm({ prefill, onDone }: { prefill: Cert | null; onDone: () => 
           {envs.map((e) => <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>)}
         </Field>
       </Stack>
+      <Box>
+        <Typography variant="subtitle2">Attributes</Typography>
+        <Typography variant="caption" color="text.secondary" component="div">
+          {cfg?.attributes_enabled
+            ? "What the certificate may be used for. None chosen: the CA's default (server and client authentication)."
+            : "None chosen: the CA's default (server and client authentication). Others need a CA administrator to turn extra attributes on (The CA tab)."}
+        </Typography>
+        <Stack direction="row" useFlexGap sx={{ flexWrap: "wrap", columnGap: 2 }}>
+          {USES.map(([key, label]) => (
+            <FormControlLabel key={key} label={label} disabled={!cfg?.attributes_enabled && !["server_auth", "client_auth"].includes(key)}
+              control={<Checkbox size="small" checked={uses.includes(key)}
+                onChange={(e) => setUses(e.target.checked ? [...uses, key] : uses.filter((u) => u !== key))} />} />
+          ))}
+        </Stack>
+        {errs.fields.uses && <Typography variant="caption" color="error">{errs.fields.uses.message}</Typography>}
+      </Box>
       <Box><Button variant="contained" disabled={busy || bad} onClick={submit}>Request the certificate</Button></Box>
       {issued && (
         <Dialog open onClose={() => { setIssued(null); onDone(); }} maxWidth="md" fullWidth>
@@ -260,17 +287,17 @@ function PemBox({ title, text, file }: { title: string; text: string; file: stri
 function CaPage({ canEdit }: { canEdit: boolean }) {
   const [info, setInfo] = useState<CaInfo | null>(null);
   const [cfg, setCfg] = useState<CertSettings | null>(null);
-  const [form, setForm] = useState({ domains: "", networks: "", def: 30, max: 90 });
+  const [form, setForm] = useState({ domains: "", networks: "", def: 30, max: 90, attrs: false });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pem, setPem] = useState("");
   const [note, setNote] = useState("");
   const load = () => {
     api.get<CaInfo>("/api/certificates/ca").then(setInfo, (e) => setMsg({ ok: false, text: e.message }));
-    api.get<CertSettings>("/api/certificates/settings").then((c) => { setCfg(c); setForm({ domains: c.allowed_domains.join("\n"), networks: c.allowed_networks.join("\n"), def: c.default_days, max: c.max_days }); }, () => undefined);
+    api.get<CertSettings>("/api/certificates/settings").then((c) => { setCfg(c); setForm({ domains: c.allowed_domains.join("\n"), networks: c.allowed_networks.join("\n"), def: c.default_days, max: c.max_days, attrs: c.attributes_enabled }); }, () => undefined);
   };
   useEffect(load, []);
   const counts = useMemo(() => Object.entries(info?.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(" · "), [info]);
-  const saveCfg = () => api.put("/api/certificates/settings", { allowed_domains: lines(form.domains), allowed_networks: lines(form.networks), default_days: form.def, max_days: form.max })
+  const saveCfg = () => api.put("/api/certificates/settings", { allowed_domains: lines(form.domains), allowed_networks: lines(form.networks), default_days: form.def, max_days: form.max, attributes_enabled: form.attrs })
     .then(() => { setMsg({ ok: true, text: "Saved." }); load(); }, (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
   const doImport = () => api.post("/api/certificates/import", { pem, note }).then(() => { setMsg({ ok: true, text: "Added to the register." }); setPem(""); setNote(""); load(); },
     (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
@@ -301,6 +328,13 @@ function CaPage({ canEdit }: { canEdit: boolean }) {
               <Field label="Default lifetime (days)" type="number" value={form.def} sx={{ width: 190 }} disabled={!canEdit} onChange={(e) => setForm({ ...form, def: Number(e.target.value) })} />
               <Field label="Longest lifetime (days)" type="number" value={form.max} sx={{ width: 190 }} disabled={!canEdit} help="step-ca allows up to 90" onChange={(e) => setForm({ ...form, max: Number(e.target.value) })} />
             </Stack>
+            <FormControlLabel label="The CA applies extra attributes" disabled={!canEdit}
+              control={<Checkbox checked={form.attrs} onChange={(e) => setForm({ ...form, attrs: e.target.checked })} />} />
+            <Typography variant="caption" color="text.secondary" component="div">
+              Lets a request ask for more than server and client authentication (code signing, email protection, signing, encryption and so on).
+              The CA only applies them once its provisioner has the template: run <code>container/ca/enable-attributes.sh</code> in the CA container, once.
+              A certificate that comes back without what was asked for is revoked and refused.
+            </Typography>
             {canEdit && <Box><Button variant="contained" onClick={saveCfg}>Save</Button></Box>}
           </Stack>
         </Paper>
