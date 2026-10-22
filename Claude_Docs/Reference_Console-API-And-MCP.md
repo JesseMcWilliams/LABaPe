@@ -60,7 +60,7 @@ The MCP tools are `list_certificates`, `get_certificate`, `ca_info`, `request_ce
 
 ## The skill
 
-`skills/labape/SKILL.md` is a Claude skill that goes with the MCP server: when to use each tool, the rules (look first, ask before destroying, preview a redeploy, name an account), how a job is followed, and the certificate caveats (the private key is shown once, revocation is passive). The MCP server gives the abilities and enforces the token's roles; the skill is only guidance. Copy the `skills/labape` folder into a Claude skills folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`) to use it.
+`skills/labape/SKILL.md` is a Claude skill that goes with the MCP server: when to use each tool, the rules (look first, ask before destroying, preview a redeploy, name an account), how a job is followed, and the certificate caveats (the private key is shown once, revocation is passive). The MCP server gives the abilities and enforces the token's roles; the skill is only guidance. Each release attaches the built bundle (`labape-mcp-X.Y.Z.mcpb`) and the skill (`labape-skill-X.Y.Z.zip`) to its GitHub release (`release.sh`); a test fails if the skill stops naming a tool or role the MCP server uses. Copy the `skills/labape` folder (or unzip the release's) into a Claude skills folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`) to use it.
 
 ## What is recorded
 

@@ -15,8 +15,10 @@
 #   3. --docx: Published_Docs/<guide>.docx from each User_Docs/*.md (needs pandoc);
 #   4. ship.sh: commit, push, PR, merge;
 #   5. a signed tag vX.Y.Z on the merge (git's signing setup; checked with git tag -v), pushed;
-#   6. gh release create vX.Y.Z with the CHANGELOG section as its notes (--prerelease for -rc.N) and the
-#      CycloneDX file attached as labape-X.Y.Z.cdx.json.
+#   6. gh release create vX.Y.Z with the CHANGELOG section as its notes (--prerelease for -rc.N), the
+#      CycloneDX file attached as labape-X.Y.Z.cdx.json, and the AI files built from the tagged tree: the Claude
+#      Desktop bundle for the MCP server (labape-mcp-X.Y.Z.mcpb, tools/helpers/build_mcpb.py) and the Claude skill
+#      (labape-skill-X.Y.Z.zip, skills/labape/). A dry run builds both too, so a broken bundle stops a release early.
 # --resume: the release PR merged but the run stopped before the tag (a long run can be cut off by a
 # terminal's time limit: start it in the background, e.g. run_in_background): from clean main with the
 # [X.Y.Z] section, make the signed tag and the GitHub release. SUMMARY_FILE is still required but unused.
@@ -49,6 +51,22 @@ cd "$REPO"
 [ -f "$SUMMARY" ] || { echo "release: no summary file $SUMMARY" >&2; exit 2; }
 SUMMARY="$(cd "$(dirname "$SUMMARY")" && pwd)/$(basename "$SUMMARY")"
 
+# The AI files for a release: the MCP bundle (its manifest lists the tools in app/labape/mcp.py and takes the version
+# from app/pyproject.toml) and the skill folder as a zip with `labape/SKILL.md` at its top. Into $1.
+build_ai_files() {
+  "$PY" "$HERE/build_mcpb.py" "$1/labape-mcp-$VERSION.mcpb" >/dev/null
+  "$PY" - "$REPO/skills/labape" "$1/labape-skill-$VERSION.zip" <<'PYZIP'
+import sys, zipfile
+from pathlib import Path
+src, out = Path(sys.argv[1]), sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for f in sorted(src.rglob("*")):
+        if f.is_file():
+            z.write(f, f"labape/{f.relative_to(src).as_posix()}")
+PYZIP
+  [ -s "$1/labape-mcp-$VERSION.mcpb" ] && [ -s "$1/labape-skill-$VERSION.zip" ] || { echo "release: the MCP bundle or the skill zip is empty" >&2; return 1; }
+}
+
 # Steps 5 and 6, also what --resume runs: the signed tag, then the GitHub release.
 publish() {
   TMP="${TMP:-$(mktemp -d)}"
@@ -64,7 +82,11 @@ publish() {
     echo
     echo "The software bill of materials is attached (\`labape-$VERSION.cdx.json\`, CycloneDX 1.5) and in the repository (\`Claude_Docs/Reference_SBOM.md\`)."
   } >> "$TMP/notes"
-  gh release create "$TAG" --title "$TAG" --notes-file "$TMP/notes" "$TMP/labape-$VERSION.cdx.json" $($PRE && echo --prerelease)
+  build_ai_files "$TMP"
+  {
+    echo "For AI agents: \`labape-mcp-$VERSION.mcpb\` is the Claude Desktop bundle for LABaPe's MCP server and \`labape-skill-$VERSION.zip\` the Claude skill that goes with it (unzip \`labape/\` into a skills folder). See \`Claude_Docs/Reference_Console-API-And-MCP.md\`."
+  } >> "$TMP/notes"
+  gh release create "$TAG" --title "$TAG" --notes-file "$TMP/notes" "$TMP/labape-$VERSION.cdx.json"     "$TMP/labape-mcp-$VERSION.mcpb" "$TMP/labape-skill-$VERSION.zip" $($PRE && echo --prerelease)
   echo "release: $TAG tagged (signed), pushed and published"
 }
 
@@ -100,6 +122,9 @@ if ! $SKIP_SBOM; then
 else
   echo "release: --skip-sbom: Python packages, tools and image digests in the SBOM stay as in sbom/image-snapshot.json" >&2
 fi
+AI_CHECK="$(mktemp -d)"
+build_ai_files "$AI_CHECK" || { rm -rf "$AI_CHECK"; exit 1; }
+rm -rf "$AI_CHECK"
 if $DRY; then
   echo "release: dry run: checks passed; would release $TAG$($PRE && echo ' (pre-release)')"
   exit 0

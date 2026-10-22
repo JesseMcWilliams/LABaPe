@@ -123,3 +123,16 @@ def test_the_bootstrap_finds_the_extension_where_the_store_version_put_it(tmp_pa
     assert r.returncode == 0 and json.loads(r.stdout.splitlines()[0])["id"] == 1
     r = _session([sys.executable, "-I", "-c", boot, str(wrong)], server, tmp_path, {"LOCALAPPDATA": str(tmp_path / "nowhere")})
     assert r.returncode != 0 and "cannot find the extension files" in r.stderr
+
+
+def test_the_skill_names_every_mcp_tool_and_role():
+    """skills/labape/SKILL.md must stay in step with the MCP server: every tool, and every role a tool needs."""
+    from pathlib import Path
+
+    from labape import mcp
+    text = (Path(__file__).resolve().parents[2] / "skills" / "labape" / "SKILL.md").read_text(encoding="utf-8")
+    assert text.startswith("---\nname: labape\n") or text.startswith("---\r\nname: labape")
+    missing = [t.name for t in mcp.TOOLS if f"`{t.name}`" not in text]
+    assert not missing, f"SKILL.md doesn't mention {missing}"
+    roles = {r for t in mcp.TOOLS for r in t.roles}
+    assert not [r for r in roles if f"`{r}`" not in text], "SKILL.md doesn't name every role the tools use"
