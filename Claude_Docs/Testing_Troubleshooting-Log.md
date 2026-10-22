@@ -703,3 +703,7 @@ The attribute support (design §66) is covered by unit tests with a fake CA, but
 ## Linked stacks' templates and files: not yet run between two stacks (2026-10-22)
 
 Covered by unit tests only (design §66): the peer listing and download with Range, the `linked.copy` job and the deploy-time copy with a fake fetch. To try it for real: with two linked stacks, open Files → Linked stacks on one, **Copy here** an ISO and a template, watch the job log (a resumed copy after cancelling mid-way too), then create an environment whose group picks the other stack's template and check that the deploy log says "template ... comes from the linked stack".
+
+## Session recordings did not play (2026-10-22)
+
+Session 143 (RDP) downloaded but Play showed an empty player ("Cannot read properties of undefined (reading 'size')"). Two causes: guacamole-common-js 1.5.0 never stores a Blob given to `SessionRecording` (`parseBlob` reads an unset `recordingBlob`), so the player now streams the recording through a `StaticHTTPTunnel`; and the dialog's content mounts after the effect runs, so the display element is attached from a callback ref. Checked in headless Chromium against OZ: the desktop, PowerShell and Notepad of session 143 draw and seek. Playing a recording is still one audited GET.
