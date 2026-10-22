@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-10-22
+
+v0.5.7 fixes the update dialog and banner (the dialog no longer shows the last run's status after Continue, and the Dashboard banner says an update is running), adds the read-only CA auditor role and puts the CA roles on API tokens, adds certificate tools to the MCP server, ships a Claude skill for LABaPe, and makes each release attach the Claude Desktop bundle and the skill. Certificate attributes and linked-stack copies from v0.5.6 are still unit-tested only.
+
 ### Added
 
 - **CA roles for API tokens:** `ca_requester`, `ca_admin` and the new read-only **`ca_auditor`** (Authentik group `labape-ca-auditors`) can be put on a token (an admin's token may carry all three), and the MCP server has certificate tools (`list_certificates`, `get_certificate`, `ca_info`, `request_certificate`, `revoke_certificate`) offered by those roles. The CA auditor sees every certificate and the CA tab and changes nothing.
