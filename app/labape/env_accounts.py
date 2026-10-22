@@ -46,6 +46,19 @@ def env_roles(env: Environment) -> set[str]:
     return {r for g in (env.spec or {}).get("host_groups", []) for r in (g.get("roles") or [])}
 
 
+def role_vms(env: Environment, roles) -> list[str]:
+    """The VM names of the host groups whose role is in `roles` (domain controllers excluded)."""
+    roles = set(roles)
+    return [n for g in (env.spec or {}).get("host_groups", []) if roles & set(g.get("roles") or [])
+            and "domain_controller" not in (g.get("roles") or []) for n in instance_names(g)]
+
+
+def account_vms(env: Environment, a: dict) -> list[str]:
+    """The VMs a local account is on: those of its roles, narrowed to its `vms` list when it has one (D186)."""
+    vms = role_vms(env, a.get("hosts") or [])
+    return [v for v in vms if v in a["vms"]] if a.get("vms") else vms
+
+
 def accounts(env: Environment) -> list[dict]:
     return list((env.spec or {}).get("accounts") or [])
 
@@ -76,6 +89,15 @@ def validate(env: Environment, items: list[dict]) -> list[dict]:
                 raise AccountError(f"{where}: choose the roles whose hosts get it, from this environment's: "
                                    f"{', '.join(sorted(local_roles)) or 'none (only domain controllers)'}")
             entry = {"name": name, "kind": "local", "hosts": hosts, "groups": groups}
+            # D186: optionally only these VMs of the roles (the default, none, is every VM of the roles).
+            vms = [str(v).strip() for v in (a.get("vms") or []) if str(v).strip()]
+            if vms:
+                have = set(role_vms(env, hosts))
+                bad_vms = [v for v in vms if v not in have]
+                if bad_vms:
+                    raise AccountError(f"{where}: {', '.join(bad_vms)} isn't a VM of the chosen roles "
+                                       f"({', '.join(sorted(have)) or 'none'})")
+                entry["vms"] = [v for v in sorted(have) if v in vms]
             if a.get("sudo_nopasswd"):
                 # Passwordless sudo (2026-10-20 round): Linux hosts only; Windows has no equivalent.
                 if not set(hosts) & LINUX_ROLES:
@@ -120,6 +142,8 @@ def merge_manifest(path, env: Environment, domain_name: str) -> int:
             data.setdefault("domain_users", []).append(u)
         else:
             u = {"name": a["name"], "hosts": a["hosts"], "password_vault_key": vault_key(a["name"])}
+            if a.get("vms"):
+                u["vms"] = a["vms"]
             if a.get("groups"):
                 u["groups"] = a["groups"]
             if a.get("sudo_nopasswd"):
@@ -173,7 +197,8 @@ def hosts_for(env: Environment, inv: dict, a: dict) -> list[str]:
     from .engine.vmaccess import _group
     if a["kind"] == "domain":
         return sorted(_group(inv, "domain_controller"))[:1]
-    return sorted({h for r in a["hosts"] for h in _group(inv, r)})
+    hosts = sorted({h for r in a["hosts"] for h in _group(inv, r)})
+    return [h for h in hosts if h in a["vms"]] if a.get("vms") else hosts
 
 
 def rotate(db: Session, env: Environment, name: str, log) -> str:

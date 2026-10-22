@@ -296,7 +296,7 @@
          or (lookup('vars', item.password_vault_key) if item.password_vault_key is defined else default_user_password) }}
     groups: "{{ item.groups | default(omit) }}"
     state: present
-  loop: "{{ (directory_manifest.local_users | default([])) | for_host_group(group_names) }}"
+  loop: "{{ (directory_manifest.local_users | default([])) | for_host_group(group_names, inventory_hostname) }}"
   loop_control:
     label: "{{ item.name }}"
   no_log: true

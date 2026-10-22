@@ -902,6 +902,7 @@ class AccountIn(BaseModel):
     display_name: str = Field(default="", max_length=64)
     ou: str = Field(default="", max_length=255)
     sudo_nopasswd: bool = False            # local accounts on Linux hosts (2026-10-20 round)
+    vms: list[str] = Field(default_factory=list, max_length=100)   # D186: only these VMs of the roles; none = all of them
 
 
 class AccountsIn(BaseModel):

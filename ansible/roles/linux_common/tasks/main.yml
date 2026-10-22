@@ -258,7 +258,7 @@
     groups: "{{ item.groups | default([]) }}"
     append: true
     state: present
-  loop: "{{ (directory_manifest.local_users | default([])) | for_host_group(group_names) }}"
+  loop: "{{ (directory_manifest.local_users | default([])) | for_host_group(group_names, inventory_hostname) }}"
   loop_control:
     label: "{{ item.name }}"
   no_log: true
@@ -269,7 +269,7 @@
 - name: Passwordless sudo for local users that have it
   vars:
     labape_nopasswd: >-
-      {{ (directory_manifest.local_users | default([])) | for_host_group(group_names)
+      {{ (directory_manifest.local_users | default([])) | for_host_group(group_names, inventory_hostname)
          | selectattr('sudo_nopasswd', 'defined') | selectattr('sudo_nopasswd') | map(attribute='name') | list }}
   block:
     - name: Write the sudoers drop-in
