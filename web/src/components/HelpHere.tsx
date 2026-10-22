@@ -39,7 +39,7 @@ export default function HelpHere() {
   const t = helpTarget(pathname);
   if (!t) return null;
   return (
-    <Box sx={{ display: "flex", justifyContent: "flex-end", mb: -2 }}>
+    <Box sx={{ position: "absolute", top: 4, right: 24, zIndex: 1 }}>
       <Link component={RouterLink} to={`/help?doc=${t.doc}${t.find ? `&find=${encodeURIComponent(t.find)}` : ""}`} variant="body2" underline="hover"
         title="Open the Help section for this page" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
         <HelpOutlineIcon sx={{ fontSize: 16 }} /> Help for this page
