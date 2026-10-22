@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Alert, Autocomplete, Box, Button, Checkbox, Chip, FormControlLabel, ListItemText, MenuItem, Paper, Stack, TextField, Tooltip, Typography,
 } from "@mui/material";
 import type { CatalogItem } from "./Catalog";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { api, FieldProblem, HostGroup, HostResources, KvmHost, Network, Template } from "../api";
+import { api, Environment, FieldProblem, HostGroup, HostResources, KvmHost, Network, Template } from "../api";
 import HostLoad from "../components/HostLoad";
 import { ActionButton, ActionIconButton, useConfirm } from "../components/Confirm";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
@@ -32,6 +32,10 @@ const generated = (g: HostGroup, k: number) => `${g.name || "group"}${k + 1}`;
 
 export default function EnvironmentNew() {
   const navigate = useNavigate();
+  // D185: ?draft=<id> edits a saved draft; ?from=<id> starts from a copy of another environment.
+  const [params] = useSearchParams();
+  const draftId = Number(params.get("draft")) || null;
+  const fromId = Number(params.get("from")) || null;
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [name, setName] = useState("");
   const [hostId, setHostId] = useState<number | "">("");
@@ -68,6 +72,19 @@ export default function EnvironmentNew() {
     };
   };
   const [groups, setGroups] = useState<HostGroup[]>([blankGroup()]);
+  useEffect(() => {
+    const id = draftId ?? fromId;
+    if (!id) return;
+    api.get<Environment>(`/api/environments/${id}`).then((src) => {
+      const copy = draftId === null;
+      setName(copy ? `${src.name}-copy`.slice(0, 40) : src.name);
+      const tz = (src.spec as { timezone?: string }).timezone;
+      if (tz) setTimezone(tz);
+      setGroups(src.spec.host_groups.map((g) => ({ ...blankGroup(), ...g, names: copy ? [] : g.names ?? [] })));   // a copy gets its own VM names
+      const h = hosts.find((x) => x.name === src.kvm_host);
+      if (h) setHostId(h.id);
+    }, (e) => setSummary((e as Error).message));
+  }, [draftId, fromId, hosts]);
   const [summary, setSummary] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   // Fields the user has edited since the last Create: they show the live check, not an older answer from the server.
@@ -181,7 +198,7 @@ export default function EnvironmentNew() {
   };
 
   const confirm = useConfirm();
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent, asDraft = false) => {
     e.preventDefault();
     setSummary("");
     setTouched(new Set());
@@ -192,7 +209,7 @@ export default function EnvironmentNew() {
       return;
     }
     const vms = groups.reduce((n, g) => n + (g.count ?? 1), 0);
-    if (!(await confirm({
+    if (!asDraft && !(await confirm({
       title: `Create and deploy ${name}?`, confirmLabel: "Create and deploy",
       body: `The environment is saved and a deploy job starts at once on ${hostName}: ${vms} VM(s) in ${groups.length} host group(s), using ${groups.reduce((n, g) => n + (g.count ?? 1) * g.memory_mb, 0) / 1024} GB of RAM. You can follow it live, and cancel it from the job's page.`,
     }))) return;
@@ -209,9 +226,14 @@ export default function EnvironmentNew() {
         names: (g.names ?? []).slice(0, g.count),
         kvm_host_id: g.kvm_host_id && g.kvm_host_id !== hostId ? g.kvm_host_id : undefined,
       }));
-      const r = await api.post<{ environment: { id: number } }>("/api/environments", {
-        name, kvm_host_id: hostId, timezone, host_groups,
-      });
+      const body = { name, kvm_host_id: hostId, timezone, host_groups };
+      if (draftId) {                                    // an edited draft: save it, then deploy unless it stays a draft
+        await api.put(`/api/environments/${draftId}/draft`, body);
+        if (!asDraft) await api.post(`/api/environments/${draftId}/deploy`, {});
+        navigate(`/environments/${draftId}`);
+        return;
+      }
+      const r = await api.post<{ environment: { id: number } }>("/api/environments", { ...body, draft: asDraft });
       navigate(`/environments/${r.environment.id}`);
     } catch (err) {
       const { summary: s, fields } = fromApiError(err);
@@ -429,6 +451,10 @@ export default function EnvironmentNew() {
         <ActionButton type="submit" variant="contained" disabled={busy || !hostId || networks.length === 0 || blocked}
           tip="Save the environment and start deploying it (asks to confirm)">
           Create and deploy
+        </ActionButton>
+        <ActionButton variant="outlined" disabled={busy || !hostId || !name} onClick={() => submit({ preventDefault() { /* not a form event */ } } as FormEvent, true)}
+          tip="Keep what is typed without deploying: no quota or addresses are used until you deploy it; only you and admins see it">
+          Save as draft
         </ActionButton>
       </Stack>
     </Stack>

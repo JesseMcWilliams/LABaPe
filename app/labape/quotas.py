@@ -51,7 +51,7 @@ def limits_for(db: Session, p: Principal) -> dict | None:
 
 def usage(db: Session, username: str, exclude_env: int | None = None) -> dict:
     envs = [e for e in db.scalars(select(Environment).where(Environment.created_by == username,
-                                                            Environment.status != "destroyed"))
+                                                            Environment.status.notin_(("destroyed", "new"))))      # a draft takes no quota until deployed (D185)
             if e.id != exclude_env]
     groups = [g for e in envs for g in (e.spec or {}).get("host_groups", [])]
     return {**demand_of(groups), "environments": len(envs)}

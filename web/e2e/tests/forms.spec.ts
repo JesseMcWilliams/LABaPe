@@ -42,6 +42,12 @@ test.describe("New environment form", () => {
     await expect(page.getByText(/Also used by host group 1/)).toHaveCount(0);
   });
 
+  test("Save as draft is offered, and needs a name", async ({ page }) => {
+    const draft = page.getByRole("button", { name: "Save as draft" });
+    await expect(draft).toBeVisible();
+    await expect(draft).toBeDisabled();                                // never pressed: it would create a record
+  });
+
   test("Role follows the OS", async ({ page }) => {
     const os = page.getByRole("combobox").nth(2);   // OS: the first group's second field
     const role = page.getByRole("combobox").nth(3);   // Role

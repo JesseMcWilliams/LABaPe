@@ -145,6 +145,14 @@ export default function EnvironmentDetail() {
             }}>
             {env.status === "destroyed" || env.status === "new" ? "Deploy" : "Redeploy"}
           </ActionButton>
+          {env.status === "new" && (
+            <ActionButton variant="outlined" onClick={() => navigate(`/environments/new?draft=${env.id}`)}
+              tip="Change this draft in the New environment form">Edit draft</ActionButton>
+          )}
+          <ActionButton variant="outlined" onClick={() => navigate(`/environments/new?from=${env.id}`)}
+            tip="Start a new environment from a copy of this one's host groups (new name; no VM names, accounts or passwords are copied)">
+            Duplicate
+          </ActionButton>
           {(env.status === "deployed" || env.status === "failed") && (
             <AddHosts env={env} disabled={busy} onStarted={(jobId) => navigate(`/jobs/${jobId}`)} />
           )}

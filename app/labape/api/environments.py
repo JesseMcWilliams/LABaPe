@@ -102,6 +102,8 @@ class EnvironmentIn(BaseModel):
     # An IANA zone as the browser reports it (design §52); None: UTC.
     timezone: str | None = None
     host_groups: list[HostGroup] = Field(min_length=1, max_length=20)
+    # D185: keep it as a draft (status "new") instead of deploying: no quota, no addresses, no job.
+    draft: bool = False
 
     @field_validator("timezone")
     @classmethod
@@ -149,7 +151,7 @@ def _check_names(db: Session, kvm_host_id: int, groups: list[dict], env_id: int 
     """VM names are host-wide (libvirt): refuse any name another environment
     on this KVM host already uses, or that repeats inside this one."""
     taken: dict[tuple[int, str], str] = {}       # (KVM host, VM name) -> environment (design §45)
-    for other in db.scalars(select(Environment).where(Environment.status != "destroyed")):
+    for other in db.scalars(select(Environment).where(Environment.status.notin_(("destroyed", "new")))):
         if other.id == env_id:
             continue
         for n, hid in spread.vm_host_ids(other).items():
@@ -364,9 +366,11 @@ def list_envs(db: Session = Depends(get_db), p: Principal = Depends(current_prin
     return [_out(db, e, is_owner(db, p, "environment", e.id)) for e in db.scalars(q)]
 
 
-@router.post("", status_code=201)
-def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_db),
-               p: Principal = Depends(require_roles("deployer", "template_editor"))):
+def _prepare(db: Session, p: Principal, body: EnvironmentIn, env_id: int | None = None) -> tuple[KvmHost, list[dict]]:
+    """Check a new (or edited draft's) environment and return its KVM host and groups. A draft gets the checks
+    that need no capacity: its name, groups, catalog and networks; the rest waits for the deploy."""
+    if body.kvm_host_id is None and body.draft:
+        body.kvm_host_id = db.scalar(select(KvmHost.id).where(KvmHost.enabled.is_(True)).order_by(KvmHost.id))
     if body.kvm_host_id is None:                 # best fit (design §43)
         ranked = rank_hosts(db, p, [g.model_dump(exclude_none=True) for g in body.host_groups])
         best = next((h for h in ranked if h["ok"]), None)
@@ -377,7 +381,7 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
     host = db.get(KvmHost, body.kvm_host_id)
     if host is None or not host.enabled:
         raise FieldError("kvm_host_id", "Choose an enabled KVM host.")
-    if db.scalar(select(Environment).where(Environment.name == body.name)):
+    if db.scalar(select(Environment).where(Environment.name == body.name, Environment.id != (env_id or 0))):
         raise FieldError("name", f"An environment named {body.name} already exists. Choose another name.",
                          status_code=409)
     seen: dict[str, int] = {}
@@ -392,17 +396,29 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
         if len(g.names) > g.count:
             raise FieldError(f"host_groups.{i}.names", f"{len(g.names)} names were given for {g.count} hosts.")
     raw = [g.model_dump(exclude_none=True) for g in body.host_groups]
-    parts = _group_hosts(db, host.id, raw)
+    if not body.draft:
+        _deploy_checks(db, p, host.id, raw)
+    _check_catalog(db, raw)
+    return host, _check_networks(db, p, host.id, raw)
+
+
+def _deploy_checks(db: Session, p: Principal, host_id: int, raw: list[dict], exclude_env: int | None = None) -> None:
+    """What a deploy needs and a draft can leave for later: quota, capacity, VM names, templates."""
+    parts = _group_hosts(db, host_id, raw)
     try:
-        quotas.check(db, p, raw)                     # design §41
+        quotas.check(db, p, raw, exclude_env=exclude_env)                     # design §41
     except quotas.QuotaError as exc:
         raise FieldError("host_groups", str(exc), status_code=403) from exc
     for hid, gs in parts.items():
         _check_capacity(db, hid, gs)
-    _check_names(db, host.id, raw)
-    _check_templates(db, host.id, raw)
-    _check_catalog(db, raw)
-    groups = _check_networks(db, p, host.id, raw)
+    _check_names(db, host_id, raw, exclude_env)
+    _check_templates(db, host_id, raw)
+
+
+@router.post("", status_code=201)
+def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_db),
+               p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    host, groups = _prepare(db, p, body)
     # The Linux admin account comes from Settings > VM accounts, fixed per environment.
     spec = {"host_groups": groups, "linux_admin_user": appsettings.get(db, "vm_accounts").linux_admin_user,
             "timezone": body.timezone or timezones.DEFAULT}
@@ -411,6 +427,10 @@ def create_env(body: EnvironmentIn, request: Request, db: Session = Depends(get_
     db.add(e)
     db.commit()
     add_owner(db, "environment", e.id, p.username)
+    if body.draft:                               # D185: kept, not deployed (status "new")
+        audit(db, p.username, "environment.draft", object_type="environment", object_id=e.id,
+              detail={"spec": e.spec}, source_ip=client_ip(request))
+        return {"environment": _out(db, e, True), "job_id": None}
     try:
         job = _queue(db, e, "environment.deploy", p)
     except HTTPException:
@@ -444,6 +464,25 @@ def get_env(env_id: int, db: Session = Depends(get_db), p: Principal = Depends(c
     return _out(db, e, is_owner(db, p, "environment", e.id))
 
 
+@router.put("/{env_id}/draft")
+def save_draft(env_id: int, body: EnvironmentIn, request: Request, db: Session = Depends(get_db),
+               p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Replace a draft's name, host and groups (D185). Only an owner, and only while it has never been deployed."""
+    e = _get(db, env_id, p)
+    if not is_owner(db, p, "environment", e.id):
+        raise HTTPException(status_code=403, detail="Only the environment's owners can change it")
+    if e.status != "new":
+        raise HTTPException(status_code=409, detail="Only a draft (never deployed) can be edited here")
+    body.draft = True
+    host, groups = _prepare(db, p, body, env_id=e.id)
+    e.name, e.kvm_host_id = body.name, host.id
+    e.spec = {**(e.spec or {}), "host_groups": groups, "timezone": body.timezone or timezones.DEFAULT}
+    db.commit()
+    audit(db, p.username, "environment.draft", object_type="environment", object_id=e.id,
+          detail={"spec": e.spec}, source_ip=client_ip(request))
+    return _out(db, e, True)
+
+
 @router.post("/{env_id}/deploy")
 def redeploy(env_id: int, request: Request, db: Session = Depends(get_db),
              p: Principal = Depends(require_roles("deployer", "template_editor"))):
@@ -456,6 +495,8 @@ def redeploy(env_id: int, request: Request, db: Session = Depends(get_db),
             quotas.check(db, p, (e.spec or {}).get("host_groups", []), exclude_env=e.id)
         except quotas.QuotaError as exc:
             raise FieldError("host_groups", str(exc), status_code=403) from exc
+    if e.status == "new":                        # a draft meets the checks a new environment would
+        _deploy_checks(db, p, e.kvm_host_id, (e.spec or {}).get("host_groups", []), exclude_env=e.id)
     if e.status in ("destroyed", "new"):
         # A fresh deploy starts a fresh lease (design §40): an old, ended one would shut it down at once.
         e.expires_at, e.lease_state = leases.default_expiry(db), {}
