@@ -166,7 +166,7 @@ export default function App() {
             : "Authentik needs you to sign in again before your rights can be reloaded. Sign out and sign back in."}
         </Alert>
       )}
-      <Container maxWidth={false} sx={{ py: 3 }}>
+      <Container maxWidth={false} sx={{ py: 3, position: "relative" }}>
         {me && <HelpHere />}
         <Routes>
           <Route path="/help" element={<Help />} />
