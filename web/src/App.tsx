@@ -36,6 +36,8 @@ import Links from "./pages/Links";
 import Tokens from "./pages/Tokens";
 import Quotas from "./pages/Quotas";
 import UserMenu from "./components/UserMenu";
+import HelpHere from "./components/HelpHere";
+import Help from "./pages/Help";
 import { MaintenanceBanner, MaintenanceProvider } from "./components/Maintenance";
 
 interface AuthState {
@@ -143,6 +145,9 @@ export default function App() {
               </Button>
             )}
             <Box sx={{ flexGrow: 1 }} />
+            <Button color="inherit" component={RouterLink} to="/help" title="The user guides: how to use each page">
+              Help
+            </Button>
             <UserMenu me={me} onLogout={logout} />
           </Toolbar>
         </AppBar>
@@ -162,7 +167,9 @@ export default function App() {
         </Alert>
       )}
       <Container maxWidth={false} sx={{ py: 3 }}>
+        {me && <HelpHere />}
         <Routes>
+          <Route path="/help" element={<Help />} />
           <Route path="/login" element={me ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/breakglass" element={<Breakglass />} />
           <Route path="/" element={<Dashboard />} />
