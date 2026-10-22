@@ -46,8 +46,9 @@ def member_vms(env: Environment) -> list[str]:
 
 def local_account_vms(env: Environment, account: dict) -> list[str]:
     roles = set(account.get("hosts") or [])
-    return [n for g in _groups(env) if roles & set(g.get("roles") or [])
-            and "domain_controller" not in (g.get("roles") or []) for n in instance_names(g)]
+    vms = [n for g in _groups(env) if roles & set(g.get("roles") or [])
+           and "domain_controller" not in (g.get("roles") or []) for n in instance_names(g)]
+    return [n for n in vms if n in account["vms"]] if account.get("vms") else vms          # D186
 
 
 def admin_password(db: Session, env: Environment, vm: str) -> str:

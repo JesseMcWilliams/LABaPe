@@ -9,7 +9,7 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete";
 import { api } from "../api";
 
-interface Account { name: string; kind: "domain" | "local"; hosts: string[]; groups: string[]; display_name?: string; ou?: string; sudo_nopasswd?: boolean }
+interface Account { name: string; kind: "domain" | "local"; hosts: string[]; groups: string[]; display_name?: string; ou?: string; sudo_nopasswd?: boolean; vms?: string[] }
 interface AccountList { accounts: Account[]; roles: string[]; role_vms?: Record<string, string[]>; can_edit: boolean }
 
 export default function EnvAccounts({ envId }: { envId: string }) {
@@ -49,7 +49,7 @@ export default function EnvAccounts({ envId }: { envId: string }) {
         {error && !draft && <Alert severity="error">{error}</Alert>}
         <Box>
           {data.accounts.map((a) => (
-            <Chip key={a.name} sx={{ mr: 1, mb: 1 }} label={a.kind === "domain" ? `${a.name} (domain)` : `${a.name} (local on ${a.hosts.map(roleLabel).join(", ")}${a.sudo_nopasswd ? "; sudo without password" : ""})`}
+            <Chip key={a.name} sx={{ mr: 1, mb: 1 }} label={a.kind === "domain" ? `${a.name} (domain)` : `${a.name} (local on ${a.vms?.length ? a.vms.join(", ") : a.hosts.map(roleLabel).join(", ")}${a.sudo_nopasswd ? "; sudo without password" : ""})`}
               title={a.groups.length ? `Groups: ${a.groups.join(", ")}` : undefined} />
           ))}
           {data.accounts.length === 0 && <Typography variant="body2">None.</Typography>}
@@ -77,9 +77,19 @@ export default function EnvAccounts({ envId }: { envId: string }) {
                         onChange={(e) => {
                           const hosts = e.target.checked ? [...a.hosts, r] : a.hosts.filter((x) => x !== r);
                           // Passwordless sudo is for Linux hosts: without one the flag (and its checkbox) goes.
-                          set(i, { hosts, ...(hosts.some((h) => h.startsWith("linux_")) ? {} : { sudo_nopasswd: false }) });
+                          const roleVms = hosts.flatMap((h) => data.role_vms?.[h] ?? []);
+                          set(i, { hosts, vms: (a.vms ?? []).filter((v) => roleVms.includes(v)),
+                            ...(hosts.some((h) => h.startsWith("linux_")) ? {} : { sudo_nopasswd: false }) });
                         }} />} />
                     )) : "—"}
+                    {a.kind === "local" && a.hosts.length > 0 && (
+                      <TextField select size="small" label="Only these VMs" fullWidth sx={{ mt: 1, minWidth: 180 }}
+                        helperText={(a.vms ?? []).length ? "Just these machines" : "Blank: every VM of the roles"}
+                        value={a.vms ?? []} slotProps={{ select: { multiple: true } }}
+                        onChange={(e) => set(i, { vms: e.target.value as unknown as string[] })}>
+                        {a.hosts.flatMap((h) => data.role_vms?.[h] ?? []).map((v) => <MenuItem key={v} value={v}>{v}</MenuItem>)}
+                      </TextField>
+                    )}
                   </TableCell>
                   <TableCell><TextField size="small" value={a.groups.join(", ")} placeholder={a.kind === "domain" ? "Domain Admins" : "wheel"}
                     onChange={(e) => set(i, { groups: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} /></TableCell>

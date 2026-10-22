@@ -40,15 +40,20 @@ def ou_dns(organizational_units, ou_refs):
     return sorted(dns, key=lambda dn: len(dn.split(",")))
 
 
-def for_host_group(items, group_names):
+def for_host_group(items, group_names, host=None):
     """Filter a list of directory-manifest entries (each with a `hosts:`
     list of role names, Claude_Docs/Design_Directory-Objects.md §4/§5/§7) down to the
     ones that apply to this host — i.e. its `hosts:` list intersects the
     current host's group_names. No built-in Jinja2 test does a plain list
     intersection, hence a filter rather than `selectattr`.
+
+    An entry may also carry `vms:` (D186, question 186): VM names that narrow
+    the roles down. Given `host` (the inventory hostname), such an entry applies
+    only to the VMs it names.
     """
     names = set(group_names or [])
-    return [i for i in (items or []) if names & set(i.get("hosts", []))]
+    return [i for i in (items or []) if names & set(i.get("hosts", []))
+            and not (host is not None and i.get("vms") and host not in i["vms"])]
 
 
 class FilterModule:

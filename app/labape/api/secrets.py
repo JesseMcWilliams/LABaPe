@@ -253,7 +253,8 @@ def _vms_of(env: Environment, what: str) -> list[str]:
         a = next((x for x in env_accounts.accounts(env) if x["name"] == name), None)
         if a is None:
             return []
-        return dcs if a["kind"] == "domain" else [n for n, r, _ in vms if r & set(a.get("hosts") or [])]
+        return dcs if a["kind"] == "domain" else [n for n, r, _ in vms if r & set(a.get("hosts") or [])
+                                                  and (not a.get("vms") or n in a["vms"])]
     return [n for n, _, _ in vms]
 
 

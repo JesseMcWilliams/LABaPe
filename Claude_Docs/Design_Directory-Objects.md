@@ -78,6 +78,7 @@ local_users:
     hosts: [windows_workstation]          # a role name — see below
     password_vault_key: local_tester_password
     groups: ["Remote Desktop Users"]      # local group, same host
+    vms: [winws1]                         # optional (D186): only these VMs of the roles; absent = all of them
 ```
 
 `hosts:` on a local object is a **role name** — one of
