@@ -571,6 +571,22 @@ def _aware(t: dt.datetime | None) -> dt.datetime | None:
     return t if t is None or t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
+def rotatable(db: Session, p: SecretPolicy) -> bool:
+    """Whether LABaPe could rotate this policy at all, whatever its date: the rotator is automatic, the secret is
+    not managed by its store, its environment is deployed, it has the elevated account it needs, and its store is
+    ready. `due()` and the Secrets page's overdue warning both use it, so they list the same secrets."""
+    r = REGISTRY.get(p.kind)
+    if r is None or not r.automatic or p.managed_externally or not p.enabled:
+        return False
+    if p.kind in ENV_KINDS and not _env_deployed(db, p):
+        return False
+    if r.needs_elevated and not p.elevated_ref:      # a reminder until it has an elevated account
+        return False
+    if p.kind in STORE_ROTATORS and not store_ready(db, p.kind):
+        return False
+    return True
+
+
 def due(db: Session, now: dt.datetime | None = None, *, any_time: bool = False,
         late: dt.timedelta | None = None) -> list[SecretPolicy]:
     """Policies LABaPe should rotate now. Restart-needing ones wait for the window, unless `any_time` (a person
@@ -580,20 +596,13 @@ def due(db: Session, now: dt.datetime | None = None, *, any_time: bool = False,
     window = next_window(db, now)
     out = []
     for p in db.scalars(select(SecretPolicy).where(SecretPolicy.enabled.is_(True))):
-        r = REGISTRY.get(p.kind)
-        if r is None or not r.automatic or p.managed_externally:
+        if not rotatable(db, p):
             continue
         if p.next_due_at and _aware(p.next_due_at) > now:
             continue
         if late is not None and not (p.next_due_at and now - _aware(p.next_due_at) >= late):
             continue
         if p.needs_restart and not any_time and not (window and window["in_window"]):
-            continue
-        if p.kind in ENV_KINDS and not _env_deployed(db, p):
-            continue
-        if r.needs_elevated and not p.elevated_ref:      # a reminder until it has an elevated account
-            continue
-        if p.kind in STORE_ROTATORS and not store_ready(db, p.kind):
             continue
         out.append(p)
     return out

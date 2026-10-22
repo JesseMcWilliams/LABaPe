@@ -19,6 +19,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Drive pages with history**: click a drive in Drives and volumes (or the "Drive details" button on a drive's alert, or the link in the dashboard's alert list) for its SMART attributes, layout and charts of pending, reallocated and uncorrectable sectors, temperature and wear over 7 days to a year, with a table of when the numbers moved. SMART is now read every 6 hours (was daily) and on Read now; readings are kept 365 days (Settings → History → Drive history).
 
 ### Fixed
+- The Secrets page no longer warns about overdue secrets that **Rotate overdue now** would skip (an environment that is not deployed, an elevated account not set yet, a store not ready): the warning and the plan use one rule.
 - Saving a **published** catalog package that includes a draft item is refused (as publishing it already was); a draft package may still hold drafts.
 - A filter drop-down (Jobs, Catalog, Environments, Files, Errors, Syslog and the rest) applies as soon as a choice is made, without pressing **Filter**.
 - The host-load bars on the New environment form and the host pages line up when a caption wraps.

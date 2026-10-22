@@ -53,6 +53,19 @@ def test_the_plan_lists_overdue_secrets_in_a_fixed_order(client, monkeypatch, tm
     assert len(client.get("/api/admin/secrets/rotate-overdue").json()["plan"]) == 2
 
 
+def test_the_warning_and_the_plan_use_one_rule(client, monkeypatch, tmp_root):
+    """A secret the rotation would skip (here: its environment is not deployed) is not `rotatable`, so the Secrets
+    page does not warn about it while the plan leaves it out."""
+    _admin_session(client)
+    _setup(monkeypatch, tmp_root)
+    monkeypatch.setattr(rotation, "ENV_KINDS", rotation.ENV_KINDS | {"builtin_data_key"})
+    monkeypatch.setattr(rotation, "_env_deployed", lambda db, p: False)
+    pol = {p["kind"]: p for p in client.get("/api/admin/secrets").json()["policies"]}
+    assert pol["builtin_data_key"]["rotatable"] is False and pol["master_key"]["rotatable"] is True
+    plan = client.get("/api/admin/secrets/rotate-overdue").json()["plan"]
+    assert sorted(x["id"] for x in plan) == sorted(p["id"] for p in pol.values() if p["rotatable"] and p["enabled"])
+
+
 def test_starting_needs_the_restart_to_be_acknowledged(client, monkeypatch, tmp_root):
     _admin_session(client)
     _setup(monkeypatch, tmp_root)

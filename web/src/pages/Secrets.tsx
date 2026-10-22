@@ -16,7 +16,7 @@ export interface SecretPolicy {
   id: number; name: string; kind: string; label: string; store: string; secret_class: string; interval_hours: number;
   needs_restart: boolean; enabled: boolean; managed_externally: boolean; elevated_ref: string;
   params: Record<string, string>; status: string; last_rotated_at: string | null; next_due_at: string | null;
-  last_error: string; notes: string; automatic: boolean; needs_elevated: boolean; rotator_notes: string;
+  last_error: string; notes: string; automatic: boolean; rotatable: boolean; needs_elevated: boolean; rotator_notes: string;
   last_job: { id: number; state: string } | null; secret_name: string | null;
   // Health (S1, question 161).
   check_status: string; check_error: string; last_checked_at: string | null; next_check_at: string | null;
@@ -65,9 +65,10 @@ export function RecoverableCell({ p }: { p: SecretPolicy }) {
 
 export const interval = (h: number) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hours`);
 
-// A rotation is overdue when its date passed more than an hour ago (the worker rotates within minutes; the ones
+// A rotation is overdue when LABaPe could rotate it (`rotatable`: the same rule as Rotate overdue now, so the
+// warning and the plan list the same secrets) and its date passed more than an hour ago (the worker rotates within minutes; the ones
 // that restart a service wait for the maintenance window and stay overdue until then).
-export const overdue = (p: SecretPolicy) => p.automatic && p.enabled && !p.managed_externally && !!p.next_due_at
+export const overdue = (p: SecretPolicy) => p.rotatable && !!p.next_due_at
   && Date.now() - new Date(p.next_due_at).getTime() > 3600_000;
 export const lateBy = (iso: string) => {
   const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3600_000);
