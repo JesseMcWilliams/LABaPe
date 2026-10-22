@@ -9,7 +9,7 @@ import UploadIcon from "@mui/icons-material/Upload";
 import LinkIcon from "@mui/icons-material/Link";
 import NotesIcon from "@mui/icons-material/StickyNote2Outlined";
 import * as tus from "tus-js-client";
-import { api, fmtTime, KvmHost, Template } from "../api";
+import { api, fmtTime, KvmHost, LinkedStack, Template } from "../api";
 import { hasRole, useAuth } from "../App";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "../components/Confirm";
@@ -434,6 +434,59 @@ function Templates({ canEdit }: { canEdit: boolean }) {
   );
 }
 
+const mb = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.round(n / 1024 ** 2)} MB`);
+
+// Linked stacks' templates and files (backlog row 22): what each offers, with a button that copies one here (a job).
+function LinkedLibrary({ canManage }: { canManage: boolean }) {
+  const navigate = useNavigate();
+  const [stacks, setStacks] = useState<LinkedStack[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  useEffect(() => { api.get<{ stacks: LinkedStack[] }>("/api/linked/library").then((r) => setStacks(r.stacks), (e) => setError(e.message)); }, []);
+  const copy = async (link_id: number, kind: "file" | "template", item: string) => {
+    setBusy(`${link_id}:${kind}:${item}`);
+    try { const r = await api.post<{ job_id: number }>("/api/linked/copy", { link_id, kind, item }); navigate(`/jobs/${r.job_id}`); }
+    catch (e) { setError((e as Error).message); setBusy(""); }
+  };
+  if (!stacks) return error ? <Alert severity="error">{error}</Alert> : <Typography color="text.secondary">Loading…</Typography>;
+  if (stacks.length === 0) return <Typography variant="body2">No stack is linked with this one. Link stacks under Admin → Linked stacks.</Typography>;
+  return (
+    <Stack spacing={3}>
+      {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
+      {stacks.map((s) => (
+        <Stack key={s.link_id} spacing={1}>
+          <Typography variant="h6">{s.name}</Typography>
+          {!s.ok && <Alert severity="warning">{s.error}</Alert>}
+          {s.ok && s.templates.length === 0 && s.files.length === 0 && <Typography variant="body2">Nothing offered.</Typography>}
+          {s.templates.length > 0 && (
+            <Table size="small">
+              <TableHead><TableRow><TableCell>Template</TableCell><TableCell>OS</TableCell><TableCell>Size</TableCell><TableCell>Description</TableCell><TableCell /></TableRow></TableHead>
+              <TableBody>{s.templates.map((t) => (
+                <TableRow key={t.name}>
+                  <TableCell>{t.name}</TableCell><TableCell>{t.os_key || "—"}</TableCell><TableCell>{mb(t.size)}</TableCell><TableCell>{t.description}</TableCell>
+                  <TableCell align="right"><Button size="small" disabled={!canManage || busy === `${s.link_id}:template:${t.name}`}
+                    title="Copy this template into this stack's template library (a job)" onClick={() => copy(s.link_id, "template", t.name)}>Copy here</Button></TableCell>
+                </TableRow>))}</TableBody>
+            </Table>
+          )}
+          {s.files.length > 0 && (
+            <Table size="small">
+              <TableHead><TableRow><TableCell>File</TableCell><TableCell>Kind</TableCell><TableCell>Size</TableCell><TableCell>Description</TableCell><TableCell /></TableRow></TableHead>
+              <TableBody>{s.files.map((f) => (
+                <TableRow key={f.id}>
+                  <TableCell>{f.name}</TableCell><TableCell>{f.category}</TableCell><TableCell>{mb(f.size)}</TableCell><TableCell>{f.description}</TableCell>
+                  <TableCell align="right"><Button size="small" disabled={!canManage || busy === `${s.link_id}:file:${f.id}`}
+                    title="Copy this file into the same place here (a job)" onClick={() => copy(s.link_id, "file", String(f.id))}>Copy here</Button></TableCell>
+                </TableRow>))}</TableBody>
+            </Table>
+          )}
+        </Stack>
+      ))}
+      {!canManage && <Typography variant="body2" color="text.secondary">Admins and file managers can copy files here.</Typography>}
+    </Stack>
+  );
+}
+
 export default function Files() {
   const { me } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -447,13 +500,15 @@ export default function Files() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
         {CATS.map((c) => <Tab key={c.key} value={c.key} label={c.label} />)}
         <Tab value="templates" label="Templates" />
+        <Tab value="linked" label="Linked stacks" />
       </Tabs>
       <Typography variant="body2" color="text.secondary">
-        {tab === "templates" ? TEMPLATES_HELP : CATS.find((c) => c.key === tab)?.help}
+        {tab === "templates" ? TEMPLATES_HELP : tab === "linked" ? "The templates and files of the stacks linked with this one. Copy one here to use it; a template can also be chosen in the New environment form and is copied when the environment is deployed." : CATS.find((c) => c.key === tab)?.help}
       </Typography>
       {tab === "templates" ? <Templates canEdit={canEditTemplates} />
+        : tab === "linked" ? <LinkedLibrary canManage={canManage} />
         : <FileTable key={tab} category={tab} canManage={canManage} />}
-      {tab !== "templates" && !canManage && (
+      {tab !== "templates" && tab !== "linked" && !canManage && (
         <Typography variant="body2" color="text.secondary">Admins and file managers can upload and edit files.</Typography>
       )}
     </Stack>

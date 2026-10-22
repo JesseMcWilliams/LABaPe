@@ -42,7 +42,7 @@ from ..naming import instance_names
 from .. import domain_member, linux_desktop, mail_server, openbao_vms, spread, timezones, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
+from . import (linked_copy, package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import maintenance_mode, syslogstack, version
 from . import planpreview
@@ -597,7 +597,7 @@ def run(job_id: int, worker: str) -> None:
                   "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
                   "secret.check": secret_health.run_job,
                   "files.sync_templates": filedist.run_sync_templates, "host.files_move": filedist.run_move_job,
-                  "files.update_check": package_updates.run_job}
+                  "files.update_check": package_updates.run_job, "linked.copy": linked_copy.run_copy}
         if job.type in system:
             try:
                 rc = system[job.type](db, job)
@@ -848,6 +848,10 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
         return
     for name in sorted({g.get("template") for g in ((env.spec or {}).get("host_groups", []) if groups is None else groups)
                         if g.get("image_source") == "packer_template" and g.get("template")}):
+        _from_link = {g.get("template"): g["template_from"] for g in ((env.spec or {}).get("host_groups", []) if groups is None else groups)
+                      if g.get("template_from") and g.get("template")}
+        if name in _from_link:                         # a linked stack's template: into the primary's library first (row 22)
+            linked_copy.ensure_template(db, _from_link[name], name, log)
         filedist.ensure_template(db, host, name, log)
     if not installers:
         return

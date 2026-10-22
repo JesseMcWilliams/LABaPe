@@ -115,15 +115,19 @@ class Cancelled(DownloadError):
 
 def fetch(db: Session, url: str, category: str, name: str, log, *, expected: str = "", hash_type: str = "sha256",
           os_key: str = "", targets: list | None = None, description: str = "", actor: str = "system",
-          beat=None) -> StoredFile:
+          beat=None, headers: dict | None = None, verify=None, target: str = "", register: bool = True):
     """Download `url` into the category's location as `name` (on the primary file host), checking each
     redirect, resuming a partial file, verifying `expected` (a `hash_type` digest) and refusing content
-    already stored. Returns the new file's row; raises DownloadError (Cancelled when `beat()` says so)."""
+    already stored. Returns the new file's row; raises DownloadError (Cancelled when `beat()` says so).
+
+    A linked stack's file (backlog row 22) passes `headers` (its link token), `verify` (an SSL context pinned to its
+    platform CA) and, for a template, `target` (a path in the primary's template library) with `register=False`: the
+    file is then only stored, and a namespace with `path`, `size` and `sha256` comes back instead of a row."""
     cfg = appsettings.get(db, "downloads")
     from .. import filestore
     store = filestore.current(db)             # on the primary file host (design §29.5)
-    root = roots(db)[category].rstrip("/")
-    target = f"{root}/{name}"
+    root = (target.rsplit("/", 1)[0] if target else roots(db)[category].rstrip("/"))
+    target = target or f"{root}/{name}"
     if store.exists(target):
         raise DownloadError(f"{target} already exists; delete it first.")
     if store.remote:
@@ -131,14 +135,15 @@ def fetch(db: Session, url: str, category: str, name: str, log, *, expected: str
     part = _partial(root, url, name)
     store.makedirs(f"{root}/.downloads")
     first = url
-    with httpx.Client(timeout=httpx.Timeout(30, read=120), proxy=cfg.proxy or None, follow_redirects=False) as c:
+    with httpx.Client(timeout=httpx.Timeout(30, read=120), proxy=None if verify is not None else (cfg.proxy or None),
+                      follow_redirects=False, **({"verify": verify} if verify is not None else {})) as c:
         for _ in range(10):                       # follow redirects ourselves, checking each hop
             check_url(url, cfg.allow_http)
             if not cfg.proxy:
                 check_resolves(urlsplit(url).hostname)
             have = max(store.size(part), 0)
-            headers = {"Range": f"bytes={have}-"} if have else {}
-            with c.stream("GET", url, headers=headers) as r:
+            req_headers = {**(headers or {}), **({"Range": f"bytes={have}-"} if have else {})}
+            with c.stream("GET", url, headers=req_headers) as r:
                 if r.is_redirect:
                     url = urljoin(url, r.headers["location"])
                     log.write(f"labape: redirected to {url}\n")
@@ -184,12 +189,16 @@ def fetch(db: Session, url: str, category: str, name: str, log, *, expected: str
             store.remove(part)
             raise DownloadError(f"{hash_type.upper()} mismatch: expected {expected}, got {got}. The file was deleted.")
         log.write(f"labape: {hash_type.upper()} matches the expected value.\n")
-    dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == sha256, StoredFile.present.is_(True)))
+    dup = db.scalar(select(StoredFile).where(StoredFile.sha256 == sha256, StoredFile.present.is_(True))) if register else None
     if dup is not None:
         store.remove(part)
         raise DownloadError(f"the same content is already stored as {dup.name} ({dup.category}); not kept.")
     store.replace(part, target)
     size, mtime = store.stat(target)
+    if not register:
+        log.write(f"labape: saved {target} ({_human(size)}), SHA-256 {sha256}\n")
+        from types import SimpleNamespace
+        return SimpleNamespace(path=target, size=size, sha256=sha256)
     f = StoredFile(category=category, name=name, path=target, size=size, mtime=mtime, sha256=sha256,
                    os_key=(os_key or infer_os(name)) if category == "isos" else "",
                    targets=targets or (ostargets.infer(name) if category == "installers" else []),

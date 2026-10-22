@@ -23,6 +23,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Accounts on chosen VMs:** the environment accounts dialog has **Only these VMs** under a local account's roles; blank keeps today's behaviour (every VM of the roles).
 - **Certificate attributes:** a request can ask for code signing, email protection, time stamping, OCSP signing, smart-card logon, client authentication and the key usages Signing and Encryption; the register shows each certificate's **Uses**. Off until a CA administrator ticks **The CA applies extra attributes** after running `container/ca/enable-attributes.sh` once (not yet run against the live CA).
 - **Help:** a Help item in the top bar opens the user guides, served by the stack (no file access needed), and every page has a **Help for this page** link to its section.
+- **Linked stacks' templates and files:** Files → **Linked stacks** lists what each linked stack offers, with **Copy here**; the New environment form's Template drop-down also offers a linked stack's templates, which are copied here when the environment is deployed.
 
 ### Fixed
 - The Secrets page no longer warns about overdue secrets that **Rotate overdue now** would skip (an environment that is not deployed, an elevated account not set yet, a store not ready): the warning and the plan use one rule.

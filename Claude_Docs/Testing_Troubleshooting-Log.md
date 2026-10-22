@@ -699,3 +699,7 @@ First run of `web/e2e/` against OZ: the failures were wrong selectors and stale 
 ## Certificate attributes: not yet run live (2026-10-22)
 
 The attribute support (design §66) is covered by unit tests with a fake CA, but the template `container/ca/leaf.tpl`, `step ca provisioner update --x509-template-file` and `step ca sign --set-file` have not been run against the real step-ca. To try it: run `container/ca/enable-attributes.sh` in the CA container, restart it, tick **The CA applies extra attributes**, request a certificate with Client authentication and Code signing, and check the Uses row. If the CA refuses to start or signing fails, undo with `step ca provisioner update labape-runner --x509-template ""` (or restore `ca.json`), untick the setting, and note what the CA said here.
+
+## Linked stacks' templates and files: not yet run between two stacks (2026-10-22)
+
+Covered by unit tests only (design §66): the peer listing and download with Range, the `linked.copy` job and the deploy-time copy with a fake fetch. To try it for real: with two linked stacks, open Files → Linked stacks on one, **Copy here** an ISO and a template, watch the job log (a resumed copy after cancelling mid-way too), then create an environment whose group picks the other stack's template and check that the deploy log says "template ... comes from the linked stack".

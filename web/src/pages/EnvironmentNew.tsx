@@ -6,7 +6,7 @@ import {
 import type { CatalogItem } from "./Catalog";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { api, Environment, FieldProblem, HostGroup, HostResources, KvmHost, Network, Template } from "../api";
+import { api, Environment, FieldProblem, HostGroup, LinkedStack, HostResources, KvmHost, Network, Template } from "../api";
 import HostLoad from "../components/HostLoad";
 import { ActionButton, ActionIconButton, useConfirm } from "../components/Confirm";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
@@ -137,7 +137,14 @@ export default function EnvironmentNew() {
   const modesFor = (g: HostGroup) =>
     (netOf(g)?.addressing ?? ["static"]).filter((m) => m === "static" || !g.roles.includes("domain_controller"));
   const templatesFor = (g: HostGroup) => tplsOf(g).filter((t) => !t.os_key || t.os_key === g.os);
-  const templateOf = (g: HostGroup) => tplsOf(g).find((t) => t.name === g.template);
+  // Linked stacks' templates (row 22): offered too, and copied here when the environment is deployed.
+  const [linked, setLinked] = useState<LinkedStack[]>([]);
+  useEffect(() => { api.get<{ stacks: LinkedStack[] }>("/api/linked/library").then((r) => setLinked(r.stacks), () => undefined); }, []);
+  const linkedFor = (g: HostGroup) => linked.flatMap((s) => s.templates.filter((t) => !t.os_key || t.os_key === g.os)
+    .filter((t) => !templatesFor(g).some((l) => l.name === t.name)).map((t) => ({ ...t, link_id: s.link_id, stack: s.name })));
+  const templateOf = (g: HostGroup) => g.template_from
+    ? linked.find((s) => s.link_id === g.template_from)?.templates.find((t) => t.name === g.template)
+    : tplsOf(g).find((t) => t.name === g.template);
 
   const setGroup = (i: number, patch: Partial<HostGroup>) => {
     touch(...Object.keys(patch).map((k) => `host_groups.${i}.${k}`),
@@ -151,7 +158,7 @@ export default function EnvironmentNew() {
       const names = [...(next.names ?? [])];
       next.names = Array.from({ length: Math.max(1, Math.min(next.count || 1, 20)) }, (_, k) => names[k] ?? "");
       // A new OS invalidates a template for another OS.
-      if (patch.os && templateOf(next)?.os_key && templateOf(next)?.os_key !== patch.os) next.template = "";
+      if (patch.os && templateOf(next)?.os_key && templateOf(next)?.os_key !== patch.os) { next.template = ""; next.template_from = undefined; }
       return next;
     }));
   };
@@ -219,6 +226,7 @@ export default function EnvironmentNew() {
         ...g,
         network: netOf(g)?.name,
         template: g.image_source === "packer_template" ? g.template : undefined,
+        template_from: g.image_source === "packer_template" ? g.template_from : undefined,
         windows_core: g.os.startsWith("windows_server") ? g.windows_core : false,
         windows_datacenter: g.os.startsWith("windows_server") ? g.windows_datacenter : false,
         remote_desktop: g.os.startsWith("windows") ? [] : (g.remote_desktop ?? []),
@@ -342,16 +350,27 @@ export default function EnvironmentNew() {
                   <MenuItem value="iso_direct">Build from ISO</MenuItem>
                 </Field>
                 {g.image_source === "packer_template" && (
-                  <Field select label="Template" value={g.template ?? ""} sx={{ minWidth: 260 }} required
+                  <Field select label="Template" value={g.template_from ? `link:${g.template_from}:${g.template}` : g.template ?? ""} sx={{ minWidth: 260 }} required
                     error={err(`${at}.template`)}
                     help={templatesFor(g).length ? `${templatesFor(g).length} on ${nameOf(hostOf(g))} for ${g.os}`
                       : `No ${g.os} template on ${nameOf(hostOf(g))} yet`}
-                    onChange={(e) => setGroup(i, { template: e.target.value })}>
+                    onChange={(e) => {
+                      const v = String(e.target.value);
+                      const m = /^link:(\d+):(.*)$/.exec(v);
+                      setGroup(i, m ? { template: m[2], template_from: Number(m[1]) } : { template: v, template_from: undefined });
+                    }}>
                     {templatesFor(g).map((tp) => (
                       <MenuItem key={tp.id} value={tp.name}>
                         <ListItemText primary={tp.name}
                           secondary={[tp.from_primary ? "copied from the primary file host at deploy" : "", tp.edition,
                             tp.disk_gb ? `${tp.disk_gb} GB` : "", tp.description]
+                            .filter(Boolean).join(" · ")} />
+                      </MenuItem>
+                    ))}
+                    {linkedFor(g).map((tp) => (
+                      <MenuItem key={`${tp.link_id}:${tp.name}`} value={`link:${tp.link_id}:${tp.name}`}>
+                        <ListItemText primary={tp.name}
+                          secondary={[`on the linked stack ${tp.stack}: copied here at deploy`, tp.disk_gb ? `${tp.disk_gb} GB` : "", tp.description]
                             .filter(Boolean).join(" · ")} />
                       </MenuItem>
                     ))}
