@@ -23,6 +23,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `app/` — web interface backend (Python package `app/labape/`: FastAPI API, auth provider plugins, job runner in `engine/runner.py`, `cli.py`), tests in `app/tests/`.
 - `web/` — React + TypeScript + Vite + MUI single-page app; `package-lock.json` committed, `node_modules/`/`dist/` gitignored.
 - `deploy/` — from-scratch installer: `install-labape.py` (entry, step table) and `labape_deploy/` (answers, state, steps); `update-agent/` (the host-side update and rotation agent, a user systemd unit), `labape-rollback.sh`, `allowed_signers` (release signers). `state/`, `logs/` and `answers.*.json` (except `answers.sample.json`) are gitignored; the answers files never hold secrets.
+- `skills/labape/` — `SKILL.md`, the Claude skill that goes with the MCP server (how an AI should use LABaPe's tools and certificates); keep it in step with `app/labape/mcp.py` and its roles.
 - `container/` — Dockerfile, compose.yaml, Caddyfile, Quadlet units, `setup.sh`, `ca/` (platform CA scripts), README. Generated `.env`, `secrets/`, `config/`, `engine-secrets/`, `update/` are gitignored; never read or commit them.
 - `tools/authentik-test/` — throwaway Authentik (compose + blueprint) for testing sign-in; its `.env` holds generated secrets, gitignored.
 - The throwaway test stores (`tools/secrets-test/`) were retired on 2026-10-12: the stack's own OpenBao and Conjur (`container/stores/`, design §26) replaced them.
