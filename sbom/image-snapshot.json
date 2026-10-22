@@ -233,7 +233,7 @@
   },
   {
    "name": "labape",
-   "version": "0.5.4",
+   "version": "0.5.5",
    "license": "AGPL-3.0-only",
    "summary": "LABaPe web application: UI, REST API and job runner for lab environments",
    "home": "",
@@ -583,7 +583,7 @@
  ],
  "apt": [
   "bash\t5.2.37-2+b10\tamd64",
-  "ca-certificates\t20250419\tall",
+  "ca-certificates\t20250419+deb13u1\tall",
   "curl\t8.14.1-2+deb13u7\tamd64",
   "unzip\t6.0-29+deb13u1\tamd64",
   "git\t1:2.47.3-0+deb13u1\tamd64",
@@ -637,7 +637,7 @@
  },
  "syslog_image": {
   "packages": [
-   "ca-certificates\t20250419",
+   "ca-certificates\t20250419+deb13u1",
    "procps\t2:4.0.4-9",
    "rsyslog\t8.2504.0-1+deb13u2",
    "rsyslog-openssl\t8.2504.0-1+deb13u2",
@@ -645,7 +645,7 @@
   ],
   "dpkg_total": 116
  },
- "image_version": "v0.5.4-18-g0a7215d",
- "captured": "2026-10-20",
- "captured_from": "the lab stack's worker container (labape:local, built as v0.5.4-18-g0a7215d) and the images it runs"
+ "image_version": "v0.5.5-38-gfa00cae",
+ "captured": "2026-10-21",
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.5.5-38-gfa00cae) and the images it runs"
 }

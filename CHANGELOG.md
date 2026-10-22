@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-10-21
+
+v0.5.6 adds a Help section (the guides served inside the web interface, with a link from every page), linked stacks' templates and files (listed, copied, and chosen in the New environment form), a Certificates page with attributes and an Issued column, saving an environment as a draft and duplicating one, a domain member or standalone choice per host group, local accounts bound to chosen VMs, Rotate overdue now, Add host, drive pages with SMART history, and Playwright browser tests. The certificate attributes and linked copies are covered by unit tests only and have not been run against a live CA or between two stacks; the notes say how to try them.
+
 ### Added
 - **Revoked and expired API tokens** are hidden from the Tokens page unless **Show revoked and expired** is ticked, and are removed after a retention period (Settings → History → *Revoked and expired tokens (days)*, default 30).
 - New environment: group names are checked as they are typed (and two names that differ only in case are flagged), and the minimum disk for the OS shows at once instead of on Create.
