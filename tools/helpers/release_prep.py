@@ -9,7 +9,10 @@ VERSION is X.Y.Z or X.Y.Z-rc.N (no leading v). It
    paragraph first, and leaves an empty [Unreleased] above;
 2. sets the version in app/pyproject.toml, web/package.json and web/package-lock.json;
 3. in README.md and User_Docs/*.md, replaces "the release after v<previous>" with "v<VERSION>"
-   (wording for things that ship in the next release).
+   (wording for things that ship in the next release);
+4. stamps the newest `Claude_Docs/Planning_Handoff-*.md`: its line `**Latest release:** vX.Y.Z (date)` becomes this
+   release (the handoff is part of a release; release.sh also refuses a release whose handoff hasn't changed since
+   the previous one). A handoff without that line stops the release.
 --check only reports what it would change (exit 1 when [Unreleased] is empty or the version is
 already in the CHANGELOG).
 """
@@ -104,6 +107,29 @@ def docs(repo: Path, prev: str, version: str) -> list[str]:
     return changed
 
 
+HANDOFF_LINE = re.compile(r"(?m)^\*\*Latest release:\*\*[^\r\n]*")
+
+
+def newest_handoff(repo: Path) -> Path | None:
+    found = sorted((repo / "Claude_Docs").glob("Planning_Handoff-*.md"))
+    return found[-1] if found else None
+
+
+def handoff(repo: Path, version: str, today: dt.date, write: bool = True) -> list[str]:
+    """Stamp the newest handoff with this release; ReleaseError when there is none or it lacks the line."""
+    f = newest_handoff(repo)
+    if f is None:
+        raise ReleaseError("Claude_Docs has no Planning_Handoff-*.md: write the handoff before a release")
+    t = f.read_bytes().decode("utf-8")                       # bytes: the checkout's line endings stay
+    if not HANDOFF_LINE.search(t):
+        raise ReleaseError(f"{f.name} has no '**Latest release:** vX.Y.Z (date)' line: add it and update the handoff first")
+    n = HANDOFF_LINE.sub(f"**Latest release:** v{version} ({today.isoformat()})", t, count=1)
+    if write and n != t:
+        f.write_bytes(n.encode("utf-8"))
+        return [f.relative_to(repo).as_posix()]
+    return []
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("version")
@@ -125,11 +151,13 @@ def main(argv: list[str]) -> int:
         summary = Path(a.summary_file).read_text(encoding="utf-8") if a.summary_file else ""
         prev = previous(text)
         new = cut_changelog(text, version, summary, dt.date.today())
+        handoff(repo, version, dt.date.today(), write=False)           # stops a release whose handoff has no marker
         if a.check:
             print(f"release: v{version} after v{prev or '(none)'}; [Unreleased] has entries")
             return 0
         cl.write_text(new, encoding="utf-8", newline="\n")
-        changed = ["CHANGELOG.md", *set_versions(repo, version), *docs(repo, prev, version)]
+        changed = ["CHANGELOG.md", *set_versions(repo, version), *docs(repo, prev, version),
+                   *handoff(repo, version, dt.date.today())]
         print("release: changed " + ", ".join(changed))
         return 0
     except ReleaseError as exc:
