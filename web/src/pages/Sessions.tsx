@@ -2,7 +2,7 @@
 // and auditors. Playing a recording is audited.
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Slider, Stack, Table, TableBody, TableCell,
+  Alert, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Link, Slider, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, Typography,
 } from "@mui/material";
 import Guacamole from "guacamole-common-js";
@@ -85,7 +85,8 @@ export default function Sessions() {
       <Typography variant="h5">Remote sessions</Typography>
       <Typography variant="body2" color="text.secondary">
         Browser SSH, RDP and console sessions: who opened them, to what, and for how long. Sessions are recorded when Settings → Remote access says so;
-        playing a recording is audited.
+        playing a recording is audited. A downloaded recording (<code>.guac</code>) plays offline in the{" "}
+        <Link href="/guac-player.html" download="labape-recording-player.html">recording player</Link> (one HTML file: open it, then choose the recording).
       </Typography>
       {error && <Alert severity="error">{error}</Alert>}
       <FilterBar onApply={() => f.apply()} onClear={f.clear} active={f.active}>
