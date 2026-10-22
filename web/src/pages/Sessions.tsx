@@ -32,23 +32,26 @@ function Player({ row, onClose }: { row: Row; onClose: () => void }) {
   const [error, setError] = useState("");
   useEffect(() => {
     let alive = true;
-    fetch(`/api/remote/sessions/${row.id}/recording`, { credentials: "same-origin" }).then(async (r) => {
-      if (!r.ok) throw new Error(`The recording couldn't be loaded (${r.status}).`);
-      const blob = await r.blob();
-      if (!alive || !holder.current) return;
-      const recording = new Guacamole.SessionRecording(blob);
-      rec.current = recording;
-      const display = recording.getDisplay();
+    // guacamole-common-js 1.5.0 never stores a Blob handed to SessionRecording (it reads an unset variable), so the
+    // recording is streamed through a tunnel instead; the request is the same audited GET.
+    const tunnel = new Guacamole.StaticHTTPTunnel(`/api/remote/sessions/${row.id}/recording`);
+    const recording = new Guacamole.SessionRecording(tunnel);
+    rec.current = recording;
+    const display = recording.getDisplay();
+    if (holder.current) {
       holder.current.innerHTML = "";
       holder.current.appendChild(display.getElement());
-      display.onresize = () => display.scale(Math.min(1, (holder.current?.clientWidth ?? 900) / Math.max(display.getWidth(), 1)));
-      recording.onprogress = (d: number) => setDuration(d);
-      recording.onload = () => setDuration(recording.getDuration());
-      recording.onplay = () => setPlaying(true);
-      recording.onpause = () => setPlaying(false);
-      recording.onseek = (p: number) => setPosition(p);
-    }).catch((e) => setError((e as Error).message));
-    return () => { alive = false; rec.current?.pause(); };
+    }
+    display.onresize = () => display.scale(Math.min(1, (holder.current?.clientWidth ?? 900) / Math.max(display.getWidth(), 1)));
+    recording.onprogress = (d: number) => alive && setDuration(d);
+    recording.onload = () => alive && setDuration(recording.getDuration());
+    recording.onplay = () => setPlaying(true);
+    recording.onpause = () => setPlaying(false);
+    recording.onseek = (p: number) => setPosition(p);
+    recording.onerror = (m: string) => alive && setError(`The recording couldn't be played: ${m}`);
+    tunnel.onerror = (st: Guacamole.Status) => alive && setError(`The recording couldn't be loaded (${st.message || st.code}).`);
+    recording.connect();
+    return () => { alive = false; rec.current?.pause(); rec.current?.disconnect(); };
   }, [row.id]);
   return (
     <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
