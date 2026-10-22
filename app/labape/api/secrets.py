@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from .. import stores
 from ..db import get_db
 from ..engine.rotation import (ELEVATED_PREFIX, ENV_KINDS, REGISTRY, RESTART_INTERVAL_HOURS, RotationError,
-                               ensure_elevated_policies, ensure_policies, policy_secret, request_agent, uses_agent)
+                               ensure_elevated_policies, ensure_policies, policy_secret, request_agent, rotatable,
+                               uses_agent)
 from ..engine import rotate_overdue, secret_health
 from ..errors import FieldError
 from ..models import Environment, Job, Secret, SecretPolicy
@@ -37,6 +38,7 @@ def _out(db: Session, p: SecretPolicy, last_jobs: dict[int, Job] | None = None) 
     r = REGISTRY.get(p.kind)
     last = (last_jobs if last_jobs is not None else _last_jobs(db)).get(p.id)
     return {**{f: getattr(p, f) for f in FIELDS}, "automatic": bool(r and r.automatic),
+            "rotatable": rotatable(db, p),
             "needs_elevated": bool(r and r.needs_elevated), "rotator_notes": r.notes if r else "",
             "revealable": p.kind in REVEALABLE,
             "last_job": {"id": last.id, "state": last.state} if last else None, "secret_name": policy_secret(p),
