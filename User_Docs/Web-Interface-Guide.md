@@ -17,6 +17,8 @@ Your organization may have renamed the app (Settings → Branding); the top bar 
 9. [Hosts and networks](#9-hosts-and-networks)
 10. [Confirmations, tooltips and maintenance](#10-confirmations-tooltips-and-maintenance)
 11. [API tokens](#11-api-tokens)
+12. [Certificates](#12-certificates)
+13. [Help](#13-help)
 
 ## 1. Signing in and your roles
 
@@ -47,8 +49,10 @@ The dashboard is the landing page; clicking the app name at the top left always 
 - **Your environments**: how many VMs are online, and for each VM its CPU, RAM, free disk space and disk activity.
 - **Download the root certificate**: the platform CA's root, for your browser (see [§4](#vm-certificates)).
 
+The top bar stays in view while you scroll, and **Help** in it opens these guides inside LABaPe ([§13](#13-help)).
+
 Admins and auditors also see:
-- **All stacks**, when this LABaPe is linked with others: totals across every linked stack (a machine two stacks both use is counted once) and a card per stack with its version, hosts, VMs, environments, jobs and open alerts. A stack that stopped answering shows its last data, marked "as of" when it last answered. A card opens that stack's own dashboard in a new tab (with its own sign-in).
+- **All stacks**, when this LABaPe is linked with others: totals across every linked stack (a machine two stacks both use is counted once) and a card per stack with its version, hosts, VMs, environments, jobs and open alerts. A stack that stopped answering shows its last data, marked "as of" when it last answered. A card opens that stack's own dashboard in a new tab (with its own sign-in). The card of the stack you are connected to is marked **you are here** and has a highlighted border.
 - **Alerts**: problems the monitoring found (a host running hot or nearly full, a stopped container, a missing backup, a linked stack not answering), with when each started, and the ones recently cleared. Admins can **Ack** an alert (someone is on it) or **Silence** it for a while with a reason.
 
 A VM's free space and "responding" state come from the QEMU guest agent, which LABaPe installs on every new VM. VMs built before the agent was added show "unknown" and the size of their disk file instead.
@@ -66,6 +70,8 @@ Choose **Environments → New environment** (deployers and template editors). Th
 | Time zone | The VMs' time zone (by default your browser's, or UTC). It's shown on the environment's page and can't be changed later. |
 | Host groups | One or more groups of identical VMs. **Add host group** adds another. |
 
+The form checks what you type as you type it: a group name used twice (also when the names differ only in case), a disk below the OS's minimum, a template for another OS. The **Role** box follows the OS: choose a Windows OS and only Windows roles are offered.
+
 Each host group sets:
 
 | Field | Notes |
@@ -74,9 +80,10 @@ Each host group sets:
 | KVM host | Shown when there's more than one host. **Same as the environment** keeps the group with the rest; another host puts this group's VMs there (one environment spread over hosts). The group's networks and templates then come from that host. The hosts must carry the same lab network, so the VMs reach each other and the domain controller. Each VM keeps its host: power, snapshots, details and consoles go to it. |
 | Count | 1-20 VMs |
 | OS and Role | One role per host group: `domain_controller`, `windows_server`, `windows_workstation`, `linux_server` or `linux_workstation` |
+| Domain | Shown when the environment has a domain controller. **Member** (the default) joins the group's VMs to the domain; **Standalone** leaves them out of it. A domain controller is always part of its domain. |
 | Image source | **Build from template** clones a template (minutes). **Build from ISO** installs from the OS's ISO (up to an hour or more for Windows). |
-| Template | The templates on that host for that OS, with their description. An info icon shows the template's notes (quirks, after-tasks). |
-| vCPUs, Memory, Disk | An amber warning appears when you go below the template's minimums. A disk smaller than the template's is raised to the template's size. |
+| Template | The templates on that host for that OS, with their description. An info icon shows the template's notes (quirks, after-tasks). Templates held by a **linked stack** are listed too, marked "on the linked stack …: copied here at deploy"; the deploy copies the one you chose into this stack's library first (the first copy of a big template takes a while; see [§7](#7-files-and-templates)). |
+| vCPUs, Memory, Disk | An amber warning appears when you go below the template's minimums. A disk smaller than the template's is raised to the template's size. The form refuses a disk below the OS's own minimum (Windows 11: 64 GB). |
 | Network, Addressing | Only the networks attached to the host that you may use, and only the modes that network allows. **Static** addresses come from the network's pool automatically; **DHCP** addresses are found after the VM boots. Domain controllers are always static. |
 | Services, Applications, Packages | Catalog items added on top of the template (see [§8](#8-the-catalog-services-applications-and-packages)). Only published items with something for the group's OS are offered, packages included; changing the OS drops the choices that no longer fit. A package with members for both Windows and Linux installs only those for the group's OS. |
 | Host names | One box per VM. Leave a box blank for `<group><n>` (for example `web1`). Names must be unique across every environment's VMs on the same KVM host, and Windows allows at most 15 characters. |
@@ -87,6 +94,8 @@ Each host group sets:
 
 **Create and deploy** asks you to confirm, saves the environment and starts a deploy job at once. You land on the environment's page.
 
+**Save as draft** keeps what you typed without deploying. A draft takes no quota, no addresses and no VM names until it is deployed, and only you (and admins) see it. Its page shows **Edit draft**, which opens the form again with your choices (**Create and deploy** then saves and deploys it), and **Deploy**, which checks everything a new environment is checked for. **Duplicate**, on any environment's page, opens the form with a copy of its host groups under the name `<name>-copy`: the VM names are cleared and no accounts or passwords are copied.
+
 ## 4. Working with an environment
 
 The environment's page shows its state, its host groups with each VM's address, the hosts-file entries, and its jobs. Owners see these actions:
@@ -95,7 +104,9 @@ The environment's page shows its state, its host groups with each VM's address, 
 |---|---|
 | **Deploy** / **Redeploy** | Runs OpenTofu and Ansible. A redeploy creates missing VMs and reconfigures existing ones. It reinstalls an existing VM only if what it was installed from changed (see *What a redeploy keeps*, below). |
 | **Preview redeploy** | Shows what a redeploy would do to each VM (reinstall, create, remove, update or keep) and why, without applying anything. It's a snapshot: a later change to Settings or a LABaPe update can change the next redeploy. From the command line: `deploy.sh ... --plan-only <file>` ([Command-Line.md §1](Command-Line.md#1-deploying-and-destroying)). |
+| **Add host** | On a deployed or failed environment: more VMs in a group, or a new group like an existing one (its OS, size, network, role, template and software, under a new name). It is checked like a new environment (quota, host capacity, names), then starts a redeploy that creates only the new VMs. |
 | **Destroy** | Deletes every VM, its disks and the OpenTofu workspace, and releases its addresses. It can't be undone. |
+| **Delete** | On a destroyed (or never deployed) environment: removes the record, its stored secrets and rotation settings, and frees the name for a new environment. Jobs and the audit log keep their rows. Nothing on a KVM host changes. |
 | **Show credentials** | The tester accounts and passwords (see below). |
 | **Refresh addresses** | Only for environments with DHCP VMs: looks up each DHCP VM's current address and rewrites the inventory and hosts entries. No VM is changed. |
 | **Promote to template** | Template editors: turns a VM (not a domain controller) into a template. The VM is generalized (sysprep on Windows, cloud-init clean on Linux), shut down and copied into the template library. Destroy the environment when you're done with it. |
@@ -144,7 +155,7 @@ If you aren't sure, choose **Preview redeploy** first, or turn on automatic snap
 
 **Secrets on the VMs.** A VM can read its own secrets itself: on Linux `sudo labape-secret get NAME`, on Windows (elevated) `Get-LabapeSecret NAME`. It reads what you stored for that VM, and the shared secrets whose **VMs that read it themselves** list names it (set it when you store or replace a shared secret; replacing with an empty value changes only the list). The other VMs can't. A new or changed list reaches OpenBao within a few minutes; a VM deployed before gets the command at its next **Redeploy**.
 
-**Accounts.** The environment's **Accounts** panel lists accounts beyond the built-in admins: **domain** users (on the environment's domain controller) and **local** users on the hosts of chosen roles. Owners choose **Edit** to add or remove them; **Redeploy** then creates new ones on the VMs. Each gets a generated password, shown on the credentials sheet under "Environment accounts" (a local account has a different one on each VM), and changed weekly. Removing an account from the list stops LABaPe managing it and forgets its password; it stays on the VMs (remove it from the VM's Accounts section).
+**Accounts.** The environment's **Accounts** panel lists accounts beyond the built-in admins: **domain** users (on the environment's domain controller) and **local** users on the hosts of chosen roles. Owners choose **Edit** to add or remove them; **Redeploy** then creates new ones on the VMs. Each gets a generated password, shown on the credentials sheet under "Environment accounts" (a local account has a different one on each VM), and changed weekly. A local account is bound to roles (every VM with the role; the VM names are shown beside each role). **Only these VMs** under the roles narrows it to the VMs you tick; left blank, every VM of the roles gets it. **Sudo, no password** (Linux accounts) lets the account run `sudo` without a password, through one file LABaPe manages on each VM; unticking it, or the last Linux host, removes it at the next deploy. Removing an account from the list stops LABaPe managing it and forgets its password; it stays on the VMs (remove it from the VM's Accounts section).
 
 <a id="vm-certificates"></a>**VM certificates.** When the platform CA is set up, every VM deployed from the web interface gets a certificate for its short name, its full name and its address, renewed on the VM before it expires. Each VM also trusts the LABaPe root. To trust services on those VMs from your own browser, download the root certificate from the dashboard and import it.
 
@@ -185,6 +196,8 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 
 **ISOs.** Open an ISO to set which OS it installs (LABaPe guesses from the name) and whether it's the **default** for that OS. Template builds and ISO installs use the default ISO, or else the newest one.
 
+**Linked stacks.** When this stack is linked with others, the **Linked stacks** tab lists the templates and files each one offers. **Copy here** (file managers) copies one onto this stack as a job: a file lands in the same tab it came from, a template in the template library. A dropped connection resumes where it stopped when you copy it again, and a name that already exists is refused. A template can also be chosen straight in the New environment form and is copied when you deploy.
+
 **Templates** (template editors):
 - **Build a template** installs an OS from its ISO with Packer and saves it under a new name. Linux takes about 15 minutes, Windows up to an hour or more. For Windows Server, tick **Server Core (no desktop)** for a Core template, and **Datacenter** for the Datacenter edition (Standard otherwise). A template's page shows its edition.
 - **Refresh** clones a template, applies every available OS update (on Windows, every update, not only security fixes) and saves the result under a new name. The original is left as it is. Your admin may run a refresh of every template monthly.
@@ -219,6 +232,7 @@ The new-environment form shows the KVM hosts and networks you may use. **Network
 
 Scripts and CI can call LABaPe's API with a token instead of signing in. Open your account menu (your name at the top right) → **API tokens**:
 - **New token**: a name, the roles it may use (none chosen: all of yours) and when it expires (at most a year). The token is shown once: copy it then.
+- Revoked and expired tokens are hidden; tick **Show revoked and expired** to see them. They are removed after the retention your admin set (Settings → History).
 - A token acts as you, with the roles you chose, but never more than you have when it's used. If you lose a group, the token loses that role too (at your next sign-in).
 - Send it in a header:
 
@@ -233,3 +247,18 @@ A token with the **console** role can run commands and open text sessions on you
 
 Admins can also make **service tokens**, which aren't tied to a person (see [Web-Interface-Admin.md §18](Web-Interface-Admin.md#18-api-tokens-and-metrics)).
 
+## 12. Certificates
+
+**Certificates** (top bar) lists certificates signed by the platform CA: the ones you requested and those of environments you own. CA administrators and auditors can tick **Everyone's certificates**. Search by name, address, serial, requester or host, and filter by state (active, expiring, expired, revoked) and source (asked for here, a deploy, the stack's own); the filters apply as soon as you choose. Each row shows when it was **issued**, when it **expires** (and the days left), its state, who requested it and for which environment. Open one to see its details, including its **Uses** (what it may be used for), the PEM, and **Download**.
+
+**Requesting a certificate** (the `ca_requester` role; admins hold it too). On the **Request** tab choose **LABaPe makes the key** (give a common name, more DNS names and addresses: LABaPe makes a key pair and shows the private key **once**, for you to download; it is not kept) or **I have a CSR** (paste your request; only the certificate comes back). You may ask for names under the stack's own names and the domains the CA administrator allowed, no wildcards, and for addresses in the allowed networks; the page says which. The lifetime is 30 days by default, at most 90. Tie the certificate to an environment and its owners see it too. Trust the CA's root (download it from the result or the dashboard) on the machines that use the certificate.
+
+**Attributes.** With none chosen the CA gives its default: server and client authentication. A CA administrator can turn on extra attributes (**The CA** tab → **The CA applies extra attributes**, after a one-time command in the CA container; see [Web-Interface-Admin.md §21](Web-Interface-Admin.md#21-the-platform-ca-and-certificates)). Then you may also choose code signing, email protection (S/MIME), time stamping, OCSP signing, smart-card logon, and the key usages **Signing** and **Encryption**. A certificate that comes back without what you asked for is revoked and refused.
+
+**Renew…** on a certificate opens a new request with the same names: a new key, a new certificate. **Revoke…** (CA administrators) marks a certificate revoked with a reason. Revocation is **passive**: the CA refuses to renew it and answers a revocation check, but a client that never checks keeps trusting it until it expires.
+
+CA administrators (`ca_admin`) also see **The CA** tab: whether the CA answers, its address, root certificate and fingerprint, the register counts, the lists of allowed names and networks and the lifetimes, and **Add to the register** for a certificate the CA signed outside LABaPe. In Authentik the groups `labape-ca-admins` and `labape-ca-requesters` give the two roles.
+
+## 13. Help
+
+**Help** in the top bar opens these guides inside LABaPe, so nobody needs the files: a section list on the left and the text on the right. The guide for admins shows only to admins and auditors, and the command-line guide only to admins. Every page also has a **Help for this page** link at its top right that opens the guide at the section for that page.
