@@ -14,3 +14,8 @@ test("a page links to its Help section", async ({ page }) => {
   await expect(page).toHaveURL(/\/help\?doc=guide&find=Jobs/);
   await expect(page.getByRole("heading", { name: /Jobs/ }).first()).toBeVisible();
 });
+
+test("Files has a Linked stacks tab", async ({ page }) => {
+  await open(page, "/files?tab=linked");
+  await expect(page.getByRole("tab", { name: "Linked stacks" })).toBeVisible();     // listing only: never press Copy here
+});

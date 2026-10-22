@@ -3,11 +3,12 @@ other stacks call (`/api/link/*`, authenticated by the link's token, not a sign-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ca, links, linksso
+from .. import ca, linked_library, links, linksso
 from ..db import get_db
 from ..models import StackLink
 from ..security import Principal, audit, client_ip, require_roles
@@ -66,6 +67,38 @@ def _peer(db: Session, authorization: str | None) -> StackLink:
 def link_summary(db: Session = Depends(get_db), authorization: str | None = Header(default=None)):
     _peer(db, authorization)
     return links.summary(db)
+
+
+@router.get("/api/link/library")
+def link_library(db: Session = Depends(get_db), authorization: str | None = Header(default=None)):
+    """The templates and files this stack offers a linked stack (backlog row 22)."""
+    _peer(db, authorization)
+    return linked_library.local_library(db)
+
+
+@router.get("/api/link/download/{kind}/{ident}")
+def link_download(kind: str, ident: str, db: Session = Depends(get_db), authorization: str | None = Header(default=None),
+                  range: str | None = Header(default=None)):
+    """One template (by name) or file (by id) for a linked stack; `Range: bytes=N-` resumes a partial copy."""
+    import re
+    link = _peer(db, authorization)
+    start = 0
+    if range:
+        m = re.fullmatch(r"bytes=(\d+)-", range.strip())
+        if not m:
+            raise HTTPException(416, "Only open-ended ranges (bytes=N-) are supported")
+        start = int(m.group(1))
+    try:
+        chunks, size = linked_library.open_local(db, kind, ident, start)
+    except linked_library.LibraryError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if start >= size:
+        raise HTTPException(416, "Nothing left to send", headers={"Content-Range": f"bytes */{size}"})
+    audit(db, f"link:{links._name(link.url)}", "link.download", detail={"kind": kind, "item": ident, "from": start})
+    headers = {"Content-Length": str(size - start), "Accept-Ranges": "bytes"}
+    if start:
+        headers["Content-Range"] = f"bytes {start}-{size - 1}/{size}"
+    return StreamingResponse(chunks, status_code=206 if start else 200, media_type="application/octet-stream", headers=headers)
 
 
 @router.post("/api/link/sso/provider")

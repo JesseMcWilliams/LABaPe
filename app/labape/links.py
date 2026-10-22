@@ -83,12 +83,17 @@ def _drop_secret(db: Session, name: str) -> None:
     db.commit()
 
 
+def ssl_context(pem: str) -> ssl.SSLContext:
+    """What HTTPS to a peer is checked against: its platform CA root (pinned at link time) plus the system roots."""
+    ctx = ssl.create_default_context()
+    ctx.load_verify_locations(cadata=pem)
+    return ctx
+
+
 def client(pem: str) -> httpx.Client:
     """HTTPS to a peer: its platform CA root (pinned at link time) plus the system roots, for a peer
     whose web certificate comes from a public CA."""
-    ctx = ssl.create_default_context()
-    ctx.load_verify_locations(cadata=pem)
-    return httpx.Client(verify=ctx, timeout=TIMEOUT)
+    return httpx.Client(verify=ssl_context(pem), timeout=TIMEOUT)
 
 
 # --- making a link -----------------------------------------------------------------------------

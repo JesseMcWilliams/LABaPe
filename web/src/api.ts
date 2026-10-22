@@ -64,6 +64,11 @@ export interface Me {
   session_expires: string | null;
 }
 
+// A linked stack's library (GET /api/linked/library): its templates and files, for the Template drop-down and Files.
+export interface LinkedTemplate { name: string; size: number; os_key: string; edition: string; sku: string; disk_gb: number; min_cpu: number; min_memory_mb: number; description: string; notes: string }
+export interface LinkedFile { id: number; category: string; name: string; size: number; sha256: string; os_key: string; targets: string[]; description: string }
+export interface LinkedStack { link_id: number; name: string; url: string; ok: boolean; error: string; templates: LinkedTemplate[]; files: LinkedFile[] }
+
 export interface Template {
   id: number;
   from_primary?: boolean;     // on the primary file host only: a deploy copies it here
@@ -189,6 +194,7 @@ export interface HostGroup {
   roles: string[];
   image_source?: "iso_direct" | "packer_template";
   template?: string;
+  template_from?: number;                // a linked stack (its id) the template is copied from at deploy (row 22)
   cpu_count: number;
   memory_mb: number;
   disk_gb: number;

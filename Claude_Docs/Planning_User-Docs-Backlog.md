@@ -17,3 +17,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment page → Accounts: **Only these VMs** per local account (blank = every VM of the roles) (design §66).
 - Certificates: the **Attributes** choices on Request, the Uses row in a certificate's details, and The CA tab's "applies extra attributes" switch with the one-time CA command (design §66).
 - Help: the top-bar item, the section list, and the Help for this page link (design §66).
+- Files → Linked stacks (listing, Copy here, resuming a copy) and choosing a linked stack's template in the New environment form (design §66).

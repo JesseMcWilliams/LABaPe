@@ -38,6 +38,7 @@ class HostGroup(BaseModel):
     roles: list[ROLE_NAMES] = Field(min_length=1, max_length=1)      # one role per host group
     image_source: Literal["iso_direct", "packer_template"] | None = None
     template: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]+$")
+    template_from: int | None = None         # a linked stack (its id) the template is copied from when this deploys (row 22)
     cpu_count: int = Field(default=2, ge=1, le=32)
     memory_mb: int = Field(default=4096, ge=512, le=262144)
     disk_gb: int = Field(default=40, ge=10, le=2048)
@@ -309,8 +310,27 @@ def _check_templates(db: Session, kvm_host_id: int, groups: list[dict]) -> None:
                     known.setdefault(t.name, t)
             libraries[hid] = known
         return libraries[hid]
+    peer: dict[int, dict] = {}
     for i, g in enumerate(groups):
         if g.get("image_source") != "packer_template":
+            continue
+        if g.get("template_from"):               # a linked stack's template: checked against that stack's library (row 22)
+            from .. import linked_library
+            from ..models import StackLink
+            link = db.get(StackLink, g["template_from"])
+            if link is None:
+                raise FieldError(f"host_groups.{i}.template", "That linked stack isn't linked any more.")
+            if link.id not in peer:
+                try:
+                    peer[link.id] = {t["name"]: t for t in linked_library.peer_library(db, link)["templates"]}
+                except linked_library.LibraryError as exc:
+                    raise FieldError(f"host_groups.{i}.template", f"Can't check {link.name}'s templates: {exc}") from exc
+            t = peer[link.id].get(g.get("template") or "")
+            if t is None:
+                raise FieldError(f"host_groups.{i}.template", f"{link.name} has no template {g.get('template')!r}.")
+            if t.get("os_key") and t["os_key"] != g.get("os"):
+                raise FieldError(f"host_groups.{i}.template", f"Template {t['name']} holds {t['os_key']}, not {g.get('os')}. "
+                                                              "Choose a template for this OS.")
             continue
         known = library(g.get("kvm_host_id") or kvm_host_id)
         if not known:
