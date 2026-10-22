@@ -34,7 +34,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `scripts/test/run-all.sh` — runs every check (tools/collections installed, Ansible syntax, `tofu validate`, libvirt/WinRM connectivity, vault+SSH key consistency), prints a PASS/FAIL summary.
 - Individual checks: `scripts/test/test-opentofu-config.sh`, `scripts/test/test-ansible-playbook-syntax.sh`, `python3 scripts/test/test-winrm-connectivity.py`.
 - Web backend: `pip install -e app pytest` in a venv, then `python -m pytest app/tests` (SQLite, no services needed). Web UI type-check/build: `npm ci && npm run build` in `web/` (no Node on the Windows box; build in a `node:22` container on the lab host).
-- Browser tests: `web/e2e/` (Playwright, against a live stack, run in the Playwright container; see its README). Written and run 2026-10-21 (Node on the Windows box; 41 pass with writes).
+- Browser tests: `web/e2e/` (Playwright, against a live stack; Node on the Windows box works, or the Playwright container; see its README). `LABAPE_URL=... npm run test` after `npm run login`; `npm run test:writes` also creates `zz-` catalog items.
 - Redirect test output to a file and read only the summary or failures. Don't stream full test output into the conversation.
 <!-- TODO: pytest covers only the web backend (app/tests); no Molecule for roles yet. tflint/ansible-lint/Molecule are Claude_Docs/Design_System-Overview.md §16 goals, not implemented. -->
 
@@ -58,7 +58,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_User-Docs-Backlog.md`: one line per user-visible change not yet covered in `User_Docs/`.
   - `Planning_Backlog.md`: agreed but deferred work (`.docx` guides, the v0.3.0 release), one line each with a pointer to the detail.
   - `Planning_Lists-Secrets-Settings.md`: the round of 2026-10-14 (paging and exports, filters, a stack's names and SANs, secret health, sections for Secrets and Settings), batch by batch.
-  - `Planning_Handoff-2026-10-21.md` (and the older `-19`, `-16` and `-15` it builds on): where LABaPe stands (v0.5.5 released; rotation, add host, drive pages and certificates since, unreleased), what's left, the lab's state and the gotchas; read them first when resuming.
+  - `Planning_Handoff-2026-10-22.md` (and the older `-21`, `-19`, `-16` and `-15` it builds on): where LABaPe stands (v0.5.6 released: rotation, add host, drive pages, certificates, drafts, standalone groups, Help, linked templates and files), what's left, the lab's state and the gotchas; read them first when resuming.
   - `Planning_Access-Mail-Updates-Files.md`: the next round's list (2026-10-14): Secrets paging, connecting as an account, a lab mail server, Catalog → Updates, new packages, files per KVM host, monitoring tools; questions 167-173.
   - `Reference_Console-API-And-MCP.md`: how another AI or script gets a token and uses the console API (commands, text sessions) and the MCP server.
   - `Planning_Rotation-Hosts-Disks-CA.md`: plan for overdue-rotation handling (a bulk rotate), adding a host to an environment, disk details with SMART history and a link from the alert, and a Certificates page for the platform CA with two new roles (batches R2, E2, H3, C2, all built 2026-10-21; questions 187-195, answered).

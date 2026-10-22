@@ -6,7 +6,16 @@ import { Box, Link, Paper, Table, TableBody, TableCell, TableHead, TableRow, Typ
 
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-const safeHref = (h: string) => (/^(https?:|mailto:|#|\/)/.test(h) ? h : "");
+// Links to another guide (`Web-Interface-Admin.md#21-the-platform-ca`) become Help links; anything else relative is dropped.
+const GUIDES: Record<string, string> = { "Web-Interface-Guide.md": "guide", "Web-Interface-Admin.md": "admin", "Command-Line.md": "cli" };
+const safeHref = (h: string) => {
+  const m = /^([A-Za-z-]+\.md)(?:#(.*))?$/.exec(h);
+  if (m && GUIDES[m[1]]) {
+    const find = (m[2] ?? "").replace(/^\d+-/, "").replace(/-/g, " ");
+    return `/help?doc=${GUIDES[m[1]]}${find ? `&find=${encodeURIComponent(find)}` : ""}`;
+  }
+  return /^(https?:|mailto:|#|\/)/.test(h) ? h : "";
+};
 
 function inline(text: string, key = ""): ReactNode[] {
   const out: ReactNode[] = [];

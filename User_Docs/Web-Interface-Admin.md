@@ -24,6 +24,7 @@ This guide is for LABaPe admins (the `admin` role, `labape-admins` by default). 
 18. [API tokens and metrics](#18-api-tokens-and-metrics)
 19. [Windows sign-on and the stack's names](#19-windows-sign-on-and-the-stacks-names)
 20. [Console access and the MCP server for AIs and scripts](#20-console-access-and-the-mcp-server-for-ais-and-scripts)
+21. [The platform CA and certificates](#21-the-platform-ca-and-certificates)
 
 ## 1. Installing
 
@@ -72,6 +73,8 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 **Roles.** Each host is a **KVM** host (runs VMs), a **stack** host (runs a LABaPe stack only, such as a Raspberry Pi), or **both**. A stack host has a **Stack address** (its web address) and a **Stack** section instead of VMs; Prepare isn't offered for stack-only hosts.
 
 **Deleting a KVM host.** A host's page → Settings → **Delete host** (asks to confirm) takes it out of LABaPe: it disappears from every list and from monitoring at once and stops counting against the host limit. It can't be deleted while it is the primary file host (make another host primary first), runs this stack, has jobs queued or running, or is used by an environment (destroy or move those first). Deleted hosts are listed at the bottom of Admin → KVM hosts with the day each is removed for good; **Restore** brings one back, turned off. Settings → History → *Deleted KVM hosts (days)* sets the period (30 by default). After it, the host's facts, metrics, templates and network links are removed; jobs keep their history. Nothing is changed on the host itself: the worker's SSH key stays authorized there until you remove it.
+
+**Drive pages.** A drive in Drives and volumes (and the **Drive details** link on a drive's alert) opens its own page: the drive's facts and layout, charts of its SMART readings (pending, reallocated and uncorrectable sectors, temperature, with the limits), when each number last moved, and the full attribute table. LABaPe reads SMART every 6 hours and on **Read now**, keeps the readings 365 days (Settings → History → Drive history) and the charts need two readings to show a trend.
 
 **Drive Pools.** A host that has a Linux RAID array (mdadm), a ZFS pool or an LVM volume group gets a **Drive Pools** section between Drives and volumes and NICs. Each pool shows its state (healthy, checking, rebuilding, degraded, failed), size and use, the progress of a check or rebuild, and its drives with their state and errors. A degraded or failed pool, a rebuild, a faulty drive and ZFS errors also appear on the Dashboard and as Monitoring alerts.
 - **Check** (mdadm) / **Scrub** (ZFS) reads and verifies every drive; **Stop** ends it. **Repair** (mdadm) rewrites blocks that differ between the drives.
@@ -147,7 +150,7 @@ Settings is in sections, listed on the left: **Sign-in** (directory group search
 | File distribution | How long jobs wait for an unreachable primary file host; copying every template to every host daily ([§3](#3-kvm-hosts)) |
 | Templates | How many versions of a template to keep, and a monthly refresh of every template (on or off, day, time) |
 | Remote access, Syslog collector | [§16](#16-remote-access-and-auditors), [§17](#17-the-syslog-collector) |
-| History | Days to keep job logs, user errors and the audit trail (0 keeps the audit trail forever, the default) |
+| History | Days to keep job logs, user errors, deleted KVM hosts, revoked or expired API tokens and drive (SMART) history, and the audit trail (0 keeps the audit trail forever, the default) |
 | Syslog | Sends every audit event to a syslog server over UDP, TCP or TLS (RFC 5424, JSON body). **Send test message** checks it. |
 | Email (SMTP) | Server, port, security (none, STARTTLS, SSL/TLS), optional sign-in, from address. **Email people when their jobs finish** turns on job emails. **Send test email** checks it. A stack starts with this pointed at its own mail server (Mailpit, [§6.1](#61-the-stacks-mail-server)). |
 | Directory (group search) | An Authentik API token that can only view groups (`authentik_core.view_group`), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. |
@@ -188,6 +191,10 @@ Updates, rollbacks, restores and those rotations turn maintenance on and off the
 ## 8. Secrets and rotation
 
 **Secrets** has three tabs: **Stack** (the stack's own secrets), **KVM hosts** (the worker's key and each host's LABaPe access account) and **Environments** (each environment's accounts and passwords, its credentials sheet and inventory, filtered by environment, store, VM, local or domain, password or key, and when it last changed). Each tab lists what it is, which store holds it, its class, rotation interval, last and next rotation, and status. Open one to change its interval, turn scheduled rotation off, choose an elevated account or add notes; **Rotate now** rotates it at once. Every rotation and every change is audited.
+
+**Overdue rotations.** A secret LABaPe could rotate whose date passed more than an hour ago is highlighted (a tinted row, an *overdue* chip, a count on its tab), and a warning above the tabs lists them. A secret whose rotation restarts a service waits for the maintenance window and stays overdue until then; secrets LABaPe would skip anyway (an environment that isn't deployed, an elevated account not set yet, a store that isn't ready) are not listed.
+
+**Rotate overdue now** (in that warning) rotates them all at once, one at a time. The dialog lists them in order with the ones that stop services marked, and you must tick that you understand services will stop before the button works. The worker's own rotations go first, then those the update agent does (PostgreSQL password, CA key password, the master key last), which restart the API and worker, so the page may drop for a minute. It stops at the first failure and leaves the rest for you to look at; a progress banner follows the run and survives the restarts.
 
 **Health and recovery.** LABaPe checks that each stored secret still works (a sign-in, an API call, a key that opens what it locks): every quarter of its rotation period, at least daily; not at all for one that rotates every day (each rotation proves it); weekly for one LABaPe doesn't rotate. **Health** shows the result (ok, recovered, failed, not in use, or **by rotation** for a secret that rotates daily, whose rotation is its check) with the last and next check; **Check now** checks at once. **Recoverable** says what happens when a check fails:
 - **Yes**: LABaPe puts a working value back by itself, with an earlier value it kept or a new one set with another credential it holds (the rotation, the update agent, a host's access account), then checks again. The tooltip says how.
@@ -364,6 +371,8 @@ Two or more LABaPe stacks can be **linked**: each reads the others' summary (hos
 
 Each link shows whether it answers, when it last did and a one-line summary. **Check** reads it now; **Unlink** removes it on both sides (linking again takes a new code). A linked stack that stops answering is shown with its last data, marked stale after 3 minutes, and becomes an alert after Settings → Monitoring's missed checks. Each stack shows the overall view; actions are always taken on each stack itself.
 
+**Templates and files.** A stack also offers its template library (the primary file host's) and its stored files to the stacks linked with it, read-only. On the other stack, Files → **Linked stacks** lists them with **Copy here**; the New environment form's Template drop-down offers the templates too and copies the chosen one when the environment is deployed. Both copy over HTTPS with the link's token, checked against the other stack's platform CA, onto this stack's primary file host; a copy resumes after a break and is checked against the SHA-256 the other stack reported. A name this stack already has is refused, not overwritten. The dashboard marks the stack you are connected to **you are here**.
+
 **Sign-on between linked stacks.** In the **Sign-on** column, **Turn on** lets that stack's users sign in to this one with their own accounts: this stack's sign-in page then offers the other stack by name. They appear here as `<user>@<other stack>` and keep the role groups they have there, so an admin there is an admin here. Each side decides for itself: turning it on here doesn't let this stack's users into the other one. **Turn off** removes the button here and the other stack's client for it; users who came that way stay, but can't sign in that way any more. It needs Authentik installed with LABaPe and served over HTTPS on both stacks ([§9](#9-updating-labape)), and each stack's update agent, which makes the Authentik objects; the column shows "setting up", "on", or "failed" with the reason.
 
 ## 15. Quotas, leases and placement
@@ -396,6 +405,8 @@ The stack runs a syslog collector: UDP and TCP 514 and TLS 6514 on the host (`LA
 ## 18. API tokens and metrics
 
 **API tokens** (account menu → API tokens): every user makes **personal** tokens ([Web-Interface-Guide.md §11](Web-Interface-Guide.md#11-api-tokens)). Admins also make **service** tokens: exactly the roles given, acting as `svc:<name>`, not tied to anyone's groups. With **Everyone's, and service tokens** ticked, admins see and revoke every token. Only a token's hash is kept; every write made with a token is audited as `token.use`. Tokens with the **console** role have options of their own ([§20](#20-console-access-and-the-mcp-server-for-ais-and-scripts)).
+
+Revoked and expired tokens are hidden on the Tokens page unless **Show revoked and expired** is ticked, and are deleted after the retention in Settings → History.
 
 **Prometheus metrics** at `/api/metrics`, for auditors and admins: make a service token with the **auditor** role, then:
 
@@ -452,3 +463,21 @@ Scripts and AI agents can run commands on an environment's VMs and open text ses
 
 **Claude Desktop.** `python tools/helpers/build_mcpb.py` builds `dist/labape-mcp-<version>.mcpb`; import it in Claude Desktop. It asks for the LABaPe address and the token (kept in the system's secret store), and optionally a CA file and a switch to skip certificate checks. It needs Python 3.9 or newer on the computer. A wrong token or an unreachable stack is reported on the first tool call.
 
+## 21. The platform CA and certificates
+
+The stack's own CA (step-ca, one container) signs the certificates of the stack's services and of every VM LABaPe deploys, and anyone with the right role can ask it for more on the **Certificates** page ([Web-Interface-Guide.md §12](Web-Interface-Guide.md#12-certificates)).
+
+**Roles.** `ca_admin` manages the CA: sees every certificate, revokes, edits the settings, adds certificates to the register and is not limited by the name lists. `ca_requester` may request certificates. Admins hold both. In Authentik the groups `labape-ca-admins` and `labape-ca-requesters` give them; create the groups and bind the users there. Auditors see every certificate but change nothing.
+
+**The CA tab** (for `ca_admin` and auditors): whether the CA answers, its address, root certificate and fingerprint, its provisioners and the register counts. **What may be requested** sets, for requesters, the domains (a name is allowed if it is, or ends in, one of them; the stack's own names and the parent domain of its address are always allowed), the networks addresses must be in (the private ranges by default), the default lifetime (30 days) and the longest (90, step-ca's limit). **Add to the register** takes the PEM of a certificate the CA signed outside LABaPe (for example the stack's own before the register existed). The register (`certificates`) records every certificate the CA signs through LABaPe: a person's request, a deploy's VMs, and the stack's own at their next renewal; only the public certificate is kept, never a key.
+
+**Revoking.** **Revoke…** runs `step ca revoke` for the serial and marks the certificate revoked. Revocation is passive: the CA refuses to renew the certificate and answers a revocation check, but a client that never checks keeps trusting it until it expires.
+
+**Extra attributes.** By default a certificate gets step-ca's own usages (server and client authentication). To let requesters ask for more (code signing, email protection, time stamping, OCSP signing, smart-card logon, the key usages Signing and Encryption) the CA's `labape-runner` provisioner needs the template in `container/ca/leaf.tpl`, which turns the request's choices into the certificate. Install it once, in the stack's CA container, then restart the CA:
+
+```bash
+docker exec labape-ca /labape/enable-attributes.sh     # or podman exec
+docker restart labape-ca
+```
+
+Then tick **The CA applies extra attributes** on the CA tab and save. LABaPe checks every certificate it gets back and revokes and refuses one that lacks what was asked for, so a missing template shows up as an error, not a wrong certificate. (This feature has not yet been run against a live step-ca: try it on a test request first.)
