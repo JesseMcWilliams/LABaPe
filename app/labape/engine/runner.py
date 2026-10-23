@@ -888,6 +888,7 @@ def _signal(proc: subprocess.Popen, sig: int) -> None:
 
 
 def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work: Path | None = None) -> None:
+    db.refresh(job, ["cancel_requested"])      # a job run in this session was loaded before the cancel came in
     job.exit_code = rc
     job.finished_at = utcnow()
     if job.cancel_requested and rc != 0:
