@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-23
+
+v0.6.0 adds environment templates and Fix buttons. A template is an environment's host groups without its name, host, VM names, addresses and accounts, with the few values you fill in when you start from it: save one from any environment, start a new environment from one (the form is filled in and warns about what the chosen host or catalog lacks), use the three starters, build templates out of other templates (parts, with prefixes, values for a part's groups, and a part that follows the latest version or is pinned to one) and move them between stacks as YAML. The admin Dashboard's failing checks (Directory group search, Email, Syslog, Platform CA, OpenBao, Conjur) now offer a Fix that asks for what it needs, repairs the integration and keeps nothing it was given; the CA and store fixes use a new update agent action, so reinstall the agent after updating. Browser SSH and RDP sessions copy and paste text both ways, recordings play again and can be played offline with a downloadable player, the VM key rotation waits for deploys, certificate attributes work against the real CA, and links are readable on the dark theme.
+
 ### Added
 
 - **Environment templates** (Environments → Templates): **Save as template** on an environment (its host groups without its name, host, VM names, addresses and accounts, plus the values you fill in when starting from it), **Start from a template** on the New environment form (fills the form; notes what the chosen KVM host or the catalog lacks, and copies a linked stack's template at deploy), three starters (*Domain with members*, *Three-tier Linux (standalone)*, *Kerberos lab*), templates made of **parts** (a prefix on each part's host group names, values set for a part's groups, a part that follows the latest version or is **pinned** to one), and YAML **Export**, **Export all** and **Import**. Migrations 0033 to 0035. See Web-Interface-Guide §14.

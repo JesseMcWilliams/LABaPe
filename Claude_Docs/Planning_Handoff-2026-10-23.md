@@ -4,7 +4,7 @@
 
 ## 1. State
 
-**Latest release:** v0.5.7 (2026-10-22)
+**Latest release:** v0.6.0 (2026-10-23)
 
 `main` has everything below merged and **no PR is open except the release-prep one** (SBOM, guides, CHANGELOG, this handoff). **Not released yet:** the next release is **v0.6.0** (new features: environment templates and the Fix buttons); `release.sh` is not run until the user says so. The summary paragraph for it is in `Release-Summary-0.6.0.local.md` (gitignored). pytest: **529 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves (the `test:writes` ones, and the ones waiting on something overdue); the suite now also opens the Templates page and starts a form from a starter.
 

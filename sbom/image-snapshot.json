@@ -645,7 +645,7 @@
   ],
   "dpkg_total": 116
  },
- "image_version": "v0.5.7-45-ga2a802f",
+ "image_version": "v0.5.7-47-g54174ae",
  "captured": "2026-10-23",
- "captured_from": "the lab stack's worker container (labape:local, built as v0.5.7-45-ga2a802f) and the images it runs"
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.5.7-47-g54174ae) and the images it runs"
 }
