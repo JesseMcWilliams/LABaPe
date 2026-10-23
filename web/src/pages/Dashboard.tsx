@@ -11,6 +11,7 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { api, fmtTime } from "../api";
 import Sparkline from "../components/Sparkline";
+import FixDialog, { FixInfo } from "../components/FixDialog";
 import UpdateDialog, { UpdateInfo } from "../components/UpdateDialog";
 import { hasRole, useAuth } from "../App";
 
@@ -201,8 +202,9 @@ function StatusIcon({ status }: { status: Check["status"] }) {
   return <HelpOutlineIcon color="disabled" fontSize="small" />;
 }
 
-function CheckList({ title, items, extra }: {
+function CheckList({ title, items, extra, fixes, onFix }: {
   title: string; items: (Check & { enabled?: boolean })[]; extra?: (c: Check & Record<string, unknown>) => ReactNode;
+  fixes?: FixInfo[]; onFix?: (f: FixInfo) => void;
 }) {
   return (
     <Paper variant="outlined" sx={{ p: 2, flex: "1 1 320px" }}>
@@ -218,6 +220,10 @@ function CheckList({ title, items, extra }: {
               </Typography>
               <Typography variant="caption" color="text.secondary" component="div">{c.message}</Typography>
               {extra?.(c as Check & Record<string, unknown>)}
+              {c.status !== "ok" && fixes?.some((f) => f.name === c.name) && (
+                <Button size="small" variant="outlined" sx={{ mt: 0.5 }} onClick={() => onFix?.(fixes.find((f) => f.name === c.name)!)}
+                  title="Asks for the credentials it needs, repairs this and forgets them">Fix</Button>
+              )}
             </Box>
           </Stack>
         ))}
@@ -435,6 +441,8 @@ export default function Dashboard() {
   const { me } = useAuth();
   const [data, setData] = useState<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean } | null>(null);
   const [health, setHealth] = useState<AdminHealth | null>(null);
+  const [fixes, setFixes] = useState<FixInfo[]>([]);
+  const [fixing, setFixing] = useState<FixInfo | null>(null);
   const [mon, setMon] = useState<Monitoring | null>(null);
   const [all, setAll] = useState<AllStacks | null>(null);
   const [error, setError] = useState("");
@@ -454,7 +462,10 @@ export default function Dashboard() {
   const load = () => {
     api.get<{ hosts: DashHost[]; environments: DashEnv[]; is_admin: boolean }>("/api/dashboard").then((d) => {
       setData(d);
-      if (d.is_admin) api.get<AdminHealth>("/api/dashboard/admin").then(setHealth, () => setHealth(null));
+      if (d.is_admin) {
+        api.get<AdminHealth>("/api/dashboard/admin").then(setHealth, () => setHealth(null));
+        api.get<FixInfo[]>("/api/admin/fixes").then(setFixes, () => setFixes([]));
+      }
       if (d.is_admin || hasRole(me, "auditor")) {
         api.get<Monitoring>("/api/dashboard/monitoring").then(setMon, () => setMon(null));
         api.get<AllStacks>("/api/dashboard/stacks").then(setAll, () => setAll(null));
@@ -551,13 +562,13 @@ export default function Dashboard() {
         <Box>
           <Typography variant="h6" sx={{ mb: 1 }}>Platform</Typography>
           <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
-            <CheckList title="Sign-in" items={health.auth} extra={(c) => c.last_sign_in
+            <CheckList title="Sign-in" items={health.auth} fixes={fixes} onFix={setFixing} extra={(c) => c.last_sign_in
               ? <Typography variant="caption" color="text.secondary" component="div">Last sign-in {fmtTime(c.last_sign_in as string)}</Typography>
               : null} />
             <CheckList title="Secrets and certificates" items={health.secrets} extra={(c) => c.name === "platform_ca" && c.status === "ok"
               ? <Link href="/api/ca/root.crt" variant="caption">Download the root certificate (trust it in browsers)</Link>
               : null} />
-            <CheckList title="Notifications" items={health.notifications} extra={(c) => {
+            <CheckList title="Notifications" items={health.notifications} fixes={fixes} onFix={setFixing} extra={(c) => {
               const last = c.last as { at: string; ok: boolean; error: string } | null;
               return <>
                 {c.summary ? <Typography variant="caption" component="div">{c.summary as string}</Typography> : null}
@@ -569,6 +580,7 @@ export default function Dashboard() {
           </Stack>
         </Box>
       )}
+      {fixing && <FixDialog fix={fixing} onClose={() => setFixing(null)} onDone={load} />}
     </Stack>
   );
 }
