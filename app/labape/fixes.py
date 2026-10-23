@@ -7,6 +7,8 @@ way). What the fix leaves behind is the integration's own, least-privilege crede
 - directory: Authentik's group search. Needs an Authentik admin API token. Makes (or finds) the read-only role
   `labape-directory-reader`, the service account `labape-directory`, its non-expiring API token, saves that token,
   turns the directory on and tests the search.
+- syslog: the audit log's forwarding to a syslog server. Needs the server, port, protocol and facility. Sends a test
+  message (TCP and TLS must connect; UDP gives no answer, which the message says), then saves and turns it on.
 - platform_ca / store.<name>: the CA or a secret store is not answering. These are repaired on the host, by the
   update agent (the API has no access to the containers): restart the service (a store is then unsealed again), or
   give LABaPe a new store login when the store refuses the stored one. They ask for nothing but a confirmation.
@@ -136,6 +138,30 @@ def fix_smtp(db: Session, v: dict, actor: str = "") -> str:
     return f"Email works: {host}:{port} accepted the login" + (f" and a test email went to {to}." if v.get("test_to", "").strip() else ".")
 
 
+# --- syslog -----------------------------------------------------------------------------------------
+
+def fix_syslog(db: Session, v: dict, actor: str = "") -> str:
+    old = appsettings.get(db, "syslog")
+    try:
+        port = int(v.get("port") or 514)
+    except ValueError as exc:
+        raise FieldError("port", "The port is a number.") from exc
+    try:
+        cfg = appsettings.SyslogSettings(**{**old.model_dump(), "enabled": True, "host": v["host"].strip(), "port": port,
+                                            "protocol": v.get("protocol") or "udp", "facility": v.get("facility") or "local0"})
+    except ValueError as exc:
+        raise FieldError("protocol", str(exc).splitlines()[-1] if str(exc) else "That isn't a valid setting.") from exc
+    try:
+        notify.send_syslog(cfg, {"action": "fix.syslog", "actor": actor, "outcome": "ok",
+                                 "detail": {"message": "LABaPe syslog fix: test message"}})
+    except (OSError, ValueError) as exc:
+        raise FieldError("host", f"Couldn't send to {cfg.host}:{cfg.port} over {cfg.protocol}: {exc}") from exc
+    appsettings.put(db, "syslog", cfg)
+    note = (" UDP gives no answer: check on the server that the test message arrived."
+            if cfg.protocol == "udp" else " The server accepted the connection.")
+    return f"Audit events go to {cfg.host}:{cfg.port} over {cfg.protocol.upper()} now.{note}"
+
+
 # --- the CA and the secret stores: repaired on the host by the update agent -----------------------------------------
 
 STORE_CHOICES = {"new_login": "Give LABaPe a new login", "restart": "Restart the store"}
@@ -207,6 +233,15 @@ FIXES: dict[str, Fix] = {
          _field("from_address", "From address", help="name@domain"),
          _field("test_to", "Send a test email to", required=False)],
         fix_smtp, ["host", "port", "security", "username", "from_address"]),
+    "syslog": Fix(
+        "syslog", "Fix syslog forwarding",
+        "Give the syslog server the audit log is sent to. A test message is sent first (TCP and TLS must connect); then the "
+        "settings are saved and forwarding is turned on.",
+        [_field("host", "Syslog server"), _field("port", "Port", required=False, default="514"),
+         _field("protocol", "Protocol", kind="select", options=["udp", "tcp", "tls"], default="udp"),
+         _field("facility", "Facility", kind="select", required=False, default="local0",
+                options=["local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7", "auth", "daemon", "user"])],
+        fix_syslog, ["host", "port", "protocol", "facility"]),
     "platform_ca": Fix(
         "platform_ca", "Restart the platform CA",
         "The CA (step-ca) is not answering. The update agent on this host restarts its container and waits for the stack's "
@@ -227,10 +262,11 @@ AGENT_FIXES = {"platform_ca", "store.openbao", "store.conjur"}       # done by t
 
 def listing(db: Session) -> list[dict]:
     """The fixes with the settings they would start from (never a secret)."""
-    smtp, directory = appsettings.get(db, "smtp"), appsettings.get(db, "directory")
+    smtp, directory, syslog = appsettings.get(db, "smtp"), appsettings.get(db, "directory"), appsettings.get(db, "syslog")
     start = {"smtp": {"host": smtp.host, "port": str(smtp.port), "security": smtp.security, "username": smtp.username,
                       "from_address": smtp.from_address},
-             "directory": {"api_url": directory.api_url}}
+             "directory": {"api_url": directory.api_url},
+             "syslog": {"host": syslog.host, "port": str(syslog.port), "protocol": syslog.protocol, "facility": syslog.facility}}
     from . import update
     agent = update.agent_installed()
     out = []

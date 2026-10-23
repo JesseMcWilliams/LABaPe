@@ -2212,4 +2212,7 @@ Migration 0035: `env_templates.version` and `env_template_versions` (a snapshot 
 - **Export.** The other stack has no versions to pin to, so a part pinned to an older version is written as that version's content under the name `<name> v<n>` and the including template refers to that name; one part at two versions is two documents. Imports create version 1 of everything.
 - **Found live:** deleting a template on Postgres failed (foreign key from the versions) where SQLite in the tests did not enforce it; the versions are now deleted by a statement that runs first.
 - **Not built:** comparing two versions, going back to one, a list of who changed what (the snapshots hold `created_by` and the time).
+## 72. A Fix for syslog forwarding (built 2026-10-23)
+
+One more entry in the registry of §67 (`fixes.py`, check `syslog` under Notifications): **Fix syslog forwarding** asks for the server, port (default 514), protocol (udp, tcp, tls) and facility, sends a test message, and only then saves the settings and turns forwarding on. TCP and TLS must connect; UDP gives no answer, which the result says ("check on the server that it arrived"). A server that refuses leaves the settings as they were. The other checks have no fix on purpose: a refused sign-in provider, the built-in store's key and the engine vault each need a decision about secrets, not a repeat of something that failed. Run on OZ through the API only for the refusal (OZ's syslog is the stack's own collector and was not changed).
 

@@ -96,7 +96,7 @@ def test_listing_and_run_are_for_admins_and_never_log_a_secret(client, monkeypat
     assert r.status_code in (401, 403)
     _admin_session(client)
     names = [f["name"] for f in client.get("/api/admin/fixes").json()]
-    assert names == ["directory", "smtp"]
+    assert names == ["directory", "smtp", "syslog"]
     assert client.post("/api/admin/fixes/nothing", json={"values": {}}).status_code == 404
     assert client.post("/api/admin/fixes/directory", json={"values": {}}).status_code == 422       # the token is needed
     monkeypatch.setattr(httpx, "request", FakeAuthentik())
@@ -153,7 +153,7 @@ def _agent(monkeypatch, installed=True, busy=False):
 def test_the_restart_fixes_are_offered_only_when_the_agent_is_installed(client, monkeypatch):
     _admin_session(client)
     _agent(monkeypatch, installed=False)
-    assert [f["name"] for f in client.get("/api/admin/fixes").json()] == ["directory", "smtp"]
+    assert [f["name"] for f in client.get("/api/admin/fixes").json()] == ["directory", "smtp", "syslog"]
     _agent(monkeypatch)
     listed = {f["name"]: f for f in client.get("/api/admin/fixes").json()}
     assert {"platform_ca", "store.openbao", "store.conjur"} <= set(listed)
@@ -199,3 +199,36 @@ def test_a_refused_login_defaults_to_a_new_login_and_anything_else_to_a_restart(
         monkeypatch.setattr(stores, "check", lambda db, name, cached=False, m=msg: (False, m))
         got = next(f for f in client.get("/api/admin/fixes").json() if f["name"] == "store.openbao")
         assert got["fields"][0]["default"] == want, msg
+
+
+# --- syslog ------------------------------------------------------------------------------------------------------
+
+def test_syslog_fix_sends_a_test_then_saves(client, monkeypatch):
+    _admin_session(client)
+    from labape import notify
+    sent = []
+    monkeypatch.setattr(notify, "send_syslog", lambda cfg, event, timeout=5.0: sent.append((cfg.host, cfg.port, cfg.protocol, event["actor"])))
+    r = client.post("/api/admin/fixes/syslog", json={"values": {"host": "logs.example.test", "port": "6514", "protocol": "tls", "facility": "local3"}})
+    assert r.status_code == 200, r.text
+    assert "accepted the connection" in r.json()["message"] and sent and sent[0][:3] == ("logs.example.test", 6514, "tls")
+    with session_factory()() as db:
+        cfg = appsettings.get(db, "syslog")
+        assert (cfg.enabled, cfg.host, cfg.port, cfg.protocol, cfg.facility) == (True, "logs.example.test", 6514, "tls", "local3")
+    udp = client.post("/api/admin/fixes/syslog", json={"values": {"host": "udp.example.test", "protocol": "udp"}})
+    assert udp.status_code == 200 and "UDP gives no answer" in udp.json()["message"]
+
+
+def test_syslog_fix_that_cannot_connect_changes_nothing(client, monkeypatch):
+    _admin_session(client)
+    from labape import notify
+
+    def refuse(cfg, event, timeout=5.0):
+        raise ConnectionRefusedError("connection refused")
+    monkeypatch.setattr(notify, "send_syslog", refuse)
+    r = client.post("/api/admin/fixes/syslog", json={"values": {"host": "down.example.test", "port": "514", "protocol": "tcp"}})
+    assert r.status_code == 422 and "connection refused" in r.text
+    with session_factory()() as db:
+        assert appsettings.get(db, "syslog").host == ""
+    bad = client.post("/api/admin/fixes/syslog", json={"values": {"host": "x.example.test", "protocol": "carrier-pigeon"}})
+    assert bad.status_code == 422
+    assert client.post("/api/admin/fixes/syslog", json={"values": {"host": "x", "port": "many"}}).status_code == 422
