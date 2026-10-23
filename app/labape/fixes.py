@@ -7,6 +7,9 @@ way). What the fix leaves behind is the integration's own, least-privilege crede
 - directory: Authentik's group search. Needs an Authentik admin API token. Makes (or finds) the read-only role
   `labape-directory-reader`, the service account `labape-directory`, its non-expiring API token, saves that token,
   turns the directory on and tests the search.
+- platform_ca / store.<name>: the CA or a secret store is not answering. These are repaired on the host, by the
+  update agent (the API has no access to the containers): restart the service (a store is then unsealed again), or
+  give LABaPe a new store login when the store refuses the stored one. They ask for nothing but a confirmation.
 - smtp: outgoing email. Needs the server and, if it asks, a user and password. Saves them, turns email on and
   checks that the server accepts the login (and sends a test email when an address is given).
 """
@@ -34,7 +37,7 @@ class Fix:
     title: str
     intro: str
     fields: list[dict]
-    run: Callable[[Session, dict], str]
+    run: Callable[[Session, dict, str], str]               # (db, typed values, who asked) -> what to tell the person
     detail_keys: list[str] = field(default_factory=list)       # the values that may go in the audit log (never secrets)
 
 
@@ -62,7 +65,7 @@ def _authentik(base: str, token: str, verify):
     return call
 
 
-def fix_directory(db: Session, v: dict) -> str:
+def fix_directory(db: Session, v: dict, actor: str = "") -> str:
     from .api.directory import api_base, authentik_groups
     cfg = appsettings.get(db, "directory")
     if v.get("api_url", "").strip():
@@ -102,7 +105,7 @@ def fix_directory(db: Session, v: dict) -> str:
 
 # --- smtp -------------------------------------------------------------------------------------------
 
-def fix_smtp(db: Session, v: dict) -> str:
+def fix_smtp(db: Session, v: dict, actor: str = "") -> str:
     old = appsettings.get(db, "smtp")
     try:
         port = int(v.get("port") or 587)
@@ -133,6 +136,57 @@ def fix_smtp(db: Session, v: dict) -> str:
     return f"Email works: {host}:{port} accepted the login" + (f" and a test email went to {to}." if v.get("test_to", "").strip() else ".")
 
 
+# --- the CA and the secret stores: repaired on the host by the update agent -----------------------------------------
+
+STORE_CHOICES = {"new_login": "Give LABaPe a new login", "restart": "Restart the store"}
+RESTARTABLE = {"labape-ca": "the platform CA", "labape-openbao": "OpenBao", "labape-conjur": "Conjur"}
+
+
+def _agent(action: str, target: str, actor: str, message: str) -> str:
+    from . import update
+    if not update.agent_installed():
+        raise FieldError("agent", "The update agent isn't installed on this host, so this can't be done from here: "
+                                  "run `docker compose restart` (or `container/stores/stores.sh setup` for a store login) on the host.",
+                         status_code=409)
+    if update.busy():
+        raise FieldError("agent", "The update agent is busy with something else; try again when it has finished.", status_code=409)
+    update.write_request(action, target, actor or "fix")
+    return message
+
+
+def fix_restart_ca(db: Session, v: dict, actor: str = "") -> str:
+    return _agent("restart_service", "labape-ca", actor,
+                  "Asked the update agent to restart the platform CA. It takes about a minute; the check turns green when the CA answers.")
+
+
+def _store_fix(store: str):
+    service = f"labape-{store}"
+
+    def run(db: Session, v: dict, actor: str = "") -> str:
+        what = v.get("what") or STORE_CHOICES["restart"]
+        if what == STORE_CHOICES["new_login"]:
+            return _agent("stores_setup", "", actor,
+                          "Asked the update agent to give LABaPe a new store login (stores.sh setup). It takes about a minute.")
+        if what != STORE_CHOICES["restart"]:
+            raise FieldError("what", "Choose one of the two.")
+        if service not in RESTARTABLE:
+            raise FieldError("what", f"{store} is not restarted from here.")
+        return _agent("restart_service", service, actor,
+                      f"Asked the update agent to restart {RESTARTABLE[service]} and unseal it. It takes about a minute.")
+    return run
+
+
+def _store_default(db: Session, store: str) -> str:
+    # A refused login wants a new one; anything else (no answer, sealed) wants a restart.
+    from . import stores
+    from .engine.secret_health import AUTH_FAILURE
+    try:
+        ok, msg = stores.check(db, store, cached=True)
+    except Exception:  # noqa: BLE001
+        return STORE_CHOICES["restart"]
+    return STORE_CHOICES["new_login"] if not ok and AUTH_FAILURE.search(msg or "") else STORE_CHOICES["restart"]
+
+
 FIXES: dict[str, Fix] = {
     "directory": Fix(
         "directory", "Fix the directory (group search)",
@@ -153,7 +207,22 @@ FIXES: dict[str, Fix] = {
          _field("from_address", "From address", help="name@domain"),
          _field("test_to", "Send a test email to", required=False)],
         fix_smtp, ["host", "port", "security", "username", "from_address"]),
+    "platform_ca": Fix(
+        "platform_ca", "Restart the platform CA",
+        "The CA (step-ca) is not answering. The update agent on this host restarts its container and waits for the stack's "
+        "health checks. Certificates already issued are not affected. Nothing needs to be typed.",
+        [], fix_restart_ca, []),
+    **{f"store.{name}": Fix(
+        f"store.{name}", f"Fix {label}",
+        f"{label} is not working for LABaPe. Choose what the update agent on this host should do: restart it (it is unsealed "
+        "again after) when it does not answer or is sealed, or give LABaPe a new login when it refuses the stored one. "
+        "Nothing else needs to be typed.",
+        [_field("what", "What to do", kind="select", required=False, options=list(STORE_CHOICES.values()),
+                default=STORE_CHOICES["restart"])],
+        _store_fix(name), ["what"]) for name, label in (("openbao", "OpenBao"), ("conjur", "Conjur"))},
 }
+
+AGENT_FIXES = {"platform_ca", "store.openbao", "store.conjur"}       # done by the update agent: offered when it is installed
 
 
 def listing(db: Session) -> list[dict]:
@@ -162,8 +231,14 @@ def listing(db: Session) -> list[dict]:
     start = {"smtp": {"host": smtp.host, "port": str(smtp.port), "security": smtp.security, "username": smtp.username,
                       "from_address": smtp.from_address},
              "directory": {"api_url": directory.api_url}}
+    from . import update
+    agent = update.agent_installed()
     out = []
     for f in FIXES.values():
+        if f.name in AGENT_FIXES and not agent:
+            continue
         fields = [{**fd, "default": start.get(f.name, {}).get(fd["name"], fd["default"]) or fd["default"]} for fd in f.fields]
+        if f.name.startswith("store."):
+            fields = [{**fd, "default": _store_default(db, f.name.split(".", 1)[1])} for fd in fields]
         out.append({"name": f.name, "title": f.title, "intro": f.intro, "fields": fields})
     return out

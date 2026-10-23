@@ -580,7 +580,7 @@ export default function Dashboard() {
           </Stack>
         </Box>
       )}
-      {fixing && <FixDialog fix={fixing} onClose={() => setFixing(null)} onDone={load} />}
+      {fixing && <FixDialog fix={fixing} onClose={() => setFixing(null)} onDone={() => { load(); setTimeout(load, 45000); setTimeout(load, 100000); }} />}
     </Stack>
   );
 }
