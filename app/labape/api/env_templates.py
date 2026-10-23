@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Literal
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -495,6 +495,104 @@ def import_templates(body: ImportIn, request: Request, db: Session = Depends(get
     db.commit()
     audit(db, p.username, "env_template.import", detail={"names": [t.name for t in created]}, source_ip=client_ip(request))
     return {"created": [{"id": t.id, "name": t.name} for t in created]}
+
+
+# --- history: the versions of a template, what changed between two, and going back to one -----------------
+
+def _snap(db: Session, t: EnvTemplate, version: int) -> EnvTemplateVersion:
+    v = db.scalar(select(EnvTemplateVersion).where(EnvTemplateVersion.template_id == t.id, EnvTemplateVersion.version == version))
+    if v is None:
+        raise HTTPException(status_code=404, detail=f"{t.name} has no version {version}")
+    return v
+
+
+def _sum(content_spec: dict, includes: list[dict]) -> str:
+    groups = ", ".join(f"{g['name']} {g.get('count', 1)}×{g['os']}" for g in content_spec.get("host_groups", []))
+    parts = ", ".join(f"{i['name']} ({i['prefix']}{', v' + str(i['version']) if i.get('version') else ''})" for i in includes or [])
+    return "; ".join(x for x in (groups, f"made of {parts}" if parts else "") if x) or "empty"
+
+
+@router.get("/{tid}/versions")
+def list_versions(tid: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """Every version of a template, newest first: who saved it, when, and what it held."""
+    ensure_builtins(db)
+    t = _get_visible(db, tid, p)
+    rows = db.scalars(select(EnvTemplateVersion).where(EnvTemplateVersion.template_id == t.id).order_by(EnvTemplateVersion.version.desc()))
+    return {"current": t.version, "can_restore": (not t.builtin) and (p.is_admin or t.owner == p.username),
+            "versions": [{"version": v.version, "created_at": v.created_at, "created_by": v.created_by, "current": v.version == t.version,
+                          "summary": _sum(v.spec, v.includes), "params": len(v.params), "parts": len(v.includes or [])}
+                         for v in rows]}
+
+
+def _by(items: list[dict], key: str) -> dict:
+    return {i[key]: i for i in items}
+
+
+def diff_content(a, b) -> dict:
+    """What differs between two versions' own content (groups, parameters, parts): added, removed and changed by name."""
+    ga, gb = _by(a.spec.get("host_groups", []), "name"), _by(b.spec.get("host_groups", []), "name")
+    changed = []
+    for name in ga.keys() & gb.keys():
+        fields = [{"field": f, "from": ga[name].get(f), "to": gb[name].get(f)}
+                  for f in sorted(set(ga[name]) | set(gb[name])) if not _same(ga[name].get(f), gb[name].get(f))]
+        if fields:
+            changed.append({"name": name, "fields": fields})
+    pa, pb = _by(a.params, "key"), _by(b.params, "key")
+    p_changed = [{"key": k, "from": {"label": pa[k]["label"], "default": pa[k]["default"]}, "to": {"label": pb[k]["label"], "default": pb[k]["default"]}}
+                 for k in pa.keys() & pb.keys() if not (pa[k]["label"] == pb[k]["label"] and _same(pa[k]["default"], pb[k]["default"]))]
+    ia, ib = _by(a.includes or [], "prefix"), _by(b.includes or [], "prefix")
+
+    def part(i: dict) -> dict:
+        return {"template": i["name"], "version": i.get("version"), "label": i.get("label", ""), "overrides": i.get("overrides") or {}}
+    i_changed = [{"prefix": k, "from": part(ia[k]), "to": part(ib[k])} for k in ia.keys() & ib.keys() if not _same(part(ia[k]), part(ib[k]))]
+    out = {"groups": {"added": sorted(gb.keys() - ga.keys()), "removed": sorted(ga.keys() - gb.keys()), "changed": sorted(changed, key=lambda c: c["name"])},
+           "params": {"added": sorted(pb.keys() - pa.keys()), "removed": sorted(pa.keys() - pb.keys()), "changed": sorted(p_changed, key=lambda c: c["key"])},
+           "parts": {"added": sorted(ib.keys() - ia.keys()), "removed": sorted(ia.keys() - ib.keys()), "changed": sorted(i_changed, key=lambda c: c["prefix"])},
+           "timezone": None}
+    if a.spec.get("timezone") != b.spec.get("timezone"):
+        out["timezone"] = {"from": a.spec.get("timezone"), "to": b.spec.get("timezone")}
+    out["same"] = not any(out[k][s] for k in ("groups", "params", "parts") for s in ("added", "removed", "changed")) and out["timezone"] is None
+    return out
+
+
+@router.get("/{tid}/diff")
+def diff_versions(tid: int, frm: int | None = Query(default=None, alias="from"), to: int | None = None, db: Session = Depends(get_db),
+                  p: Principal = Depends(current_principal)):
+    """What changed from one version to another (default: the version before the current one, to the current one)."""
+    ensure_builtins(db)
+    t = _get_visible(db, tid, p)
+    to = t.version if to is None else to
+    frm = max(1, to - 1) if frm is None else frm
+    return {"from": frm, "to": to, **diff_content(_snap(db, t, frm), _snap(db, t, to))}
+
+
+class RestoreIn(BaseModel):
+    version: int = Field(ge=1)
+
+
+@router.post("/{tid}/restore")
+def restore_version(tid: int, body: RestoreIn, request: Request, db: Session = Depends(get_db),
+                    p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Go back to a version: the template takes that version's groups, parameters and parts as a NEW version (the history is
+    never rewritten). Its name, description and sharing stay."""
+    t = _get_visible(db, tid, p)
+    if t.builtin or not (p.is_admin or t.owner == p.username):
+        raise HTTPException(status_code=403, detail="Only the template's owner or an admin can restore it, and the starters are fixed")
+    snap = _snap(db, t, body.version)
+    if _same(snap.spec, t.spec) and _same(snap.params, t.params) and _same(snap.includes, t.includes):
+        raise HTTPException(status_code=409, detail=f"{t.name} already is what version {body.version} held")
+    before = t.version
+    t.spec, t.params, t.includes = copy.deepcopy(snap.spec), copy.deepcopy(snap.params), copy.deepcopy(snap.includes)
+    try:
+        compose(db, t)                                          # a part that has gone since stops the restore
+    except FieldError:
+        db.rollback()
+        raise
+    bump_if_changed(db, t, p.username)
+    db.commit()
+    audit(db, p.username, "env_template.restore", object_type="env_template", object_id=t.id,
+          detail={"name": t.name, "from_version": before, "restored": body.version, "now": t.version}, source_ip=client_ip(request))
+    return _out(db, t, p, full=True)
 
 
 @router.get("/{tid}")
