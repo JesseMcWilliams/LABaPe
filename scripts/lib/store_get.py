@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The command line's engine secrets, read from the platform store (design §26, question 102 c).
 
-    store_get.py vault-pass --vault FILE --out FILE [--try-file FILE]
+    store_get.py vault-pass --vault FILE --out FILE [--try-file FILE] [--rebuild]
     store_get.py ssh --out-dir DIR
     store_get.py check
 
@@ -19,6 +19,9 @@ vault-pass writes the current vault password to --out (0600). If --vault
 (the command line's own secrets.vault.yml) doesn't open with it, the
 worker has rotated the password since: it tries the previous passwords
 (and --try-file) and re-encrypts the vault in place with the current one.
+--rebuild is for a vault that nothing can open (the worker rotated the password more times than the store keeps
+previous ones): the file is kept as FILE.bak-orphaned-<time> and the store's current vault, which the engine keeps up
+to date, is written in its place.
 ssh writes the VM key and its previous keys (history/) for SSH and Ansible.
 Standard library only; values never reach the terminal.
 """
@@ -142,7 +145,24 @@ def cmd_vault_pass(store: Store, a) -> None:
                     die(f"re-encrypting {vault} with the current password failed")
                 print(f"labape: {vault} re-encrypted with the current vault password", file=sys.stderr)
                 return
-    die(f"{vault} opens with neither the current vault password nor a previous one")
+    if getattr(a, "rebuild", False):
+        rebuild_vault(store, vault, out)
+        return
+    die(f"{vault} opens with neither the current vault password nor a previous one "
+        f"(to replace it with the store's current vault, keeping the old file: add --rebuild)")
+
+
+def rebuild_vault(store: Store, vault: Path, pw_file: Path) -> None:
+    import shutil
+    import time
+    engine = store.get("vault")                     # the engine's vault, encrypted with the current password
+    backup = vault.with_name(f"{vault.name}.bak-orphaned-{time.strftime('%Y%m%d-%H%M%S')}")
+    shutil.copy2(vault, backup)
+    write(vault, engine, 0o600)
+    if not opens(vault, pw_file):
+        shutil.copy2(backup, vault)
+        die(f"the store's vault doesn't open with its own password; {vault} is as it was")
+    print(f"labape: {vault} replaced by the store's current vault (the old one is kept as {backup.name})", file=sys.stderr)
 
 
 def cmd_ssh(store: Store, a) -> None:
@@ -172,6 +192,7 @@ def main() -> None:
     p.add_argument("--vault", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--try-file", default="")
+    p.add_argument("--rebuild", action="store_true")
     p = sub.add_parser("ssh")
     p.add_argument("--out-dir", required=True)
     sub.add_parser("check")

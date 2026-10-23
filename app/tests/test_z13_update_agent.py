@@ -64,7 +64,8 @@ def agent(tmp_path):
     stub("sleep", "exit 0\n")
     stub("python3", f'exec "{_px(Path(sys.executable))}" "$@"\n')
     (repo / "container" / "stores" / "stores.sh").write_text(
-        f'echo "stores.sh $*" >> "{_px(log)}"\nexit "${{STUB_STORES_RC:-0}}"\n', encoding="utf-8", newline="\n")
+        f'echo "stores.sh $*${{LABAPE_STORES_CLI_CHECK:+ [cli-check=$LABAPE_STORES_CLI_CHECK]}}" >> "{_px(log)}"\n'
+        'exit "${STUB_STORES_RC:-0}"\n', encoding="utf-8", newline="\n")
 
     def run(action: str, target: str = "", **env) -> dict:
         update = repo / "container" / "update"
@@ -134,6 +135,6 @@ def test_a_stack_that_does_not_come_back_healthy_is_a_failure(agent):
 def test_a_store_login_request_runs_stores_setup(agent):
     ok = agent("stores_setup")
     assert ok["status"]["state"] == "succeeded" and "stores.sh setup" in ok["status"]["message"]
-    assert ok["calls"] == ["stores.sh setup"]
+    assert ok["calls"] == ["stores.sh setup [cli-check=warn]"]          # a drifted command-line vault warns, it does not stop it
     bad = agent("stores_setup", STUB_STORES_RC="1")
     assert bad["status"]["state"] == "failed" and "stores.sh setup failed" in bad["status"]["message"]
