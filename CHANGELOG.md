@@ -7,6 +7,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **Template history:** a **History** button on each template lists its versions, compares any two in plain sentences and restores an older one as a new version (nothing is rewritten). See Web-Interface-Guide §14.
+- **`store_get.py vault-pass --rebuild`** replaces a command-line vault that nothing can open (the vault password was rotated more often than the store keeps previous ones) with the store's current vault, keeping the old file.
+
+### Changed
+
+- **The store Fix "give LABaPe a new login"** runs the stores' full setup; when the update agent runs it, a command-line vault that has drifted is a warning with the rebuild command, no longer a reason to stop. OpenBao's `labape-cli` policy may read the engine's vault (Conjur's already could).
+
 ## [0.6.0] - 2026-10-23
 
 v0.6.0 adds environment templates and Fix buttons. A template is an environment's host groups without its name, host, VM names, addresses and accounts, with the few values you fill in when you start from it: save one from any environment, start a new environment from one (the form is filled in and warns about what the chosen host or catalog lacks), use the three starters, build templates out of other templates (parts, with prefixes, values for a part's groups, and a part that follows the latest version or is pinned to one) and move them between stacks as YAML. The admin Dashboard's failing checks (Directory group search, Email, Syslog, Platform CA, OpenBao, Conjur) now offer a Fix that asks for what it needs, repairs the integration and keeps nothing it was given; the CA and store fixes use a new update agent action, so reinstall the agent after updating. Browser SSH and RDP sessions copy and paste text both ways, recordings play again and can be played offline with a downloadable player, the VM key rotation waits for deploys, certificate attributes work against the real CA, and links are readable on the dark theme.

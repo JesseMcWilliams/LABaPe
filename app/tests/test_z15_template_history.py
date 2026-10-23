@@ -38,6 +38,7 @@ def test_the_versions_are_listed_newest_first_with_who_and_what(client):
     assert [v["version"] for v in r["versions"]] == [2, 1] and [v["current"] for v in r["versions"]] == [True, False]
     assert r["versions"][1]["params"] == 1 and r["versions"][0]["params"] == 2 and r["versions"][0]["created_by"]
     assert "Web 2×rocky9" in r["versions"][0]["summary"]
+    assert r["versions"][0]["summary"].endswith("asks for 2 values") and r["versions"][1]["summary"].endswith("asks for 1 value")
 
 
 def test_the_diff_says_what_changed_by_name(client):

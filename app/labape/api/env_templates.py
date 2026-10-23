@@ -506,10 +506,11 @@ def _snap(db: Session, t: EnvTemplate, version: int) -> EnvTemplateVersion:
     return v
 
 
-def _sum(content_spec: dict, includes: list[dict]) -> str:
+def _sum(content_spec: dict, includes: list[dict], params: list[dict]) -> str:
     groups = ", ".join(f"{g['name']} {g.get('count', 1)}×{g['os']}" for g in content_spec.get("host_groups", []))
     parts = ", ".join(f"{i['name']} ({i['prefix']}{', v' + str(i['version']) if i.get('version') else ''})" for i in includes or [])
-    return "; ".join(x for x in (groups, f"made of {parts}" if parts else "") if x) or "empty"
+    asked = f"asks for {len(params)} value{'' if len(params) == 1 else 's'}" if params else ""
+    return "; ".join(x for x in (groups, f"made of {parts}" if parts else "", asked) if x) or "empty"
 
 
 @router.get("/{tid}/versions")
@@ -520,7 +521,7 @@ def list_versions(tid: int, db: Session = Depends(get_db), p: Principal = Depend
     rows = db.scalars(select(EnvTemplateVersion).where(EnvTemplateVersion.template_id == t.id).order_by(EnvTemplateVersion.version.desc()))
     return {"current": t.version, "can_restore": (not t.builtin) and (p.is_admin or t.owner == p.username),
             "versions": [{"version": v.version, "created_at": v.created_at, "created_by": v.created_by, "current": v.version == t.version,
-                          "summary": _sum(v.spec, v.includes), "params": len(v.params), "parts": len(v.includes or [])}
+                          "summary": _sum(v.spec, v.includes, v.params), "params": len(v.params), "parts": len(v.includes or [])}
                          for v in rows]}
 
 
