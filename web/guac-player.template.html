@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LABaPe recording player</title>
+<style>
+  :root { --bg: #f5f6f8; --fg: #1d2330; --muted: #5b6475; --card: #ffffff; --line: #d3d8e0; --accent: #1565c0; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171d; --fg: #e6e9ef; --muted: #9aa3b2; --card: #1c2028; --line: #343b48; --accent: #64a6ff; } }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 12px; }
+  #drop { border: 2px dashed var(--line); border-radius: 8px; padding: 28px 16px; text-align: center; background: var(--card); }
+  #drop.over { border-color: var(--accent); }
+  button, label.btn { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #player { display: none; margin-top: 12px; }
+  #screen { background: #000; overflow: hidden; border-radius: 6px; }
+  #screen > div { margin: 0 auto; }
+  #bar { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+  #seek { flex: 1; }
+  #err { color: #c62828; margin-top: 8px; }
+  #time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>LABaPe recording player</h1>
+  <p>Plays a Guacamole session recording (<code>.guac</code>) downloaded from LABaPe's Remote sessions page. Everything stays in this browser: nothing is uploaded.</p>
+  <div id="drop">
+    <p>Drop a <code>.guac</code> file here, or</p>
+    <label class="btn">Choose a file<input id="file" type="file" hidden></label>
+  </div>
+  <div id="err"></div>
+  <div id="player">
+    <div id="name" style="color: var(--muted); margin-bottom: 6px"></div>
+    <div id="screen"></div>
+    <div id="bar">
+      <button id="play" disabled>Play</button>
+      <input id="seek" type="range" min="0" max="1" value="0">
+      <span id="time">0:00 / 0:00</span>
+    </div>
+  </div>
+</main>
+<script>var module = { exports: {} };</script>
+<script>
+/*GUAC_LIB*/
+</script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var rec = null, duration = 0, playing = false;
+  var clock = function (ms) { return Math.floor(ms / 60000) + ":" + String(Math.floor((ms % 60000) / 1000)).padStart(2, "0"); };
+  var fail = function (m) { $("err").textContent = m; };
+
+  // guacamole-common-js 1.5.0 can't play a recording from a Blob (it never stores it), so the file is fed in through a
+  // tunnel that "receives" its instructions.
+  function fileTunnel(file) {
+    var t = new Guacamole.Tunnel();
+    t.connect = function () {
+      var parser = new Guacamole.Parser();
+      parser.oninstruction = function (op, args) { if (t.oninstruction) t.oninstruction(op, args); };
+      var reader = file.stream().getReader(), dec = new TextDecoder("utf-8");
+      t.setState(Guacamole.Tunnel.State.OPEN);
+      (function next() {
+        reader.read().then(function (r) {
+          if (r.done) { parser.receive(dec.decode()); t.setState(Guacamole.Tunnel.State.CLOSED); return; }
+          try { parser.receive(dec.decode(r.value, { stream: true })); } catch (e) { fail("This doesn't look like a Guacamole recording: " + e.message); return; }
+          next();
+        }, function (e) { fail("The file couldn't be read: " + e.message); });
+      })();
+    };
+    t.disconnect = function () {};
+    t.sendMessage = function () {};
+    return t;
+  }
+
+  function open(file) {
+    fail("");
+    if (rec) { try { rec.pause(); } catch (e) {} }
+    $("player").style.display = "block";
+    $("name").textContent = file.name + " (" + Math.round(file.size / 1024) + " KB)";
+    var screen = $("screen"), play = $("play"), seek = $("seek");
+    screen.innerHTML = ""; play.disabled = true; play.textContent = "Play"; seek.value = 0;
+    var r = rec = new Guacamole.SessionRecording(fileTunnel(file));
+    var d = r.getDisplay();
+    screen.appendChild(d.getElement());
+    d.onresize = function () { d.scale(Math.min(1, screen.clientWidth / Math.max(d.getWidth(), 1))); };
+    r.onprogress = function (ms) { duration = ms; seek.max = Math.max(ms, 1); };
+    r.onload = function () { duration = r.getDuration(); seek.max = Math.max(duration, 1); play.disabled = false; $("time").textContent = "0:00 / " + clock(duration); };
+    r.onplay = function () { playing = true; play.textContent = "Pause"; };
+    r.onpause = function () { playing = false; play.textContent = "Play"; };
+    r.onseek = function (p) { seek.value = p; $("time").textContent = clock(p) + " / " + clock(duration); };
+    r.onerror = function (m) { fail("The recording couldn't be played: " + m); };
+    r.connect();
+  }
+
+  $("play").onclick = function () { if (rec) { playing ? rec.pause() : rec.play(); } };
+  $("seek").oninput = function () { if (rec) rec.seek(Number($("seek").value)); };
+  $("file").onchange = function () { if (this.files[0]) open(this.files[0]); };
+  var drop = $("drop");
+  ["dragenter", "dragover"].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) { if (e.dataTransfer.files[0]) open(e.dataTransfer.files[0]); });
+})();
+</script>
+</body>
+</html>
