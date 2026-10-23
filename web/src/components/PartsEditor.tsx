@@ -10,7 +10,10 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import type { EnvTemplateInfo, TemplateInclude } from "./TemplatePicker";
 
-export interface PartRow { template_id: number | ""; prefix: string; label: string; overrides: Record<string, Record<string, string>> }
+export interface PartRow {
+  template_id: number | ""; prefix: string; label: string; overrides: Record<string, Record<string, string>>;
+  version: number | "";                       // "" follows the part's latest version; a number stays on that one
+}
 
 export const FIXABLE: [string, string][] = [
   ["count", "Hosts"], ["os", "OS"], ["network", "Network"], ["cpu_count", "CPUs"], ["memory_mb", "Memory MB"], ["disk_gb", "Disk GB"],
@@ -18,13 +21,13 @@ export const FIXABLE: [string, string][] = [
 const NUMERIC = new Set(["count", "cpu_count", "memory_mb", "disk_gb"]);
 
 export const rowsOf = (includes: TemplateInclude[]): PartRow[] => includes.map((i) => ({
-  template_id: i.template_id, prefix: i.prefix, label: i.label ?? "",
+  template_id: i.template_id, prefix: i.prefix, label: i.label ?? "", version: i.version ?? "",
   overrides: Object.fromEntries(Object.entries(i.overrides ?? {}).map(([g, f]) => [g, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v)]))])),
 }));
 
 /** The request body for `includes`: blank fixed values are dropped, numbers are numbers. */
 export const includesBody = (rows: PartRow[]) => rows.map((r) => ({
-  template_id: r.template_id, prefix: r.prefix, label: r.label,
+  template_id: r.template_id, prefix: r.prefix, label: r.label, version: r.version === "" ? null : r.version,
   overrides: Object.fromEntries(Object.entries(r.overrides).map(([g, f]) => [g, Object.fromEntries(
     Object.entries(f).filter(([, v]) => v.trim() !== "").map(([k, v]) => [k, NUMERIC.has(k) ? Number(v) : v]))]).filter(([, f]) => Object.keys(f).length)),
 }));
@@ -47,8 +50,14 @@ export default function PartsEditor({ rows, onChange, list, selfId }: {
           <Stack key={i} spacing={0.5}>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <TextField select size="small" label="Part" value={r.template_id} sx={{ flexGrow: 1 }}
-                onChange={(e) => set(i, { template_id: Number(e.target.value), overrides: {} })}>
+                onChange={(e) => set(i, { template_id: Number(e.target.value), overrides: {}, version: "" })}>
                 {list.filter((x) => x.id !== selfId).map((x) => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}
+              </TextField>
+              <TextField select size="small" label="Version" value={r.version} sx={{ width: 130 }} disabled={!part}
+                helperText={part && r.version !== "" && r.version < part.version ? `v${part.version} is newer` : " "}
+                onChange={(e) => set(i, { version: e.target.value === "" ? "" : Number(e.target.value) })}>
+                <MenuItem value="">Latest</MenuItem>
+                {part && Array.from({ length: part.version }, (_, k) => part.version - k).map((v) => <MenuItem key={v} value={v}>v{v}</MenuItem>)}
               </TextField>
               <TextField size="small" label="Prefix" value={r.prefix} sx={{ width: 100 }} inputProps={{ maxLength: 6 }}
                 onChange={(e) => set(i, { prefix: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
@@ -83,7 +92,7 @@ export default function PartsEditor({ rows, onChange, list, selfId }: {
           </Stack>
         );
       })}
-      <div><Button size="small" onClick={() => onChange([...rows, { template_id: "", prefix: "", label: "", overrides: {} }])}>Add a part</Button></div>
+      <div><Button size="small" onClick={() => onChange([...rows, { template_id: "", prefix: "", label: "", overrides: {}, version: "" }])}>Add a part</Button></div>
     </Stack>
   );
 }

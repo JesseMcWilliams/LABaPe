@@ -55,7 +55,7 @@ function FromParts({ list, onClose, onSaved }: { list: EnvTemplateInfo[]; onClos
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [shared, setShared] = useState(false);
-  const [parts, setParts] = useState<PartRow[]>([{ template_id: "", prefix: "", label: "", overrides: {} }]);
+  const [parts, setParts] = useState<PartRow[]>([{ template_id: "", prefix: "", label: "", overrides: {}, version: "" }]);
   const [error, setError] = useState("");
   const ready = name.trim().length >= 3 && parts.length > 0 && partsReady(parts);
   const save = async () => {
@@ -146,11 +146,13 @@ export default function EnvTemplates() {
               <TableCell>
                 {t.name} {t.builtin && <Chip size="small" label="starter" sx={{ ml: 0.5 }} />}
                 {!t.builtin && !t.shared && <Chip size="small" variant="outlined" label="private" sx={{ ml: 0.5 }} />}
+                {t.version > 1 && <Chip size="small" variant="outlined" label={`v${t.version}`} title="Each change to the groups, parameters or parts is a new version" sx={{ ml: 0.5 }} />}
                 {t.broken && <Chip size="small" color="error" label="broken" title={t.broken} sx={{ ml: 0.5 }} />}
                 {t.description && <Typography variant="caption" component="div" color="text.secondary">{t.description}</Typography>}
                 {t.includes.length > 0 && (
                   <Typography variant="caption" component="div" color="text.secondary">
-                    Made of: {t.includes.map((i) => `${i.name} (${i.prefix})`).join(", ")}
+                    Made of: {t.includes.map((i) => `${i.name} (${i.prefix}${i.version !== null ? `, pinned to v${i.version}` : ""})`).join(", ")}
+                    {t.includes.some((i) => i.behind) && " · a pinned part has a newer version"}
                   </Typography>
                 )}
                 {t.used_by.length > 0 && <Typography variant="caption" component="div" color="text.secondary">Part of: {t.used_by.join(", ")}</Typography>}

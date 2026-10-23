@@ -14,19 +14,21 @@ part can be included twice under two prefixes. A template can be exported as YAM
 from __future__ import annotations
 
 import copy
+import json
 import re
+from types import SimpleNamespace
 from typing import Literal
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .. import linked_library
 from ..db import get_db
 from ..errors import FieldError
-from ..models import CatalogItem, EnvTemplate, Environment, HostNetwork, KvmHost, Network, Template
+from ..models import CatalogItem, EnvTemplate, EnvTemplateVersion, Environment, HostNetwork, KvmHost, Network, Template
 from ..security import Principal, audit, client_ip, current_principal, require_roles
 from .environments import HostGroup, _get
 
@@ -191,9 +193,13 @@ def ensure_builtins(db: Session) -> None:
             params.append(make_params(spec, [ParamIn(group=g, field=f)])[0])
         row = db.scalar(select(EnvTemplate).where(EnvTemplate.name == b["name"]))
         if row is None:
-            db.add(EnvTemplate(name=b["name"], description=b["description"], builtin=True, shared=True, spec=spec, params=params))
+            row = EnvTemplate(name=b["name"], description=b["description"], builtin=True, shared=True, spec=spec, params=params, version=1)
+            db.add(row)
+            db.flush()
+            snapshot(db, row, "LABaPe")
         elif row.builtin and (row.spec != spec or row.params != params or row.description != b["description"]):
             row.spec, row.params, row.description = spec, params, b["description"]
+            bump_if_changed(db, row, "LABaPe")
     db.commit()
 
 
@@ -215,6 +221,35 @@ class IncludeIn(BaseModel):
     prefix: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,5}$")
     label: str = Field(default="", max_length=60)
     overrides: dict[str, dict[str, str | int]] = Field(default_factory=dict)      # the part's group -> field -> value
+    version: int | None = Field(default=None, ge=1)             # None: follow the part's latest; a number: stay on that version
+
+
+def snapshot(db: Session, t: EnvTemplate, who: str) -> None:
+    """Keep what the template is now as its current version (design §71)."""
+    db.add(EnvTemplateVersion(template_id=t.id, version=t.version, spec=copy.deepcopy(t.spec), params=copy.deepcopy(t.params),
+                              includes=copy.deepcopy(t.includes), created_by=who))
+
+
+def _same(a, b) -> bool:
+    return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
+
+
+def bump_if_changed(db: Session, t: EnvTemplate, who: str) -> None:
+    """A change to the groups, parameters or parts is a new version; a new name, description or sharing is not."""
+    last = db.scalar(select(EnvTemplateVersion).where(EnvTemplateVersion.template_id == t.id, EnvTemplateVersion.version == t.version))
+    if last is None or not (_same(last.spec, t.spec) and _same(last.params, t.params) and _same(last.includes, t.includes)):
+        t.version += 1
+        snapshot(db, t, who)
+
+
+def _content(db: Session, child: EnvTemplate, version: int | None):
+    """The template itself, or what it was at a pinned version."""
+    if version is None or version == child.version:
+        return child
+    snap = db.scalar(select(EnvTemplateVersion).where(EnvTemplateVersion.template_id == child.id, EnvTemplateVersion.version == version))
+    if snap is None:
+        raise FieldError("includes", f"{child.name} has no version {version}.")
+    return SimpleNamespace(id=child.id, name=child.name, spec=snap.spec, params=snap.params, includes=snap.includes, version=version)
 
 
 def compose(db: Session, t: EnvTemplate, chain: tuple[str, ...] = ()) -> tuple[list[dict], list[dict]]:
@@ -230,7 +265,7 @@ def compose(db: Session, t: EnvTemplate, chain: tuple[str, ...] = ()) -> tuple[l
         child = db.get(EnvTemplate, inc["template_id"])
         if child is None:
             raise FieldError("includes", f"The included template {inc.get('name') or inc['template_id']!r} no longer exists.")
-        cg, cp = compose(db, child, (*chain, t.name))
+        cg, cp = compose(db, _content(db, child, inc.get("version")), (*chain, t.name))
         prefix = inc["prefix"]
         over = inc.get("overrides") or {}
         for g in cg:
@@ -267,8 +302,10 @@ def _includes(db: Session, p: Principal, items: list[IncludeIn]) -> list[dict]:
         if it.prefix.lower() in seen:
             raise FieldError("includes", f"The prefix {it.prefix!r} is used twice: each included template needs its own.")
         seen.add(it.prefix.lower())
+        if it.version is not None and it.version > child.version:
+            raise FieldError("includes", f"{child.name} has no version {it.version} (the latest is {child.version}).")
         out.append({"template_id": child.id, "name": child.name, "prefix": it.prefix, "label": it.label.strip(),
-                    "overrides": it.overrides})
+                    "overrides": it.overrides, "version": it.version})
     return out
 
 
@@ -278,6 +315,14 @@ def _used_by(db: Session) -> dict[int, list[str]]:
         for inc in t.includes or []:
             uses.setdefault(inc["template_id"], []).append(t.name)
     return uses
+
+
+def _include_out(db: Session, inc: dict) -> dict:
+    """A part as stored, with where its template is now: pinned parts say whether a newer version exists."""
+    child = db.get(EnvTemplate, inc["template_id"])
+    latest = child.version if child is not None else None
+    pin = inc.get("version")
+    return {**inc, "version": pin, "latest": latest, "behind": bool(pin is not None and latest is not None and pin < latest)}
 
 
 def _out(db: Session, t: EnvTemplate, p: Principal, full: bool = False, uses: dict | None = None) -> dict:
@@ -290,7 +335,8 @@ def _out(db: Session, t: EnvTemplate, p: Principal, full: bool = False, uses: di
     out = {"id": t.id, "name": t.name, "description": t.description, "owner": t.owner, "shared": t.shared, "builtin": t.builtin,
            "can_edit": (not t.builtin) and (p.is_admin or t.owner == p.username),
            "summary": [{"name": g["name"], "count": g.get("count", 1), "os": g["os"], "role": (g.get("roles") or [""])[0]} for g in groups],
-           "params": params, "own_params": t.params, "includes": t.includes or [], "used_by": uses.get(t.id, []), "broken": broken, "updated_at": t.updated_at}
+           "params": params, "own_params": t.params, "includes": [_include_out(db, i) for i in t.includes or []], "version": t.version,
+           "used_by": uses.get(t.id, []), "broken": broken, "updated_at": t.updated_at}
     if full:
         out["spec"] = t.spec
     return out
@@ -329,15 +375,14 @@ def list_templates(db: Session = Depends(get_db), p: Principal = Depends(current
 
 # --- YAML export and import (declared before /{tid}, which would take "export" for an id) -----------------
 
-def _doc(t: EnvTemplate) -> dict:
-    d: dict = {"name": t.name, "description": t.description}
-    if t.spec.get("timezone"):
-        d["timezone"] = t.spec["timezone"]
-    d["host_groups"] = t.spec.get("host_groups", [])
-    d["params"] = [{"group": q["group"], "field": q["field"], "label": q["label"]} for q in t.params]
-    if t.includes:
-        d["includes"] = [{"template": i["name"], "prefix": i["prefix"], **({"label": i["label"]} if i.get("label") else {}),
-                          **({"overrides": i["overrides"]} if i.get("overrides") else {})} for i in t.includes]
+def _doc(name: str, description: str, content, includes: list[dict]) -> dict:
+    d: dict = {"name": name, "description": description}
+    if content.spec.get("timezone"):
+        d["timezone"] = content.spec["timezone"]
+    d["host_groups"] = content.spec.get("host_groups", [])
+    d["params"] = [{"group": q["group"], "field": q["field"], "label": q["label"]} for q in content.params]
+    if includes:
+        d["includes"] = includes
     return d
 
 
@@ -346,34 +391,49 @@ def _yaml_response(docs: list[dict], filename: str) -> Response:
     return Response(text, media_type="application/yaml", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+def _bundle(db: Session, roots: list[EnvTemplate]) -> list[dict]:
+    """The documents for these templates and every template they include, parts first. A part pinned to an older version
+    is written as that version's content (named `<name> v<n>`), so the file stands alone: the other stack has no
+    versions to pin to."""
+    docs: list[dict] = []
+    names: dict[tuple[int, int | None], str] = {}
+
+    def walk(tpl: EnvTemplate, pin: int | None) -> str:
+        key = (tpl.id, None if pin == tpl.version else pin)
+        if key in names:
+            return names[key]
+        content = _content(db, tpl, pin)
+        docname = tpl.name if key[1] is None else f"{tpl.name} v{pin}"
+        names[key] = docname
+        refs = []
+        for inc in content.includes or []:
+            child = db.get(EnvTemplate, inc["template_id"])
+            ref = child.name if child is None or child.builtin else walk(child, inc.get("version"))
+            refs.append({"template": ref, "prefix": inc["prefix"], **({"label": inc["label"]} if inc.get("label") else {}),
+                         **({"overrides": inc["overrides"]} if inc.get("overrides") else {})})
+        docs.append(_doc(docname, tpl.description, content, refs))
+        return docname
+
+    for t in roots:
+        walk(t, None)
+    return docs
+
+
 @router.get("/export")
 def export_all(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     """Every template this person may see, except the starters (every stack has those), as one YAML bundle."""
     ensure_builtins(db)
     mine = [t for t in db.scalars(_visible(db, p)) if not t.builtin]
-    return _yaml_response([_doc(t) for t in mine], "labape-environment-templates.yaml")
+    return _yaml_response(_bundle(db, mine), "labape-environment-templates.yaml")
 
 
 @router.get("/{tid}/export")
 def export_one(tid: int, request: Request, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     """One template, with the templates it includes (a bundle that imports on its own), as YAML."""
     t = _get_visible(db, tid, p)
-    order, seen = [], set()
-
-    def walk(x: EnvTemplate) -> None:
-        if x.id in seen:
-            return
-        seen.add(x.id)
-        for inc in x.includes or []:
-            child = db.get(EnvTemplate, inc["template_id"])
-            if child is not None and not child.builtin:
-                walk(child)
-        order.append(x)
-
-    walk(t)
     audit(db, p.username, "env_template.export", object_type="env_template", object_id=t.id, detail={"name": t.name},
           source_ip=client_ip(request))
-    return _yaml_response([_doc(x) for x in order], f"{re.sub(r'[^A-Za-z0-9._-]+', '-', t.name)}.yaml")
+    return _yaml_response(_bundle(db, [t]), f"{re.sub(r'[^A-Za-z0-9._-]+', '-', t.name)}.yaml")
 
 
 class ImportIn(BaseModel):
@@ -423,6 +483,7 @@ def import_templates(body: ImportIn, request: Request, db: Session = Depends(get
                 db.add(t)
                 db.flush()
                 compose(db, t)
+                snapshot(db, t, p.username)
             except (ValidationError, ValueError, TypeError) as exc:
                 raise FieldError("yaml", f"{where}: {str(exc)[:240]}") from exc
             except FieldError as exc:
@@ -454,7 +515,10 @@ def create_template(body: TemplateIn, request: Request, db: Session = Depends(ge
     t = EnvTemplate(name=name, description=body.description.strip(), owner=p.username, shared=body.shared, spec=spec,
                     params=make_params(spec, body.params), includes=_includes(db, p, body.includes))
     compose(db, t)                                              # refuses what could not be used, before it is saved
+    t.version = 1
     db.add(t)
+    db.flush()
+    snapshot(db, t, p.username)
     db.commit()
     audit(db, p.username, "env_template.create", object_type="env_template", object_id=t.id,
           detail={"name": name, "from": env.name if env else "", "includes": [i["name"] for i in t.includes], "shared": t.shared},
@@ -478,6 +542,7 @@ def update_template(tid: int, body: TemplateIn, request: Request, db: Session = 
     except FieldError:
         db.rollback()
         raise
+    bump_if_changed(db, t, p.username)
     db.commit()
     audit(db, p.username, "env_template.update", object_type="env_template", object_id=t.id,
           detail={"name": name, "shared": t.shared, "includes": [i["name"] for i in t.includes]}, source_ip=client_ip(request))
@@ -495,6 +560,9 @@ def delete_template(tid: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail=f"{t.name} is part of {', '.join(users)}: take it out of those first.")
     audit(db, p.username, "env_template.delete", object_type="env_template", object_id=t.id,
           detail={"name": t.name}, source_ip=client_ip(request))
+    # The versions go first, by a statement that runs now: the unit of work would not order two unrelated tables' deletes
+    # (Postgres enforces the foreign key; SQLite in the tests does not).
+    db.execute(delete(EnvTemplateVersion).where(EnvTemplateVersion.template_id == t.id))
     db.delete(t)
     db.commit()
     return {"ok": True}
