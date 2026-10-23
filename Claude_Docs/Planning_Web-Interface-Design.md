@@ -2203,3 +2203,7 @@ The second kind of fix in §67. The API cannot touch the stack's containers, so 
 - The three are offered only when the update agent is installed; a request while it is busy is refused (409), and the result of the request is the agent's, not the API call's: the dialog says it was asked and the Dashboard reloads its checks after 45 and 100 seconds.
 - Run on OZ: the CA restart (the check stays green; it took the whole 120-second health wait before the wait was cut to 60) and the OpenBao restart with unseal (about 80 seconds; every check green afterwards). A new store login and a restart of Conjur were not run live (unit tests only). The agent copy on the host has to be refreshed with `deploy/update-agent/install.sh` after this change.
 
+## 72. A Fix for syslog forwarding (built 2026-10-23)
+
+One more entry in the registry of §67 (`fixes.py`, check `syslog` under Notifications): **Fix syslog forwarding** asks for the server, port (default 514), protocol (udp, tcp, tls) and facility, sends a test message, and only then saves the settings and turns forwarding on. TCP and TLS must connect; UDP gives no answer, which the result says ("check on the server that it arrived"). A server that refuses leaves the settings as they were. The other checks have no fix on purpose: a refused sign-in provider, the built-in store's key and the engine vault each need a decision about secrets, not a repeat of something that failed. Run on OZ through the API only for the refusal (OZ's syslog is the stack's own collector and was not changed).
+
