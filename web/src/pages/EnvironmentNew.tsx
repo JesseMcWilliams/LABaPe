@@ -9,7 +9,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { api, Environment, FieldProblem, HostGroup, LinkedStack, HostResources, KvmHost, Network, Template } from "../api";
 import HostLoad from "../components/HostLoad";
 import TemplatePicker from "../components/TemplatePicker";
-import { ActionButton, ActionIconButton, useConfirm } from "../components/Confirm";
+import { ActionButton, useConfirm } from "../components/Confirm";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
 
 // Phase 10a's tfvars-level form; environment templates replace it in 10c.
@@ -163,6 +163,19 @@ export default function EnvironmentNew() {
       if (patch.os && templateOf(next)?.os_key && templateOf(next)?.os_key !== patch.os) { next.template = ""; next.template_from = undefined; }
       return next;
     }));
+  };
+
+  // A count of 0 means no hosts: the group would be pointless, so typing or stepping to 0 asks whether to remove it
+  // (a cleared box is not 0 yet: the person is about to type a number). The only group can't be removed.
+  const countChanged = async (i: number, raw: string) => {
+    if (raw !== "0" || groups.length < 2) { setGroup(i, { count: Number(raw) }); return; }
+    const g = groups[i];
+    const ok = await confirm({
+      title: `Remove host group ${g.name || i + 1}?`, confirmLabel: "Remove", danger: true,
+      body: "A count of 0 means no hosts, so the host group isn't needed. Its settings in this form are discarded; nothing has been created yet. Keep it to set a count of 1 or more.",
+    });
+    if (ok) setGroups((all) => all.filter((_, j) => j !== i));
+    else setGroup(i, { count: Math.max(1, g.count || 1) });
   };
 
   // Advisory: sizes below the template's needs (question: warn, don't block).
@@ -325,7 +338,8 @@ export default function EnvironmentNew() {
                 <Field label="Group name" value={g.name} onChange={(e) => setGroup(i, { name: e.target.value })}
                   required error={err(`${at}.name`)} help="1-12 letters and digits" />
                 <Field label="Count" type="number" value={g.count} sx={{ width: 90 }} error={err(`${at}.count`)}
-                  onChange={(e) => setGroup(i, { count: Number(e.target.value) })} />
+                  help={groups.length > 1 ? "0 removes the group" : ""}
+                  onChange={(e) => { void countChanged(i, e.target.value); }} />
                 <Field select label="OS" value={g.os} sx={{ minWidth: 200 }} error={err(`${at}.os`)}
                   onChange={(e) => setGroup(i, fitting(g, e.target.value))}>
                   {OS_KEYS.map((k) => <MenuItem key={k} value={k}>{k}</MenuItem>)}
@@ -335,12 +349,14 @@ export default function EnvironmentNew() {
                   onChange={(e) => setGroup(i, { roles: [e.target.value] })}>
                   {ROLES.filter((r) => roleFamily(r) === familyOf(g.os)).map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
                 </Field>
-                <ActionIconButton tip="Remove this host group from the form" disabled={groups.length === 1} sx={{ mt: 0.5 }}
+                <ActionButton variant="outlined" color="error" size="small" startIcon={<DeleteIcon />} sx={{ mt: 1, whiteSpace: "nowrap" }}
+                  disabled={groups.length === 1}
+                  tip={groups.length === 1 ? "An environment needs at least one host group" : "Remove this host group from the form"}
                   confirm={{ title: `Remove host group ${g.name || i + 1}?`, confirmLabel: "Remove",
                     body: "Its settings in this form are discarded. Nothing has been created yet." }}
                   onClick={() => setGroups(groups.filter((_, j) => j !== i))}>
-                  <DeleteIcon />
-                </ActionIconButton>
+                  Remove host group
+                </ActionButton>
               </Stack>
               <Stack direction="row" spacing={2} useFlexGap sx={row}>
                 {hosts.length > 1 && (
