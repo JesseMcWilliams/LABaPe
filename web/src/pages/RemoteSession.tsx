@@ -142,7 +142,7 @@ export default function RemoteSession() {
         {info.recorded && <Chip size="small" color="error" label="recorded" title="This session is being recorded for the auditors" />}
         <Box sx={{ flexGrow: 1 }} />
         <Button size="small" variant="outlined" onClick={() => void sync.current?.push()}
-          title="Send what is on this computer's clipboard to the remote side (Ctrl+V in the session does it too)">Paste</Button>
+          title="Send what is on this computer's clipboard to the remote side, then paste there (RDP: Ctrl+V; SSH: Ctrl+Shift+V or a middle click)">Paste</Button>
         <Button size="small" variant="outlined" onClick={() => client.current?.disconnect()} title="End the session">Disconnect</Button>
         <Button size="small" component={RouterLink} to={info.back} title="Back (ends the session)">Back</Button>
       </Stack>
@@ -151,7 +151,7 @@ export default function RemoteSession() {
       <Box ref={holder} sx={{ bgcolor: "black", width: "100%", minHeight: 400, overflow: "hidden", cursor: "default",
         "& > div": { margin: "0 auto" } }} />
       <Typography variant="caption" color="text.secondary">
-        Keys go to the remote side while this page has focus. Text copied on the remote side lands on this computer’s clipboard (click the page once if the browser holds it back); text copied here is sent when you press Ctrl or use Paste. A session with no keyboard or mouse input ends after the idle time set by the admins.
+        Keys go to the remote side while this page has focus. Text copied on the remote side lands on this computer’s clipboard (click the page once if the browser holds it back); text copied here is sent when you press Ctrl or use Paste, and you then paste in the session (RDP: Ctrl+V; SSH: Ctrl+Shift+V or a middle click). A session with no keyboard or mouse input ends after the idle time set by the admins.
       </Typography>
     </Stack>
   );
