@@ -64,8 +64,13 @@ vm = env["vm_storage_path"].rstrip("/")
 print(iso or "-", env.get("template_storage_path") or f"{vm}/templates", f"{vm}/packer-build")
 PY
 )
-if [ "$ISO_PATH" = "-" ] || [ ! -f "$ISO_PATH" ]; then
-  echo "labape: no ISO for \"$OS_KEY\": add it to os_iso_paths in $ENV_FILE (and stage the file)." >&2
+if [ "$ISO_PATH" = "-" ]; then
+  echo "labape: no install ISO for \"$OS_KEY\". In the web interface: add one under Files -> ISOs and set its operating system to $OS_KEY," >&2
+  echo "labape: or copy it from a linked stack (Files -> Linked stacks). From the command line: add it to os_iso_paths in $ENV_FILE." >&2
+  exit 1
+fi
+if [ ! -f "$ISO_PATH" ]; then
+  echo "labape: the install ISO for \"$OS_KEY\" is listed as $ISO_PATH, but that file isn't on this host (stage it there, or add the ISO under Files -> ISOs)." >&2
   exit 1
 fi
 target="$TEMPLATE_DIR/$TEMPLATE_NAME.qcow2"

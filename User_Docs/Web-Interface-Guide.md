@@ -201,7 +201,7 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 - Leave the name empty to use the last part of the URL.
 - The optional expected hash works as for uploads.
 
-**ISOs.** Open an ISO to set which OS it installs (LABaPe guesses from the name) and whether it's the **default** for that OS. Template builds and ISO installs use the default ISO, or else the newest one.
+**ISOs.** Open an ISO to set which OS it installs (LABaPe guesses from the name) and whether it's the **default** for that OS. Template builds and ISO installs use the default ISO, or else the newest one. **"No ISO for ..." or "the install ISO ... isn't on this host"**: the stack has no ISO for that OS (a new stack, or a KVM host that only has what the primary file host has): add one here with its OS set, or copy it from a linked stack (**Files → Linked stacks → Copy here**), then build or deploy again. Nothing is created before this is checked, so there is nothing to clean up.
 
 **Linked stacks.** When this stack is linked with others, the **Linked stacks** tab lists the templates and files each one offers. **Copy here** (file managers) copies one onto this stack as a job: a file lands in the same tab it came from, a template in the template library. A dropped connection resumes where it stopped when you copy it again, and a name that already exists is refused. A template can also be chosen straight in the New environment form and is copied when you deploy.
 
