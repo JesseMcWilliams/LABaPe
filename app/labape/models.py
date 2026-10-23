@@ -719,5 +719,22 @@ class EnvTemplate(Base):
     # Sub-assemblies: other templates this one is made of, [{"template_id","name","prefix","label","overrides"}]; their
     # host groups are added with the prefix on their names, so one template can hold the same part twice.
     includes: Mapped[list] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1)              # raised when the groups, parameters or parts change
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class EnvTemplateVersion(Base):
+    """What a template was at one version, so a template that includes it can stay on that version (design §71)."""
+
+    __tablename__ = "env_template_versions"
+    __table_args__ = (UniqueConstraint("template_id", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("env_templates.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    spec: Mapped[dict] = mapped_column(JSON, default=dict)
+    params: Mapped[list] = mapped_column(JSON, default=list)
+    includes: Mapped[list] = mapped_column(JSON, default=list)
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -2203,3 +2203,13 @@ The second kind of fix in §67. The API cannot touch the stack's containers, so 
 - The three are offered only when the update agent is installed; a request while it is busy is refused (409), and the result of the request is the agent's, not the API call's: the dialog says it was asked and the Dashboard reloads its checks after 45 and 100 seconds.
 - Run on OZ: the CA restart (the check stays green; it took the whole 120-second health wait before the wait was cut to 60) and the OpenBao restart with unseal (about 80 seconds; every check green afterwards). A new store login and a restart of Conjur were not run live (unit tests only). The agent copy on the host has to be refreshed with `deploy/update-agent/install.sh` after this change.
 
+## 71. Pinning a part to a version (built 2026-10-23)
+
+Migration 0035: `env_templates.version` and `env_template_versions` (a snapshot of the groups, parameters and parts at each version).
+
+- **Versions.** A template starts at version 1. A change to its groups, parameters or parts is a new version (`bump_if_changed` compares with the last snapshot); a new name, description or sharing is not. The starters keep theirs in step with the code. Existing templates were given version 1 by the migration.
+- **Pinning.** A part in `includes` may carry `version`: `null` follows the part's latest (as before), a number stays on that version (`_content()` composes from the snapshot, including the snapshot's own parts and their pins). A pin to a version that does not exist is refused; moving or removing a pin is an edit of the including template (and so a new version of it). The Templates page and the parts editor show *pinned to vN*, *a pinned part has a newer version* and a `vN` chip on a template that has changed.
+- **Export.** The other stack has no versions to pin to, so a part pinned to an older version is written as that version's content under the name `<name> v<n>` and the including template refers to that name; one part at two versions is two documents. Imports create version 1 of everything.
+- **Found live:** deleting a template on Postgres failed (foreign key from the versions) where SQLite in the tests did not enforce it; the versions are now deleted by a statement that runs first.
+- **Not built:** comparing two versions, going back to one, a list of who changed what (the snapshots hold `created_by` and the time).
+
