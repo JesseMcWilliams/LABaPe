@@ -83,7 +83,7 @@ def check_names(csr_pem: str, host: str, allowed_dns: set[str], allowed_ips: set
 
 def sign(csr_pem: str, hours: int = LEAF_HOURS, uses: dict | None = None) -> str:
     """Sign a CSR with the JWK provisioner; returns the leaf and intermediate (PEM). `uses` ({"eku": [...], "ku": [...]})
-    goes to the provisioner's template as token data (container/ca/leaf.tpl); without it step-ca applies its defaults."""
+    goes to the provisioner's template as `--set-file` data (`.Insecure.User`) (container/ca/leaf.tpl); without it step-ca applies its defaults."""
     s = get_settings()
     if not configured():
         raise CaError("the platform CA isn't set up (LABAPE_CA_URL, root or password missing)")
