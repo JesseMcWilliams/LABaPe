@@ -700,3 +700,21 @@ class Quota(Base):
     max_disk_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_environments: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+
+class EnvTemplate(Base):
+    """An environment template (design §68): the host groups of an environment without its name, host, VM names or
+    addresses, plus the few values (parameters) a person fills in when starting from it. Built-in starters have
+    no owner and cannot be edited."""
+
+    __tablename__ = "env_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    owner: Mapped[str] = mapped_column(String(255), default="", index=True)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)          # anyone who deploys may use it
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    spec: Mapped[dict] = mapped_column(JSON, default=dict)                # {"host_groups": [...], "timezone": ...}
+    params: Mapped[list] = mapped_column(JSON, default=list)              # [{"key","label","group","field","default"}]
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

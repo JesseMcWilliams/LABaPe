@@ -5,6 +5,7 @@ import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 // The Help section for each page (backlog row 24): the doc and a word or two of the heading to open, matched
 // against the guide's headings on the Help page. The first prefix that matches the path wins.
 const HELP_FOR: [string, "guide" | "admin", string][] = [
+  ["/environment-templates", "guide", "Creating an environment"],
   ["/environments/new", "guide", "Creating an environment"],
   ["/environments", "guide", "Working with an environment"],
   ["/jobs", "guide", "Jobs"],

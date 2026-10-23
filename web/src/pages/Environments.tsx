@@ -49,6 +49,9 @@ export default function Environments() {
               .map(([k, u, l]) => `${quota.usage[u]} of ${quota.limits![k]} ${l}`).join(" · ") || "no limits"}
           </Typography>
         )}
+        <Button component={RouterLink} to="/environment-templates" title="The starters and saved templates to start new environments from">
+          Templates
+        </Button>
         {hasRole(me, "deployer", "template_editor") && (
           <Button variant="contained" component={RouterLink} to="/environments/new"
             title="New environment: opens the form; nothing is created until you confirm there">

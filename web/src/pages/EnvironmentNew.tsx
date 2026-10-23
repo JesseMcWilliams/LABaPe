@@ -8,6 +8,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { api, Environment, FieldProblem, HostGroup, LinkedStack, HostResources, KvmHost, Network, Template } from "../api";
 import HostLoad from "../components/HostLoad";
+import TemplatePicker from "../components/TemplatePicker";
 import { ActionButton, ActionIconButton, useConfirm } from "../components/Confirm";
 import { check, ErrorSummary, Field, FieldErrors, fromApiError, reportBlocked, rules, toFieldErrors } from "../forms";
 
@@ -36,6 +37,7 @@ export default function EnvironmentNew() {
   const [params] = useSearchParams();
   const draftId = Number(params.get("draft")) || null;
   const fromId = Number(params.get("from")) || null;
+  const templateId = Number(params.get("template")) || null;       // design §68: start from an environment template
   const [hosts, setHosts] = useState<KvmHost[]>([]);
   const [name, setName] = useState("");
   const [hostId, setHostId] = useState<number | "">("");
@@ -278,6 +280,12 @@ export default function EnvironmentNew() {
     <Stack spacing={2} component="form" onSubmit={submit} noValidate>
       <Typography variant="h5">New environment</Typography>
       <ErrorSummary summary={summary} fields={errors} />
+      {!draftId && (
+        <TemplatePicker hostId={hostId} initialId={templateId} onApply={(gs, tz) => {
+          setGroups(gs.map((g) => ({ ...blankGroup(), ...g, names: g.names?.length ? g.names : [""] })));
+          if (tz) setTimezone(tz);
+        }} />
+      )}
       {hosts.length === 0 && <Alert severity="warning">No KVM host is registered yet; an admin adds one under Hosts.</Alert>}
       {hostId !== "" && networks.length === 0 && (
         <Alert severity="warning">This host has no networks you may deploy on; an admin attaches them under Hosts.</Alert>

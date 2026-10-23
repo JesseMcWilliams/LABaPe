@@ -16,6 +16,7 @@ import EnvAccounts from "../components/EnvAccounts";
 import EnvSecrets from "../components/EnvSecrets";
 import Desktops from "../components/Desktops";
 import RedeployPreview from "../components/RedeployPreview";
+import SaveAsTemplate from "../components/SaveAsTemplate";
 
 export default function EnvironmentDetail() {
   const { id } = useParams();
@@ -153,6 +154,7 @@ export default function EnvironmentDetail() {
             tip="Start a new environment from a copy of this one's host groups (new name; no VM names, accounts or passwords are copied)">
             Duplicate
           </ActionButton>
+          {hasRole(me, "deployer", "template_editor") && <SaveAsTemplate env={env} disabled={busy} />}
           {(env.status === "deployed" || env.status === "failed") && (
             <AddHosts env={env} disabled={busy} onStarted={(jobId) => navigate(`/jobs/${jobId}`)} />
           )}

@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Breakglass from "./pages/Breakglass";
 import Environments from "./pages/Environments";
 import EnvironmentNew from "./pages/EnvironmentNew";
+import EnvTemplates from "./pages/EnvTemplates";
 import EnvironmentDetail from "./pages/EnvironmentDetail";
 import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
@@ -175,6 +176,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/environments" element={<Environments />} />
           <Route path="/environments/new" element={<EnvironmentNew />} />
+          <Route path="/environment-templates" element={<EnvTemplates />} />
           <Route path="/environments/:id" element={<EnvironmentDetail />} />
           <Route path="/environments/:id/vms/:vm" element={<VmDetail />} />
           <Route path="/jobs" element={<Jobs />} />
