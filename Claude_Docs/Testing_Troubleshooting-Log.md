@@ -709,3 +709,7 @@ Covered by unit tests only (design §66): the peer listing and download with Ran
 ## Session recordings did not play (2026-10-22)
 
 Session 143 (RDP) downloaded but Play showed an empty player ("Cannot read properties of undefined (reading 'size')"). Two causes: guacamole-common-js 1.5.0 never stores a Blob given to `SessionRecording` (`parseBlob` reads an unset `recordingBlob`), so the player now streams the recording through a `StaticHTTPTunnel`; and the dialog's content mounts after the effect runs, so the display element is attached from a callback ref. Checked in headless Chromium against OZ: the desktop, PowerShell and Notepad of session 143 draw and seek. Playing a recording is still one audited GET.
+
+## A VM that was deploying during a key rotation: fixed (2026-10-23)
+
+Found live with `zz-t1` (see the 2026-10-23 live run): the rotation only visits deployed environments, so a VM still deploying kept the previous key. Fixed two ways: the rotation first waits (up to 30 minutes, logging it) for deploys to finish (`engine_secrets._wait_for_deploys`), and `vmadmin.vm_key_text` (used by the VM account page and by browser SSH to a VM) logs in with the current key and, when only that key is refused, uses an earlier one to add the current key to the VM. A VM that is unreachable, or refuses for another reason, is not retried with old keys.
