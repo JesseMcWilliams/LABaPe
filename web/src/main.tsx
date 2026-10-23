@@ -5,7 +5,19 @@ import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import App from "./App";
 import { ConfirmProvider } from "./components/Confirm";
 
-const theme = createTheme({ colorSchemes: { dark: true } });
+// A bare <a> would use the browser's default blue, unreadable on the dark theme (about 1.7:1): give it the theme's
+// primary colour, which has the contrast in both schemes. MUI's own Link carries a class and is left alone.
+const theme = createTheme({
+  colorSchemes: { dark: true },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: (t) => {
+        const color = (t.vars ?? t).palette.primary.main;
+        return { "a:not([class]), a:not([class]):visited": { color } };
+      },
+    },
+  },
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
