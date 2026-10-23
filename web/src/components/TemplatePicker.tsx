@@ -7,9 +7,11 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { api, HostGroup } from "../api";
 
 export interface TemplateParam { key: string; group: string; field: string; label: string; default: string | number | null }
+export interface TemplateInclude { template_id: number; name: string; prefix: string; label: string; overrides: Record<string, Record<string, string | number>> }
 export interface EnvTemplateInfo {
   id: number; name: string; description: string; owner: string; shared: boolean; builtin: boolean; can_edit: boolean;
-  summary: { name: string; count: number; os: string; role: string }[]; params: TemplateParam[];
+  summary: { name: string; count: number; os: string; role: string }[]; params: TemplateParam[]; own_params: TemplateParam[];
+  includes: TemplateInclude[]; used_by: string[]; broken: string;
 }
 interface Applied { host_groups: HostGroup[]; timezone: string | null; warnings: { group: string; level: string; message: string }[]; template: string }
 
