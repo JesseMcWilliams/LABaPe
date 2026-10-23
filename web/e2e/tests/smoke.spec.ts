@@ -8,7 +8,7 @@ const pages: [string, string][] = [
   ["Syslog", "/syslog"], ["API tokens", "/tokens"], ["KVM hosts", "/admin/hosts"],
   ["Networks", "/admin/networks"], ["Settings", "/admin/settings"], ["Mail", "/admin/mail"],
   ["Secrets", "/admin/secrets"], ["Audit", "/admin/audit"], ["Errors", "/admin/errors"],
-  ["Help", "/help"], ["Sessions", "/admin/sessions"], ["Links", "/admin/links"], ["Quotas", "/admin/quotas"],
+  ["Help", "/help"], ["Templates", "/environment-templates"], ["Sessions", "/admin/sessions"], ["Links", "/admin/links"], ["Quotas", "/admin/quotas"],
 ];
 
 for (const [name, path] of pages) {

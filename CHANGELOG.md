@@ -9,6 +9,24 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Added
 
+- **Environment templates** (Environments → Templates): **Save as template** on an environment (its host groups without its name, host, VM names, addresses and accounts, plus the values you fill in when starting from it), **Start from a template** on the New environment form (fills the form; notes what the chosen KVM host or the catalog lacks, and copies a linked stack's template at deploy), three starters (*Domain with members*, *Three-tier Linux (standalone)*, *Kerberos lab*), templates made of **parts** (a prefix on each part's host group names, values set for a part's groups, a part that follows the latest version or is **pinned** to one), and YAML **Export**, **Export all** and **Import**. Migrations 0033 to 0035. See Web-Interface-Guide §14.
+- **Fix buttons on the admin Dashboard's checks:** a failing Directory (group search), Email (SMTP), Syslog, Platform CA, OpenBao or Conjur check offers **Fix**. It asks for what it needs (an Authentik admin token used once, the mail or syslog server, nothing for a restart), repairs the integration and keeps nothing it was given. The CA and store fixes restart the service (a store is unsealed again) or give LABaPe a new store login, through a new **update agent** action (`restart_service`). See Web-Interface-Admin §12.1.
+- **Copy and paste in browser SSH and RDP sessions**, as text in both directions, with a **Paste** button (RDP: Ctrl+V; SSH: Ctrl+Shift+V or a middle click).
+- **A recording player for download** on Remote sessions: one HTML file that plays a downloaded `.guac` recording offline.
+- **The Dashboard says why a KVM host's VM storage could not be read** (a missing path, no permission on a folder) with a link to the help on the permissions it needs.
+
+### Changed
+
+- **Upgrading:** reinstall the update agent after updating (`deploy/update-agent/install.sh` on the host; the agent runs from a copy), or the new CA and store Fix buttons are refused. The VM key rotation now waits (up to 30 minutes) for environments that are deploying.
+
+### Fixed
+
+- **Session recordings did not play** in the browser (`guacamole-common-js` 1.5.0 never stores a Blob given to its recording player): they stream through a tunnel now, and the display is attached once the dialog has opened.
+- **Certificate attributes** (extended key usages, Signing, Encryption) never worked against the real CA: the template flag name, the name of the template data and the command to run were wrong. Tried live: a request for Client authentication, Code signing and Signing comes out with exactly those usages.
+- **A VM that was deploying when the VM key rotated** kept the previous key: the VM account page and browser SSH failed with "Permission denied". The rotation waits for deploys, and those two use an earlier key that works to add the current one.
+- **A cancelled linked copy** was recorded as failed instead of cancelled.
+- **Links** (drive names, Open Mailpit, others) were unreadable on the dark theme.
+
 - **The handoff is part of a release:** `release.sh` refuses a release whose newest `Planning_Handoff-*.md` hasn't changed since the previous release (`--skip-handoff` overrides) and the release stamps its `**Latest release:**` line.
 
 ## [0.5.7] - 2026-10-22
