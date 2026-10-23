@@ -9,6 +9,7 @@ import {
 import { api } from "../api";
 import { ActionButton } from "../components/Confirm";
 import PartsEditor, { includesBody, PartRow, partsReady, rowsOf } from "../components/PartsEditor";
+import TemplateHistory from "../components/TemplateHistory";
 import type { EnvTemplateInfo } from "../components/TemplatePicker";
 import { hasRole, useAuth } from "../App";
 
@@ -94,6 +95,7 @@ export default function EnvTemplates() {
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<EnvTemplateInfo | null>(null);
   const [parts, setParts] = useState(false);
+  const [history, setHistory] = useState<EnvTemplateInfo | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const load = useCallback(() => { api.get<EnvTemplateInfo[]>("/api/env-templates").then(setList, (e) => setError((e as Error).message)); }, []);
   useEffect(load, [load]);
@@ -172,6 +174,7 @@ export default function EnvTemplates() {
                     Export
                   </Link>
                 )}
+                <Button size="small" onClick={() => setHistory(t)} title="Its versions, what changed between two, and going back to one">History</Button>
                 {t.can_edit && <Button size="small" onClick={() => setEditing(t)}>Edit</Button>}
                 {t.can_edit && (
                   <ActionButton size="small" color="error" tip="Delete this template (environments made from it are not affected)"
@@ -188,6 +191,7 @@ export default function EnvTemplates() {
         </TableBody>
       </Table>
       {editing && <Edit t={editing} list={list} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {history && <TemplateHistory t={history} onClose={() => setHistory(null)} onChanged={load} />}
       {parts && <FromParts list={list} onClose={() => setParts(false)} onSaved={() => { setParts(false); load(); }} />}
     </Stack>
   );
