@@ -2186,3 +2186,12 @@ Built from the order agreed on 2026-10-23: (1) **Save as template** from an envi
 - **UI:** `Save as template` on an environment (`SaveAsTemplate.tsx`: name, description, share, which fields are parameters), **Start from a template** on the New environment form (`TemplatePicker.tsx`, also `?template=<id>`), and the **Templates** page `/environment-templates` (`EnvTemplates.tsx`, linked from Environments).
 - **Not built:** accounts and catalog-secrets in a template; sub-assemblies; versioning; YAML/bundle export; a shared team scope narrower than "everyone who deploys".
 
+## 70. Restart-style Fix buttons: the CA and the secret stores (built 2026-10-23)
+
+The second kind of fix in §67. The API cannot touch the stack's containers, so these are done by the **update agent** on the host: a new agent action `restart_service` (`deploy/update-agent/labape-update.sh`) restarts one of `labape-ca`, `labape-openbao`, `labape-conjur`, `labape-conjur-tls` (nothing else: the name is checked), runs `stores.sh unseal` after a store was restarted, then waits 60 seconds of healthy checks and reports in the agent's `status.json` (the Dashboard's agent banner). It does not use maintenance mode or drain jobs: these restarts do not stop the API.
+
+- **platform_ca** (check *Platform CA*): **Restart the platform CA**; nothing to type, only the confirmation.
+- **store.openbao / store.conjur** (checks of the secret stores): **What to do**: *Restart the store* (it is unsealed again), or *Give LABaPe a new login*, which is the existing `stores_setup` action (`stores.sh setup`). The default is chosen from the check's message: a refused or rejected login (`AUTH_FAILURE`) defaults to the new login, anything else to a restart.
+- The three are offered only when the update agent is installed; a request while it is busy is refused (409), and the result of the request is the agent's, not the API call's: the dialog says it was asked and the Dashboard reloads its checks after 45 and 100 seconds.
+- Run on OZ: the CA restart (the check stays green; it took the whole 120-second health wait before the wait was cut to 60) and the OpenBao restart with unseal (about 80 seconds; every check green afterwards). A new store login and a restart of Conjur were not run live (unit tests only). The agent copy on the host has to be refreshed with `deploy/update-agent/install.sh` after this change.
+

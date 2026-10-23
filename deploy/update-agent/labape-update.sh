@@ -15,6 +15,8 @@
 #   containers only read (design §24, phase R3): maintenance on -> new value ->
 #   apply -> recreate the containers using it -> health checks (the CA check
 #   signs a test request) -> maintenance off; everything put back on failure.
+# restart_service <labape-ca|labape-openbao|labape-conjur|labape-conjur-tls>: the Fix button on a failing CA or
+#   store check: restart that container, unseal OpenBao again when a store was restarted, then health checks.
 # authentik_sso: sign-on between linked stacks (design §47.2): tools/authentik-test/sso.sh.
 # stores_setup: stores/stores.sh setup (secret health, S1: new store logins for LABaPe).
 # openbao_people: stores/stores.sh people-policies <envs>: each environment's OpenBao policy and
@@ -287,6 +289,29 @@ if [ "$ACTION" = openbao_vms ]; then
     status failed applying "OpenBao VM policies failed: ${out##*$'\n'}"
   fi
   rm -f "$f"
+  finish
+  exit 0
+fi
+
+if [ "$ACTION" = restart_service ]; then
+  # Only containers whose restart is harmless to the rest of the stack (no maintenance mode, no jobs drained).
+  case "$TARGET" in labape-ca|labape-openbao|labape-conjur|labape-conjur-tls) ;; *)
+    status failed checking "$TARGET is not a service the agent restarts"; finish; exit 0 ;; esac
+  status running applying "restarting $TARGET"
+  if ! (cd "$C" && "${COMPOSE[@]}" restart "$TARGET"); then
+    status failed applying "restarting $TARGET failed; see agent.log"
+    finish
+    exit 0
+  fi
+  case "$TARGET" in labape-openbao|labape-conjur|labape-conjur-tls)
+    status running applying "unsealing the stores after restarting $TARGET"
+    bash "$C/stores/stores.sh" unseal >/dev/null 2>&1 || echo "labape-update: stores.sh unseal failed after restarting $TARGET" ;;
+  esac
+  if wait_healthy 60; then
+    status succeeded done "restarted $TARGET; the health checks pass"
+  else
+    status failed health "restarted $TARGET, but the health checks did not pass; see agent.log"
+  fi
   finish
   exit 0
 fi

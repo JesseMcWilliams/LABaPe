@@ -7,3 +7,5 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 
 - Admin Dashboard: a **Fix** button on a failing Directory (group search) or Email (SMTP) check asks for the credentials it needs (an Authentik admin API token, or the mail server details), repairs the integration and forgets them. (Web-Interface-Admin, dashboard.)
 - Environment templates: **Save as template** on an environment (name, description, share, which values can change), **Start from a template** on the New environment form (fills the form; warns about a template, network or catalog item the host lacks), the **Templates** page, and three starters (Domain with members, Three-tier Linux standalone, Kerberos lab). (Web-Interface-Guide, creating an environment.)
+
+- Admin Dashboard: a **Fix** button on a failing Platform CA or secret store (OpenBao, Conjur) check: restart it (a store is unsealed again) or, for a store, give LABaPe a new login. Needs the update agent (reinstall it with `deploy/update-agent/install.sh` after updating). (Web-Interface-Admin, dashboard.)

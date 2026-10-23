@@ -137,3 +137,65 @@ def test_smtp_fix_checks_then_saves(client, monkeypatch):
     assert r.status_code == 422
     with session_factory()() as db:
         assert appsettings.get(db, "smtp").host == "mail.example.test"
+
+
+# --- the CA and the stores: done by the update agent --------------------------------------------------------------
+
+def _agent(monkeypatch, installed=True, busy=False):
+    from labape import update
+    sent = []
+    monkeypatch.setattr(update, "agent_installed", lambda: installed)
+    monkeypatch.setattr(update, "busy", lambda: busy)
+    monkeypatch.setattr(update, "write_request", lambda action, target, actor, **kw: sent.append((action, target, actor)) or {})
+    return sent
+
+
+def test_the_restart_fixes_are_offered_only_when_the_agent_is_installed(client, monkeypatch):
+    _admin_session(client)
+    _agent(monkeypatch, installed=False)
+    assert [f["name"] for f in client.get("/api/admin/fixes").json()] == ["directory", "smtp"]
+    _agent(monkeypatch)
+    listed = {f["name"]: f for f in client.get("/api/admin/fixes").json()}
+    assert {"platform_ca", "store.openbao", "store.conjur"} <= set(listed)
+    assert listed["platform_ca"]["fields"] == []                                     # nothing to type: a confirmation only
+    assert listed["store.openbao"]["fields"][0]["options"] == ["Give LABaPe a new login", "Restart the store"]
+
+
+def test_restarting_the_ca_asks_the_agent_in_the_actors_name(client, monkeypatch):
+    _admin_session(client)
+    sent = _agent(monkeypatch)
+    r = client.post("/api/admin/fixes/platform_ca", json={"values": {}})
+    assert r.status_code == 200 and "restart the platform CA" in r.json()["message"]
+    assert len(sent) == 1 and sent[0][:2] == ("restart_service", "labape-ca") and sent[0][2]
+    assert "fix.platform_ca" in [a["action"] for a in client.get("/api/admin/audit").json()]
+
+
+def test_a_store_fix_restarts_it_or_asks_for_a_new_login(client, monkeypatch):
+    _admin_session(client)
+    sent = _agent(monkeypatch)
+    assert client.post("/api/admin/fixes/store.openbao", json={"values": {"what": "Restart the store"}}).status_code == 200
+    assert client.post("/api/admin/fixes/store.conjur", json={"values": {"what": "Give LABaPe a new login"}}).status_code == 200
+    assert client.post("/api/admin/fixes/store.conjur", json={"values": {}}).status_code == 200            # the default is a restart
+    assert client.post("/api/admin/fixes/store.openbao", json={"values": {"what": "Something else"}}).status_code == 422
+    assert [(a, t) for a, t, _ in sent] == [("restart_service", "labape-openbao"), ("stores_setup", ""),
+                                            ("restart_service", "labape-conjur")]
+
+
+def test_the_agent_must_be_there_and_free(client, monkeypatch):
+    _admin_session(client)
+    sent = _agent(monkeypatch, installed=False)
+    assert client.post("/api/admin/fixes/platform_ca", json={"values": {}}).status_code == 409
+    _agent(monkeypatch, busy=True)
+    busy = client.post("/api/admin/fixes/platform_ca", json={"values": {}})
+    assert busy.status_code == 409 and "busy" in busy.text and sent == []
+
+
+def test_a_refused_login_defaults_to_a_new_login_and_anything_else_to_a_restart(client, monkeypatch):
+    from labape import stores
+    _admin_session(client)
+    _agent(monkeypatch)
+    for msg, want in (("OpenBao rejected the login (HTTP 403)", "Give LABaPe a new login"),
+                      ("connection refused", "Restart the store"), ("sealed", "Restart the store")):
+        monkeypatch.setattr(stores, "check", lambda db, name, cached=False, m=msg: (False, m))
+        got = next(f for f in client.get("/api/admin/fixes").json() if f["name"] == "store.openbao")
+        assert got["fields"][0]["default"] == want, msg

@@ -34,7 +34,7 @@ def run_fix(name: str, body: FixIn, request: Request, db: Session = Depends(get_
             raise FieldError(f["name"], f"{f['label']} is needed.")
     detail = {k: values[k] for k in fix.detail_keys if k in values}
     try:
-        message = fix.run(db, values)
+        message = fix.run(db, values, p.username)
     except FieldError as exc:
         audit(db, p.username, f"fix.{name}", outcome="failed", detail={**detail, "error": str(exc.detail)[:200]},
               source_ip=client_ip(request))
