@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
@@ -71,9 +72,44 @@ class VmSsh(hostadmin.Ssh):
         self._dir.cleanup()
 
 
+def _login(address: str, user: str, key_text: str) -> tuple[bool, bool]:
+    """(logs in, was refused for its key) for a key on a VM."""
+    ssh = VmSsh(address, user, key_text)
+    try:
+        r = ssh.run("true", timeout=30)
+    except subprocess.TimeoutExpired:
+        return False, False
+    finally:
+        ssh.close()
+    return r.returncode == 0, b"Permission denied" in (r.stderr or b"")
+
+
+def vm_key_text(db: Session, address: str, user: str) -> str:
+    """The VM key to log in to a Linux VM with. A VM that was still deploying when the key was rotated never got
+    the new one (it keeps an earlier key, which Ansible still tries); when the current key is refused, an earlier
+    one that works is used to add the current key there, so the VM is back on it. Returns the current key when
+    nothing works, and the caller reports the usual error."""
+    cur = engine_secrets._get(db, engine_secrets.SSH_KEY)
+    ok, refused = _login(address, user, cur)
+    if ok or not refused:
+        return cur
+    pub = engine_secrets._get(db, engine_secrets.SSH_PUB).strip()
+    for h in engine_secrets._history(db, engine_secrets.SSH_HISTORY):
+        if not _login(address, user, h["private"])[0]:
+            continue
+        ssh = VmSsh(address, user, h["private"])
+        try:
+            line = shlex.quote(pub)
+            r = ssh.run(f"grep -qxF {line} ~/.ssh/authorized_keys || echo {line} >> ~/.ssh/authorized_keys")
+        finally:
+            ssh.close()
+        return cur if r.returncode == 0 and _login(address, user, cur)[0] else h["private"]
+    return cur
+
+
 def _linux_ssh(db: Session, host: dict) -> VmSsh:
-    return VmSsh(str(host["ansible_host"]), str(host.get("ansible_user") or "labape"),
-                 engine_secrets._get(db, engine_secrets.SSH_KEY))
+    address, user = str(host["ansible_host"]), str(host.get("ansible_user") or "labape")
+    return VmSsh(address, user, vm_key_text(db, address, user))
 
 
 # --- Windows through Ansible (WinRM), with JSON results -------------------------------------

@@ -259,9 +259,11 @@ def vm_target(db: Session, env: Environment, vm: str, account: str = "", protoco
             "hostname": address, "port": "3389", "username": user, "password": str(host.get("ansible_password") or ""),
             "domain": domain, "security": "any", "ignore-cert": "true", "resize-method": "display-update",
             "enable-font-smoothing": "true", "disable-audio": "true"}}
-    key = engine_secrets._get(db, engine_secrets.SSH_KEY)
+    from .engine import vmadmin
+    user = str(host.get("ansible_user") or "labape")
+    key = vmadmin.vm_key_text(db, address, user)       # the current key, or the VM's earlier one after adding it
     return {"protocol": "ssh", "address": address, "params": {
-        "hostname": address, "port": "22", "username": str(host.get("ansible_user") or "labape"), "private-key": key,
+        "hostname": address, "port": "22", "username": user, "private-key": key,
         "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000"}}
 
 

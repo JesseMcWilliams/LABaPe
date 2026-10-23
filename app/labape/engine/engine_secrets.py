@@ -27,6 +27,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -175,9 +176,29 @@ def rotate_vault_password(db: Session, log) -> str:
     return "new vault password in use (the command line re-encrypts its vault on its next run)"
 
 
+def _wait_for_deploys(db: Session, log, minutes: int = 30) -> None:
+    """A VM that is still being deployed only gets the keys of its clone and misses a rotation that runs meanwhile
+    (the rotation only visits deployed environments): wait for the deploys to finish first."""
+    from ..models import Environment
+    deadline = time.monotonic() + minutes * 60
+    told = False
+    while True:
+        db.expire_all()
+        busy = [e.name for e in db.scalars(select(Environment).where(Environment.status == "deploying"))]
+        if not busy or time.monotonic() > deadline:
+            if busy:
+                log.write(f"labape: still deploying after {minutes} minutes: {', '.join(busy)}; rotating without them\n")
+            return
+        if not told:
+            log.write(f"labape: waiting for {', '.join(busy)} to finish deploying before the key rotates\n")
+            told = True
+        time.sleep(15)
+
+
 def rotate_ssh_key(db: Session, log) -> str:
     """New ed25519 key, added on every deployed environment's Linux VMs, then stored."""
     from .vmaccess import AccessError, push_vm_key
+    _wait_for_deploys(db, log)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     with tempfile.TemporaryDirectory() as d:
         new = Path(d) / "new"
