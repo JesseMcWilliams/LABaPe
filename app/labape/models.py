@@ -716,5 +716,8 @@ class EnvTemplate(Base):
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     spec: Mapped[dict] = mapped_column(JSON, default=dict)                # {"host_groups": [...], "timezone": ...}
     params: Mapped[list] = mapped_column(JSON, default=list)              # [{"key","label","group","field","default"}]
+    # Sub-assemblies: other templates this one is made of, [{"template_id","name","prefix","label","overrides"}]; their
+    # host groups are added with the prefix on their names, so one template can hold the same part twice.
+    includes: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

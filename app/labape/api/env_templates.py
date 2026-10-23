@@ -6,6 +6,10 @@ accounts and passwords). The few values a person fills in when starting from it 
 group (for example the number of hosts, the OS or the network) with a label and the template's value as default.
 Starting from a template only fills the New environment form: the person still reviews it and deploys through
 the normal create call, so every check the form has still applies.
+
+A template may also be made of other templates (sub-assemblies, design §69): each included template brings its host
+groups with a prefix on their names, its parameters (prefixed) and any values the including template fixes; the same
+part can be included twice under two prefixes. A template can be exported as YAML and imported on another stack.
 """
 from __future__ import annotations
 
@@ -13,7 +17,8 @@ import copy
 import re
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import yaml
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -201,12 +206,91 @@ def _visible(db: Session, p: Principal):
     return q
 
 
-def _out(t: EnvTemplate, p: Principal, full: bool = False) -> dict:
-    groups = t.spec.get("host_groups", [])
+MAX_DEPTH = 5                                                  # how deep templates may include templates
+FORMAT = "labape-environment-templates/1"
+
+
+class IncludeIn(BaseModel):
+    template_id: int
+    prefix: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,5}$")
+    label: str = Field(default="", max_length=60)
+    overrides: dict[str, dict[str, str | int]] = Field(default_factory=dict)      # the part's group -> field -> value
+
+
+def compose(db: Session, t: EnvTemplate, chain: tuple[str, ...] = ()) -> tuple[list[dict], list[dict]]:
+    """The host groups and parameters of a template with everything it includes. Refuses a circle, a nesting deeper
+    than MAX_DEPTH, a part that is gone, a name that comes out too long or twice."""
+    if t.name.lower() in (c.lower() for c in chain):
+        raise FieldError("includes", f"The templates include each other in a circle: {' > '.join((*chain, t.name))}.")
+    if len(chain) >= MAX_DEPTH:
+        raise FieldError("includes", f"Templates can be nested {MAX_DEPTH} deep at most.")
+    groups = copy.deepcopy((t.spec or {}).get("host_groups", []))
+    params = copy.deepcopy(t.params or [])
+    for inc in t.includes or []:
+        child = db.get(EnvTemplate, inc["template_id"])
+        if child is None:
+            raise FieldError("includes", f"The included template {inc.get('name') or inc['template_id']!r} no longer exists.")
+        cg, cp = compose(db, child, (*chain, t.name))
+        prefix = inc["prefix"]
+        over = inc.get("overrides") or {}
+        for g in cg:
+            for field, value in (over.get(g["name"]) or {}).items():
+                if field not in PARAM_FIELDS:
+                    raise FieldError("includes", f"{field} can't be set when including {child.name}: choose from {', '.join(PARAM_FIELDS)}.")
+                g[field] = value if field in ("os", "network") else int(value)
+        for q in cp:
+            ov = (over.get(q["group"]) or {}).get(q["field"])
+            if ov is not None:
+                q["default"] = ov
+        rename = {g["name"]: prefix + g["name"] for g in cg}
+        too_long = next((n for n in rename.values() if len(n) > 12), None)
+        if too_long:
+            raise FieldError("includes", f"With the prefix {prefix!r}, the host group {too_long!r} would be longer than 12 letters.")
+        for g in cg:
+            g["name"] = rename[g["name"]]
+        for q in cp:
+            q.update(group=rename[q["group"]], key=f"{rename[q['group']]}.{q['field']}",
+                     label=f"{inc.get('label') or prefix}: {q['label']}")
+        groups += cg
+        params += cp
+    names = [g["name"].lower() for g in groups]
+    dup = next((n for n in names if names.count(n) > 1), None)
+    if dup:
+        raise FieldError("includes", f"The host group name {dup!r} comes out twice: give the included templates different prefixes.")
+    return groups, params
+
+
+def _includes(db: Session, p: Principal, items: list[IncludeIn]) -> list[dict]:
+    out, seen = [], set()
+    for it in items:
+        child = _get_visible(db, it.template_id, p)
+        if it.prefix.lower() in seen:
+            raise FieldError("includes", f"The prefix {it.prefix!r} is used twice: each included template needs its own.")
+        seen.add(it.prefix.lower())
+        out.append({"template_id": child.id, "name": child.name, "prefix": it.prefix, "label": it.label.strip(),
+                    "overrides": it.overrides})
+    return out
+
+
+def _used_by(db: Session) -> dict[int, list[str]]:
+    uses: dict[int, list[str]] = {}
+    for t in db.scalars(select(EnvTemplate)):
+        for inc in t.includes or []:
+            uses.setdefault(inc["template_id"], []).append(t.name)
+    return uses
+
+
+def _out(db: Session, t: EnvTemplate, p: Principal, full: bool = False, uses: dict | None = None) -> dict:
+    uses = _used_by(db) if uses is None else uses
+    try:
+        groups, params = compose(db, t)
+        broken = ""
+    except FieldError as exc:
+        groups, params, broken = t.spec.get("host_groups", []), t.params, str(exc.detail)
     out = {"id": t.id, "name": t.name, "description": t.description, "owner": t.owner, "shared": t.shared, "builtin": t.builtin,
            "can_edit": (not t.builtin) and (p.is_admin or t.owner == p.username),
            "summary": [{"name": g["name"], "count": g.get("count", 1), "os": g["os"], "role": (g.get("roles") or [""])[0]} for g in groups],
-           "params": t.params, "updated_at": t.updated_at}
+           "params": params, "own_params": t.params, "includes": t.includes or [], "used_by": uses.get(t.id, []), "broken": broken, "updated_at": t.updated_at}
     if full:
         out["spec"] = t.spec
     return out
@@ -233,36 +317,149 @@ class TemplateIn(BaseModel):
     shared: bool = False
     from_environment_id: int | None = None
     params: list[ParamIn] = Field(default_factory=list, max_length=60)
+    includes: list[IncludeIn] = Field(default_factory=list, max_length=20)
 
 
 @router.get("")
 def list_templates(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     ensure_builtins(db)
-    return [_out(t, p) for t in db.scalars(_visible(db, p))]
+    uses = _used_by(db)
+    return [_out(db, t, p, uses=uses) for t in db.scalars(_visible(db, p))]
+
+
+# --- YAML export and import (declared before /{tid}, which would take "export" for an id) -----------------
+
+def _doc(t: EnvTemplate) -> dict:
+    d: dict = {"name": t.name, "description": t.description}
+    if t.spec.get("timezone"):
+        d["timezone"] = t.spec["timezone"]
+    d["host_groups"] = t.spec.get("host_groups", [])
+    d["params"] = [{"group": q["group"], "field": q["field"], "label": q["label"]} for q in t.params]
+    if t.includes:
+        d["includes"] = [{"template": i["name"], "prefix": i["prefix"], **({"label": i["label"]} if i.get("label") else {}),
+                          **({"overrides": i["overrides"]} if i.get("overrides") else {})} for i in t.includes]
+    return d
+
+
+def _yaml_response(docs: list[dict], filename: str) -> Response:
+    text = yaml.safe_dump({"format": FORMAT, "templates": docs}, sort_keys=False, allow_unicode=True)
+    return Response(text, media_type="application/yaml", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/export")
+def export_all(db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """Every template this person may see, except the starters (every stack has those), as one YAML bundle."""
+    ensure_builtins(db)
+    mine = [t for t in db.scalars(_visible(db, p)) if not t.builtin]
+    return _yaml_response([_doc(t) for t in mine], "labape-environment-templates.yaml")
+
+
+@router.get("/{tid}/export")
+def export_one(tid: int, request: Request, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
+    """One template, with the templates it includes (a bundle that imports on its own), as YAML."""
+    t = _get_visible(db, tid, p)
+    order, seen = [], set()
+
+    def walk(x: EnvTemplate) -> None:
+        if x.id in seen:
+            return
+        seen.add(x.id)
+        for inc in x.includes or []:
+            child = db.get(EnvTemplate, inc["template_id"])
+            if child is not None and not child.builtin:
+                walk(child)
+        order.append(x)
+
+    walk(t)
+    audit(db, p.username, "env_template.export", object_type="env_template", object_id=t.id, detail={"name": t.name},
+          source_ip=client_ip(request))
+    return _yaml_response([_doc(x) for x in order], f"{re.sub(r'[^A-Za-z0-9._-]+', '-', t.name)}.yaml")
+
+
+class ImportIn(BaseModel):
+    yaml: str = Field(max_length=1_000_000)
+    shared: bool = False
+
+
+@router.post("/import", status_code=201)
+def import_templates(body: ImportIn, request: Request, db: Session = Depends(get_db),
+                     p: Principal = Depends(require_roles("deployer", "template_editor"))):
+    """Create the templates in a YAML bundle (all, or none). Included templates are found by name, among the ones
+    this person may use and the ones earlier in the same file."""
+    try:
+        doc = yaml.safe_load(body.yaml)
+    except yaml.YAMLError as exc:
+        raise FieldError("yaml", f"That isn't valid YAML: {str(exc)[:200]}") from exc
+    if not isinstance(doc, dict) or not isinstance(doc.get("templates"), list) or not doc["templates"]:
+        raise FieldError("yaml", f"Expected a LABaPe template bundle ({FORMAT}): a `templates:` list.")
+    if doc.get("format") not in (None, FORMAT):
+        raise FieldError("yaml", f"This file is {doc.get('format')!r}; this stack reads {FORMAT!r}.")
+    created: list[EnvTemplate] = []
+    try:
+        for n, raw in enumerate(doc["templates"], 1):
+            if not isinstance(raw, dict):
+                raise FieldError("yaml", f"Template {n} isn't a mapping.")
+            name = str(raw.get("name", "")).strip()
+            where = f"Template {n} ({name or 'no name'})"
+            try:
+                _name_free(db, name)
+                groups = []
+                for g in raw.get("host_groups") or []:
+                    full = HostGroup(**{k: v for k, v in g.items() if k not in DROPPED}).model_dump()
+                    groups.append({k: v for k, v in full.items() if k in GROUP_FIELDS})
+                spec = {"host_groups": groups, **({"timezone": raw["timezone"]} if raw.get("timezone") else {})}
+                params = make_params(spec, [ParamIn(**q) for q in raw.get("params") or []])
+                includes = []
+                for inc in raw.get("includes") or []:
+                    child = db.scalar(select(EnvTemplate).where(func.lower(EnvTemplate.name) == str(inc.get("template", "")).lower()))
+                    if child is None or not (p.is_admin or child.builtin or child.shared or child.owner == p.username):
+                        raise FieldError("yaml", f"it includes {inc.get('template')!r}, which this stack doesn't have (import it first)")
+                    includes.append(_includes(db, p, [IncludeIn(template_id=child.id, prefix=inc.get("prefix", ""),
+                                                                label=inc.get("label", ""), overrides=inc.get("overrides") or {})])[0])
+                if not groups and not includes:
+                    raise FieldError("yaml", "it has no host groups and includes nothing")
+                t = EnvTemplate(name=name, description=str(raw.get("description", ""))[:500], owner=p.username, shared=body.shared,
+                                spec=spec, params=params, includes=includes)
+                db.add(t)
+                db.flush()
+                compose(db, t)
+            except (ValidationError, ValueError, TypeError) as exc:
+                raise FieldError("yaml", f"{where}: {str(exc)[:240]}") from exc
+            except FieldError as exc:
+                raise FieldError("yaml", f"{where}: {exc.detail}") from exc
+            created.append(t)
+    except FieldError:
+        db.rollback()
+        raise
+    db.commit()
+    audit(db, p.username, "env_template.import", detail={"names": [t.name for t in created]}, source_ip=client_ip(request))
+    return {"created": [{"id": t.id, "name": t.name} for t in created]}
 
 
 @router.get("/{tid}")
 def get_template(tid: int, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     ensure_builtins(db)
-    return _out(_get_visible(db, tid, p), p, full=True)
+    return _out(db, _get_visible(db, tid, p), p, full=True)
 
 
 @router.post("", status_code=201)
 def create_template(body: TemplateIn, request: Request, db: Session = Depends(get_db),
                     p: Principal = Depends(require_roles("deployer", "template_editor"))):
-    if body.from_environment_id is None:
-        raise FieldError("from_environment_id", "Say which environment to save as a template.")
-    env = _get(db, body.from_environment_id, p)
+    if body.from_environment_id is None and not body.includes:
+        raise FieldError("from_environment_id", "Say which environment to save as a template, or which templates this one is made of.")
+    env = _get(db, body.from_environment_id, p) if body.from_environment_id is not None else None
     name = body.name.strip()
     _name_free(db, name)
-    spec = spec_of(env)
+    spec = spec_of(env) if env is not None else {"host_groups": []}
     t = EnvTemplate(name=name, description=body.description.strip(), owner=p.username, shared=body.shared, spec=spec,
-                    params=make_params(spec, body.params))
+                    params=make_params(spec, body.params), includes=_includes(db, p, body.includes))
+    compose(db, t)                                              # refuses what could not be used, before it is saved
     db.add(t)
     db.commit()
     audit(db, p.username, "env_template.create", object_type="env_template", object_id=t.id,
-          detail={"name": name, "from": env.name, "shared": t.shared}, source_ip=client_ip(request))
-    return _out(t, p, full=True)
+          detail={"name": name, "from": env.name if env else "", "includes": [i["name"] for i in t.includes], "shared": t.shared},
+          source_ip=client_ip(request))
+    return _out(db, t, p, full=True)
 
 
 @router.put("/{tid}")
@@ -275,10 +472,16 @@ def update_template(tid: int, body: TemplateIn, request: Request, db: Session = 
     _name_free(db, name, ignore=t.id)
     t.name, t.description, t.shared = name, body.description.strip(), body.shared
     t.params = make_params(t.spec, body.params)
+    t.includes = _includes(db, p, body.includes)
+    try:
+        compose(db, t)
+    except FieldError:
+        db.rollback()
+        raise
     db.commit()
     audit(db, p.username, "env_template.update", object_type="env_template", object_id=t.id,
-          detail={"name": name, "shared": t.shared}, source_ip=client_ip(request))
-    return _out(t, p, full=True)
+          detail={"name": name, "shared": t.shared, "includes": [i["name"] for i in t.includes]}, source_ip=client_ip(request))
+    return _out(db, t, p, full=True)
 
 
 @router.delete("/{tid}")
@@ -287,6 +490,9 @@ def delete_template(tid: int, request: Request, db: Session = Depends(get_db),
     t = _get_visible(db, tid, p)
     if t.builtin or not (p.is_admin or t.owner == p.username):
         raise HTTPException(status_code=403, detail="Only the template's owner or an admin can delete it, and the starters stay")
+    users = _used_by(db).get(t.id, [])
+    if users:
+        raise HTTPException(status_code=409, detail=f"{t.name} is part of {', '.join(users)}: take it out of those first.")
     audit(db, p.username, "env_template.delete", object_type="env_template", object_id=t.id,
           detail={"name": t.name}, source_ip=client_ip(request))
     db.delete(t)
@@ -303,7 +509,13 @@ class InstantiateIn(BaseModel):
 def instantiate(tid: int, body: InstantiateIn, db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     """The host groups the New environment form starts from, with the chosen values in place and what is missing on the host."""
     t = _get_visible(db, tid, p)
-    groups = apply(t.spec, t.params, body.values)
+    raw, params = compose(db, t)
+    groups = apply({"host_groups": raw}, params, body.values)
     host = db.get(KvmHost, body.kvm_host_id) if body.kvm_host_id else None
     notes = check_against(db, groups, host)
+    dcs = [g["name"] for g in groups if "domain_controller" in g["roles"]]
+    if len(dcs) > 1:
+        notes.append({"group": ", ".join(dcs), "level": "warn", "message":
+                      "More than one group is a domain controller: they would all be made for the same domain. "
+                      "Check that the included templates are meant to be used together."})
     return {"host_groups": groups, "timezone": t.spec.get("timezone"), "warnings": notes, "template": t.name}
