@@ -19,6 +19,7 @@ Your organization may have renamed the app (Settings → Branding); the top bar 
 11. [API tokens](#11-api-tokens)
 12. [Certificates](#12-certificates)
 13. [Help](#13-help)
+14. [Environment templates](#14-environment-templates)
 
 ## 1. Signing in and your roles
 
@@ -97,6 +98,8 @@ Each host group sets:
 
 **Create and deploy** asks you to confirm, saves the environment and starts a deploy job at once. You land on the environment's page.
 
+**Start from a template** (at the top of the form) fills the form from a saved template: see [§14](#14-environment-templates).
+
 **Save as draft** keeps what you typed without deploying. A draft takes no quota, no addresses and no VM names until it is deployed, and only you (and admins) see it. Its page shows **Edit draft**, which opens the form again with your choices (**Create and deploy** then saves and deploys it), and **Deploy**, which checks everything a new environment is checked for. **Duplicate**, on any environment's page, opens the form with a copy of its host groups under the name `<name>-copy`: the VM names are cleared and no accounts or passwords are copied.
 
 ## 4. Working with an environment
@@ -135,7 +138,8 @@ Linux VMs have no admin password: Ansible signs in with an SSH key (the admin us
 - **The VM is reinstalled.** A VM is built once from an install recipe, and it is thrown away and built again (everything on it is lost) when that recipe changes: its operating system image or template, its CPU, memory or disk size, its network, host or storage folder, or its install answers: name, administrator user, addressing (IP address, gateway, DNS), the management source and syslog address from Settings, a Windows edition, and the answer files that ship with LABaPe (an update that changes them reinstalls VMs on their next redeploy). Rotating the VM key or the Windows bootstrap password, comments in the Windows answer files, and the VM's MAC address do not.
 If you aren't sure, choose **Preview redeploy** first, or turn on automatic snapshots before a redeploy (Settings) or snapshot the VMs first. This is how the KVM deployment behaves; Hyper-V's was not checked.
 
-- **RDP** opens a Remote Desktop session to a Windows VM in the browser, **.rdp** downloads a file for your own client (it asks for the password), and **SSH** opens a terminal to a Linux VM in the browser. Your admin may record these sessions (the session page says so) and closes idle ones after a while. Windows VMs deployed before Remote Desktop was turned on need a **Redeploy** first.
+- **RDP** opens a Remote Desktop session to a Windows VM in the browser, **.rdp** downloads a file for your own client (it asks for the password), and **SSH** opens a terminal to a Linux VM in the browser. Your admin may record these sessions (the session page says so) and closes idle ones after a while. **Copy and paste** works in both directions, as text: what you copy in the session lands on your computer's clipboard (click the page once if the browser holds it back), and what you copied on your computer goes to the session when you press Ctrl or use the **Paste** button; then paste there (RDP: Ctrl+V; SSH: Ctrl+Shift+V or a middle click). The browser may ask to allow reading the clipboard. Files and images aren't copied. Windows VMs deployed before Remote Desktop was turned on need a **Redeploy** first.
+- **Save as template** keeps this environment's host groups as a template ([§14](#14-environment-templates)).
 - **Move host group** (with more than one KVM host): moves a group's VMs to another host while they run; memory and disks are copied, so a big disk takes a while. The VMs must be running and have no snapshots, and the other host must carry the group's network. A deploy follows on its own to record the new host. The VMs list shows each VM's KVM host when they're on more than one.
 
 **A VM's page.** Click a VM's name for its own page, with sections on the left:
@@ -267,3 +271,14 @@ CA administrators (`ca_admin`) also see **The CA** tab: whether the CA answers, 
 ## 13. Help
 
 **Help** in the top bar opens these guides inside LABaPe, so nobody needs the files: a section list on the left and the text on the right. The guide for admins shows only to admins and auditors, and the command-line guide only to admins. Every page also has a **Help for this page** link at its top right that opens the guide at the section for that page.
+
+## 14. Environment templates
+
+A template is an environment's host groups (how many, which OS, role, size, network, software, start order) **without** its name, KVM host, VM names, addresses, accounts or passwords, plus the few values you fill in when you start from it. **Environments → Templates** lists them.
+
+- **Start from a template.** On the New environment form, open **Start from a template**, pick one, fill in its values (for example the number of Linux members) and press **Use this template**. The form is filled in and nothing is created until you press Create and deploy as usual, so every check still applies and you can change anything first. Below the button, notes say what the chosen KVM host or the catalog lacks: a catalog item that is retired or gone, an OS template the host doesn't have (when a linked stack has it, it is copied when the environment deploys), a network the host doesn't carry. When the host has exactly one template for a group's OS it is filled in; with several you pick.
+- **Save as template.** On an environment's page, **Save as template** asks for a name and a description, whether to share it with everyone who can deploy (otherwise it is private), and which values can be changed when starting from it (per group: number of hosts, OS, network, CPUs, memory, disk).
+- **Starters.** LABaPe ships three: *Domain with members*, *Three-tier Linux (standalone)* and *Kerberos lab*. They can't be changed or deleted.
+- **Parts.** **New from parts** makes a template out of other templates: each part brings its host groups with a prefix (up to 6 letters) in front of their names, so the same part can be used twice. Its values are asked for with the part's prefix, and you can set values for a part's groups (hosts, OS, network, CPUs, memory, disk): a value replaces the part's own, and if the part lets it be changed it is still asked for, with yours as the starting value. **Edit** changes the name, description, sharing and the parts. A part can **follow the latest** version of its template or be **pinned** to one; each change to a template's groups, parameters or parts is a new version, and a pinned part says when a newer one exists. A template that is part of another can't be deleted until it is taken out.
+- **Move templates between stacks.** **Export** (per template, with the templates it is made of) and **Export all** download YAML; **Import** creates the templates in such a file on this stack (all or none; names that already exist are never overwritten; imported templates are private until you share them).
+- Who sees what: private templates only their owner (and admins); shared ones everyone who can deploy; the owner or an admin edits or deletes.

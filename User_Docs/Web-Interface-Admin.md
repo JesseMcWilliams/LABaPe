@@ -351,6 +351,20 @@ What's watched:
 - In **maintenance mode** no new alerts are sent; they go out when it ends if they're still open.
 - If alert emails can't be sent, that's an alert of its own (to syslog), cleared when the mail server works again.
 
+### 12.1 The Fix buttons on the dashboard's checks
+
+An admin's dashboard lists checks for sign-in, secrets and certificates, and notifications. A check that is not OK and has a fix shows a **Fix** button. It says what it will do, asks for what it needs, repairs the integration and does not keep what you typed (the audit log records the fix and its settings, never a secret).
+
+| Check | What Fix does | What it asks for |
+|---|---|---|
+| **Directory (group search)** | Makes the read-only role `labape-directory-reader`, the service account `labape-directory` and its non-expiring API token in Authentik, saves that token, turns the directory on and tests the search | An Authentik admin API token (used once) and, if blank is wrong, Authentik's address |
+| **Email (SMTP)** | Checks the login (and sends a test email), then saves the settings and turns email on | The server, port, security, user and password, the From address, optionally a test address |
+| **Syslog** | Sends a test message, then saves the settings and turns forwarding on (UDP can't confirm delivery: check on the server) | The server, port, protocol and facility |
+| **Platform CA** | Restarts the CA container (certificates already issued are not affected) | Nothing |
+| **OpenBao / Conjur** | Restarts the store and unseals it again, or gives LABaPe a new login (`stores.sh setup`) when the store refuses the stored one; the choice defaults from the check's message | Nothing |
+
+The last two (and the new-login choice) are done by the **update agent** on the host: they are offered only when it is installed, are refused while it is busy, and the Dashboard checks refresh after a minute or two. After updating LABaPe to a release that adds an agent action, reinstall the agent with `deploy/update-agent/install.sh` (the agent runs from a copy). A fix that fails leaves the settings as they were and says why.
+
 ## 13. Backups and rebuilding a stack
 
 **Full stack backups** (Settings → Full stack backups) put the whole stack into one encrypted archive: every database (LABaPe, Authentik, the syslog collector, Conjur), OpenBao, the platform CA, the configuration and the bootstrap secrets. Session recordings and syslog messages are options. The host's update agent takes one daily (03:00 UTC by default) and on **Back up now**; nothing stops while it runs. Archives older than the retention (14 days) are removed; the newest always stays.
@@ -396,10 +410,11 @@ Each link shows whether it answers, when it last did and a one-line summary. **C
 LABaPe opens **SSH**, **RDP** and **VNC/serial consoles** in the browser through its own gateway: the credentials stay on the server. Owners and admins open sessions to an environment's VMs; admins open SSH to KVM hosts.
 
 - **Settings → Remote access**: record every session's screen (off by default), close sessions after N idle minutes (default 30), keep recordings N days (default 90).
-- **Admin → Remote sessions**: who opened what, when, and how it ended, with **Play** for recordings (each play is audited). A browser session's recording plays in the page (**Play**); an API console session's recording is a text transcript ([§20](#20-console-access-and-the-mcp-server-for-ais-and-scripts)); every recording can be downloaded (**Download**).
+- **Admin → Remote sessions**: who opened what, when, and how it ended, with **Play** for recordings (each play is audited). The page's **recording player** link downloads one HTML file that plays a downloaded `.guac` recording offline on any computer: open it, then choose or drop the recording (nothing is uploaded). A browser session's recording plays in the page (**Play**); an API console session's recording is a text transcript ([§20](#20-console-access-and-the-mcp-server-for-ais-and-scripts)); every recording can be downloaded (**Download**).
 - The **auditor** role (group `labape-auditors`) reads the audit log, the syslog messages and the remote-session log, and plays recordings; it changes nothing and can't open sessions.
 - Windows VMs allow Remote Desktop (with Network Level Authentication) from the deploy that added it on; redeploy older environments to turn it on.
 - VM consoles go through the KVM host's access account, so the host needs SSH access set up.
+- **Copy and paste** works in browser SSH and RDP sessions as text, both ways (see the users' guide); what is copied passes through LABaPe's gateway, so a recorded session's recording can show it.
 
 ## 17. The syslog collector
 
