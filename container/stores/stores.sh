@@ -481,7 +481,14 @@ check_cli() {   # the command line reads them; its own vault opens with the stor
   [ -f "$CLI_VAULT" ] || { say "no command-line vault at $CLI_VAULT; skipped"; return 0; }
   local d; d="$(mktemp -d)"
   python3 "$REPO/scripts/lib/store_get.py" vault-pass --vault "$CLI_VAULT" --out "$d/pw" --try-file "$CLI_PASS" \
-    || { rm -rf "$d"; die "the command line's vault ($CLI_VAULT) doesn't open with the store's password"; }
+    || {
+      rm -rf "$d"
+      local why="the command line's vault ($CLI_VAULT) doesn't open with the store's password. To replace it with the store's current vault (the old file is kept): python3 $REPO/scripts/lib/store_get.py vault-pass --vault $CLI_VAULT --out $CLI_PASS --rebuild"
+      # A refresh from the web interface (the update agent) must not stop at a convenience copy that has drifted.
+      [ "${LABAPE_STORES_CLI_CHECK:-}" = warn ] || die "$why"
+      CLI_WARN="$why"
+      return 0
+    }
   rm -rf "$d"
   say "the command line reads its vault password and VM key from the store; $CLI_VAULT opens with it"
 }
@@ -621,6 +628,7 @@ case "$MODE" in
 esac
 
 # setup
+CLI_WARN=""
 for tool in curl openssl python3; do command -v "$tool" >/dev/null 2>&1 || die "$tool is missing"; done
 [ -f "$C/.env" ] || die "no container/.env (run container/setup.sh first)"
 # The host's own tools (this script, the update agent, the command line) reach the stores on 127.0.0.1,
@@ -660,3 +668,4 @@ if [ "$CONJUR_ON" = no ]; then
 else
   say "ready: OpenBao $BAO and Conjur $CONJUR (on the host), labape-openbao:8200 and labape-conjur-tls:8443 in the stack"
 fi
+[ -z "$CLI_WARN" ] || say "warning: $CLI_WARN"

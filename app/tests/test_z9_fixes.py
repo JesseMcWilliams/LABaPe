@@ -158,7 +158,7 @@ def test_the_restart_fixes_are_offered_only_when_the_agent_is_installed(client, 
     listed = {f["name"]: f for f in client.get("/api/admin/fixes").json()}
     assert {"platform_ca", "store.openbao", "store.conjur"} <= set(listed)
     assert listed["platform_ca"]["fields"] == []                                     # nothing to type: a confirmation only
-    assert listed["store.openbao"]["fields"][0]["options"] == ["Give LABaPe a new login", "Restart the store"]
+    assert listed["store.openbao"]["fields"][0]["options"] == ["Give LABaPe a new login (runs the stores' setup)", "Restart the store"]
 
 
 def test_restarting_the_ca_asks_the_agent_in_the_actors_name(client, monkeypatch):
@@ -174,7 +174,7 @@ def test_a_store_fix_restarts_it_or_asks_for_a_new_login(client, monkeypatch):
     _admin_session(client)
     sent = _agent(monkeypatch)
     assert client.post("/api/admin/fixes/store.openbao", json={"values": {"what": "Restart the store"}}).status_code == 200
-    assert client.post("/api/admin/fixes/store.conjur", json={"values": {"what": "Give LABaPe a new login"}}).status_code == 200
+    assert client.post("/api/admin/fixes/store.conjur", json={"values": {"what": "Give LABaPe a new login (runs the stores' setup)"}}).status_code == 200
     assert client.post("/api/admin/fixes/store.conjur", json={"values": {}}).status_code == 200            # the default is a restart
     assert client.post("/api/admin/fixes/store.openbao", json={"values": {"what": "Something else"}}).status_code == 422
     assert [(a, t) for a, t, _ in sent] == [("restart_service", "labape-openbao"), ("stores_setup", ""),
@@ -194,7 +194,7 @@ def test_a_refused_login_defaults_to_a_new_login_and_anything_else_to_a_restart(
     from labape import stores
     _admin_session(client)
     _agent(monkeypatch)
-    for msg, want in (("OpenBao rejected the login (HTTP 403)", "Give LABaPe a new login"),
+    for msg, want in (("OpenBao rejected the login (HTTP 403)", "Give LABaPe a new login (runs the stores' setup)"),
                       ("connection refused", "Restart the store"), ("sealed", "Restart the store")):
         monkeypatch.setattr(stores, "check", lambda db, name, cached=False, m=msg: (False, m))
         got = next(f for f in client.get("/api/admin/fixes").json() if f["name"] == "store.openbao")

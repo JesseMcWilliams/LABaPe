@@ -252,7 +252,8 @@ if [ "$ACTION" = stores_setup ]; then
   # Secret health (S1): LABaPe's login to a store stopped working; stores.sh setup gives it a new one
   # with the stores' root credentials kept on this host (and changes nothing that works).
   status running applying "stores.sh setup: new logins for LABaPe where needed"
-  if out="$(bash "$C/stores/stores.sh" setup 2>&1)"; then
+  # LABAPE_STORES_CLI_CHECK=warn: a command-line vault that has drifted is reported, not a reason to stop the refresh.
+  if out="$(LABAPE_STORES_CLI_CHECK=warn bash "$C/stores/stores.sh" setup 2>&1)"; then
     status succeeded done "stores.sh setup: ${out##*$'\n'}"
   else
     status failed applying "stores.sh setup failed: ${out##*$'\n'}"

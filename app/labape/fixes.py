@@ -164,7 +164,7 @@ def fix_syslog(db: Session, v: dict, actor: str = "") -> str:
 
 # --- the CA and the secret stores: repaired on the host by the update agent -----------------------------------------
 
-STORE_CHOICES = {"new_login": "Give LABaPe a new login", "restart": "Restart the store"}
+STORE_CHOICES = {"new_login": "Give LABaPe a new login (runs the stores' setup)", "restart": "Restart the store"}
 RESTARTABLE = {"labape-ca": "the platform CA", "labape-openbao": "OpenBao", "labape-conjur": "Conjur"}
 
 
@@ -250,7 +250,8 @@ FIXES: dict[str, Fix] = {
     **{f"store.{name}": Fix(
         f"store.{name}", f"Fix {label}",
         f"{label} is not working for LABaPe. Choose what the update agent on this host should do: restart it (it is unsealed "
-        "again after) when it does not answer or is sealed, or give LABaPe a new login when it refuses the stored one. "
+        "again after) when it does not answer or is sealed, or run the stores' setup when it refuses the stored login (a full refresh of "
+        "their configuration that gives LABaPe new logins where needed; a minute or two). "
         "Nothing else needs to be typed.",
         [_field("what", "What to do", kind="select", required=False, options=list(STORE_CHOICES.values()),
                 default=STORE_CHOICES["restart"])],
