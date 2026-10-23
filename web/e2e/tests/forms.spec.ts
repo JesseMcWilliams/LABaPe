@@ -42,6 +42,31 @@ test.describe("New environment form", () => {
     await expect(page.getByText(/Also used by host group 1/)).toHaveCount(0);
   });
 
+  test("a count of 0 asks whether to remove the host group; the button removes it too", async ({ page }) => {
+    await page.getByLabel(/group name/i).first().fill("Web");
+    await page.getByRole("button", { name: "Add host group" }).click();
+    await page.getByLabel(/group name/i).nth(1).fill("Db");
+    const remove = page.getByRole("button", { name: "Remove host group" });
+    await expect(remove).toHaveCount(2);
+    // the only group can't go; with two, a count of 0 on the second asks
+    await page.getByLabel("Count").nth(1).fill("0");
+    const d = dialog(page);
+    await expect(d).toContainText("Remove host group Db?");
+    await d.getByRole("button", { name: "Cancel" }).click();                  // keep it: the count goes back to 1
+    await expect(page.getByLabel(/group name/i)).toHaveCount(2);
+    await expect(page.getByLabel("Count").nth(1)).toHaveValue("1");
+    await page.getByLabel("Count").nth(1).fill("0");
+    await d.getByRole("button", { name: "Remove" }).click();                  // remove it
+    await expect(page.getByLabel(/group name/i)).toHaveCount(1);
+    await expect(page.getByLabel(/group name/i).first()).toHaveValue("Web");
+    await expect(remove).toBeDisabled();                                      // the last one stays
+    // the button does the same as a 0, after its own confirmation
+    await page.getByRole("button", { name: "Add host group" }).click();
+    await page.getByRole("button", { name: "Remove host group" }).nth(1).click();
+    await d.getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByLabel(/group name/i)).toHaveCount(1);
+  });
+
   test("Save as draft is offered, and needs a name", async ({ page }) => {
     const draft = page.getByRole("button", { name: "Save as draft" });
     await expect(draft).toBeVisible();
