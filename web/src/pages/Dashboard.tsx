@@ -19,7 +19,7 @@ interface DashHost {
   id: number; name: string; enabled: boolean; collected_at: string | null; error: string;
   cpus: number | null; cpu_pct: number | null; load: number[];
   memory_total_mb: number | null; memory_used_mb: number | null;
-  disk_total_gb: number | null; disk_free_gb: number | null;
+  disk_total_gb: number | null; disk_free_gb: number | null; storage_error?: string; storage_path?: string | null;
   disk_read_bps: number | null; disk_write_bps: number | null;
   vms_running: number | null; vms_defined: number | null; series: Series;
 }
@@ -85,6 +85,12 @@ function HostCard({ h }: { h: DashHost }) {
         </Typography>
       </Stack>
       {h.error && <Alert severity="warning" sx={{ mb: 1 }}>Not collected: {h.error}</Alert>}
+      {!h.error && h.collected_at && h.storage_error && (
+        <Alert severity="warning" sx={{ mb: 1 }}>
+          VM storage not read{h.storage_path ? ` (${h.storage_path})` : ""}: {h.storage_error}.{" "}
+          <Link component={RouterLink} to="/help?doc=admin&find=KVM%20hosts">Common causes and the permissions it needs</Link>
+        </Alert>
+      )}
       {!h.collected_at && !h.error && <Typography variant="body2" color="text.secondary">Waiting for the first sample (every minute).</Typography>}
       <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
         <Meter label="CPU" value={h.cpu_pct} max={100} detail={`${pct(h.cpu_pct)} of ${h.cpus ?? "–"} CPUs`}

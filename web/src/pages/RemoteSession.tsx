@@ -18,6 +18,8 @@ export default function RemoteSession() {
   const [state, setState] = useState("connecting");
   const [error, setError] = useState("");
   const client = useRef<Guacamole.Client | null>(null);
+  const [note, setNote] = useState("");
+  const sync = useRef<{ push: () => Promise<boolean>; pull: () => void } | null>(null);
 
   useEffect(() => {
     if (!info?.token || !holder.current) return;
@@ -45,11 +47,61 @@ export default function RemoteSession() {
     c.onerror = (status: Guacamole.Status) => setError(status.message || `error ${status.code}`);
     tunnel.onerror = (status: Guacamole.Status) => setError(status.message || "The connection to LABaPe was lost.");
 
+    // Clipboard (both ways, plain text). Remote -> browser: written to the browser's clipboard, or held and written at
+    // the next click or key when the browser refuses without a gesture. Browser -> remote: sent when the page gains
+    // focus, when Ctrl/Cmd goes down (so the remote's paste sees it), on a paste event and from the Paste button.
+    let held: string | null = null;
+    let sent = "";
+    const toBrowser = (text: string) => {
+      held = text;
+      navigator.clipboard?.writeText(text).then(() => { held = null; }, () => { /* wait for a gesture */ });
+    };
+    c.onclipboard = (stream: Guacamole.InputStream, mimetype: string) => {
+      if (!mimetype.startsWith("text/")) return;
+      const reader = new Guacamole.StringReader(stream);
+      let data = "";
+      reader.ontext = (t: string) => { data += t; };
+      reader.onend = () => toBrowser(data);
+    };
+    const toRemote = (text: string) => {
+      if (!text || text === sent) return;
+      sent = text;
+      const out = c.createClipboardStream("text/plain");
+      const w = new Guacamole.StringWriter(out);
+      w.sendText(text);
+      w.sendEnd();
+    };
+    const push = async () => {
+      try {
+        toRemote(await navigator.clipboard.readText());
+        return true;
+      } catch {
+        return false;                                      // no permission, or the page isn't focused
+      }
+    };
+    const flushHeld = () => {
+      if (held !== null) navigator.clipboard?.writeText(held).then(() => { held = null; }, () => undefined);
+    };
+    const onPaste = (e: ClipboardEvent) => toRemote(e.clipboardData?.getData("text") ?? "");
+    const onFocus = () => { void push(); };
+    document.addEventListener("paste", onPaste);
+    window.addEventListener("focus", onFocus);
+    display.addEventListener("mousedown", flushHeld);
+    sync.current = {
+      push: async () => { const ok = await push(); if (!ok) setNote("The browser didn't allow reading the clipboard: click the page, allow it, or use Ctrl+V in the session."); return ok; },
+      pull: flushHeld,
+    };
+
     const mouse = new Guacamole.Mouse(display);
     const send = (e: Guacamole.Mouse.Event) => c.sendMouseState(e.state, true);
     mouse.onEach(["mousedown", "mouseup", "mousemove"], send as never);
     const keyboard = new Guacamole.Keyboard(document);
-    keyboard.onkeydown = (keysym: number) => { c.sendKeyEvent(1, keysym); return false; };
+    keyboard.onkeydown = (keysym: number) => {
+      if (keysym === 0xffe3 || keysym === 0xffe4 || keysym === 0xffe7 || keysym === 0xffe8) void push();   // Ctrl or Meta: sync before the V arrives
+      flushHeld();
+      c.sendKeyEvent(1, keysym);
+      return false;
+    };
     keyboard.onkeyup = (keysym: number) => c.sendKeyEvent(0, keysym);
 
     const box = holder.current.getBoundingClientRect();
@@ -63,6 +115,10 @@ export default function RemoteSession() {
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
+      document.removeEventListener("paste", onPaste);
+      window.removeEventListener("focus", onFocus);
+      display.removeEventListener("mousedown", flushHeld);
+      sync.current = null;
       keyboard.onkeydown = null;
       keyboard.onkeyup = null;
       keyboard.reset();
@@ -85,14 +141,17 @@ export default function RemoteSession() {
         <Chip size="small" label={state} color={state === "connected" ? "success" : state === "disconnected" ? "default" : "warning"} />
         {info.recorded && <Chip size="small" color="error" label="recorded" title="This session is being recorded for the auditors" />}
         <Box sx={{ flexGrow: 1 }} />
+        <Button size="small" variant="outlined" onClick={() => void sync.current?.push()}
+          title="Send what is on this computer's clipboard to the remote side (Ctrl+V in the session does it too)">Paste</Button>
         <Button size="small" variant="outlined" onClick={() => client.current?.disconnect()} title="End the session">Disconnect</Button>
         <Button size="small" component={RouterLink} to={info.back} title="Back (ends the session)">Back</Button>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
+      {note && <Alert severity="info" onClose={() => setNote("")}>{note}</Alert>}
       <Box ref={holder} sx={{ bgcolor: "black", width: "100%", minHeight: 400, overflow: "hidden", cursor: "default",
         "& > div": { margin: "0 auto" } }} />
       <Typography variant="caption" color="text.secondary">
-        Keys go to the remote side while this page has focus. A session with no keyboard or mouse input ends after the idle time set by the admins.
+        Keys go to the remote side while this page has focus. Text copied on the remote side lands on this computer’s clipboard (click the page once if the browser holds it back); text copied here is sent when you press Ctrl or use Paste. A session with no keyboard or mouse input ends after the idle time set by the admins.
       </Typography>
     </Stack>
   );

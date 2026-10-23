@@ -52,8 +52,8 @@ def _disk(path: str) -> dict:
     try:
         u = shutil.disk_usage(path)
         return {"path": path, "total_gb": round(u.total / 2**30, 1), "free_gb": round(u.free / 2**30, 1)}
-    except OSError:
-        return {"path": path, "total_gb": 0, "free_gb": 0}
+    except OSError as exc:
+        return {"path": path, "total_gb": 0, "free_gb": 0, "error": exc.strerror or str(exc)}
 
 
 # virsh domstats state.state: 1 running, 2 blocked, 3 paused, 4 shutting
