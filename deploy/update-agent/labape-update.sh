@@ -307,7 +307,7 @@ if [ "$ACTION" = restart_service ]; then
     status running applying "unsealing the stores after restarting $TARGET"
     bash "$C/stores/stores.sh" unseal >/dev/null 2>&1 || echo "labape-update: stores.sh unseal failed after restarting $TARGET" ;;
   esac
-  if wait_healthy 60; then
+  if wait_healthy "${LABAPE_RESTART_HEALTH_SECONDS:-60}"; then
     status succeeded done "restarted $TARGET; the health checks pass"
   else
     status failed health "restarted $TARGET, but the health checks did not pass; see agent.log"

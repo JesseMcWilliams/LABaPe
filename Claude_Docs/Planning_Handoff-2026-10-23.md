@@ -33,6 +33,7 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | Directory fix | Live against OZ's Authentik (repeatable, bad token refused); the create-from-nothing path is unit-tested with a fake Authentik only |
 | CA restart, OpenBao restart + unseal through the agent | **Live on OZ**; a new store login and a Conjur restart were not run |
 | Syslog fix | Unit tests; live for the refusal only (OZ's syslog is the stack's collector) |
+| The update agent's `restart_service` and `stores_setup` | `app/tests/test_z13_update_agent.py` (real script, stub commands); `full_backup`, the CA restart and an OpenBao restart live on OZ; the Director's update to v0.6.0 was done by the user |
 | **Never run for real** | A template download from a linked stack and the deploy-time copy of a linked template (the Director has nothing OZ lacks); Rotate overdue now (nothing overdue on OZ; the user started it on the Director); the Director running this build |
 
 ## 3. What's left (in order)
