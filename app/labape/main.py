@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from .api import linked_library as linked_api
+from .api import fixes as fixes_api
 from .api import (admin, auth, ca, catalog, console, console_text, dashboard, certificates, env_hosts, help_docs, host_disks, mcp as mcp_api, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
                   maintenance, metrics, networks, quotas, remote, reports, secrets, settings, syslog, templates, tokens,
                   update)
@@ -58,7 +59,7 @@ def create_app() -> FastAPI:
     for r in (auth.router, hosts.router, networks.router, templates.router, environments.router, env_secrets.router, mail.router, package_updates.router, jobs.router,
               admin.router, reports.router, files.router, catalog.router, settings.router, directory.router,
               dashboard.router, settings.public_router, ca.router, maintenance.router, secrets.router,
-              update.router, remote.router, console.router, console_text.router, certificates.router, env_hosts.router, host_disks.router, mcp_api.router, syslog.router, links.router, tokens.router, metrics.router, quotas.router, help_docs.router, linked_api.router):
+              update.router, remote.router, console.router, console_text.router, certificates.router, env_hosts.router, host_disks.router, mcp_api.router, syslog.router, links.router, tokens.router, metrics.router, quotas.router, help_docs.router, linked_api.router, fixes_api.router):
         app.include_router(r)
 
     @app.get("/api/health")
