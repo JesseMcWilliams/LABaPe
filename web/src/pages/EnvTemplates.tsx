@@ -3,32 +3,33 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
-  Alert, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem,
+  Alert, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Link,
   Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
-import DeleteIcon from "@mui/icons-material/Delete";
 import { api } from "../api";
 import { ActionButton } from "../components/Confirm";
+import PartsEditor, { includesBody, PartRow, partsReady, rowsOf } from "../components/PartsEditor";
 import type { EnvTemplateInfo } from "../components/TemplatePicker";
 import { hasRole, useAuth } from "../App";
 
-function Edit({ t, onClose, onSaved }: { t: EnvTemplateInfo; onClose: () => void; onSaved: () => void }) {
+function Edit({ t, list, onClose, onSaved }: { t: EnvTemplateInfo; list: EnvTemplateInfo[]; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(t.name);
   const [description, setDescription] = useState(t.description);
   const [shared, setShared] = useState(t.shared);
+  const [parts, setParts] = useState<PartRow[]>(() => rowsOf(t.includes));
   const [error, setError] = useState("");
   const save = async () => {
     try {
-      // The parameters and parts are sent as they are: this dialog changes only the name, description and sharing.
+      // The template's own parameters are sent as they are; its parts (with their fixed values) are what this edits.
       await api.put(`/api/env-templates/${t.id}`, {
         name, description, shared, params: t.own_params.map((p) => ({ group: p.group, field: p.field, label: p.label })),
-        includes: t.includes.map((i) => ({ template_id: i.template_id, prefix: i.prefix, label: i.label, overrides: i.overrides })),
+        includes: includesBody(parts),
       });
       onSaved();
     } catch (e) { setError((e as Error).message); }
   };
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Edit template</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
@@ -36,10 +37,15 @@ function Edit({ t, onClose, onSaved }: { t: EnvTemplateInfo; onClose: () => void
           <TextField size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
           <FormControlLabel label="Share it with everyone who can deploy"
             control={<Checkbox checked={shared} onChange={(e) => setShared(e.target.checked)} />} />
+          <Typography variant="subtitle2">Parts</Typography>
+          <PartsEditor rows={parts} onChange={setParts} list={list} selfId={t.id} />
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
-      <DialogActions><Button onClick={onClose}>Cancel</Button><Button variant="contained" onClick={save}>Save</Button></DialogActions>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={save} disabled={!partsReady(parts)}>Save</Button>
+      </DialogActions>
     </Dialog>
   );
 }
@@ -49,42 +55,27 @@ function FromParts({ list, onClose, onSaved }: { list: EnvTemplateInfo[]; onClos
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [shared, setShared] = useState(false);
-  const [parts, setParts] = useState<{ template_id: number | ""; prefix: string }[]>([{ template_id: "", prefix: "" }]);
+  const [parts, setParts] = useState<PartRow[]>([{ template_id: "", prefix: "", label: "", overrides: {}, version: "" }]);
   const [error, setError] = useState("");
-  const set = (i: number, patch: Partial<(typeof parts)[number]>) => setParts(parts.map((p, j) => (j === i ? { ...p, ...patch } : p)));
-  const ready = name.trim().length >= 3 && parts.length > 0 && parts.every((p) => p.template_id !== "" && p.prefix);
+  const ready = name.trim().length >= 3 && parts.length > 0 && partsReady(parts);
   const save = async () => {
     try {
-      await api.post("/api/env-templates", { name, description, shared, includes: parts.map((p) => ({ template_id: p.template_id, prefix: p.prefix })) });
+      await api.post("/api/env-templates", { name, description, shared, includes: includesBody(parts) });
       onSaved();
     } catch (e) { setError((e as Error).message); }
   };
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>New template from parts</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
             Each part brings its host groups, with its prefix put in front of their names (up to 6 letters, so the same part can be used twice).
-            Its parameters become this template&apos;s, labelled with the prefix.
+            Its parameters become this template&apos;s, labelled with the prefix; you can also set values for a part&apos;s groups.
           </Typography>
           <TextField size="small" label="Template name" value={name} onChange={(e) => setName(e.target.value)} required />
           <TextField size="small" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
-          {parts.map((p, i) => (
-            <Stack key={i} direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <TextField select size="small" label="Part" value={p.template_id} sx={{ flexGrow: 1 }}
-                onChange={(e) => set(i, { template_id: Number(e.target.value) })}>
-                {list.map((x) => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}
-              </TextField>
-              <TextField size="small" label="Prefix" value={p.prefix} sx={{ width: 110 }} inputProps={{ maxLength: 6 }}
-                onChange={(e) => set(i, { prefix: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
-              <IconButton size="small" aria-label="Remove this part" disabled={parts.length === 1}
-                onClick={() => setParts(parts.filter((_, j) => j !== i))}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Stack>
-          ))}
-          <div><Button size="small" onClick={() => setParts([...parts, { template_id: "", prefix: "" }])}>Add a part</Button></div>
+          <PartsEditor rows={parts} onChange={setParts} list={list} />
           <FormControlLabel label="Share it with everyone who can deploy"
             control={<Checkbox checked={shared} onChange={(e) => setShared(e.target.checked)} />} />
           {error && <Alert severity="error">{error}</Alert>}
@@ -155,11 +146,13 @@ export default function EnvTemplates() {
               <TableCell>
                 {t.name} {t.builtin && <Chip size="small" label="starter" sx={{ ml: 0.5 }} />}
                 {!t.builtin && !t.shared && <Chip size="small" variant="outlined" label="private" sx={{ ml: 0.5 }} />}
+                {t.version > 1 && <Chip size="small" variant="outlined" label={`v${t.version}`} title="Each change to the groups, parameters or parts is a new version" sx={{ ml: 0.5 }} />}
                 {t.broken && <Chip size="small" color="error" label="broken" title={t.broken} sx={{ ml: 0.5 }} />}
                 {t.description && <Typography variant="caption" component="div" color="text.secondary">{t.description}</Typography>}
                 {t.includes.length > 0 && (
                   <Typography variant="caption" component="div" color="text.secondary">
-                    Made of: {t.includes.map((i) => `${i.name} (${i.prefix})`).join(", ")}
+                    Made of: {t.includes.map((i) => `${i.name} (${i.prefix}${i.version !== null ? `, pinned to v${i.version}` : ""})`).join(", ")}
+                    {t.includes.some((i) => i.behind) && " · a pinned part has a newer version"}
                   </Typography>
                 )}
                 {t.used_by.length > 0 && <Typography variant="caption" component="div" color="text.secondary">Part of: {t.used_by.join(", ")}</Typography>}
@@ -194,7 +187,7 @@ export default function EnvTemplates() {
           ))}
         </TableBody>
       </Table>
-      {editing && <Edit t={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {editing && <Edit t={editing} list={list} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
       {parts && <FromParts list={list} onClose={() => setParts(false)} onSaved={() => { setParts(false); load(); }} />}
     </Stack>
   );

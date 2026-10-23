@@ -724,3 +724,7 @@ OZ redeployed from clean `main` (v0.5.7-16-ge4192ee). Playwright (`web/e2e`, aga
 ## A VM that was deploying during a key rotation: fixed (2026-10-23)
 
 Found live with `zz-t1` (see the 2026-10-23 live run): the rotation only visits deployed environments, so a VM still deploying kept the previous key. Fixed two ways: the rotation first waits (up to 30 minutes, logging it) for deploys to finish (`engine_secrets._wait_for_deploys`), and `vmadmin.vm_key_text` (used by the VM account page and by browser SSH to a VM) logs in with the current key and, when only that key is refused, uses an earlier one to add the current key to the VM. A VM that is unreachable, or refuses for another reason, is not retried with old keys.
+
+## Deleting a template failed on Postgres (2026-10-23)
+
+With template versions (design §71) `DELETE /api/env-templates/{id}` returned 500 on the lab's Postgres: `env_template_versions` has a foreign key to the template and the unit of work deleted the template first (the two tables have no ORM relationship, so it does not order them). SQLite in the tests does not enforce foreign keys, so the tests passed. Fixed by deleting the versions with a statement that runs before the template's delete. Lesson: a delete that touches two tables needs a check on Postgres (a browser or API run on the lab), not only the SQLite suite.

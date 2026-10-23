@@ -11,4 +11,7 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Environment templates, second round: **New from parts** (a template made of other templates, each with a prefix), **Export** / **Export all** / **Import** as YAML to move templates between stacks. (Web-Interface-Guide, creating an environment.)
 - Admin Dashboard: a **Fix** button on a failing Platform CA or secret store (OpenBao, Conjur) check: restart it (a store is unsealed again) or, for a store, give LABaPe a new login. Needs the update agent (reinstall it with `deploy/update-agent/install.sh` after updating). (Web-Interface-Admin, dashboard.)
 
+- Templates made of parts: **Edit** changes the parts (add, remove, prefix, label) and the values set for a part's groups (hosts, OS, network, CPUs, memory, disk). (Web-Interface-Guide, creating an environment.)
+
+- Templates made of parts: each part can **follow the latest** version of its template or be **pinned** to one (the Version box in New from parts and Edit); a pinned part says when a newer version exists. Each change to a template's groups, parameters or parts is a new version. (Web-Interface-Guide, creating an environment.)
 - Admin Dashboard: a **Fix** button on a failing Syslog check (server, port, protocol, facility; a test message is sent before anything is saved). (Web-Interface-Admin, dashboard.)
