@@ -135,8 +135,8 @@ for key, path in ARGS["paths"].items():
     try:
         u = shutil.disk_usage(path)
         out["storage"][key] = {"path": path, "total_gb": round(u.total / 2**30, 1), "free_gb": round(u.free / 2**30, 1)}
-    except OSError:
-        out["storage"][key] = {"path": path, "total_gb": 0, "free_gb": 0}
+    except OSError as exc:
+        out["storage"][key] = {"path": path, "total_gb": 0, "free_gb": 0, "error": exc.strerror or str(exc)}
 try:
     st = os.stat(ARGS["paths"]["vm"])
     want = (os.major(st.st_dev), os.minor(st.st_dev))

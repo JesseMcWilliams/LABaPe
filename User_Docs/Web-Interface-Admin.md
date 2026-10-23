@@ -104,6 +104,12 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 
 **Primary file host.** One host holds every file LABaPe uses (ISOs, installers, other files, the template library): the **primary** (a chip in the host list; **Primary file host** in a host's Settings moves it). A job on another host gets the ISOs, installers and templates it needs copied there first, host to host through the worker; a file already there isn't copied again. **Files from a share** on a host says its admin mounted the primary's file locations at the same paths, so they're read there instead. Settings → File distribution sets how long a job waits for an unreachable primary (default 30 minutes), and can copy every template to every host daily ahead of need.
 
+**The VM storage bar is empty or the dashboard says "VM storage not read".** LABaPe reads the size of the host's **VM storage path** as the account it connects with (for a remote host, the user in the libvirt URI; for the host the stack runs on, the worker). The warning gives the reason the host reported:
+- *No such file or directory*: the path in the host's settings doesn't exist on that machine, or is mistyped. Fix the path or create the folder.
+- *Permission denied*: that account can't enter a folder on the way to the path. It needs execute (search) permission on every folder above the path, for example `chmod o+x /data` or a group the account belongs to, and read access to the storage folder itself. VM disks are usually owned by `libvirt-qemu`; the account does not need to write there to be measured.
+- *Other errors* (a network drive that isn't mounted, a read-only or stale mount): mount it, then wait a minute for the next sample.
+The next sample (every minute) clears the warning once the account can read the path. If CPU and RAM are empty too, the host itself isn't being read: use **Check connection** first.
+
 **Load.** Every enabled host is sampled each minute. The deploy form warns above 4 vCPUs per CPU, above 90% of RAM committed (every defined VM's memory, running or not) or below 15% free VM storage, and refuses an environment that would commit more than 100% of RAM.
 
 ## 4. Networks
