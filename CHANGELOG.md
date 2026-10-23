@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Fixed
+
+- **A deploy from an ISO that isn't on the host** stopped with virt-install's "Must specify storage creation parameters for non-existent path" and left a half-made VM; it now checks first and says which ISO is missing and what to do (add it under Files, or copy it from a linked stack). A **template build** with no ISO for the OS says the same, in terms of the web interface instead of `os_iso_paths`.
+
 ### Added
 
 - **Template history:** a **History** button on each template lists its versions, compares any two in plain sentences and restores an older one as a new version (nothing is rewritten). See Web-Interface-Guide §14.

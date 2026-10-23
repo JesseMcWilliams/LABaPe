@@ -28,6 +28,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/existing-domain.sh"
 
 workspace_tag="labape-workspace=${LABAPE_WORKSPACE}"
 
+# The install ISO has to be on the libvirt host. Without it virt-install fails with "Must specify storage creation
+# parameters for non-existent path" and the VM is left half made, so say what is wrong first. (Only checked for a
+# libvirt that runs on this machine: a remote URI's path is not ours to look at.)
+case "$LIBVIRT_URI" in
+qemu:///* | qemu+unix:///*)
+  if [ ! -e "$ISO_HOST_PATH" ]; then
+    echo "labape: the install ISO for '$VM_NAME' isn't on this host: $ISO_HOST_PATH" >&2
+    echo "labape: add the ISO under Files -> ISOs (set its operating system), or copy it from a linked stack (Files -> Linked stacks), then deploy again." >&2
+    exit 1
+  fi
+  ;;
+esac
+
 handle_existing_domain "$LIBVIRT_URI" "$VM_NAME" "$workspace_tag"
 
 mkdir -p "$VM_STORAGE_PATH"
