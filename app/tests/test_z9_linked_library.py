@@ -41,6 +41,7 @@ def test_the_peer_endpoints_list_and_download(client, tmp_path):
     assert [t["name"] for t in lib["templates"]] == ["web"] and lib["templates"][0]["size"] == 10
     assert lib["templates"][0]["os_key"] == "rocky9"
     assert [f["name"] for f in lib["files"]] == ["rocky.iso"] and lib["files"][0]["id"] == fid
+    assert lib["files"][0]["is_default"] in (True, False)                      # a peer picks the default ISO of an OS
     r = client.get("/api/link/download/template/web", headers=auth)
     assert r.status_code == 200 and r.content == b"0123456789" and r.headers["content-length"] == "10"
     r = client.get("/api/link/download/template/web", headers={**auth, "Range": "bytes=4-"})

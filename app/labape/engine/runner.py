@@ -44,7 +44,7 @@ from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
 from . import (linked_copy, package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
-from .. import maintenance_mode, syslogstack, version
+from .. import linked_library, maintenance_mode, syslogstack, version
 from . import planpreview
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
@@ -609,6 +609,7 @@ def run(job_id: int, worker: str) -> None:
         try:
             if host is None:
                 raise RuntimeError("job has no KVM host")
+            _copy_isos_from_links(db, job, env)
             if job.type.startswith("template."):
                 work = prepare_template_job(db, job, host)
                 parts = [Part(host.id, work, command_for(job, env, work), pulls=["ansible/inventory"])]
@@ -703,6 +704,15 @@ def _execute(Session_, job_id: int, part: Part, iso_keys: set[str], logf, log_pa
         try:
             # A remote host, or the stack's own host when it isn't the primary file host (design §29.5):
             # the files from the primary (design §29.4).
+            if job.type == "environment.deploy" and part.installers and job.environment_id:
+                try:        # an installer only a linked stack has is copied here first; if that fails the deploy says what is missing
+                    linked_copy.ensure_installers(db, _wanted_installers(db, db.get(Environment, job.environment_id), part.work),
+                                                  _TextLog(logf), job.requested_by or "system", beat=lambda: downloads._beat(job_id))
+                except downloads.Cancelled as exc:
+                    logf.write(f"labape: {exc}\n".encode())
+                    return 130
+                except (linked_copy.CopyError, downloads.DownloadError, linked_library.LibraryError) as exc:
+                    logf.write(f"labape: warning: couldn't copy an installer from a linked stack: {exc}\n".encode())
             p = filedist.primary(db)
             if remote is not None or (p is not None and p.id != host.id):
                 _distribute(db, part.work, host, job_id, iso_keys, _TextLog(logf), part.groups, part.installers)
@@ -804,6 +814,18 @@ def _append_path(path: Path, msg: str) -> None:
         fh.write(msg)
 
 
+def _copy_isos_from_links(db: Session, job: Job, env: Environment | None) -> None:
+    """An OS this job installs from has no ISO here but a linked stack has one: copy it before the job is prepared."""
+    keys = _iso_keys(job, env)
+    if not keys:
+        return
+    try:
+        linked_copy.ensure_isos(db, keys, _PathLog(Path(job.log_path)), job.requested_by or "system",
+                                beat=lambda: downloads._beat(job.id))
+    except (linked_copy.CopyError, downloads.DownloadError, linked_library.LibraryError) as exc:
+        raise RuntimeError(str(exc)) from exc
+
+
 def _iso_keys(job: Job, env: Environment | None) -> set[str]:
     """OS keys whose ISO a job installs from (template builds, ISO host groups)."""
     if job.type == "template.build":
@@ -812,6 +834,22 @@ def _iso_keys(job: Job, env: Environment | None) -> set[str]:
         return set()
     return {g.get("os", "") for g in (env.spec or {}).get("host_groups", [])
             if (g.get("image_source") or "iso_direct") == "iso_direct"}
+
+
+def _wanted_installers(db: Session, env: Environment, work: Path) -> set[str]:
+    """Installers of the applications chosen here (`source: local` entries of the catalog), as paths under the installers root."""
+    catalog = yaml.safe_load((work / "ansible" / "package_catalog.yml").read_text(encoding="utf-8")) \
+        if (work / "ansible" / "package_catalog.yml").is_file() else {}
+    packages = (catalog or {}).get("packages") or {}
+    wanted = set()
+    for g in (env.spec or {}).get("host_groups", []):
+        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []),
+                        "windows" if str(g.get("os", "")).startswith("windows") else "linux")
+        for app in chosen["applications"]:
+            for spec in (packages.get(app) or {}).values():
+                if isinstance(spec, dict) and spec.get("source") in ("local", "update") and spec.get("path"):
+                    wanted.add(spec["path"])
+    return wanted
 
 
 def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: set[str], log,
@@ -855,18 +893,7 @@ def _distribute(db: Session, work: Path, host: KvmHost, job_id: int, iso_keys: s
         filedist.ensure_template(db, host, name, log)
     if not installers:
         return
-    # Installers of the applications chosen here (`source: local` entries of the catalog).
-    catalog = yaml.safe_load((work / "ansible" / "package_catalog.yml").read_text(encoding="utf-8")) \
-        if (work / "ansible" / "package_catalog.yml").is_file() else {}
-    packages = (catalog or {}).get("packages") or {}
-    wanted = set()
-    for g in (env.spec or {}).get("host_groups", []):
-        chosen = expand(db, g.get("services", []), g.get("applications", []), g.get("packages", []),
-                        "windows" if str(g.get("os", "")).startswith("windows") else "linux")
-        for app in chosen["applications"]:
-            for spec in (packages.get(app) or {}).values():
-                if isinstance(spec, dict) and spec.get("source") in ("local", "update") and spec.get("path"):
-                    wanted.add(spec["path"])
+    wanted = _wanted_installers(db, env, work)
     store = roots(db)["installers"].rstrip("/")
     if host.is_primary or host.files_from_share:
         return

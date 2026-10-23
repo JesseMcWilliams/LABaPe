@@ -3,7 +3,11 @@
 A job (`linked.copy`, started from the Files page) copies one item; a host group that chose a linked stack's
 template has it copied by the deploy (`ensure_template`, called where the deploy distributes templates). The
 download is `downloads.fetch` with the link's token and the peer's platform CA, so it resumes, checks the SHA-256 the
-peer reported, and refuses a name that is already taken."""
+peer reported, and refuses a name that is already taken.
+
+A job that needs a file this stack lacks gets it by itself from a linked stack that has it (`ensure_isos` before the
+job is prepared, `ensure_installers` before it runs): the install ISO of an OS, and the installers of the applications
+chosen. Nothing is copied that is already here, and a stack that doesn't answer is skipped."""
 from __future__ import annotations
 
 import json
@@ -80,6 +84,82 @@ def ensure_template(db: Session, link_id: int, name: str, log) -> bool:
         raise CopyError(f"{link.name} has no template {name} (any more)")
     copy_template(db, link, items[name], log)
     return True
+
+
+def _peer_files(db: Session, category: str) -> list[tuple[StackLink, dict]]:
+    """Every file of that category the linked stacks list, with the link; a stack that doesn't answer is skipped."""
+    out = []
+    for lib in linked_library.all_libraries(db):
+        if not lib["ok"]:
+            continue
+        link = db.get(StackLink, lib["link_id"])
+        out += [(link, f) for f in lib["files"] if f.get("category") == category]
+    return out
+
+
+def _gb(n) -> str:
+    return f"{(n or 0) / 1e9:.1f} GB" if (n or 0) >= 1e8 else f"{(n or 0) / 1e6:.0f} MB"
+
+
+def _copy_or_explain(db: Session, link: StackLink, item: dict, log, actor: str, beat) -> None:
+    try:
+        copy_file(db, link, item, log, actor, beat)
+    except downloads.DownloadError as exc:
+        if "already stored" in str(exc):
+            raise CopyError(f"this stack already has {item['name']}'s content under another name, but not marked for "
+                            f"{item.get('os_key') or 'the right use'}: open it under Files and set its operating system "
+                            f"({exc})") from exc
+        raise
+
+
+def ensure_isos(db: Session, os_keys: set[str], log, actor: str = "system", beat=None) -> list[str]:
+    """For a job that installs from an ISO: an OS this stack has no ISO for gets one from a linked stack that has one
+    (the one marked default there, else the last by name, which usually is the newest). Returns the names copied."""
+    from .. import files as files_mod
+    have = files_mod.iso_paths(db)
+    missing = sorted(k for k in os_keys if k and k not in have)
+    copied: list[str] = []
+    candidates = None
+    for key in missing:
+        if candidates is None:
+            try:
+                candidates = _peer_files(db, "isos")
+            except Exception as exc:  # noqa: BLE001 — the job's own check says what is missing
+                log.write(f"labape: couldn't ask the linked stacks for an ISO for {key}: {exc}\n")
+                return copied
+        hits = [(link, f) for link, f in candidates if f.get("os_key") == key]
+        if not hits:
+            continue
+        link, item = max(hits, key=lambda h: (bool(h[1].get("is_default")), h[1]["name"]))
+        log.write(f"labape: no ISO for {key} here; copying {item['name']} ({_gb(item.get('size'))}) from the linked stack {link.name}\n")
+        _copy_or_explain(db, link, item, log, actor, beat)
+        copied.append(item["name"])
+    return copied
+
+
+def ensure_installers(db: Session, rels: set[str], log, actor: str = "system", beat=None) -> list[str]:
+    """For a deploy: an installer an application needs that this stack's Files lack, from a linked stack that has it. Only
+    plain file names (an installer in a sub-folder is left to the deploy's own check). Returns the names copied."""
+    from ..models import StoredFile
+    missing = sorted(r for r in rels if r and "/" not in r and not db.scalar(
+        select(StoredFile.id).where(StoredFile.category == "installers", StoredFile.name == r, StoredFile.present.is_(True))))
+    copied: list[str] = []
+    candidates = None
+    for name in missing:
+        if candidates is None:
+            try:
+                candidates = _peer_files(db, "installers")
+            except Exception as exc:  # noqa: BLE001
+                log.write(f"labape: couldn't ask the linked stacks for the installer {name}: {exc}\n")
+                return copied
+        hits = [(link, f) for link, f in candidates if f.get("name") == name]
+        if not hits:
+            continue
+        link, item = hits[0]
+        log.write(f"labape: the installer {name} isn't here; copying it ({_gb(item.get('size'))}) from the linked stack {link.name}\n")
+        _copy_or_explain(db, link, item, log, actor, beat)
+        copied.append(name)
+    return copied
 
 
 def run_copy(db: Session, job: Job) -> int:
