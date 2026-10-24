@@ -7,18 +7,19 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
-### Fixed
-
-- **A deploy from an ISO that isn't on the host** stopped with virt-install's "Must specify storage creation parameters for non-existent path" and left a half-made VM; it now checks first and says which ISO is missing and what to do (add it under Files, or copy it from a linked stack). A **template build** with no ISO for the OS says the same, in terms of the web interface instead of `os_iso_paths`.
-
 ### Added
 
+- **A stack copies by itself what a job needs from a linked stack:** a deploy or template build whose OS has no ISO here gets one from a linked stack that has it (the default there, else the newest by name), and a deploy gets the installers of the chosen applications that Files lacks. The copy is the job's first step, with progress and resume in its log, and cancelling the job stops it. Nothing is copied that is here already, and a stack that doesn't answer is skipped.
 - **Template history:** a **History** button on each template lists its versions, compares any two in plain sentences and restores an older one as a new version (nothing is rewritten). See Web-Interface-Guide §14.
 - **`store_get.py vault-pass --rebuild`** replaces a command-line vault that nothing can open (the vault password was rotated more often than the store keeps previous ones) with the store's current vault, keeping the old file.
 
 ### Changed
 
 - **The store Fix "give LABaPe a new login"** runs the stores' full setup; when the update agent runs it, a command-line vault that has drifted is a warning with the rebuild command, no longer a reason to stop. OpenBao's `labape-cli` policy may read the engine's vault (Conjur's already could).
+
+### Fixed
+
+- **A deploy from an ISO that isn't on the host** stopped with virt-install's "Must specify storage creation parameters for non-existent path" and left a half-made VM; it now checks first and says which ISO is missing and what to do (add it under Files, or copy it from a linked stack). A **template build** with no ISO for the OS says the same, in terms of the web interface instead of `os_iso_paths`.
 
 ## [0.6.0] - 2026-10-23
 
