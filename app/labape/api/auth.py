@@ -15,7 +15,7 @@ from ..auth import breakglass
 from ..config import get_settings
 from ..db import get_db
 from ..models import AuditLog, User, utcnow
-from ..security import Principal, audit, client_ip, current_principal, start_session
+from ..security import Principal, adopt_subject, audit, client_ip, current_principal, start_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -65,6 +65,7 @@ async def callback(provider: str, request: Request, db: Session = Depends(get_db
     user.last_login = utcnow()
     userstatus.enable_after_sign_in(db, user)
     db.commit()
+    adopt_subject(db, user)
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="This account is disabled in LABaPe. Ask an administrator.")
     start_session(request, user)
