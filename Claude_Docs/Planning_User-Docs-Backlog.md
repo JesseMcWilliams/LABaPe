@@ -11,3 +11,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Grants and role bindings are tied to the account at its sign-in, so a reused name picks up nothing (Admin §3 or §6, wherever bindings are described).
 - Environments: a **Sharing** panel (owners and admins) shares an environment with a user or group and hands it over; update the Guide's role table, which says a viewer sees no environments.
 - Admin → **Users**: last sign-in, roles, tokens, open sessions, Disable / Enable (Admin guide, new section).
+- Directory token: its Authentik role now also views users (for the check that an account owning an API token is still active). On an existing stack, run **Fix** on the dashboard's directory check once so the role gets the permission; until then that check does nothing.

@@ -159,7 +159,7 @@ Settings is in sections, listed on the left: **Sign-in** (directory group search
 | History | Days to keep job logs, user errors, deleted KVM hosts, revoked or expired API tokens and drive (SMART) history, and the audit trail (0 keeps the audit trail forever, the default) |
 | Syslog | Sends every audit event to a syslog server over UDP, TCP or TLS (RFC 5424, JSON body). **Send test message** checks it. |
 | Email (SMTP) | Server, port, security (none, STARTTLS, SSL/TLS), optional sign-in, from address. **Email people when their jobs finish** turns on job emails. **Send test email** checks it. A stack starts with this pointed at its own mail server (Mailpit, [§6.1](#61-the-stacks-mail-server)). |
-| Directory (group search) | An Authentik API token that can only view groups (`authentik_core.view_group`), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. |
+| Directory (group search) | An Authentik API token that can only view groups and users (`authentik_core.view_group`, `authentik_core.view_user`; users so LABaPe can tell when an account that owns an API token was deactivated or removed), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. |
 | Downloads | Allow plain HTTP for Download from URL (off by default), and an HTTP(S) proxy |
 | VM accounts | The Linux admin user for new environments (default `labape`). Existing environments keep theirs. |
 | Secret stores | The default store for new environment secrets, and an OpenBao/Vault and a Conjur section, each with **Test connection**. See [§8.1](#81-external-secret-stores). |

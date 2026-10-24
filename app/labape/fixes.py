@@ -30,7 +30,7 @@ from .security import get_secret, put_secret
 
 ROLE = "labape-directory-reader"
 SERVICE_USER = "labape-directory"
-PERMISSION = "authentik_core.view_group"
+PERMISSIONS = ["authentik_core.view_group", "authentik_core.view_user"]   # groups for the search, users for the check that an account is still active (question 196)
 
 
 @dataclass
@@ -81,7 +81,7 @@ def fix_directory(db: Session, v: dict, actor: str = "") -> str:
         return next((x for x in call("GET", path)["results"] if x.get(key) == value), None)
 
     role = first(f"/rbac/roles/?name={ROLE}", "name", ROLE) or call("POST", "/rbac/roles/", json={"name": ROLE})
-    call("POST", f"/rbac/permissions/assigned_by_roles/{role['pk']}/assign/", json={"permissions": [PERMISSION]})
+    call("POST", f"/rbac/permissions/assigned_by_roles/{role['pk']}/assign/", json={"permissions": PERMISSIONS})
     user = first(f"/core/users/?username={SERVICE_USER}", "username", SERVICE_USER)
     if user is None:
         user = call("POST", "/core/users/", json={"username": SERVICE_USER, "name": "LABaPe directory lookup",
@@ -216,7 +216,7 @@ def _store_default(db: Session, store: str) -> str:
 FIXES: dict[str, Fix] = {
     "directory": Fix(
         "directory", "Fix the directory (group search)",
-        "LABaPe will create what it needs in Authentik: a role that can only view groups, a service account with that "
+        "LABaPe will create what it needs in Authentik: a role that can only view groups and users, a service account with that "
         "role and a non-expiring API token, then save that token and test the search. Give an Authentik admin API token "
         "for this one run; it is not stored.",
         [_field("token", "Authentik admin API token", secret=True, help="Authentik > Directory > Tokens and App passwords > Create"),
