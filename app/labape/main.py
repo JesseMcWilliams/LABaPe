@@ -11,9 +11,10 @@ from starlette.middleware.sessions import SessionMiddleware
 from .api import env_templates as env_templates_api
 from .api import linked_library as linked_api
 from .api import fixes as fixes_api
+from .api import env_sharing
 from .api import (admin, auth, ca, catalog, console, console_text, dashboard, certificates, env_hosts, help_docs, host_disks, mcp as mcp_api, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
                   maintenance, metrics, networks, quotas, remote, reports, secrets, settings, syslog, templates, tokens,
-                  update)
+                  update, users)
 from . import maintenance_mode
 from .auth.oidc import is_own_origin
 from .config import get_settings
@@ -95,6 +96,8 @@ def create_app() -> FastAPI:
         linked_api.router,
         env_templates_api.router,
         fixes_api.router,
+        users.router,
+        env_sharing.router,
     ):
         app.include_router(r)
 
