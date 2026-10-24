@@ -6,3 +6,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Security headers and CSV: the stack's web server now sends browser security headers, and a CSV export no longer lets a text cell run as a spreadsheet formula (no change to the screens).
 - API tokens: a personal token stops working when its owner is deactivated or removed in Authentik (checked every 15 minutes through the Directory settings' API token; a sign-in clears it); the Directory settings' token should be able to read users.
 - Break-glass: `labape breakglass revoke` also ends sessions already open (Admin §2 and §11).
+- VM connections: commands, text sessions and browser SSH check a VM's SSH host key, and WinRM commands its certificate, against what was recorded after the deploy; a mismatch is refused with an explanation; `labape vm-identity list|forget ADDRESS` (Admin §11).

@@ -99,6 +99,8 @@ def test_a_domain_login_goes_over_ntlm_a_local_one_keeps_the_inventorys(monkeypa
 
     monkeypatch.setitem(sys.modules, "winrm", type(sys)("winrm"))
     sys.modules["winrm"].Session = FakeSession
+    monkeypatch.setattr(vmexec, "_winrm_pin", lambda *a: "00" * 32)       # the certificate pin (question 198) has its own tests
+    monkeypatch.setattr(vmexec, "_pin_winrm", lambda *a: None)
     host = {"ansible_winrm_transport": "basic"}
     vmexec._run_windows(host, {"hostname": "h", "username": "jesse", "domain": "LABAPE", "password": "p"}, "x", 5, 100)
     vmexec._run_windows(host, {"hostname": "h", "username": "jesse@labape.test", "password": "p"}, "x", 5, 100)

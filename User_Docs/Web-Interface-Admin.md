@@ -334,6 +334,7 @@ Run these with `docker compose exec labape-api labape <command>` in the `contain
 | `rewrap-master --from F --to F` | Re-wraps the secret store's data keys to a new master key file (the update agent's rotation runs it) |
 | `ca-repass --config F --old P --new P` | Re-encrypts the CA's signing provisioner key with a new password (the agent's rotation) |
 | `stores-configure [--needs] [--check]` | Points the store settings at the stack's OpenBao and Conjur (JSON on stdin; `stores/stores.sh` runs it). `--needs` says which stores need a new login; `--check` tests LABaPe's connection to both |
+| `vm-identity list` / `vm-identity forget ADDRESS` | The SSH host keys and WinRM certificates VMs are known by (recorded after a deploy, checked on every later connection). `forget` lets the next connection learn a VM again, after you rebuilt it outside LABaPe |
 | `push-vm-key --new KEY` | Adds a new VM SSH key on the deployed Linux VMs (the agent's rotation) |
 | `ca-sign [--hours N] [--with-root]` | Signs a certificate request from stdin with the platform CA and prints the chain (default 30 days, at most 90), for services on the host itself. Audited. |
 

@@ -757,3 +757,11 @@ Found by the project review ([Planning_Project-Review-2026-10-23.md](Planning_Pr
 
 - **Tokens:** roles came from the groups saved at the last sign-in, so a person removed from Authentik kept a working personal token for up to 365 days. Fix: `userstatus.py` (a sweep in the worker, every 15 minutes; migration 0036 adds `users.disabled_at` and `disabled_reason`); `_token_principal` and `current_principal` refuse a disabled user; the OIDC callback clears the sweep's mark (not an admin's). Needs the Directory settings' API token to be able to read users: without it the sweep does nothing. Not yet run against the real Authentik: unit tests fake the lookup.
 - **Break-glass:** `revoke_all` only touched unused credentials, and a session was a signed cookie. Fix: the session keeps the credential's id (`bgid`) and `current_principal` checks it is unrevoked; `revoke_all` revokes used ones too. A break-glass session opened before the upgrade has no id and is refused.
+
+## Review: VM SSH and WinRM sent passwords to whatever answered (2026-10-23)
+
+Project review item 3, question 198. `vmexec`/`vmadmin` ran ssh with `StrictHostKeyChecking=no` and `UserKnownHostsFile=/dev/null`, and WinRM with `server_cert_validation="ignore"`.
+
+- **Fix:** `engine/vmidentity.py` and the `vm_identities` table (migration 0037). SSH: the recorded keys go into a temp known_hosts file and ssh runs `StrictHostKeyChecking=yes`; with no record it runs `accept-new` and the keys it learned are stored afterwards. WinRM: pywinrm's session gets an adapter with urllib3 `assert_fingerprint` for the recorded SHA-256 (the listener's certificate is self-signed with the computer name, so a normal name check can't work). Browser SSH gets guacd's `host-key`. The record is made after a deploy (`_record_identities`), forgotten when a deploy starts and removed on destroy.
+- **Not covered:** Ansible during a deploy (`host_key_checking = False`, `server_cert_validation: ignore`), RDP (`ignore-cert`), and KVM host SSH (already `accept-new` with the worker's known_hosts). A remote KVM host's VMs are learned at first use (the scan can't tunnel).
+- **Not run for real:** guacd's `host-key` format (one `address type key` line) has not been tried in a browser session; a failure there shows as the SSH session not opening. The check against a real VM and a real rebuilt VM is also still to do.

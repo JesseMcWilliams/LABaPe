@@ -511,6 +511,21 @@ class BreakglassGrant(Base):
     local_only: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class VmIdentity(Base):
+    """What a VM was known by when LABaPe first saw it (question 198, engine/vmidentity.py): its SSH host keys
+    (`type key` lines) or the SHA-256 of its WinRM certificate. Later connections must match."""
+
+    __tablename__ = "vm_identities"
+    __table_args__ = (UniqueConstraint("address", "kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    address: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(16))                       # ssh | winrm
+    value: Mapped[str] = mapped_column(Text)
+    environment_id: Mapped[int | None] = mapped_column(ForeignKey("environments.id"), nullable=True)
+    recorded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class UpdateSource(Base):
     """Catalog → Updates (U1, design §50.7): where a package's newest version is found, how many
     versions to keep, and what was downloaded (newest first: version, file id, name, when)."""

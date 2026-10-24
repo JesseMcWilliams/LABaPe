@@ -46,7 +46,7 @@ from .hoststats import collect_all as collect_host_stats
 from . import (linked_copy, package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import linked_library, maintenance_mode, syslogstack, version
-from . import planpreview
+from . import planpreview, vmidentity
 from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
@@ -631,6 +631,7 @@ def run(job_id: int, worker: str) -> None:
             else:
                 if job.type == "environment.deploy":    # a safety snapshot first, if the setting asks (§39)
                     snapshots.before_deploy(db, job, env, host, lambda m: _append(job, m))
+                    vmidentity.forget(db, env_id=env.id)    # the VMs are rebuilt: new keys (question 198)
                 parts = plan_parts(db, job, env)
         except Exception as exc:  # noqa: BLE001 — any setup failure fails the job, visibly
             _append(job, f"labape: could not start: {exc}\n")
@@ -957,10 +958,12 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
             if work is not None:
                 vm_passwords.promote(db, env, work)
             _collect_outputs(db, job, env, work)
+            _record_identities(db, job, env)
         elif job.type == "environment.destroy":
             env.status = "destroyed"
             env.inventory = ""
             release(db, env.id)
+            vmidentity.forget(db, env_id=env.id)
             put_secret(db, f"environment/{env.id}/credentials", "")
             put_secret(db, f"environment/{env.id}/inventory", "")
             # Rotated passwords (design §24, R4) belonged to these VMs; a new
@@ -975,6 +978,17 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
         maintenance.notify_job(db, job)
     except Exception:  # noqa: BLE001 — email is best effort
         log.exception("job %s: notification failed", job.id)
+
+
+def _record_identities(db: Session, job: Job, env: Environment) -> None:
+    """The deployed VMs' SSH host keys and WinRM certificates, to check later connections against (question 198)."""
+    try:
+        inv = yaml.safe_load(get_secret(db, f"environment/{env.id}/inventory") or "") or {}
+        done = vmidentity.record_env(db, env, inv, log=lambda m: _append(job, m + "\n"))
+        if done:
+            _append(job, f"labape: recorded the identity of {len(done)} VM(s) for later connections\n")
+    except Exception as exc:  # noqa: BLE001 — a missing record is learned at the first connection
+        _append(job, f"labape: could not record the VMs' identities: {exc}\n")
 
 
 def _collect_outputs(db: Session, job: Job, env: Environment, work: Path | None) -> None:

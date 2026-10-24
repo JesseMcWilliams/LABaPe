@@ -19,7 +19,7 @@ def _keys(db):
 class FakeSsh:
     ran: list[str] = []
 
-    def __init__(self, address, user, key_text):
+    def __init__(self, address, user, key_text, known_keys=None):
         self.key = key_text.strip()
 
     def run(self, command, input=None, timeout=60):

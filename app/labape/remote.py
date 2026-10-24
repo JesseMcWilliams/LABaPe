@@ -247,7 +247,7 @@ def vm_target(db: Session, env: Environment, vm: str, account: str = "", protoco
                 "resize-method": "display-update", "enable-font-smoothing": "true", "disable-audio": "true"}}
         return {"protocol": "ssh", "address": address, "params": {
             "hostname": address, "port": "22", "username": who["username"], "password": who["password"],
-            "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000"}}
+            "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000", **_vm_host_keys(db, address)}}
     if windows:
         user = str(host.get("ansible_user") or "Administrator")
         domain = ""
@@ -264,7 +264,19 @@ def vm_target(db: Session, env: Environment, vm: str, account: str = "", protoco
     key = vmadmin.vm_key_text(db, address, user)       # the current key, or the VM's earlier one after adding it
     return {"protocol": "ssh", "address": address, "params": {
         "hostname": address, "port": "22", "username": user, "private-key": key,
-        "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000"}}
+        "color-scheme": "gray-black", "font-size": "11", "scrollback": "2000", **_vm_host_keys(db, address)}}
+
+
+def _vm_host_keys(db: Session, address: str) -> dict:
+    """The SSH host keys recorded for a VM (question 198): `known-keys` for the commands and text sessions,
+    and `host-key` (one known_hosts line) for guacd's browser SSH. Empty until a record exists."""
+    from .engine import vmidentity
+    value = vmidentity.trusted(db, address, vmidentity.SSH)
+    if not value:
+        return {}
+    lines = vmidentity.known_hosts(address, value).splitlines()
+    best = next((x for x in lines if " ssh-ed25519 " in x), lines[0])
+    return {"known-keys": value, "host-key": best}
 
 
 def host_target(h: KvmHost) -> dict:
