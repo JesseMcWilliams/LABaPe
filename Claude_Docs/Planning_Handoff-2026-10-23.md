@@ -6,7 +6,7 @@
 
 **Latest release:** v0.6.2 (2026-10-23)
 
-`main` has everything below merged and **no PR is open**. **v0.6.0** (environment templates, the Fix buttons) and **v0.6.1** (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying by itself what a job needs from a linked stack) were both released on 2026-10-23, each with its signed tag and GitHub release (the SBOM, `labape-mcp-X.Y.Z.mcpb` and `labape-skill-X.Y.Z.zip` attached). pytest: **560 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves.
+`main` has everything below merged and **no PR is open**. **v0.6.0** (environment templates, the Fix buttons) and **v0.6.1** (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying by itself what a job needs from a linked stack) were both released on 2026-10-23, each with its signed tag and GitHub release (the SBOM, `labape-mcp-X.Y.Z.mcpb` and `labape-skill-X.Y.Z.zip` attached). pytest: **565 passed, 2 skipped** (re-run 2026-10-23 after #249, on Windows in a scratch venv, about 6 minutes). Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves.
 
 The session ran in two parts: the lab checks left over from 2026-10-22, then the follow-ups that came out of them.
 
@@ -35,7 +35,8 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | #246, #247 | v0.6.2 release prep and the release | |
 | #248 | Handoff: the automatic ISO copy and template creation checked live by the user | |
 | #249 | **Drives and volumes flags a drive with a SMART warning** (alert on top, tinted row with a chip, "check it" beside a passed health); **not released, no CHANGELOG entry yet** (add one under `[Unreleased]` before the next release) | log |
-| (this PR) | This handoff after #249 | |
+| #250 | This handoff after #249 | |
+| (this PR) | Handoff after a **project review** (security, code, tooltips, guides, Help); findings in §7, nothing changed in the code yet | |
 
 ## 2. How much of it has been seen
 
@@ -60,7 +61,8 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 3. **Delete the test template** `debian13-linktest-2026.10` from OZ when the linked-template tests are done: `/data/VMs/LABaPe/templates/debian13-linktest-2026.10.{qcow2,json}` on kvm1 (the qcow2 is read-only: `chmod u+w` first).
 4. **Try the rest for real:** the syslog fix against a real outside server (against OZ's own TLS collector it works); a template download from a linked stack in the OZ-to-Director direction.
 5. **Look at Drives and volumes for `kvm1` in a browser** (#249 was only type-checked; I never saw `/dev/sdc`'s SMART data, so I assumed it passes overall with reallocated or pending sectors: if it shows `FAILED` and wasn't flagged, that is a different bug). **Replace the failing disk** `kvm1: /dev/sdc`. **Kerberos click-through** on `krbw1` (manual).
-6. **Later:** the published `.docx` guides (`release.sh --docx`); comparing the *composed* result of two template versions; naming a version; a bundle signature for template files; automatic copy of other files (category *files*); the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
+6. **The review's findings (§7):** the user picks next between the quick-fix branch (§7, items marked *quick*), adding the items that need a decision to `Planning_Questions.md` (from **196**, the next free number), or saving the review as its own doc.
+7. **Later:** the published `.docx` guides (`release.sh --docx`); comparing the *composed* result of two template versions; naming a version; a bundle signature for template files; automatic copy of other files (category *files*); the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
 
 ## 4. Lab state (2026-10-23)
 
@@ -95,3 +97,50 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | Sessions | `web/src/pages/RemoteSession.tsx` (clipboard), `Sessions.tsx` (player), `web/guac-player.template.html` and the plugin in `web/vite.config.ts` (the offline player) |
 | The live checks | the log's "Live run of the open tests (2026-10-23)" and the entries after it in `Testing_Troubleshooting-Log.md` |
 | Everything else | the 2026-10-22, 2026-10-21, 2026-10-19 and 2026-10-16 handoffs §6-§7 |
+
+## 7. Project review (2026-10-23, after #249)
+
+A review of security, code practice, missing features, descriptions and tooltips, the user and admin guides and the built-in Help. Numbers are the review's own (as given in the chat). **Nothing is fixed yet.** *quick* = fits one small branch; *decide* = needs the user's answer first (a question from 196).
+
+**Security**
+
+| # | Finding | Where | Kind |
+|---|---|---|---|
+| 1 | A personal API token outlives its owner: roles come from the groups saved at the last sign-in, so someone removed from Authentik keeps a working token (up to 365 days) | `tokens.py` `effective_roles`, `security.py` `_token_principal` | decide |
+| 2 | Sessions are signed cookies only: sign-out ends one browser, `breakglass revoke` doesn't end open break-glass sessions | `main.py` SessionMiddleware, `auth/breakglass.py` `revoke_all` | decide |
+| 3 | VM SSH (`StrictHostKeyChecking=no`) and WinRM (`server_cert_validation="ignore"`) send passwords without checking the VM; keep host keys at deploy, check WinRM against the platform CA | `engine/vmexec.py`, `engine/vmadmin.py` | decide |
+| 4 | No browser security headers (HSTS, CSP/frame-ancestors, nosniff, Referrer-Policy) | `container/caddy/Caddyfile` | quick |
+| 5 | Download from URL blocks link-local only: loopback and the stack's own containers (OpenBao, step-ca) are reachable | `engine/downloads.py` `check_url` | decide |
+| 6 | CSV exports don't neutralize `= + - @` cells (syslog lines come from any host) | `web/src/components/Paging.tsx` `csv` | quick |
+| 7 | Grants and role bindings match the username, which comes from `preferred_username` or email; a rename could pick up someone else's grants | `permissions.py`, `security.py` `resolve_roles`, `auth/oidc.py` | decide |
+| 8 | Small: `/hosts/{id}/resources` answers for any host; tus `Upload-Length` unchecked and bad headers give a 500; `/api/docs` public; `caddy:2` and `postgres:17-alpine` float; the API image runs as root; raw errors to the browser (`api/remote.py` create_session); an environment without a named network allows IPs of every network in its certificates (`api/ca.py`) | as named | quick |
+
+**Code**
+
+| # | Finding |
+|---|---|
+| 9 | Over the ~1,000-line rule: `api/environments.py` 1,164, `engine/runner.py` 1,149, `deploy/labape_deploy/steps.py` 1,000 (CLAUDE.md still says runner ~730) |
+| 10 | 352 imports inside functions: circular dependencies worth untangling |
+| 11 | `main.py`'s router list is one long line (gotcha 8): one per line |
+| 12 | Hyper-V was dropped (question 175) but `tofu/*/hyperv`, `api/hosts.py`, `engine/pathperms.py` and scripts still carry it |
+| 13 | Tests run on SQLite only (gotcha 2): a Postgres run would catch foreign-key bugs |
+| 14 | A session that expires mid-use shows errors instead of the sign-in page (only `App.tsx` startup handles 401) |
+| 28 | Dead code after `return` in `engine/hostio.py` `tunnel_conn` (lines 283-291, names that don't exist there; a lost function from a merge) |
+
+Ruff otherwise: the syslog SQL hit is a false alarm (bound parameters), `sha1` is checksums only, libvirt XML parsed without `defusedxml` (host output, low), 3 unused imports.
+
+**Missing features (decide):** 15 sharing an environment or handing it to another owner (a viewer sees nothing; stuck when the owner leaves); 16 a Users page for admins (last sign-in, disable, which revokes tokens and sessions, and open sessions).
+
+**Tooltips and descriptions (quick)**
+- 17: Guide §10 says every button has a tooltip; about 20 action buttons don't (drive pool Take out / Take offline / Scrub / Stop, Mail Use this server, Certificates Revoke… and Request, Rotate N now, Quotas Add / Edit, VM Take snapshot / Refresh, Dashboard Silence, Fix, Run the preview, Add N hosts and deploy, Add a part, Add account, Templates Edit). Dialog Cancel/Save are fine without.
+- 18: help text for the token form's role checkboxes (raw ids) and limits (1-600, 1-480, 1-4096); Settings OpenBao KV mount, AppRole mount, Role ID, Conjur Account, Authenticator; Parts Prefix; template Edition, Server SKU, Min vCPUs.
+- 19: `Certificates.tsx` example uses the lab's domain (`app1.jlm.abq`): use `app1.example.test`.
+
+**Guides and Help (quick)**
+- 20: The guides cover everything to v0.6.2; the two backlog lines (folder check, SMART flag) wait for the release as usual; #249 still needs its CHANGELOG line.
+- 21: Guide §1's role table lacks `console` (`labape-console`).
+- 22: Admin §11 lacks `rewrap-master`, `ca-repass`, `stores-configure`, `push-vm-key`.
+- 23: `Command-Line.md` doesn't mention `bootstrap-secrets.sh`, `check-network.sh`, `generate-inventory.py`.
+- 24: Help links (`HelpHere.tsx`): `/environment-templates` should open guide §14 "Environment templates", `/admin/mail` admin §6.1 "The stack's mail server"; `/admin` has no entry.
+
+Done well (keep): hashed tokens and one-time break-glass, the cross-origin write check, the logo without SVG and with a sandbox CSP, the Help Markdown renderer without HTML, signed-tag updates, hash-locked pip, the certificate token kept off the VMs.
