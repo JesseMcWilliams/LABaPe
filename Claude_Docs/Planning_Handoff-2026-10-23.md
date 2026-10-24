@@ -32,7 +32,10 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | #243 | This handoff after the v0.6.1 release | |
 | #244 | **A host's folders checked and fixed on save** (`engine/pathperms.py`, a Check / Fix folders button; AppArmor reported only) | §50.3a |
 | #245 | **Convert to template on a remote host** used the deploy job's removed SSH key path | log |
-| (this PR) | v0.6.2 release prep | |
+| #246, #247 | v0.6.2 release prep and the release | |
+| #248 | Handoff: the automatic ISO copy and template creation checked live by the user | |
+| #249 | **Drives and volumes flags a drive with a SMART warning** (alert on top, tinted row with a chip, "check it" beside a passed health); **not released, no CHANGELOG entry yet** (add one under `[Unreleased]` before the next release) | log |
+| (this PR) | This handoff after #249 | |
 
 ## 2. How much of it has been seen
 
@@ -56,7 +59,7 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 2. **Reset the lab clone and reinstall the agent** (the user runs them; the classifier blocks them from a session): `git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main`, then `~/LABaPe-web/deploy/update-agent/install.sh`. The clone reads `v0.6.0-dirty` now: a deploy overlays files on it and never moves its checkout, so it shows a version behind the running one until reset.
 3. **Delete the test template** `debian13-linktest-2026.10` from OZ when the linked-template tests are done: `/data/VMs/LABaPe/templates/debian13-linktest-2026.10.{qcow2,json}` on kvm1 (the qcow2 is read-only: `chmod u+w` first).
 4. **Try the rest for real:** the syslog fix against a real outside server (against OZ's own TLS collector it works); a template download from a linked stack in the OZ-to-Director direction.
-5. **Replace the failing disk** `kvm1: /dev/sdc`. **Kerberos click-through** on `krbw1` (manual).
+5. **Look at Drives and volumes for `kvm1` in a browser** (#249 was only type-checked; I never saw `/dev/sdc`'s SMART data, so I assumed it passes overall with reallocated or pending sectors: if it shows `FAILED` and wasn't flagged, that is a different bug). **Replace the failing disk** `kvm1: /dev/sdc`. **Kerberos click-through** on `krbw1` (manual).
 6. **Later:** the published `.docx` guides (`release.sh --docx`); comparing the *composed* result of two template versions; naming a version; a bundle signature for template files; automatic copy of other files (category *files*); the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
 
 ## 4. Lab state (2026-10-23)
@@ -69,7 +72,7 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 
 ## 5. Gotchas learned this session
 
-1. **The auto-mode classifier** refused: merges without the user's say-so (it let `gh pr merge` through after an explicit "merge them"), creating Authentik groups without an explicit grant (allowed once the user said so), a read of a container's environment. It does not stop `deploy-web.sh`, `scp` of a file into the lab clone or `install.sh` for the agent.
+1. **The auto-mode classifier** refused (also once a commit, push, PR and merge chain for the release prep until the user said "yes, commit, push, pr and merge"; split into separate commands afterwards): merges without the user's say-so (it let `gh pr merge` through after an explicit "merge them"), creating Authentik groups without an explicit grant (allowed once the user said so), a read of a container's environment. It does not stop `deploy-web.sh`, `scp` of a file into the lab clone or `install.sh` for the agent.
 2. **Postgres enforces foreign keys, SQLite in the tests does not.** A delete that touches two tables needs a run on the lab (found with template versions). Delete child rows by a statement that runs first.
 3. **`deploy-web.sh` overlays the working tree on the lab clone and deletes nothing**: a file from another branch stays and can break the build (a stale `PartsEditor.tsx`). Also, **never deploy a branch that lacks a migration the lab database already has** (the API would not start): deploy a throwaway local merge of the branches in play, and delete it.
 4. **Heredocs with many quotes fail in the Bash tool** (`unexpected EOF`): write a script with the Write tool and run it. A Python script that edits a file with `"""` inside a `"""` string breaks the same way.
