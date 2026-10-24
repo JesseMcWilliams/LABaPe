@@ -8,8 +8,8 @@
 
 | # | Finding | Where | Status |
 |---|---|---|---|
-| 1 | A personal API token outlives its owner: roles come from the groups saved at the last sign-in, so someone removed from Authentik keeps a working token (up to 365 days) | `tokens.py` `effective_roles`, `security.py` `_token_principal` | **decided** (question 196): tokens stop working when the owner is deactivated or removed |
-| 2 | Sessions are signed cookies only: sign-out ends one browser, `breakglass revoke` doesn't end open break-glass sessions | `main.py` SessionMiddleware, `auth/breakglass.py` `revoke_all` | **decided** (question 197): revoke ends them |
+| 1 | A personal API token outlives its owner: roles come from the groups saved at the last sign-in, so someone removed from Authentik keeps a working token (up to 365 days) | `tokens.py` `effective_roles`, `security.py` `_token_principal` | **done** (question 196; branch `2026-10-23-breakglass-revoke-ends-sessions`): a sweep disables a deactivated or removed owner and revokes their personal tokens; not yet run against the real Authentik |
+| 2 | Sessions are signed cookies only: sign-out ends one browser, `breakglass revoke` doesn't end open break-glass sessions | `main.py` SessionMiddleware, `auth/breakglass.py` `revoke_all` | **done** (question 197; same branch) |
 | 3 | VM SSH (`StrictHostKeyChecking=no`) and WinRM (`server_cert_validation="ignore"`) send passwords without checking the VM | `engine/vmexec.py`, `engine/vmadmin.py` | **decided** (question 198): both verify |
 | 4 | No browser security headers | `container/caddy/Caddyfile` | **done** (HSTS, nosniff, Referrer-Policy, `frame-ancestors 'self'`; a script CSP is left out on purpose) |
 | 5 | Download from URL blocks link-local only: loopback and the stack's own containers (OpenBao, step-ca) are reachable | `engine/downloads.py` `check_url` | open (question 199) |

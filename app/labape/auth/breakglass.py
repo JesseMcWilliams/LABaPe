@@ -35,12 +35,34 @@ def issue(db: Session, created_by: str, minutes: int | None = None, local_only: 
 
 
 def revoke_all(db: Session) -> int:
-    n = 0
-    for g in db.scalars(select(BreakglassGrant).where(BreakglassGrant.used_at.is_(None), BreakglassGrant.revoked.is_(False))):
+    """Revoke every credential not yet revoked, used ones too: an open break-glass session carries
+    its grant's id and stops working at its next request. Returns how many unused credentials were
+    revoked (`revoke_all_counts` gives both numbers)."""
+    return revoke_all_counts(db)[0]
+
+
+def revoke_all_counts(db: Session) -> tuple[int, int]:
+    """(unused credentials revoked, break-glass sessions ended)."""
+    unused = sessions = 0
+    for g in db.scalars(select(BreakglassGrant).where(BreakglassGrant.revoked.is_(False))):
         g.revoked = True
-        n += 1
+        if g.used_at is None:
+            unused += 1
+        else:
+            sessions += 1
     db.commit()
-    return n
+    return unused, sessions
+
+
+def grant_id(db: Session, token: str) -> int | None:
+    g = db.scalar(select(BreakglassGrant).where(BreakglassGrant.token_hash == _hash(token)))
+    return g.id if g else None
+
+
+def session_valid(db: Session, gid: object) -> bool:
+    """Whether the grant a break-glass session was opened with is still unrevoked."""
+    g = db.get(BreakglassGrant, gid) if isinstance(gid, int) else None
+    return g is not None and not g.revoked
 
 
 def redeem(db: Session, token: str, local: bool) -> tuple[User | None, str]:

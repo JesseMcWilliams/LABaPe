@@ -60,6 +60,25 @@ def test_breakglass_one_time(client):
     assert r.status_code == 401 and "already used" in r.text
 
 
+def test_breakglass_revoke_ends_open_sessions(client):
+    token = _bg_token()
+    assert client.post("/api/auth/breakglass", json={"token": token}).status_code == 200
+    assert client.get("/api/auth/me").status_code == 200
+    with session_factory()() as db:
+        unused, ended = breakglass.revoke_all_counts(db)
+    assert (unused, ended) == (0, 1)
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_breakglass_revoke_leaves_later_credentials(client):
+    old = _bg_token()
+    assert client.post("/api/auth/breakglass", json={"token": old}).status_code == 200
+    with session_factory()() as db:
+        breakglass.revoke_all(db)
+    assert client.post("/api/auth/breakglass", json={"token": _bg_token()}).status_code == 200
+    assert client.get("/api/auth/me").status_code == 200
+
+
 def test_breakglass_expired_and_unknown(client):
     token = _bg_token()
     with session_factory()() as db:

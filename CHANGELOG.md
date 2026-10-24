@@ -13,6 +13,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Browser security headers** from the stack's Caddy: HSTS, `nosniff`, `Referrer-Policy` and `frame-ancestors 'self'`.
 - **Tooltips** on the remaining action buttons (drive pool actions, quotas, certificates, templates, parts, and others); the Help links for Environment templates and the stack's mail server open their own sections.
 
+### Security
+
+- **A personal API token stops working when its owner is deactivated or removed in the sign-in provider** (question 196). The worker asks Authentik every 15 minutes (through the Directory settings' API token) about everyone who owns a live personal token; a deactivated or missing account is marked disabled, its personal tokens are revoked, and its sessions and tokens are refused. A later sign-in clears the mark. If Authentik can't be asked, nothing changes. Needs migration 0036.
+- **`labape breakglass revoke` ends break-glass sessions that are already open** (question 197), not only the credentials nobody has used yet; an open session is refused at its next request.
+
 ### Fixed
 
 - **A CSV export neutralizes cells a spreadsheet would run as a formula** (a text cell starting with `=`, `+`, `-` or `@` gets a leading quote).

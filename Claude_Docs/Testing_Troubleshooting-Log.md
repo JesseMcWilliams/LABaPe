@@ -750,3 +750,10 @@ On the Director (v0.6.0, KVM host `garagepc`) an environment built from an ISO f
 1. **Symptom:** `kvm1: /dev/sdc` showed on the Dashboard section and the alerts, but the Drives and volumes page listed it like any other: its Health chip said `passed`, and the reallocated and pending counts were plain text.
 2. **Cause:** that page only coloured the Health chip for SMART's overall `FAILED`; a drive that still passes but has reallocated or pending sectors (or wear over 80%) was only a warning on the other screens.
 3. **Fix:** the page uses the same warnings: an alert per drive on top (with the Drive details link), a tinted row with a FAILING or warning chip in the disks and in the SMART table, a "check it" chip beside a passed health, and the reallocated, pending and wear cells in warning colour.
+
+## Review: tokens outlive their owner, break-glass sessions outlive `revoke` (2026-10-23)
+
+Found by the project review ([Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md) items 1 and 2); decisions are questions 196 and 197.
+
+- **Tokens:** roles came from the groups saved at the last sign-in, so a person removed from Authentik kept a working personal token for up to 365 days. Fix: `userstatus.py` (a sweep in the worker, every 15 minutes; migration 0036 adds `users.disabled_at` and `disabled_reason`); `_token_principal` and `current_principal` refuse a disabled user; the OIDC callback clears the sweep's mark (not an admin's). Needs the Directory settings' API token to be able to read users: without it the sweep does nothing. Not yet run against the real Authentik: unit tests fake the lookup.
+- **Break-glass:** `revoke_all` only touched unused credentials, and a session was a signed cookie. Fix: the session keeps the credential's id (`bgid`) and `current_principal` checks it is unrevoked; `revoke_all` revokes used ones too. A break-glass session opened before the upgrade has no id and is refused.

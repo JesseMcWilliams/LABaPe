@@ -72,9 +72,10 @@ def cmd_breakglass(args) -> int:
     s = get_settings()
     with session_factory()() as db:
         if args.action == "revoke":
-            n = breakglass.revoke_all(db)
-            audit(db, _who(), "breakglass.revoke", detail={"revoked": n})
-            print(f"labape: revoked {n} unused break-glass credential(s).")
+            n, sessions = breakglass.revoke_all_counts(db)
+            audit(db, _who(), "breakglass.revoke", detail={"revoked": n, "sessions_ended": sessions})
+            print(f"labape: revoked {n} unused break-glass credential(s) and ended {sessions} used one(s) "
+                  "(their open sessions stop at the next request).")
             return 0
         token, expires = breakglass.issue(db, _who(), args.minutes, args.local_only)
         audit(db, _who(), "breakglass.enable", detail={"minutes": args.minutes or s.breakglass_minutes,

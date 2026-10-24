@@ -1037,6 +1037,10 @@ def serve(slots: int | None = None) -> None:
             with session_factory()() as db:
                 filedist.ensure_primary(db)        # always one primary file host (§29.4)
             stackmon.tick(session_factory())       # stack hosts, peer stacks, alerts (§30)
+            with session_factory()() as db:
+                from .. import userstatus
+                for what in userstatus.sweep_due(db):   # owners deactivated or removed in the provider (question 196)
+                    log.info("user check: %s", what)
             _send_backups_in_background()          # the newest full backup to linked stacks (§36)
             with session_factory()() as db:
                 scan_files(db)

@@ -27,6 +27,8 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # the user's own: page size (L1)
+    disabled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # no sessions or tokens while set
+    disabled_reason: Mapped[str] = mapped_column(String(32), default="")    # provider (the sweep, question 196) | admin
 
 
 class RoleBinding(Base):
