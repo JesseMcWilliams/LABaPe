@@ -159,7 +159,9 @@ def add_binding(body: BindingIn, request: Request, db: Session = Depends(get_db)
                 p: Principal = Depends(require_roles("admin"))):
     if body.role not in ROLES or body.principal_type not in ("user", "group"):
         raise HTTPException(status_code=422, detail="Unknown role or principal type")
-    b = RoleBinding(**body.model_dump())
+    from ..permissions import account_subject
+    b = RoleBinding(**body.model_dump(),
+                    subject=account_subject(db, body.principal) if body.principal_type == "user" else None)
     db.add(b)
     db.commit()
     audit(db, p.username, "role_binding.add", object_type="role_binding", object_id=b.id, detail=body.model_dump(),

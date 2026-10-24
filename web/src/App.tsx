@@ -36,6 +36,7 @@ import Syslog from "./pages/Syslog";
 import Links from "./pages/Links";
 import Tokens from "./pages/Tokens";
 import Quotas from "./pages/Quotas";
+import Users from "./pages/Users";
 import UserMenu from "./components/UserMenu";
 import HelpHere from "./components/HelpHere";
 import Help from "./pages/Help";
@@ -198,6 +199,7 @@ export default function App() {
             <Route path="sessions" element={<Sessions />} />
             <Route path="links" element={<Links />} />
             <Route path="quotas" element={<Quotas />} />
+            <Route path="users" element={<Users />} />
           </Route>
           <Route path="/remote/:id" element={<RemoteSession />} />
           {["/hosts", "/networks", "/settings", "/secrets", "/audit", "/errors"].map((p) => (

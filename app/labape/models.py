@@ -41,6 +41,7 @@ class RoleBinding(Base):
     principal_type: Mapped[str] = mapped_column(String(16))    # "group" | "user"
     principal: Mapped[str] = mapped_column(String(255))        # group name or username
     role: Mapped[str] = mapped_column(String(32))
+    subject: Mapped[str | None] = mapped_column(String(320), nullable=True)   # user bindings: the account it was made for (question 200)
 
 
 class KvmHost(Base):
@@ -169,6 +170,7 @@ class Grant(Base):
     principal_type: Mapped[str] = mapped_column(String(16))   # user | group
     principal: Mapped[str] = mapped_column(String(255))
     level: Mapped[str] = mapped_column(String(16))            # owner | user
+    subject: Mapped[str | None] = mapped_column(String(320), nullable=True)   # user grants: the account it was made for (question 200)
 
 
 class Job(Base):

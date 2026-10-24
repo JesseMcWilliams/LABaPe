@@ -28,6 +28,7 @@ class Principal:
     breakglass: bool = False
     via_token: bool = False          # signed in with an API token (design §37), not a session
     scope: dict | None = None        # that token's console scope and limits (design §59)
+    subject: str = ""                # "<provider>:<id>" of the account; user grants and bindings belong to it (question 200)
 
     @property
     def is_admin(self) -> bool:
@@ -37,11 +38,34 @@ class Principal:
         return self.is_admin or any(r in self.roles for r in roles)
 
 
-def resolve_roles(db: Session, username: str, groups: list[str]) -> set[str]:
+def subject_key(user: User) -> str:
+    """Who an account is, whatever it is called: the provider and its stable id for the account."""
+    return f"{user.provider}:{user.subject}"
+
+
+def adopt_subject(db: Session, user: User) -> int:
+    """Tie the user grants and bindings that name this account, and aren't tied to one yet, to it. Done at
+    sign-in, so a name that is later given to a different account doesn't pick them up (question 200)."""
+    from .models import Grant
+    key, n = subject_key(user), 0
+    for model, col in ((Grant, Grant.principal), (RoleBinding, RoleBinding.principal)):
+        for row in db.scalars(select(model).where(model.principal_type == "user", col == user.username,
+                                                  model.subject.is_(None))):
+            row.subject = key
+            n += 1
+    if n:
+        db.commit()
+    return n
+
+
+def resolve_roles(db: Session, username: str, groups: list[str], subject: str = "") -> set[str]:
+    """Roles from the groups and the bindings. A user binding made for one account (its `subject`) doesn't
+    apply to another account that has the same name (question 200); `subject=""` skips that check."""
     roles = {get_settings().role_map_dict[g] for g in groups if g in get_settings().role_map_dict}
     for rb in db.scalars(select(RoleBinding)):
         if (rb.principal_type == "group" and rb.principal in groups) or (
             rb.principal_type == "user" and rb.principal == username
+            and (not subject or rb.subject in (None, subject))
         ):
             if rb.role in ROLES:
                 roles.add(rb.role)
@@ -74,14 +98,15 @@ def _token_principal(request: Request, db: Session, secret: str) -> Principal:
         raise HTTPException(status_code=401, detail="This token's owner is disabled")
     ip = client_ip(request)
     tokens.touch(db, t, ip)
-    owner_roles = resolve_roles(db, owner.username, owner.groups or [])
+    owner_roles = resolve_roles(db, owner.username, owner.groups or [], subject_key(owner))
     roles = tokens.effective_roles(t, owner_roles)
     name = owner.username if t.kind == "personal" else f"svc:{t.name}"
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         audit(db, name, "token.use", object_type="api_token", object_id=t.id,
               detail={"token": t.name, "method": request.method, "path": request.url.path}, source_ip=ip)
     return Principal(owner.id, name, f"{t.name} (API token)", (owner.groups or []) if t.kind == "personal" else [],
-                     roles, via_token=True, scope=tokens.scope(t, t.kind == "service" or "admin" in owner_roles))
+                     roles, via_token=True, scope=tokens.scope(t, t.kind == "service" or "admin" in owner_roles),
+                     subject=subject_key(owner) if t.kind == "personal" else "")
 
 
 def current_principal(request: Request, db: Session = Depends(get_db)) -> Principal:
@@ -103,8 +128,9 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
         if not bg.session_valid(db, sess.get("bgid")):   # `labape breakglass revoke` ends open sessions
             request.session.clear()
             raise HTTPException(status_code=401, detail="Not signed in")
-    roles = {"admin"} if breakglass else resolve_roles(db, user.username, user.groups or [])
-    return Principal(user.id, user.username, user.display_name or user.username, user.groups or [], roles, breakglass)
+    roles = {"admin"} if breakglass else resolve_roles(db, user.username, user.groups or [], subject_key(user))
+    return Principal(user.id, user.username, user.display_name or user.username, user.groups or [], roles, breakglass,
+                     subject=subject_key(user))
 
 
 def require_roles(*roles: str):

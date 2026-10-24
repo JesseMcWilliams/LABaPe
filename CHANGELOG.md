@@ -15,10 +15,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Security
 
+- **Download from URL refuses more addresses** (question 199): loopback and unspecified addresses, `localhost`, single-label names (how the stack's own services are reached, e.g. `labape-openbao`) and the stack's own container network, as well as link-local ones. The lab's other networks stay allowed.
+- **User grants and role bindings belong to the account, not the name** (question 200): they are tied to the account's provider and stable id at its next sign-in (or when made, if the account is known), so a name later given to a different account picks up nothing. Needs migration 0038.
 - **A personal API token stops working when its owner is deactivated or removed in the sign-in provider** (question 196). The worker asks Authentik every 15 minutes (through the Directory settings' API token) about everyone who owns a live personal token; a deactivated or missing account is marked disabled, its personal tokens are revoked, and its sessions and tokens are refused. A later sign-in clears the mark. If Authentik can't be asked, nothing changes. Needs migration 0036.
 - **`labape breakglass revoke` ends break-glass sessions that are already open** (question 197), not only the credentials nobody has used yet; an open session is refused at its next request.
 
 - **Commands, text sessions and browser SSH on a VM check the VM's SSH host key, and WinRM commands check its certificate** (question 198). The keys and the WinRM certificate's SHA-256 are recorded right after a deploy (or at the first connection when there is no record); later connections must match, and a mismatch is refused with an explanation. A deploy forgets the old record, a destroy removes it, and `labape vm-identity list|forget ADDRESS` handles a VM rebuilt outside LABaPe. Ansible's own deploy-time connections are unchanged. Needs migration 0037.
+
+- **Users page (Admin → Users)** (question 202): who has signed in and when, their roles, active personal tokens and open remote sessions, with Disable / Enable. Disabling turns an account off in LABaPe only: its sessions stop at the next request, its personal tokens are revoked, and it can't sign in here until enabled.
+- **Share an environment and hand it over** (question 201): an owner or admin shares an environment with a user or a group (they see it; their roles still limit what they can do) and can hand ownership to another account, keeping the previous owners as users or not. A viewer therefore sees the environments shared with them.
 
 ### Fixed
 

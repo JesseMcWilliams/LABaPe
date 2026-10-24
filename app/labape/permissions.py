@@ -9,8 +9,11 @@ from .security import Principal
 
 
 def _principal_filter(p: Principal):
+    mine = (Grant.principal_type == "user") & (Grant.principal == p.username)
+    if p.subject:           # a grant made for another account with this name isn't mine (question 200)
+        mine = mine & (Grant.subject.is_(None) | (Grant.subject == p.subject))
     return or_(
-        (Grant.principal_type == "user") & (Grant.principal == p.username),
+        mine,
         (Grant.principal_type == "group") & (Grant.principal.in_(p.groups or ["\x00"])),
     )
 
@@ -37,8 +40,17 @@ def visible_ids(db: Session, p: Principal, object_type: str) -> set[int] | None:
     return set(db.scalars(select(Grant.object_id).where(Grant.object_type == object_type, _principal_filter(p))))
 
 
+def account_subject(db: Session, username: str) -> str | None:
+    """The subject key of the account with this username, when one has signed in (else the grant is tied at its sign-in)."""
+    from .models import User
+    from .security import subject_key
+    users = list(db.scalars(select(User).where(User.username == username, User.provider != "breakglass")))
+    return subject_key(users[0]) if len(users) == 1 else None
+
+
 def add_owner(db: Session, object_type: str, object_id: int, username: str) -> None:
-    db.add(Grant(object_type=object_type, object_id=object_id, principal_type="user", principal=username, level="owner"))
+    db.add(Grant(object_type=object_type, object_id=object_id, principal_type="user", principal=username, level="owner",
+                 subject=account_subject(db, username)))
     db.commit()
 
 
