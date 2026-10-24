@@ -45,7 +45,12 @@ def lookup(db: Session, user: User) -> str | None:
         r.raise_for_status()
         found = [u for u in r.json().get("results", []) if str(u.get("username", "")).lower() == user.username.lower()]
     except (httpx.HTTPError, ValueError) as exc:
-        log.warning("user check for %s failed: %s", user.username, exc)
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+            log.warning("user check: the Directory API token can't read users (%s); run Fix on the dashboard's "
+                        "directory check so its role may view users. API tokens of removed people stay valid until then.",
+                        exc.response.status_code)
+        else:
+            log.warning("user check for %s failed: %s", user.username, exc)
         return None
     if not found:
         return "gone"

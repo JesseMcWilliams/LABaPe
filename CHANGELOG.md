@@ -27,6 +27,9 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Fixed
 
+- **The security headers are in every Caddyfile variant** (`Caddyfile.labape-ca` and `Caddyfile.names` as well); the stack's own platform-CA certificate setup had not got them.
+- **The Directory token's Authentik role can view users** (the fix and the test blueprint), which the check that an account owning an API token is still active needs; an existing stack runs Fix on the directory check once.
+- **Browser SSH checks the VM's host key with the one entry guacd reads** (its negotiated ECDSA key first), not several; a key learned at first use is tied to its environment and removed with it.
 - **A CSV export neutralizes cells a spreadsheet would run as a formula** (a text cell starting with `=`, `+`, `-` or `@` gets a leading quote).
 
 ## [0.6.2] - 2026-10-23

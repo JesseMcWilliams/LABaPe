@@ -55,6 +55,25 @@ def forget(db: Session, address: str | None = None, env_id: int | None = None) -
     return n or 0
 
 
+def link(db: Session, address: str, env_id: int) -> None:
+    """Tie the records of this address that nothing owns yet (learned at first use) to an environment, so a
+    destroy removes them."""
+    rows = list(db.scalars(select(VmIdentity).where(VmIdentity.address == address, VmIdentity.environment_id.is_(None))))
+    for row in rows:
+        row.environment_id = env_id
+    if rows:
+        db.commit()
+
+
+def forget_env(db: Session, env: Environment) -> int:
+    """Remove an environment's records: those tied to it and those of the addresses it holds."""
+    from ..models import IpAllocation
+    n = forget(db, env_id=env.id)
+    for address in set(db.scalars(select(IpAllocation.address).where(IpAllocation.environment_id == env.id))):
+        n += forget(db, address=address)
+    return n
+
+
 # --- SSH --------------------------------------------------------------------------------------
 
 def key_lines(text: str) -> str:

@@ -59,7 +59,7 @@ entries:
     identifiers: {name: labape-directory-reader}
     attrs:
       name: labape-directory-reader
-      permissions: [authentik_core.view_group]
+      permissions: [authentik_core.view_group, authentik_core.view_user]
   - model: authentik_core.user
     id: user-directory
     identifiers: {username: labape-directory}

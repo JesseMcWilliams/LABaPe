@@ -15,6 +15,14 @@
 :443 {
 	tls /labape-tls/web.crt /labape-tls/web.key
 	encode gzip
+	# Browser hardening. A full script CSP is left out on purpose (the UI uses inline styles and the remote
+	# session canvas); frame-ancestors keeps the pages out of other sites' frames.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		Content-Security-Policy "frame-ancestors 'self'"
+	}
 	# The stack's mail (Mailpit's web UI), for signed-in admins only: LABaPe answers the check (design §52).
 	handle /mail/* {
 		forward_auth labape-api:8000 {

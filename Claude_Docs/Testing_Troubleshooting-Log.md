@@ -773,3 +773,22 @@ Questions 199-202 ([Planning_Project-Review-2026-10-23.md](Planning_Project-Revi
 - **199:** `engine/downloads.py` `_blocked`. The tests' local file server needs `downloads.ALLOW_LOOPBACK` (the `server` fixture sets it). The container network is guessed from the API container's own address, so on a stack with an unusual network size it may cover too little or too much; the lab's other networks stay open on purpose.
 - **200:** `Principal.subject`, `security.adopt_subject` (at sign-in), `permissions._principal_filter`, `resolve_roles(..., subject)`. A Principal built without a subject (tests, overrides) falls back to name matching. Break-glass is unaffected (admin by session).
 - **201/202:** `api/env_sharing.py`, `api/users.py`, `web/src/components/Sharing.tsx`, `web/src/pages/Users.tsx`. Hand over deletes or demotes the old owner rows without breaking the grants' uniqueness. Not tried in a browser yet (the web type-check and build pass).
+
+## Live run of the review's decisions (2026-10-24, OZ with the tree of PR #255)
+
+Deployed with `deploy-web.sh`; migrations through 0038 applied on Postgres. Scripts: `tools/helpers/live/review_checks.py` and the others listed in the helpers README; browser checks: `web/e2e/tests/review-ui.spec.ts` (full suite 49 passed, 7 skipped). Test environments `zz-rv1` (Debian) and `zz-rv2` (Windows Server 2022 core) were deployed and destroyed.
+
+| What | Result |
+|---|---|
+| 199 Download from URL | Refused: `127.0.0.1`, `localhost`, `[::1]`, `labape-openbao`, `169.254.169.254`; a 10.x address passes the check |
+| 197 Break-glass | Sign in works; after `revoke` the open session gets 401 and the credential can't be reused |
+| 202 Users page | List, search, disable (viewer's session 401 at once, sign-in refused), enable, own account refused (409); page and Admin menu in the browser |
+| 201 Sharing | Share, viewer sees it, viewer can't open the sharing page (403), unshare, hand over to another user and back; Sharing panel in the browser |
+| 196 Provider check | **Found:** the Directory token (role "view groups") got 403 on `/core/users/`, so the check was inert (it logs and changes nothing). Fixed: the Fix and the test blueprint now give the role `authentik_core.view_user`; the lab's blueprint was re-applied. After that: real accounts `active`, a made-up name `gone`; the sweep disabled a throwaway account that owned a token and the token returned 401 |
+| 198 SSH | Deploy recorded the VM's keys; a command with the right record runs, with a wrong record it is refused with the hint, after `forget` it is learned again |
+| 198 WinRM | Same on Windows Server 2022: right fingerprint runs, wrong one refused, forgotten one learned again (and equal to the deploy's) |
+| 198 Browser SSH | **Found:** guacd reads exactly one known_hosts entry (several lines all fail) and negotiates ECDSA first; sending the ed25519 line or all lines was refused. Now `_vm_host_keys` sends the one entry guacd negotiates (ECDSA, ed25519, RSA). With the right key the session connects; with a corrupted ECDSA key guacd aborts it |
+| Security headers | **Found:** the lab uses `Caddyfile.labape-ca`/`.names`, not `Caddyfile`; the headers were added to all three. Live: HSTS, nosniff, Referrer-Policy and frame-ancestors present, and the whole browser suite (including Mail and remote sessions) still passes |
+| Records after a destroy | **Found:** a key learned at first use belonged to no environment, so a destroy left it behind. Fixed: such records are linked to the environment when a command runs, and a deploy or destroy clears an environment's records and those of the addresses it held |
+
+Not tried: Ansible's deploy-time connections (unchanged), RDP, an environment on a remote KVM host, a rebuilt VM under the same address outside LABaPe.

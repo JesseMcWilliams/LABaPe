@@ -56,6 +56,12 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/mail_check.sh` | lab host | The environment's mail server: send a test message over STARTTLS and read it back through Mailpit's API |
 | `live/package_updates.py` | lab (container) | Catalog → Updates: list the sources, or check (all or one) and wait |
 | `live/vm_secrets.py` | lab (container) | V2: store a shared secret for chosen VMs or a VM's own (random values, hashes printed), delete, sync |
+| `live/review_checks.py` | lab (container) | The review's pages on the real stack: `users` (list, disable and enable `labape-viewer`), `download` (the refused addresses), `share ENV_ID` (share, unshare, hand over and back) |
+| `live/breakglass_revoke.sh` | lab host | Break-glass: enable, sign in, revoke, and see the open session stop (statuses only) |
+| `live/user_lookup.py`, `live/user_sweep.py` | lab (API container, via `docker cp`) | What Authentik says about accounts (`lookup`, read-only); a throwaway account owning a token is disabled by the sweep and its token stops |
+| `live/vm_identity_check.py`, `live/winrm_identity_check.py` | lab (API container, via `docker cp`) | Question 198 on a real Linux or Windows VM: right record, wrong record (refused), forgotten (learned again) |
+| `live/vm_identity_set.py`, `live/vm_identity_tamper.py` | lab (API container, via `docker cp`) | Set a VM's recorded SSH keys (by type and order), or corrupt/restore the ECDSA key, to test browser SSH |
+| `live/session_cookie.py` | lab (container) | Print a test user's `labape_session` cookie for the browser tests' `LABAPE_SESSION_COOKIE`; redirect it to a file, treat it like a password |
 | `live/job_log.py` | lab (container) | A finished job's log, or only one host's lines with their task names |
 | `live/env_password.py` | lab (container) | Show or rotate an environment's Windows passwords |
 | `live/rotate_agent.py` | lab (container) | Rotate a secret through the update agent |
