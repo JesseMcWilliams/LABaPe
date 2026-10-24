@@ -4,7 +4,7 @@
 
 ## 1. State
 
-**Latest release:** v0.6.2 (2026-10-23)
+**Latest release:** v0.7.0 (2026-10-24)
 
 The release v0.7.0 is being cut from this state (see §3.1). `main` has everything below merged. pytest: **597 passed, 2 skipped** (Windows scratch venv, about 6 minutes). `npm run build` passes (Node is installed on the Windows box now). Playwright against OZ: **49 passed, 7 skipped**.
 
