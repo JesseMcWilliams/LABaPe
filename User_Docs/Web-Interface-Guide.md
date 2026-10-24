@@ -27,7 +27,7 @@ Open the address your admin gave you and choose the sign-in button (usually **Au
 
 | Role | Default Authentik group | What it adds |
 |---|---|---|
-| viewer | `labape-viewers` | Sign in and browse; environments can't be shared with other users yet, so a viewer sees no environments |
+| viewer | `labape-viewers` | Sign in and browse; sees the environments shared with them (see *Sharing* in [§4](#4-working-with-an-environment)) and nothing else |
 | deployer | `labape-deployers` | Create, deploy, redeploy and destroy your own environments; see their credentials |
 | template_editor | `labape-template-editors` | Everything a deployer can do, plus build, refresh, promote and edit VM templates |
 | file_manager | `labape-file-managers` | Upload, download from a URL, edit and delete files |
@@ -113,6 +113,7 @@ The environment's page shows its state, its host groups with each VM's address, 
 |---|---|
 | **Deploy** / **Redeploy** | Runs OpenTofu and Ansible. A redeploy creates missing VMs and reconfigures existing ones. It reinstalls an existing VM only if what it was installed from changed (see *What a redeploy keeps*, below). |
 | **Preview redeploy** | Shows what a redeploy would do to each VM (reinstall, create, remove, update or keep) and why, without applying anything. It's a snapshot: a later change to Settings or a LABaPe update can change the next redeploy. From the command line: `deploy.sh ... --plan-only <file>` ([Command-Line.md §1](Command-Line.md#1-deploying-and-destroying)). |
+| **Sharing** (panel) | Owners and admins share the environment with a user (someone who has signed in) or a group: they see it and its details, while their roles still limit what they can do. **Hand over** makes another account the owner, for example when the owner has left; the previous owners keep access unless you untick it. Sharing and removing it are audited. |
 | **Add host** | On a deployed or failed environment: more VMs in a group, or a new group like an existing one (its OS, size, network, role, template and software, under a new name). It is checked like a new environment (quota, host capacity, names), then starts a redeploy that creates only the new VMs. |
 | **Destroy** | Deletes every VM, its disks and the OpenTofu workspace, and releases its addresses. It can't be undone. |
 | **Delete** | On a destroyed (or never deployed) environment: removes the record, its stored secrets and rotation settings, and frees the name for a new environment. Jobs and the audit log keep their rows. Nothing on a KVM host changes. |
@@ -199,7 +200,7 @@ Deploys, destroys, template builds, downloads and backups run as jobs. **Jobs** 
 - A file with the same content as one already stored is refused as a duplicate, and a name already in use is refused before the upload starts.
 - **Verify against a hash**: paste the vendor's value (SHA-256, SHA-1, SHA-512 or MD5) or a checksum-file line such as a `SHA256SUMS` entry. If the file doesn't match, it's deleted.
 
-**Download from URL.** The worker fetches the file as a job, with progress in the job log; a retried job resumes where it stopped.
+**Download from URL.** The worker fetches the file as a job, with progress in the job log; a retried job resumes where it stopped. Addresses on the stack itself are refused: loopback, `localhost`, link-local, names without a dot (how the stack's own services are reached) and the stack's own container network. Your lab's other networks are fine.
 - HTTPS only, unless an admin allows plain HTTP (Settings → Downloads).
 - Leave the name empty to use the last part of the URL.
 - The optional expected hash works as for uploads.
@@ -243,7 +244,7 @@ The new-environment form shows the KVM hosts and networks you may use. **Network
 Scripts and CI can call LABaPe's API with a token instead of signing in. Open your account menu (your name at the top right) → **API tokens**:
 - **New token**: a name, the roles it may use (none chosen: all of yours) and when it expires (at most a year). The token is shown once: copy it then.
 - Revoked and expired tokens are hidden; tick **Show revoked and expired** to see them. They are removed after the retention your admin set (Settings → History).
-- A token acts as you, with the roles you chose, but never more than you have when it's used. If you lose a group, the token loses that role too (at your next sign-in).
+- A token acts as you, with the roles you chose, but never more than you have when it's used. If you lose a group, the token loses that role too (at your next sign-in). If your account is deactivated or removed in the sign-in provider, your personal tokens are revoked within about 15 minutes.
 - Send it in a header:
 
   ```bash
