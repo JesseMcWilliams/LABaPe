@@ -98,6 +98,8 @@ Each host group sets:
 
 **Create and deploy** asks you to confirm, saves the environment and starts a deploy job at once. You land on the environment's page.
 
+**Removing a host group:** each group has a **Remove host group** button, and setting its **Count** to 0 asks whether to remove it (Cancel puts the count back to 1). The only group can't be removed.
+
 **Start from a template** (at the top of the form) fills the form from a saved template: see [§14](#14-environment-templates).
 
 **Save as draft** keeps what you typed without deploying. A draft takes no quota, no addresses and no VM names until it is deployed, and only you (and admins) see it. Its page shows **Edit draft**, which opens the form again with your choices (**Create and deploy** then saves and deploys it), and **Deploy**, which checks everything a new environment is checked for. **Duplicate**, on any environment's page, opens the form with a copy of its host groups under the name `<name>-copy`: the VM names are cleared and no accounts or passwords are copied.
