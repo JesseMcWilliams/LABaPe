@@ -60,26 +60,60 @@ def check_url(url: str, allow_http: bool) -> None:
     try:
         ip = ipaddress.ip_address(parts.hostname)
     except ValueError:
+        if "." not in parts.hostname and parts.hostname.lower() != "localhost":
+            raise DownloadError(f"{parts.hostname} is a single-label name, which is how the stack's own "
+                                "services are reached: use a full name.")
+        if parts.hostname.lower() == "localhost" or parts.hostname.lower().endswith(".localhost"):
+            raise DownloadError("localhost isn't allowed.")
         return
-    if _link_local(ip):
-        raise DownloadError("Link-local addresses (169.254.0.0/16, fe80::/10) aren't allowed.")
+    why = _blocked(ip)
+    if why:
+        raise DownloadError(why)
 
 
-def _link_local(ip: ipaddress._BaseAddress) -> bool:
+ALLOW_LOOPBACK = False       # tests only: they serve files from 127.0.0.1
+
+
+def _own_networks() -> list[ipaddress._BaseNetwork]:
+    """The container network this API runs on (its address, /16 for 172.16/12 as Docker's networks are, else /24):
+    the stack's other services (OpenBao, step-ca, the database) live there."""
+    nets = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_loopback:
+                continue
+            bits = 16 if ip in ipaddress.ip_network("172.16.0.0/12") else 24
+            nets.append(ipaddress.ip_network(f"{ip}/{bits}", strict=False))
+    except OSError:
+        pass
+    return nets
+
+
+def _blocked(ip: ipaddress._BaseAddress) -> str:
+    """Why a download may not go to this address (question 199), or ''. The lab's other networks are fine:
+    installers are often on a lab server."""
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
-    return ip.is_link_local
+    if ip.is_link_local:
+        return "Link-local addresses (169.254.0.0/16, fe80::/10) aren't allowed."
+    if ip.is_unspecified or (ip.is_loopback and not ALLOW_LOOPBACK):
+        return "Loopback and unspecified addresses aren't allowed."
+    if ip.version == 4 and not ALLOW_LOOPBACK and any(ip in n for n in _own_networks()):
+        return "Addresses on the stack's own container network aren't allowed."
+    return ""
 
 
 def check_resolves(host: str) -> None:
-    """Refuse a host name that resolves to a link-local address."""
+    """Refuse a host name that resolves to an address a download may not go to (see `_blocked`)."""
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
         raise DownloadError(f"Can't resolve {host}: {exc}") from exc
     for info in infos:
-        if _link_local(ipaddress.ip_address(info[4][0].split("%")[0])):
-            raise DownloadError(f"{host} resolves to a link-local address, which isn't allowed.")
+        why = _blocked(ipaddress.ip_address(info[4][0].split("%")[0]))
+        if why:
+            raise DownloadError(f"{host} resolves to an address that isn't allowed. {why}")
 
 
 def filename_from(url: str) -> str:

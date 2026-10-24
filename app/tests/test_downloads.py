@@ -28,14 +28,17 @@ def test_parse_expected_and_urls():
             downloads.parse_expected(bad, kind)
     downloads.check_url("https://example.test/a.iso", allow_http=False)
     for url, allow in (("http://example.test/a.iso", False), ("ftp://example.test/a", True),
-                       ("https://169.254.169.254/latest/meta-data", False), ("https://[fe80::1]/x", False)):
+                       ("https://169.254.169.254/latest/meta-data", False), ("https://[fe80::1]/x", False),
+                       ("https://127.0.0.1:8200/v1/sys/health", False), ("https://[::1]/x", False),
+                       ("https://0.0.0.0/x", False), ("https://localhost/x", False),
+                       ("https://labape-openbao:8200/x", False), ("https://[::ffff:127.0.0.1]/x", False)):
         with pytest.raises(downloads.DownloadError):
             downloads.check_url(url, allow)
     assert downloads.filename_from("https://x.test/dl/My%20Tool%201.2.msi?sig=1") == "My Tool 1.2.msi"
 
 
 @pytest.fixture()
-def server():
+def server(monkeypatch):
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
             if self.path == "/moved":
@@ -51,6 +54,7 @@ def server():
         def log_message(self, *a):
             pass
 
+    monkeypatch.setattr(downloads, "ALLOW_LOOPBACK", True)
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{srv.server_address[1]}"
@@ -114,3 +118,15 @@ def test_upload_expected_hash(client, tmp_root):
             "Tus-Resumable": "1.0.0", "Upload-Offset": "0", "Content-Type": "application/offset+octet-stream"})
         assert r.status_code == status, r.text
     assert [f["name"] for f in client.get("/api/files?category=files").json()] == ["f.txt"]
+
+
+def test_the_lab_networks_are_allowed_but_the_containers_own_network_is_not(monkeypatch):
+    downloads.check_url("https://10.20.30.40/a.iso", allow_http=False)
+    downloads.check_url("https://files.lab.test/a.iso", allow_http=False)
+    monkeypatch.setattr(downloads, "_own_networks", lambda: [__import__("ipaddress").ip_network("172.18.0.0/16")])
+    with pytest.raises(downloads.DownloadError, match="container network"):
+        downloads.check_url("https://172.18.0.5:8200/x", allow_http=False)
+    downloads.check_url("https://172.19.0.5/x", allow_http=False)
+    monkeypatch.setattr(downloads.socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("127.0.0.1", 0))])
+    with pytest.raises(downloads.DownloadError, match="resolves"):
+        downloads.check_resolves("sneaky.example.test")
