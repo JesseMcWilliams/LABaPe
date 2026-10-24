@@ -63,7 +63,7 @@ function Snapshots({ view }: { view: VmView }) {
         {data.can_operate && <Button variant="contained" onClick={() => setTaking(true)} title="Take a snapshot now (a job)">Take snapshot</Button>}
       </Stack>
       {job && <Alert severity="info" onClose={() => setJob(null)}>Started <Link component={RouterLink} to={`/jobs/${job}`}>job {job}</Link>; the list refreshes when it's done.{" "}
-        <Button size="small" onClick={load}>Refresh</Button></Alert>}
+        <Button size="small" onClick={load} title="Load this page again">Refresh</Button></Alert>}
       <Table size="small">
         <TableHead>
           <TableRow><TableCell>Name</TableCell><TableCell>Taken</TableCell><TableCell>VM was</TableCell><TableCell>By</TableCell><TableCell>Description</TableCell><TableCell /></TableRow>

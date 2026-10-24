@@ -95,7 +95,7 @@ export default function Mail() {
             </Typography>
           </Stack>
           {status.available && !status.email_uses_mailpit && (
-            <Alert severity="warning" action={<Button color="inherit" size="small" onClick={useForEmail}>Use this server</Button>}>
+            <Alert severity="warning" action={<Button color="inherit" size="small" onClick={useForEmail} title="Point the email settings at the stack's own mail server">Use this server</Button>}>
               Settings → Email is {status.email.enabled ? `set to ${status.email.host}:${status.email.port}` : "off"}, not to this mail server.
             </Alert>
           )}

@@ -11,6 +11,7 @@ Everything here also applies to what the web interface runs for you; the web int
 3. [Templates](#3-templates)
 4. [DHCP addresses](#4-dhcp-addresses)
 5. [Passwords and keys](#5-passwords-and-keys)
+6. [Helper scripts](#6-helper-scripts)
 
 ## 1. Deploying and destroying
 
@@ -102,3 +103,13 @@ The generated passwords live only in the encrypted vault: read them with `ansibl
 - `~/.labape-vault-pass` and `~/.ssh/labape_bootstrap` are no longer used; after the move they're stale copies. Without `~/.config/labape/store.env` the scripts use them as before.
 
 To read the vault by hand: `python3 scripts/lib/store_get.py vault-pass --vault secrets.vault.yml --out $XDG_RUNTIME_DIR/labape-cli/vault-pass`, then `ansible-vault view secrets.vault.yml --vault-password-file $XDG_RUNTIME_DIR/labape-cli/vault-pass`.
+
+## 6. Helper scripts
+
+`deploy.sh` and `destroy.sh` call these; run one by hand only when you are setting up or debugging.
+
+| Script | What it does |
+|---|---|
+| `scripts/bootstrap-secrets.sh` | First-time setup of the secrets: a vault password file, a bootstrap SSH key pair and `secrets.vault.yml`, filled in and encrypted. Other fields stay `CHANGE_ME` until you need them (`ansible-vault edit`) |
+| `scripts/check-network.sh` | Reads planned static addresses from stdin, one per line, and fails with the conflicting ones before anything is created. `deploy.sh` pipes the plan into it |
+| `scripts/generate-inventory.py` | Builds the Ansible inventory, the hosts-file snippet and the per-environment access handout from `tofu output -json hosts`. `deploy.sh` runs it after the VMs exist |

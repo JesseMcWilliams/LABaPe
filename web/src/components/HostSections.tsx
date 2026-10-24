@@ -456,10 +456,12 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
                       <TableCell>{m.errors || "—"}</TableCell>
                       <TableCell align="right">
                         {p.type === "mdadm" && p.actions.includes("fail-remove") && (
-                          <Button size="small" color="warning" disabled={busy} onClick={() => pull(p, m)}>{m.role === "faulty" ? "Remove" : "Take out"}</Button>
+                          <Button size="small" color="warning" disabled={busy} onClick={() => pull(p, m)}
+                            title={m.role === "faulty" ? "Remove this failed drive from the pool" : "Detach this drive from the pool (asks first)"}>{m.role === "faulty" ? "Remove" : "Take out"}</Button>
                         )}
                         {p.type === "zfs" && m.name.startsWith("/") && (
-                          <Button size="small" color="warning" disabled={busy} onClick={() => offline(p, m)}>{m.state === "OFFLINE" ? "Bring online" : "Take offline"}</Button>
+                          <Button size="small" color="warning" disabled={busy} onClick={() => offline(p, m)}
+                            title={m.state === "OFFLINE" ? "Put this drive back in service" : "Stop using this drive without removing it"}>{m.state === "OFFLINE" ? "Bring online" : "Take offline"}</Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -472,8 +474,9 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
               {p.actions.length === 0 ? <Typography variant="body2" color="text.secondary">Shown only: LABaPe doesn&apos;t change LVM groups.</Typography> : (
                 <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
                   {working
-                    ? <Button size="small" variant="outlined" disabled={busy} onClick={() => stop(p)}>Stop</Button>
-                    : <Button size="small" variant="outlined" disabled={busy} onClick={() => check(p)}>{p.type === "zfs" ? "Scrub" : "Check"}</Button>}
+                    ? <Button size="small" variant="outlined" disabled={busy} onClick={() => stop(p)} title="Stop the check or scrub that is running">Stop</Button>
+                    : <Button size="small" variant="outlined" disabled={busy} onClick={() => check(p)}
+                      title={p.type === "zfs" ? "Start a scrub: read every block and repair what is wrong" : "Start a check of this array"}>{p.type === "zfs" ? "Scrub" : "Check"}</Button>}
                   {p.type === "mdadm" && !working && p.actions.includes("resync") && (
                     <Button size="small" variant="outlined" disabled={busy} title="Rewrite mismatched blocks from the other drives"
                       onClick={() => run(p, "resync", undefined, `Repair ${p.name}?`, "Starts a repair pass: blocks that differ between the drives are rewritten. It reads every drive and slows the array while it runs.", "Repair")}>Repair</Button>

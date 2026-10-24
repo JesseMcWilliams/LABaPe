@@ -100,47 +100,4 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 
 ## 7. Project review (2026-10-23, after #249)
 
-A review of security, code practice, missing features, descriptions and tooltips, the user and admin guides and the built-in Help. Numbers are the review's own (as given in the chat). **Nothing is fixed yet.** *quick* = fits one small branch; *decide* = needs the user's answer first (a question from 196).
-
-**Security**
-
-| # | Finding | Where | Kind |
-|---|---|---|---|
-| 1 | A personal API token outlives its owner: roles come from the groups saved at the last sign-in, so someone removed from Authentik keeps a working token (up to 365 days) | `tokens.py` `effective_roles`, `security.py` `_token_principal` | decide |
-| 2 | Sessions are signed cookies only: sign-out ends one browser, `breakglass revoke` doesn't end open break-glass sessions | `main.py` SessionMiddleware, `auth/breakglass.py` `revoke_all` | decide |
-| 3 | VM SSH (`StrictHostKeyChecking=no`) and WinRM (`server_cert_validation="ignore"`) send passwords without checking the VM; keep host keys at deploy, check WinRM against the platform CA | `engine/vmexec.py`, `engine/vmadmin.py` | decide |
-| 4 | No browser security headers (HSTS, CSP/frame-ancestors, nosniff, Referrer-Policy) | `container/caddy/Caddyfile` | quick |
-| 5 | Download from URL blocks link-local only: loopback and the stack's own containers (OpenBao, step-ca) are reachable | `engine/downloads.py` `check_url` | decide |
-| 6 | CSV exports don't neutralize `= + - @` cells (syslog lines come from any host) | `web/src/components/Paging.tsx` `csv` | quick |
-| 7 | Grants and role bindings match the username, which comes from `preferred_username` or email; a rename could pick up someone else's grants | `permissions.py`, `security.py` `resolve_roles`, `auth/oidc.py` | decide |
-| 8 | Small: `/hosts/{id}/resources` answers for any host; tus `Upload-Length` unchecked and bad headers give a 500; `/api/docs` public; `caddy:2` and `postgres:17-alpine` float; the API image runs as root; raw errors to the browser (`api/remote.py` create_session); an environment without a named network allows IPs of every network in its certificates (`api/ca.py`) | as named | quick |
-
-**Code**
-
-| # | Finding |
-|---|---|
-| 9 | Over the ~1,000-line rule: `api/environments.py` 1,164, `engine/runner.py` 1,149, `deploy/labape_deploy/steps.py` 1,000 (CLAUDE.md still says runner ~730) |
-| 10 | 352 imports inside functions: circular dependencies worth untangling |
-| 11 | `main.py`'s router list is one long line (gotcha 8): one per line |
-| 12 | Hyper-V was dropped (question 175) but `tofu/*/hyperv`, `api/hosts.py`, `engine/pathperms.py` and scripts still carry it |
-| 13 | Tests run on SQLite only (gotcha 2): a Postgres run would catch foreign-key bugs |
-| 14 | A session that expires mid-use shows errors instead of the sign-in page (only `App.tsx` startup handles 401) |
-| 28 | Dead code after `return` in `engine/hostio.py` `tunnel_conn` (lines 283-291, names that don't exist there; a lost function from a merge) |
-
-Ruff otherwise: the syslog SQL hit is a false alarm (bound parameters), `sha1` is checksums only, libvirt XML parsed without `defusedxml` (host output, low), 3 unused imports.
-
-**Missing features (decide):** 15 sharing an environment or handing it to another owner (a viewer sees nothing; stuck when the owner leaves); 16 a Users page for admins (last sign-in, disable, which revokes tokens and sessions, and open sessions).
-
-**Tooltips and descriptions (quick)**
-- 17: Guide §10 says every button has a tooltip; about 20 action buttons don't (drive pool Take out / Take offline / Scrub / Stop, Mail Use this server, Certificates Revoke… and Request, Rotate N now, Quotas Add / Edit, VM Take snapshot / Refresh, Dashboard Silence, Fix, Run the preview, Add N hosts and deploy, Add a part, Add account, Templates Edit). Dialog Cancel/Save are fine without.
-- 18: help text for the token form's role checkboxes (raw ids) and limits (1-600, 1-480, 1-4096); Settings OpenBao KV mount, AppRole mount, Role ID, Conjur Account, Authenticator; Parts Prefix; template Edition, Server SKU, Min vCPUs.
-- 19: `Certificates.tsx` example uses the lab's domain (`app1.jlm.abq`): use `app1.example.test`.
-
-**Guides and Help (quick)**
-- 20: The guides cover everything to v0.6.2; the two backlog lines (folder check, SMART flag) wait for the release as usual; #249 still needs its CHANGELOG line.
-- 21: Guide §1's role table lacks `console` (`labape-console`).
-- 22: Admin §11 lacks `rewrap-master`, `ca-repass`, `stores-configure`, `push-vm-key`.
-- 23: `Command-Line.md` doesn't mention `bootstrap-secrets.sh`, `check-network.sh`, `generate-inventory.py`.
-- 24: Help links (`HelpHere.tsx`): `/environment-templates` should open guide §14 "Environment templates", `/admin/mail` admin §6.1 "The stack's mail server"; `/admin` has no entry.
-
-Done well (keep): hashed tokens and one-time break-glass, the cross-origin write check, the logo without SVG and with a sandbox CSP, the Help Markdown renderer without HTML, signed-tag updates, hash-locked pip, the certificate token kept off the VMs.
+The review's findings, with what is done, decided and open, are in [Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md). Quick fixes are on the branch `2026-10-23-review-quick-fixes` (not yet merged; the web build has not been run for it). Answered: 196 (a token ends with its owner), 197 (revoke ends break-glass sessions), 198 (SSH and WinRM verify); not built yet. Open: 199-202 in `Planning_Questions.md`; the next free question is 203.

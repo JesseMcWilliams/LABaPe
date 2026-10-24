@@ -7,6 +7,16 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **Drives and volumes flags a drive with a SMART warning:** an alert on top, a tinted row with a chip, and "check it" beside a passed health (#249).
+- **Browser security headers** from the stack's Caddy: HSTS, `nosniff`, `Referrer-Policy` and `frame-ancestors 'self'`.
+- **Tooltips** on the remaining action buttons (drive pool actions, quotas, certificates, templates, parts, and others); the Help links for Environment templates and the stack's mail server open their own sections.
+
+### Fixed
+
+- **A CSV export neutralizes cells a spreadsheet would run as a formula** (a text cell starting with `=`, `+`, `-` or `@` gets a leading quote).
+
 ## [0.6.2] - 2026-10-23
 
 v0.6.2 checks and fixes a KVM host's VM, template and files folders when you change them (a preview first, then the owner, mode and mount are fixed, never what is inside), and fixes converting a VM to a template on a remote KVM host, which failed on a deleted SSH key path.

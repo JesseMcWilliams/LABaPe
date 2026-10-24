@@ -363,7 +363,7 @@ function SilenceDialog({ alert, onClose }: { alert: MonAlert | null; onClose: (c
       </DialogContent>
       <DialogActions>
         <Button onClick={() => onClose(false)}>Cancel</Button>
-        <Button variant="contained" onClick={save}>Silence</Button>
+        <Button variant="contained" onClick={save} title="Silence this condition for the time chosen">Silence</Button>
       </DialogActions>
     </Dialog>
   );

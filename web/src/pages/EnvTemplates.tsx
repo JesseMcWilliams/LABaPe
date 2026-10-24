@@ -175,7 +175,7 @@ export default function EnvTemplates() {
                   </Link>
                 )}
                 <Button size="small" onClick={() => setHistory(t)} title="Its versions, what changed between two, and going back to one">History</Button>
-                {t.can_edit && <Button size="small" onClick={() => setEditing(t)}>Edit</Button>}
+                {t.can_edit && <Button size="small" onClick={() => setEditing(t)} title="Change this template (saves a new version)">Edit</Button>}
                 {t.can_edit && (
                   <ActionButton size="small" color="error" tip="Delete this template (environments made from it are not affected)"
                     confirm={{ title: `Delete ${t.name}?`, body: "Environments made from it are not affected.", confirmLabel: "Delete" }}
