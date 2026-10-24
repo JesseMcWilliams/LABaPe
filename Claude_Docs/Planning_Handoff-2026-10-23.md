@@ -4,7 +4,7 @@
 
 ## 1. State
 
-**Latest release:** v0.6.0 (2026-10-23)
+**Latest release:** v0.6.1 (2026-10-23)
 
 `main` has everything below merged. **v0.6.0** was released the same day (environment templates, the Fix buttons); **v0.6.1** follows (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying what a job needs from a linked stack: the release-prep PR is the last open one). The summary paragraph is in `Release-Summary-0.6.1.local.md` (gitignored). pytest: **560 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves (the `test:writes` ones, and the ones waiting on something overdue); the suite now also opens the Templates page and starts a form from a starter.
 
