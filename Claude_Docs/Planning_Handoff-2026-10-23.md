@@ -4,7 +4,7 @@
 
 ## 1. State
 
-**Latest release:** v0.6.1 (2026-10-23)
+**Latest release:** v0.6.2 (2026-10-23)
 
 `main` has everything below merged and **no PR is open**. **v0.6.0** (environment templates, the Fix buttons) and **v0.6.1** (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying by itself what a job needs from a linked stack) were both released on 2026-10-23, each with its signed tag and GitHub release (the SBOM, `labape-mcp-X.Y.Z.mcpb` and `labape-skill-X.Y.Z.zip` attached). pytest: **560 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves.
 

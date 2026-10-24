@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-23
+
+v0.6.2 checks and fixes a KVM host's VM, template and files folders when you change them (a preview first, then the owner, mode and mount are fixed, never what is inside), and fixes converting a VM to a template on a remote KVM host, which failed on a deleted SSH key path.
+
 ### Added
 
 - **A host's VM, template and files folders are checked and fixed when you change them:** saving a different path on a KVM host's settings looks at it on the host (the mount, the folders above, who can write and read it, free space, SELinux) and fixes what it can (creates it, owner, group and mode on that folder only, never what is inside), after showing what it would change. A problem it can't fix, such as a read-only drive, stops the save. **Check folders** and **Fix folders** buttons do the same for the folders as typed. AppArmor is reported (and the rule to add if it logged a denial), never changed. It works on hosts reached over SSH with an access account.
