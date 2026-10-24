@@ -25,6 +25,7 @@ This guide is for LABaPe admins (the `admin` role, `labape-admins` by default). 
 19. [Windows sign-on and the stack's names](#19-windows-sign-on-and-the-stacks-names)
 20. [Console access and the MCP server for AIs and scripts](#20-console-access-and-the-mcp-server-for-ais-and-scripts)
 21. [The platform CA and certificates](#21-the-platform-ca-and-certificates)
+22. [Users](#22-users)
 
 ## 1. Installing
 
@@ -52,7 +53,7 @@ There's no standing local admin password. For the first admin sign-in, or when e
 docker compose exec labape-api labape breakglass enable [--minutes 5] [--local-only]
 ```
 
-It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, which opens a 60-minute admin session. `--local-only` makes it work only from the host itself (`https://localhost:8443`, or an SSH tunnel). A banner marks a break-glass session, and everything in it is audited. `labape breakglass revoke` cancels unused credentials. Details: [container/README.md § Break-glass access](../container/README.md#break-glass-access).
+It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, which opens a 60-minute admin session. `--local-only` makes it work only from the host itself (`https://localhost:8443`, or an SSH tunnel). A banner marks a break-glass session, and everything in it is audited. `labape breakglass revoke` also ends break-glass sessions that are already open: each stops at its next request. `labape breakglass revoke` cancels unused credentials. Details: [container/README.md § Break-glass access](../container/README.md#break-glass-access).
 
 ## 3. KVM hosts
 
@@ -66,6 +67,8 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 | Fallback bridge | Used when a network has no bridge on this host |
 | Concurrent jobs | How many jobs run at once on this host |
 
+**Folders are checked when you change them.** Saving a different VM, template or files path looks at it on the host first (the mount, the folders above it, who can write and read it, free space, SELinux) and shows a preview; confirming fixes the owner, mode and mount, never what is inside. AppArmor is reported, never changed. **Check folders** and **Fix folders** do the same on demand.
+
 **Remote hosts.** Install the remote host with `--profile kvm`. The host's page shows the worker's SSH key in a **Remote access over SSH** panel, with Copy; add it to that user's `~/.ssh/authorized_keys` there. Then use **Check connection**: it reports the libvirt version, the tools jobs need, and whether the storage paths are writable. Jobs for a remote host run on that host over SSH. One environment stays on one host.
 
 **Networks on a host** (the host's page → Networks): attach each catalog network the host carries, with the host's bridge for it, an optional slice of the network's static pool for this host only (so hosts sharing a VLAN never collide), and which network is the default. A network still used by an environment on the host can't be detached.
@@ -74,7 +77,7 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 
 **Deleting a KVM host.** A host's page → Settings → **Delete host** (asks to confirm) takes it out of LABaPe: it disappears from every list and from monitoring at once and stops counting against the host limit. It can't be deleted while it is the primary file host (make another host primary first), runs this stack, has jobs queued or running, or is used by an environment (destroy or move those first). Deleted hosts are listed at the bottom of Admin → KVM hosts with the day each is removed for good; **Restore** brings one back, turned off. Settings → History → *Deleted KVM hosts (days)* sets the period (30 by default). After it, the host's facts, metrics, templates and network links are removed; jobs keep their history. Nothing is changed on the host itself: the worker's SSH key stays authorized there until you remove it.
 
-**Drive pages.** A drive in Drives and volumes (and the **Drive details** link on a drive's alert) opens its own page: the drive's facts and layout, charts of its SMART readings (pending, reallocated and uncorrectable sectors, temperature, with the limits), when each number last moved, and the full attribute table. LABaPe reads SMART every 6 hours and on **Read now**, keeps the readings 365 days (Settings → History → Drive history) and the charts need two readings to show a trend.
+**Drive pages.** A drive in Drives and volumes (and the **Drive details** link on a drive's alert) opens its own page: the drive's facts and layout, charts of its SMART readings (pending, reallocated and uncorrectable sectors, temperature, with the limits), when each number last moved, and the full attribute table. LABaPe reads SMART every 6 hours and on **Read now**, keeps the readings 365 days (Settings → History → Drive history) and the charts need two readings to show a trend. A drive with a SMART warning (reallocated or pending sectors, wear, a failed health) is also flagged in **Drives and volumes**: an alert on top, a coloured row with a FAILING or warning chip, and a "check it" chip beside a passed health.
 
 **Drive Pools.** A host that has a Linux RAID array (mdadm), a ZFS pool or an LVM volume group gets a **Drive Pools** section between Drives and volumes and NICs. Each pool shows its state (healthy, checking, rebuilding, degraded, failed), size and use, the progress of a check or rebuild, and its drives with their state and errors. A degraded or failed pool, a rebuild, a faulty drive and ZFS errors also appear on the Dashboard and as Monitoring alerts.
 - **Check** (mdadm) / **Scrub** (ZFS) reads and verifies every drive; **Stop** ends it. **Repair** (mdadm) rewrites blocks that differ between the drives.
@@ -159,7 +162,7 @@ Settings is in sections, listed on the left: **Sign-in** (directory group search
 | History | Days to keep job logs, user errors, deleted KVM hosts, revoked or expired API tokens and drive (SMART) history, and the audit trail (0 keeps the audit trail forever, the default) |
 | Syslog | Sends every audit event to a syslog server over UDP, TCP or TLS (RFC 5424, JSON body). **Send test message** checks it. |
 | Email (SMTP) | Server, port, security (none, STARTTLS, SSL/TLS), optional sign-in, from address. **Email people when their jobs finish** turns on job emails. **Send test email** checks it. A stack starts with this pointed at its own mail server (Mailpit, [§6.1](#61-the-stacks-mail-server)). |
-| Directory (group search) | An Authentik API token that can only view groups and users (`authentik_core.view_group`, `authentik_core.view_user`; users so LABaPe can tell when an account that owns an API token was deactivated or removed), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. |
+| Directory (group search) | An Authentik API token that can only view groups and users (`authentik_core.view_group`, `authentik_core.view_user`; users so LABaPe can tell when an account that owns an API token was deactivated or removed), and the Authentik URL (blank uses the sign-in issuer's address). Group fields then search Authentik. **Test search** shows what the token can see. On a stack set up before the user check existed, run **Fix** on the dashboard's directory check once so the token's role can view users. |
 | Downloads | Allow plain HTTP for Download from URL (off by default), and an HTTP(S) proxy |
 | VM accounts | The Linux admin user for new environments (default `labape`). Existing environments keep theirs. |
 | Secret stores | The default store for new environment secrets, and an OpenBao/Vault and a Conjur section, each with **Test connection**. See [§8.1](#81-external-secret-stores). |
@@ -491,6 +494,8 @@ Scripts and AI agents can run commands on an environment's VMs and open text ses
 
 **Claude Desktop.** `python tools/helpers/build_mcpb.py` builds `dist/labape-mcp-<version>.mcpb`; import it in Claude Desktop. It asks for the LABaPe address and the token (kept in the system's secret store), and optionally a CA file and a switch to skip certificate checks. It needs Python 3.9 or newer on the computer. A wrong token or an unreachable stack is reported on the first tool call.
 
+**VM connections are checked.** Commands, text sessions and browser SSH on a VM check its SSH host key, and WinRM commands check its certificate, against what LABaPe recorded right after the deploy (or at the first connection when there is no record). A mismatch is refused and says so. A deploy forgets the old record and a destroy removes it; for a VM rebuilt outside LABaPe, run `labape vm-identity forget ADDRESS` ([§11](#11-commands-inside-the-containers)). Ansible's own connections during a deploy, and RDP, are not checked.
+
 ## 21. The platform CA and certificates
 
 The stack's own CA (step-ca, one container) signs the certificates of the stack's services and of every VM LABaPe deploys, and anyone with the right role can ask it for more on the **Certificates** page ([Web-Interface-Guide.md §12](Web-Interface-Guide.md#12-certificates)).
@@ -509,3 +514,12 @@ docker restart labape-ca
 ```
 
 Then tick **The CA applies extra attributes** on the CA tab and save. LABaPe checks every certificate it gets back and revokes and refuses one that lacks what was asked for, so a missing template shows up as an error, not a wrong certificate. (This feature has not yet been run against a live step-ca: try it on a test request first.)
+
+## 22. Users
+
+**Admin → Users** lists everyone who has signed in: roles, last sign-in, active personal API tokens and open remote sessions. Search by name, display name or email, or show only disabled accounts.
+
+- **Disable** turns an account off in LABaPe only: its sessions stop at the next request, its personal tokens are revoked, and it can't sign in until you **Enable** it again. The sign-in provider is not changed, remote sessions already open are not closed, and you can't disable your own account.
+- An account that is deactivated or removed in Authentik is disabled here by itself within 15 minutes, with its personal tokens revoked (the worker asks Authentik through the Directory settings' API token, whose role must be able to view users: [§6](#6-settings)). A sign-in clears a mark the check made, never one an admin made. When Authentik cannot be asked, nothing changes.
+- **Role bindings and sharing are tied to the account.** A grant or binding made for a username is tied to that account's provider and stable id at its next sign-in, so a name later given to a different account picks up nothing. Quotas still match by name.
+- The web server sends HSTS, `X-Content-Type-Options`, `Referrer-Policy` and a `frame-ancestors 'self'` policy.
