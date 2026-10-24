@@ -19,6 +19,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import socket
@@ -455,6 +456,16 @@ def history_keys() -> list[str]:
 
 # --- running ---------------------------------------------------------------
 
+_KEY_LINE = re.compile(r"^(\s*ansible_ssh_private_key_file:).*$", re.MULTILINE)
+
+
+def current_key_in_inventory(inv: str) -> str:
+    """A stored inventory names the SSH key path of the job that made it. On a remote host that is
+    the job's own folder (`~/.labape/jobs/<id>/.labape-remote/ssh-key`), removed when the job ends,
+    so a later job there reads the path the running job was given instead."""
+    return _KEY_LINE.sub(lambda m: m.group(1) + " \"{{ lookup('env', 'LABAPE_SSH_PRIVATE_KEY_PATH') }}\"", inv)
+
+
 def prepare_template_job(db: Session, job: Job, host: KvmHost) -> Path:
     """Template jobs run in their own engine copy (removed afterwards).
     Promote also needs the environment's inventory, which lives only in the
@@ -465,6 +476,8 @@ def prepare_template_job(db: Session, job: Job, host: KvmHost) -> Path:
         inv = get_secret(db, f"environment/{job.environment_id}/inventory") or ""
         if not inv:
             raise RuntimeError("the environment has no stored inventory; redeploy it first")
+        if hostio.is_remote(host.libvirt_uri):
+            inv = current_key_in_inventory(inv)
         target = work / "ansible" / "inventory" / "generated"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(inv, encoding="utf-8")

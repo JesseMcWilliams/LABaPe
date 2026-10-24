@@ -202,3 +202,15 @@ def test_relay_reports_a_guacd_error_as_a_failure():
 
     why, sent = asyncio.run(go())
     assert why.startswith("failed: Server refused") and any("error" in t for t in sent)
+
+
+def test_a_stored_inventory_gets_the_running_jobs_key_path():
+    from labape.engine.runner import current_key_in_inventory
+    inv = ("all:\n  hosts:\n    lin1: {ansible_host: 1.2.3.4}\n    lin2:\n      ansible_user: labape\n"
+           "      ansible_ssh_private_key_file: /home/labape/.labape/jobs/111/.labape-remote/ssh-key\n"
+           "    win1:\n      ansible_connection: winrm\n")
+    out = current_key_in_inventory(inv)
+    assert "jobs/111" not in out and "      ansible_user: labape\n" in out and "win1:\n      ansible_connection: winrm" in out
+    import yaml
+    assert yaml.safe_load(out)["all"]["hosts"]["lin2"]["ansible_ssh_private_key_file"] == \
+        "{{ lookup('env', 'LABAPE_SSH_PRIVATE_KEY_PATH') }}"
