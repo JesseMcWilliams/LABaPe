@@ -18,6 +18,30 @@ import {
 
 type HostForm = Omit<KvmHost, "id" | "resources">;
 interface CheckResult { ok: boolean; remote: boolean; libvirt: string; problems: string[] }
+interface PathItem { level: "ok" | "info" | "fix" | "fixed" | "problem"; text: string }
+interface PathsResult {
+  available: boolean; reason: string; ok: boolean; changes: number;
+  paths: { path: string; kind: string; ok: boolean; changes: number; items: PathItem[] }[];
+}
+
+// What a host's folders need (VM disks, templates, files), per path, as a list of what is fine, what
+// would change (or did) and what can't be fixed from here.
+function PathsReport({ result }: { result: PathsResult }) {
+  if (!result.available) return <Alert severity="info">{result.reason}</Alert>;
+  const mark: Record<PathItem["level"], string> = { ok: "✓", info: "·", fix: "→", fixed: "✓ changed:", problem: "✗" };
+  return (
+    <Alert severity={result.ok ? (result.changes ? "warning" : "success") : "error"}>
+      {result.paths.map((r) => (
+        <Box key={r.path} sx={{ mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{r.path}</Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2, listStyle: "none" }}>
+            {r.items.map((i, n) => <li key={n}>{mark[i.level]} {i.text}</li>)}
+          </Box>
+        </Box>
+      ))}
+    </Alert>
+  );
+}
 
 // A qemu+ssh host (design §22.4): the worker's key to authorize there, and a connection check.
 function RemoteAccess({ hostId }: { hostId: number | null }) {
@@ -131,6 +155,8 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
   const [form, setForm] = useState<HostForm>(blank);
   const [nets, setNets] = useState<Network[]>([]);
   const [errs, setErrs] = useState<{ summary: string; fields: FieldErrors }>({ summary: "", fields: {} });
+  const [pathsResult, setPathsResult] = useState<PathsResult | null>(null);
+  const [pathsBusy, setPathsBusy] = useState(false);
 
   useEffect(() => {
     if (isNew) return;
@@ -143,14 +169,49 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
   }, [id, isNew]);
 
   const confirm = useConfirm();
+  // The folders as the form has them: what the host would be asked to check or fix.
+  const pathsBody = () => ({
+    vm_storage_path: form.vm_storage_path, template_storage_path: form.template_storage_path,
+    files_path: form.is_primary || form.files_from_share ? "" : (form.files_path || host?.files_dir || ""),
+  });
+  const pathsChanged = !isNew && !!host && (form.vm_storage_path !== host.vm_storage_path
+    || form.template_storage_path !== host.template_storage_path || (form.files_path ?? "") !== (host.files_path ?? ""));
+  const inspectPaths = async (fix: boolean) => {
+    setPathsBusy(true);
+    setErrs({ summary: "", fields: {} });
+    try {
+      const r = await api.post<PathsResult>(`/api/hosts/${id}/paths`, { ...pathsBody(), fix });
+      setPathsResult(r);
+      return r;
+    } catch (err) {
+      setErrs(fromApiError(err));
+      return null;
+    } finally { setPathsBusy(false); }
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErrs({ summary: "", fields: {} });
+    let preview: PathsResult | null = null;
+    if (pathsChanged) {                       // what the new folders need on the host, before anything is saved
+      preview = await inspectPaths(false);
+      if (!preview) return;
+      if (!preview.ok) return;                // the report shows what can't be fixed from here
+    }
     if (!(await confirm({
       title: isNew ? `Register ${form.name || "this host"}?` : `Save ${form.name}?`, confirmLabel: isNew ? "Register" : "Save",
       body: isNew
         ? `LABaPe starts using ${form.libvirt_uri}: the worker collects its load every minute and lists its templates. Attach networks on the host's page next.`
-        : "New jobs on this host use the changed settings. Running jobs and existing VMs aren't affected.",
+        : (
+          <Stack spacing={1} sx={{ px: 3, pb: 1 }}>
+            <Typography variant="body2">New jobs on this host use the changed settings. Running jobs and existing VMs aren&apos;t affected.</Typography>
+            {preview?.available && preview.changes > 0 && (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>Saving also changes these on {form.name}, as the service user needs them:</Typography>
+                <PathsReport result={{ ...preview, paths: preview.paths.map((r) => ({ ...r, items: r.items.filter((i) => i.level === "fix") })).filter((r) => r.items.length) }} />
+              </>
+            )}
+          </Stack>
+        ),
     }))) return;
     try {
       if (isNew) {
@@ -223,6 +284,18 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
                 {isNew ? "Register" : "Save"}
               </ActionButton>
               <Button component={RouterLink} to="/admin/hosts" title="Leave without saving">Cancel</Button>
+              {!isNew && (
+                <ActionButton variant="outlined" disabled={pathsBusy} onClick={() => inspectPaths(false)}
+                  tip="Look at the VM, template and files folders on the host for the service user and the hypervisor's user (changes nothing)">
+                  Check folders
+                </ActionButton>
+              )}
+              {!isNew && pathsResult?.available && pathsResult.changes > 0 && pathsResult.ok && (
+                <ActionButton variant="outlined" disabled={pathsBusy} onClick={() => inspectPaths(true)}
+                  tip="Create the folders and set their owner, group and mode as listed (never touches what is inside them)">
+                  Fix folders
+                </ActionButton>
+              )}
               {!isNew && host && (
                 <ActionButton color="error" variant="outlined" tip="Delete this host from LABaPe (restorable until the retention period ends)"
                   confirm={{ title: `Delete ${host.name}?`, confirmLabel: "Delete", danger: true,
@@ -232,6 +305,7 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
                 </ActionButton>
               )}
             </Stack>
+            {pathsResult && <PathsReport result={pathsResult} />}
           </Stack>
         </Paper>
       ) : (
