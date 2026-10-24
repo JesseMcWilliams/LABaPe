@@ -7,6 +7,14 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **A host's VM, template and files folders are checked and fixed when you change them:** saving a different path on a KVM host's settings looks at it on the host (the mount, the folders above, who can write and read it, free space, SELinux) and fixes what it can (creates it, owner, group and mode on that folder only, never what is inside), after showing what it would change. A problem it can't fix, such as a read-only drive, stops the save. **Check folders** and **Fix folders** buttons do the same for the folders as typed. AppArmor is reported (and the rule to add if it logged a denial), never changed. It works on hosts reached over SSH with an access account.
+
+### Fixed
+
+- **Converting a VM to a template on a remote KVM host** failed with "no such identity ... jobs/<id>/.labape-remote/ssh-key": the stored inventory named the key path of the deploy job's folder, removed when that job ended. The job now uses its own key path.
+
 ## [0.6.1] - 2026-10-23
 
 v0.6.1 adds template history and lets a stack copy by itself what a job needs from a linked stack. A template's History button lists its versions, compares any two in plain sentences and restores an older one as a new version. A deploy or template build whose OS has no ISO on this stack now takes one from a linked stack that has it (and a deploy takes the installers of the applications you chose), as the first step of the job, with progress in its log: the stack no longer fails and waits for a manual Copy here. A missing ISO is also said plainly, before anything is created. On the New environment form a host group's Count of 0 asks whether to remove the group, and each group has a Remove host group button. The store Fix that gives LABaPe a new login now finishes when the command-line vault on the host has drifted, with a warning and a command to rebuild it.

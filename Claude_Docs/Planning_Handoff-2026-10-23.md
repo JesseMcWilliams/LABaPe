@@ -29,7 +29,10 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | #239 | A missing install ISO is said plainly before anything is created (found on the Director) | log |
 | #240 | **A stack copies by itself what a job needs from a linked stack** (the install ISO of an OS, installers of chosen applications) | §74 |
 | #241, #242 | v0.6.1 release prep and the release | |
-| (this PR) | This handoff after the v0.6.1 release | |
+| #243 | This handoff after the v0.6.1 release | |
+| #244 | **A host's folders checked and fixed on save** (`engine/pathperms.py`, a Check / Fix folders button; AppArmor reported only) | §50.3a |
+| #245 | **Convert to template on a remote host** used the deploy job's removed SSH key path | log |
+| (this PR) | v0.6.2 release prep | |
 
 ## 2. How much of it has been seen
 
@@ -48,6 +51,7 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 
 ## 3. What's left (in order)
 
+0. **Try v0.6.2 on `garagepc` (the user):** deploy it there, retry the convert to template on `Single1` (job 112 failed with the stale key path), then change the VM folder on its host page to `/data2/VMs/LABaPe` to see the folder preview and fix against a real `libvirt-qemu` and AppArmor. Neither has run on a real host; the script itself was run under WSL as a plain user.
 1. **Update the Director to v0.6.1 (the user did v0.6.0 already) and try the automatic copy for real:** the Director has no Rocky 9 ISO and OZ has one, so a Rocky 9 template build (or a deploy from the ISO) on `garagepc` should say "no ISO for rocky9 here; copying ... from the linked stack ..." in its job log, then carry on. Then a deploy there of a host group that picks OZ's template `debian13-linktest-2026.10` (2 GB): the deploy-time template copy. Also the Directory (group search) Fix on the Director. If anything fails, read its job log first (the Director's two failures this session were both a missing ISO).
 2. **Reset the lab clone and reinstall the agent** (the user runs them; the classifier blocks them from a session): `git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main`, then `~/LABaPe-web/deploy/update-agent/install.sh`. The clone reads `v0.6.0-dirty` now: a deploy overlays files on it and never moves its checkout, so it shows a version behind the running one until reset.
 3. **Delete the test template** `debian13-linktest-2026.10` from OZ when the linked-template tests are done: `/data/VMs/LABaPe/templates/debian13-linktest-2026.10.{qcow2,json}` on kvm1 (the qcow2 is read-only: `chmod u+w` first).
