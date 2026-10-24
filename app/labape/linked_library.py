@@ -51,7 +51,7 @@ def local_library(db: Session) -> dict:
             templates.append({"name": t.name, "size": max(filedist.size_of(ep, _template_path(p, t.name)), 0),
                               **{k: getattr(t, k) for k in TEMPLATE_KEYS}})
     files = [{"id": f.id, "category": f.category, "name": f.name, "size": f.size, "sha256": f.sha256,
-              "os_key": f.os_key, "targets": f.targets or [], "description": f.description}
+              "os_key": f.os_key, "is_default": bool(f.is_default), "targets": f.targets or [], "description": f.description}
              for f in db.scalars(select(StoredFile).where(StoredFile.present.is_(True)).order_by(StoredFile.category,
                                                                                                StoredFile.name))]
     return {"templates": [t for t in templates if t["size"] > 0], "files": files}
