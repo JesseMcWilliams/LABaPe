@@ -31,6 +31,7 @@ Open the address your admin gave you and choose the sign-in button (usually **Au
 | deployer | `labape-deployers` | Create, deploy, redeploy and destroy your own environments; see their credentials |
 | template_editor | `labape-template-editors` | Everything a deployer can do, plus build, refresh, promote and edit VM templates |
 | file_manager | `labape-file-managers` | Upload, download from a URL, edit and delete files |
+| console | `labape-console` | Open text sessions and run commands on VMs through the console API and the MCP server ([§11](#11-api-tokens)); the web interface's own pages need no more than your other roles |
 | auditor | `labape-auditors` | Read the audit log, the syslog messages and the remote-session log, and play session recordings; change nothing |
 | ca_requester | `labape-ca-requesters` | Request certificates from the platform CA ([§12](#12-certificates)) |
 | ca_auditor | `labape-ca-auditors` | See every certificate and the CA's details; change nothing |

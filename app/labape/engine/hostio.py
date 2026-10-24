@@ -280,12 +280,3 @@ def tunnel_conn(conn: str, port: int) -> str:
     parts = urlsplit(conn)
     userinfo = parts.netloc.rsplit("@", 1)[0] + "@" if "@" in parts.netloc else ""
     return urlunsplit((parts.scheme, f"{userinfo}127.0.0.1:{port}", parts.path, parts.query, parts.fragment))
-    log.write(f"labape: copying {local.name} ({size / 2**30:.1f} GB) to {host.target}:{remote_dir}\n")
-    with open(local, "rb") as fh:
-        res = subprocess.run([*host.ssh_base(),
-                              f"mkdir -p {shlex.quote(remote_dir)} && cat > {shlex.quote(remote)}.part && "
-                              f"mv {shlex.quote(remote)}.part {shlex.quote(remote)}"],
-                             stdin=fh, capture_output=True, timeout=6 * 3600, env=tool_env(), check=False)
-    if res.returncode != 0:
-        raise RuntimeError(f"copying {local.name} failed: {res.stderr.decode(errors='replace').strip()}")
-    return remote

@@ -105,7 +105,7 @@ export default function EnvAccounts({ envId }: { envId: string }) {
               ))}
             </TableBody>
           </Table>
-          <Button sx={{ mt: 1 }} onClick={() => setDraft([...draft, { name: "", kind: hasDc ? "domain" : "local", hosts: [], groups: [] }])}>Add account</Button>
+          <Button sx={{ mt: 1 }} onClick={() => setDraft([...draft, { name: "", kind: hasDc ? "domain" : "local", hosts: [], groups: [] }])} title="Add a row for another account">Add account</Button>
           <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 1 }}>
             Removing an account from the list stops LABaPe managing it and forgets its password; it stays on the VMs (remove it there from the VM's Accounts page).
           </Typography>

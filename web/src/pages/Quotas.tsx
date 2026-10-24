@@ -33,7 +33,7 @@ export default function Quotas() {
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
         <Typography variant="h5" sx={{ flexGrow: 1 }}>Quotas</Typography>
-        <Button variant="contained" onClick={() => { setFormError(""); setEdit({ ...EMPTY }); }}>Add quota</Button>
+        <Button variant="contained" onClick={() => { setFormError(""); setEdit({ ...EMPTY }); }} title="Set limits for a user or group">Add quota</Button>
       </Stack>
       <Typography variant="body2" color="text.secondary">
         What a user's environments (the ones they created and that aren't destroyed) may ask for, checked when an environment is
@@ -51,7 +51,7 @@ export default function Quotas() {
               {LIMITS.map(([k]) => <TableCell key={k}>{show(q[k] as number | null)}</TableCell>)}
               <TableCell>
                 <Stack direction="row" spacing={0.5}>
-                  <Button size="small" onClick={() => { setFormError(""); setEdit({ ...q }); }}>Edit</Button>
+                  <Button size="small" onClick={() => { setFormError(""); setEdit({ ...q }); }} title="Change this quota">Edit</Button>
                   <ActionButton size="small" color="error" tip="Remove this quota"
                     confirm={{ title: "Remove the quota?", confirmLabel: "Remove", body: "The next quota that applies (group or default), or none, takes over." }}
                     onClick={() => api.del(`/api/admin/quotas/${q.id}`).then(load)}>Remove</ActionButton>

@@ -92,7 +92,7 @@ export default function PartsEditor({ rows, onChange, list, selfId }: {
           </Stack>
         );
       })}
-      <div><Button size="small" onClick={() => onChange([...rows, { template_id: "", prefix: "", label: "", overrides: {}, version: "" }])}>Add a part</Button></div>
+      <div><Button size="small" onClick={() => onChange([...rows, { template_id: "", prefix: "", label: "", overrides: {}, version: "" }])} title="Add another template as a part of this one">Add a part</Button></div>
     </Stack>
   );
 }

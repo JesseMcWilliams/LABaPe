@@ -172,7 +172,7 @@ function CertDialog({ id, canRevoke, canRequest, onClose, onChanged, onRenew }: 
             <TextField label="Reason (recorded)" value={reason} onChange={(e) => setReason(e.target.value)} size="small" placeholder="e.g. key leaked" />
           </Stack>
         </DialogContent>
-        <DialogActions><Button onClick={() => setRevoking(false)}>Cancel</Button><Button color="error" variant="contained" onClick={revoke}>Revoke</Button></DialogActions>
+        <DialogActions><Button onClick={() => setRevoking(false)}>Cancel</Button><Button color="error" variant="contained" onClick={revoke} title="Revoke this certificate in the register and at the CA">Revoke</Button></DialogActions>
       </Dialog>
     </Dialog>
   );
@@ -218,7 +218,7 @@ function RequestForm({ prefill, onDone }: { prefill: Cert | null; onDone: () => 
       </ToggleButtonGroup>
       {how === "key" ? (
         <>
-          <Field label="Common name" value={cn} onChange={(e) => setCn(e.target.value)} error={errs.fields.dns} help="The main DNS name, e.g. app1.jlm.abq" />
+          <Field label="Common name" value={cn} onChange={(e) => setCn(e.target.value)} error={errs.fields.dns} help="The main DNS name, e.g. app1.example.test" />
           <Field label="More DNS names" value={dns} onChange={(e) => setDns(e.target.value)} multiline minRows={2} help="One per line or separated by commas" />
           <Field label="IP addresses" value={ips} onChange={(e) => setIps(e.target.value)} multiline minRows={1} help="Optional" />
         </>
@@ -251,7 +251,7 @@ function RequestForm({ prefill, onDone }: { prefill: Cert | null; onDone: () => 
         </Stack>
         {errs.fields.uses && <Typography variant="caption" color="error">{errs.fields.uses.message}</Typography>}
       </Box>
-      <Box><Button variant="contained" disabled={busy || bad} onClick={submit}>Request the certificate</Button></Box>
+      <Box><Button variant="contained" disabled={busy || bad} onClick={submit} title="Ask the platform CA to sign it">Request the certificate</Button></Box>
       {issued && (
         <Dialog open onClose={() => { setIssued(null); onDone(); }} maxWidth="md" fullWidth>
           <DialogTitle>Certificate for {issued.certificate.subject}</DialogTitle>

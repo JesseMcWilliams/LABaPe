@@ -85,7 +85,7 @@ export default function AddHosts({ env, disabled, onStarted }: {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={busy || bad} onClick={submit}>Add {add} host{add === 1 ? "" : "s"} and deploy</Button>
+          <Button variant="contained" disabled={busy || bad} onClick={submit} title="Create the VMs and deploy them to the environment">Add {add} host{add === 1 ? "" : "s"} and deploy</Button>
         </DialogActions>
       </Dialog>
     </>

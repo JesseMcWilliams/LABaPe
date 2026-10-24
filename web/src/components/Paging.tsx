@@ -84,7 +84,9 @@ export interface Column<T> { header: string; value: (row: T) => unknown }
 
 function csv<T>(rows: T[], columns: Column<T>[]): string {
   const cell = (v: unknown) => {
-    const s = v === null || v === undefined ? "" : Array.isArray(v) ? v.join("; ") : typeof v === "object" ? JSON.stringify(v) : String(v);
+    let s = v === null || v === undefined ? "" : Array.isArray(v) ? v.join("; ") : typeof v === "object" ? JSON.stringify(v) : String(v);
+    // A text cell that a spreadsheet would run as a formula (syslog lines come from any host) gets a leading quote.
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [columns.map((c) => cell(c.header)).join(","), ...rows.map((r) => columns.map((c) => cell(c.value(r))).join(","))].join("\r\n") + "\r\n";
