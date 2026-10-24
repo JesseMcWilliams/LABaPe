@@ -6,7 +6,7 @@
 
 **Latest release:** v0.6.1 (2026-10-23)
 
-`main` has everything below merged. **v0.6.0** was released the same day (environment templates, the Fix buttons); **v0.6.1** follows (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying what a job needs from a linked stack: the release-prep PR is the last open one). The summary paragraph is in `Release-Summary-0.6.1.local.md` (gitignored). pytest: **560 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves (the `test:writes` ones, and the ones waiting on something overdue); the suite now also opens the Templates page and starts a form from a starter.
+`main` has everything below merged and **no PR is open**. **v0.6.0** (environment templates, the Fix buttons) and **v0.6.1** (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying by itself what a job needs from a linked stack) were both released on 2026-10-23, each with its signed tag and GitHub release (the SBOM, `labape-mcp-X.Y.Z.mcpb` and `labape-skill-X.Y.Z.zip` attached). pytest: **560 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves.
 
 The session ran in two parts: the lab checks left over from 2026-10-22, then the follow-ups that came out of them.
 
@@ -28,7 +28,8 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | #238 | New environment: **count 0 asks to remove the host group**; a labelled Remove host group button | |
 | #239 | A missing install ISO is said plainly before anything is created (found on the Director) | log |
 | #240 | **A stack copies by itself what a job needs from a linked stack** (the install ISO of an OS, installers of chosen applications) | §74 |
-| (this PR) | v0.6.1 release prep: SBOM, guides, CHANGELOG, this handoff | |
+| #241, #242 | v0.6.1 release prep and the release | |
+| (this PR) | This handoff after the v0.6.1 release | |
 
 ## 2. How much of it has been seen
 
@@ -41,24 +42,26 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | CA restart, OpenBao restart + unseal through the agent | **Live on OZ**; a new store login and a Conjur restart were not run |
 | Syslog fix | Unit tests; live for the refusal only (OZ's syslog is the stack's collector) |
 | The update agent's `restart_service` and `stores_setup` | `app/tests/test_z13_update_agent.py` (real script, stub commands); `full_backup`, the CA restart and an OpenBao restart live on OZ; the Director's update to v0.6.0 was done by the user |
-| **Never run for real** | A template download from a linked stack and the deploy-time copy of a linked template (the Director has nothing OZ lacks); Rotate overdue now (nothing overdue on OZ; the user started it on the Director); the Director running this build |
+| Automatic copy from a linked stack (§74) | Unit tests with a faked library; live on OZ for the read side only (it lists the Director's ISOs, copies nothing when not needed). **The copy itself has not run:** it needs the Director (on v0.6.1) to build or deploy something whose ISO only OZ has |
+| The Director's failed builds (a Rocky deploy and a template build, 2026-10-23) | Diagnosed from its job logs: no Rocky ISO in its Files; fixed in the messages (#239) and by the automatic copy (#240) |
+| **Never run for real** | A template download from a linked stack and the deploy-time copy of a linked *template* (OZ has `debian13-linktest-2026.10` for it); the automatic ISO and installer copy; Rotate overdue now (nothing overdue on OZ; the user started it on the Director) |
 
 ## 3. What's left (in order)
 
-1. **Release v0.6.1** (if not done yet): merge the release-prep PR, then `tools/helpers/release.sh 0.6.1 Release-Summary-0.6.1.local.md --dry-run`, then without `--dry-run` (over ten minutes: run it in the background). `deploy-web.sh` from clean `main` must have been run since the last code change.
-2. **Update the Director to v0.6.1 and try the automatic copy for real:** it has no Rocky 9 ISO and OZ has one, so a Rocky 9 template build (or an environment from the ISO) on `garagepc` should say "no ISO for rocky9 here; copying ... from the linked stack ..." in its log. Then the deploy-time copy of a *template* only OZ has (OZ has `debian13-linktest-2026.10` for that, 2 GB; delete it when done: `/data/VMs/LABaPe/templates/debian13-linktest-2026.10.*` on kvm1). Also, on the Director, the Directory (group search) Fix.
-3. **Reset the lab clone** (`git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main`) and reinstall the agent (`~/LABaPe-web/deploy/update-agent/install.sh`) after a release; the clone was clean at v0.6.0.
-4. **Try the rest for real:** the syslog fix against a real outside server (against OZ's own TLS collector it works); a template download from a linked stack.
+1. **Update the Director to v0.6.1 (the user did v0.6.0 already) and try the automatic copy for real:** the Director has no Rocky 9 ISO and OZ has one, so a Rocky 9 template build (or a deploy from the ISO) on `garagepc` should say "no ISO for rocky9 here; copying ... from the linked stack ..." in its job log, then carry on. Then a deploy there of a host group that picks OZ's template `debian13-linktest-2026.10` (2 GB): the deploy-time template copy. Also the Directory (group search) Fix on the Director. If anything fails, read its job log first (the Director's two failures this session were both a missing ISO).
+2. **Reset the lab clone and reinstall the agent** (the user runs them; the classifier blocks them from a session): `git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main`, then `~/LABaPe-web/deploy/update-agent/install.sh`. The clone reads `v0.6.0-dirty` now: a deploy overlays files on it and never moves its checkout, so it shows a version behind the running one until reset.
+3. **Delete the test template** `debian13-linktest-2026.10` from OZ when the linked-template tests are done: `/data/VMs/LABaPe/templates/debian13-linktest-2026.10.{qcow2,json}` on kvm1 (the qcow2 is read-only: `chmod u+w` first).
+4. **Try the rest for real:** the syslog fix against a real outside server (against OZ's own TLS collector it works); a template download from a linked stack in the OZ-to-Director direction.
 5. **Replace the failing disk** `kvm1: /dev/sdc`. **Kerberos click-through** on `krbw1` (manual).
-6. **Later:** the published `.docx` guides (`release.sh --docx`); comparing the *composed* result of two template versions; naming a version; a bundle signature for template files; the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
+6. **Later:** the published `.docx` guides (`release.sh --docx`); comparing the *composed* result of two template versions; naming a version; a bundle signature for template files; automatic copy of other files (category *files*); the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
 
 ## 4. Lab state (2026-10-23)
 
 | Thing | State |
 |---|---|
-| kvm1 / OZ | Runs `main` as built by `deploy-web.sh` (`v0.6.0-17-g793d1a7`, then the v0.6.1 release); migrations through **0035**. `~/LABaPe-web` is dirty until the reset in §3.2. The update agent copy on the host has `restart_service` (installed by hand on 2026-10-23). The CA's provisioner has the attribute template (inlined in `ca.json`; backup `ca.json.bak-pre-attrs` in the container) and **The CA applies extra attributes** is ticked |
+| kvm1 / OZ | Runs **v0.6.1** (`deploy-web.sh` from the tag; the Dashboard reports v0.6.1, latest, no update available; every check green); migrations through **0035**. `~/LABaPe-web` reads `v0.6.0-dirty` until the reset in §3.2. The update agent copy on the host has `restart_service` and the stores-setup change (installed by hand); the agent test harness's `LABAPE_RESTART_HEALTH_SECONDS` came later and needs a reinstall to take effect (no behaviour change). The CA's provisioner has the attribute template (inlined in `ca.json`) and **The CA applies extra attributes** is ticked |
 | Authentik (`https://oz.jlm.abq:9445`) | The groups `labape-auditors`, `labape-console`, `labape-ca-admins`, `labape-ca-requesters`, `labape-ca-auditors` now exist (no members); `zz-requester` was created for a test and deleted |
-| Test data left behind | The template `debian13-linktest-2026.10` (copy of an image, for the linked-copy test); `secrets.vault.yml.bak-orphaned-*` in `~/LABaPe/` (the command-line vault before it was rebuilt); revoked test certificates (`zz-cert-test…`, `zz-attr-test…`, `zz-req-test…`); the destroyed environment `zz-t1`; the files `node-v24…msi`, `gpg4win-5.1.1.exe` copied from the Director; a Notepad window open in `l2win1`'s RDP session; the earlier `zz-` catalog drafts |
+| Test data left behind | The template `debian13-linktest-2026.10` (a copy of an image, for the linked-copy tests); `secrets.vault.yml.bak-orphaned-*` in `~/LABaPe/` on kvm1 (the command-line vault before it was rebuilt); the files `node-v24...msi`, `gpg4win-5.1.1.exe` copied from the Director; revoked test certificates (`zz-cert-test...`, `zz-attr-test...`, `zz-req-test...`); the destroyed environment `zz-t1`; a Notepad window open in `l2win1`'s RDP session; the earlier `zz-` catalog drafts. On the Director: the failed environment `Single1` left a half-made VM on `garagepc` (Redeploy or Destroy it once the ISO is there) |
 
 ## 5. Gotchas learned this session
 
