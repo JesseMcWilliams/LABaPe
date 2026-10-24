@@ -48,7 +48,8 @@ def resolve_roles(db: Session, username: str, groups: list[str]) -> set[str]:
     return roles
 
 
-def start_session(request: Request, user: User, *, breakglass: bool = False, minutes: int | None = None) -> None:
+def start_session(request: Request, user: User, *, breakglass: bool = False, minutes: int | None = None,
+                  grant: int | None = None) -> None:
     s = get_settings()
     lifetime = dt.timedelta(minutes=minutes) if minutes else dt.timedelta(hours=s.session_hours)
     request.session.clear()
@@ -56,6 +57,7 @@ def start_session(request: Request, user: User, *, breakglass: bool = False, min
         {
             "uid": user.id,
             "bg": breakglass,
+            "bgid": grant,
             "exp": (utcnow() + lifetime).timestamp(),
         }
     )
@@ -68,6 +70,8 @@ def _token_principal(request: Request, db: Session, secret: str) -> Principal:
     owner = db.get(User, t.user_id) if t else None
     if t is None or owner is None:
         raise HTTPException(status_code=401, detail="Invalid, expired or revoked API token")
+    if t.kind == "personal" and owner.disabled_at is not None:     # the owner was deactivated or removed (question 196)
+        raise HTTPException(status_code=401, detail="This token's owner is disabled")
     ip = client_ip(request)
     tokens.touch(db, t, ip)
     owner_roles = resolve_roles(db, owner.username, owner.groups or [])
@@ -90,10 +94,15 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
         request.session.clear()
         raise HTTPException(status_code=401, detail="Not signed in")
     user = db.get(User, uid)
-    if user is None:
+    if user is None or user.disabled_at is not None:
         request.session.clear()
         raise HTTPException(status_code=401, detail="Not signed in")
     breakglass = bool(sess.get("bg"))
+    if breakglass:
+        from .auth import breakglass as bg
+        if not bg.session_valid(db, sess.get("bgid")):   # `labape breakglass revoke` ends open sessions
+            request.session.clear()
+            raise HTTPException(status_code=401, detail="Not signed in")
     roles = {"admin"} if breakglass else resolve_roles(db, user.username, user.groups or [])
     return Principal(user.id, user.username, user.display_name or user.username, user.groups or [], roles, breakglass)
 

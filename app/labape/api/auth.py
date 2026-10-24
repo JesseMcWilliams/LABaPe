@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import userstatus
 from ..auth import load_providers, provider_enabled
 from ..auth import breakglass
 from ..config import get_settings
@@ -62,7 +63,10 @@ async def callback(provider: str, request: Request, db: Session = Depends(get_db
     user.display_name = ident.display_name
     user.groups = ident.groups
     user.last_login = utcnow()
+    userstatus.enable_after_sign_in(db, user)
     db.commit()
+    if user.disabled_at is not None:
+        raise HTTPException(status_code=403, detail="This account is disabled in LABaPe. Ask an administrator.")
     start_session(request, user)
     audit(db, user.username, "auth.reload_rights" if reload else "auth.login",
           detail={"provider": provider, "groups": ident.groups}, source_ip=client_ip(request))
@@ -81,7 +85,8 @@ def breakglass_login(body: BreakglassIn, request: Request, db: Session = Depends
     if user is None:
         audit(db, "breakglass", "auth.breakglass", outcome="denied", detail={"reason": reason}, source_ip=ip)
         raise HTTPException(status_code=401, detail=f"Break-glass sign-in refused: {reason}")
-    start_session(request, user, breakglass=True, minutes=get_settings().breakglass_session_minutes)
+    start_session(request, user, breakglass=True, minutes=get_settings().breakglass_session_minutes,
+                  grant=breakglass.grant_id(db, body.token.strip()))
     audit(db, "breakglass", "auth.breakglass", source_ip=ip)
     return {"ok": True}
 

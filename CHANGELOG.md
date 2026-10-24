@@ -13,6 +13,13 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 - **Browser security headers** from the stack's Caddy: HSTS, `nosniff`, `Referrer-Policy` and `frame-ancestors 'self'`.
 - **Tooltips** on the remaining action buttons (drive pool actions, quotas, certificates, templates, parts, and others); the Help links for Environment templates and the stack's mail server open their own sections.
 
+### Security
+
+- **A personal API token stops working when its owner is deactivated or removed in the sign-in provider** (question 196). The worker asks Authentik every 15 minutes (through the Directory settings' API token) about everyone who owns a live personal token; a deactivated or missing account is marked disabled, its personal tokens are revoked, and its sessions and tokens are refused. A later sign-in clears the mark. If Authentik can't be asked, nothing changes. Needs migration 0036.
+- **`labape breakglass revoke` ends break-glass sessions that are already open** (question 197), not only the credentials nobody has used yet; an open session is refused at its next request.
+
+- **Commands, text sessions and browser SSH on a VM check the VM's SSH host key, and WinRM commands check its certificate** (question 198). The keys and the WinRM certificate's SHA-256 are recorded right after a deploy (or at the first connection when there is no record); later connections must match, and a mismatch is refused with an explanation. A deploy forgets the old record, a destroy removes it, and `labape vm-identity list|forget ADDRESS` handles a VM rebuilt outside LABaPe. Ansible's own deploy-time connections are unchanged. Needs migration 0037.
+
 ### Fixed
 
 - **A CSV export neutralizes cells a spreadsheet would run as a formula** (a text cell starting with `=`, `+`, `-` or `@` gets a leading quote).

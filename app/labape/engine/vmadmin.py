@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Environment
 from ..naming import instance_names
-from . import engine_secrets, hostadmin, hostio
+from . import engine_secrets, hostadmin, hostio, vmidentity
 from .vmaccess import _hosts, _inventory
 
 WINDOWS_PROTECTED = {"Administrator", "Guest", "DefaultAccount", "WDAGUtilityAccount"}
@@ -55,26 +55,35 @@ def is_windows(group: dict) -> bool:
 class VmSsh(hostadmin.Ssh):
     """SSH to a Linux VM as its admin user with the VM key (written to a 0600 temp file)."""
 
-    def __init__(self, address: str, user: str, key_text: str):
+    def __init__(self, address: str, user: str, key_text: str, known_keys: str | None = None):
         super().__init__(address, 22, user)
+        self._known = known_keys
         self._dir = tempfile.TemporaryDirectory()
         self._key = Path(self._dir.name) / "vm_key"
         self._key.write_text(key_text if key_text.endswith("\n") else key_text + "\n", encoding="utf-8")
         os.chmod(self._key, 0o600)
 
     def base(self) -> list[str]:
-        # Lab VMs are rebuilt with new host keys under old addresses: no known_hosts for them
-        # (ssh keeps the first value of an option, so these come before SSH_OPTS).
-        return ["ssh", "-i", str(self._key), "-o", "UserKnownHostsFile=/dev/null", "-o", "StrictHostKeyChecking=no",
+        # The VM's host key is checked against the record, or learned when there is none (question 198;
+        # ssh keeps the first value of an option, so these come before SSH_OPTS).
+        return ["ssh", "-i", str(self._key), *vmidentity.ssh_options(Path(self._dir.name) / "known_hosts", self.address, self._known),
                 *hostio.SSH_OPTS, f"{self.user}@{self.address}"]
 
     def close(self) -> None:
+        if not self._known:
+            vmidentity.learn_file(self.address, Path(self._dir.name) / "known_hosts")
         self._dir.cleanup()
+
+
+def _known(address: str) -> str | None:
+    from ..db import session_factory
+    with session_factory()() as db:
+        return vmidentity.trusted(db, address, vmidentity.SSH)
 
 
 def _login(address: str, user: str, key_text: str) -> tuple[bool, bool]:
     """(logs in, was refused for its key) for a key on a VM."""
-    ssh = VmSsh(address, user, key_text)
+    ssh = VmSsh(address, user, key_text, _known(address))
     try:
         r = ssh.run("true", timeout=30)
     except subprocess.TimeoutExpired:
@@ -97,7 +106,7 @@ def vm_key_text(db: Session, address: str, user: str) -> str:
     for h in engine_secrets._history(db, engine_secrets.SSH_HISTORY):
         if not _login(address, user, h["private"])[0]:
             continue
-        ssh = VmSsh(address, user, h["private"])
+        ssh = VmSsh(address, user, h["private"], _known(address))
         try:
             line = shlex.quote(pub)
             r = ssh.run(f"grep -qxF {line} ~/.ssh/authorized_keys || echo {line} >> ~/.ssh/authorized_keys")
@@ -109,7 +118,7 @@ def vm_key_text(db: Session, address: str, user: str) -> str:
 
 def _linux_ssh(db: Session, host: dict) -> VmSsh:
     address, user = str(host["ansible_host"]), str(host.get("ansible_user") or "labape")
-    return VmSsh(address, user, vm_key_text(db, address, user))
+    return VmSsh(address, user, vm_key_text(db, address, user), vmidentity.trusted(db, address, vmidentity.SSH))
 
 
 # --- Windows through Ansible (WinRM), with JSON results -------------------------------------

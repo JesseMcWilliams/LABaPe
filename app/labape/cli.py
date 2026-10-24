@@ -72,9 +72,10 @@ def cmd_breakglass(args) -> int:
     s = get_settings()
     with session_factory()() as db:
         if args.action == "revoke":
-            n = breakglass.revoke_all(db)
-            audit(db, _who(), "breakglass.revoke", detail={"revoked": n})
-            print(f"labape: revoked {n} unused break-glass credential(s).")
+            n, sessions = breakglass.revoke_all_counts(db)
+            audit(db, _who(), "breakglass.revoke", detail={"revoked": n, "sessions_ended": sessions})
+            print(f"labape: revoked {n} unused break-glass credential(s) and ended {sessions} used one(s) "
+                  "(their open sessions stop at the next request).")
             return 0
         token, expires = breakglass.issue(db, _who(), args.minutes, args.local_only)
         audit(db, _who(), "breakglass.enable", detail={"minutes": args.minutes or s.breakglass_minutes,
@@ -407,6 +408,28 @@ def cmd_authentik_admin_import(args) -> int:
     return 0
 
 
+def cmd_vm_identity(args) -> int:
+    """List what VMs are known by, or forget one so the next connection learns it again (question 198)."""
+    from .db import init_db, session_factory
+    from .engine import vmidentity
+    from .models import VmIdentity
+    from .security import audit
+
+    init_db()
+    with session_factory()() as db:
+        if args.action == "forget":
+            if not args.address:
+                print("labape: give the VM's address.", file=sys.stderr)
+                return 2
+            n = vmidentity.forget(db, address=args.address)
+            audit(db, _who(), "vm_identity.forget", detail={"address": args.address, "removed": n})
+            print(f"labape: forgot {n} record(s) for {args.address}; the next connection learns it again.")
+            return 0
+        for row in db.query(VmIdentity).order_by(VmIdentity.address, VmIdentity.kind):
+            print(f"{row.address}\t{row.kind}\t{row.recorded_at:%Y-%m-%d %H:%M}\t{len(row.value.splitlines())} value(s)")
+        return 0
+
+
 def cmd_push_vm_key(args) -> int:
     """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
     import json as _json
@@ -546,6 +569,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--keep-existing", action="store_true",
                    help="never replace a stored password (exit 0 if it's the same, 3 if it differs)")
     p.set_defaults(func=cmd_authentik_admin_import)
+
+    p = sub.add_parser("vm-identity", help="the SSH host keys and WinRM certificates VMs are known by "
+                       "(list, or forget one after rebuilding a VM outside LABaPe)")
+    p.add_argument("action", choices=["list", "forget"])
+    p.add_argument("address", nargs="?", help="the VM's address (forget)")
+    p.set_defaults(func=cmd_vm_identity)
 
     p = sub.add_parser("push-vm-key", help="add a new VM SSH key on the deployed Linux VMs (the agent's rotation)")
     p.add_argument("--new", required=True, help="the new private key; its .pub beside it")

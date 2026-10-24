@@ -27,6 +27,8 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # the user's own: page size (L1)
+    disabled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # no sessions or tokens while set
+    disabled_reason: Mapped[str] = mapped_column(String(32), default="")    # provider (the sweep, question 196) | admin
 
 
 class RoleBinding(Base):
@@ -507,6 +509,21 @@ class BreakglassGrant(Base):
     used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     local_only: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class VmIdentity(Base):
+    """What a VM was known by when LABaPe first saw it (question 198, engine/vmidentity.py): its SSH host keys
+    (`type key` lines) or the SHA-256 of its WinRM certificate. Later connections must match."""
+
+    __tablename__ = "vm_identities"
+    __table_args__ = (UniqueConstraint("address", "kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    address: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(16))                       # ssh | winrm
+    value: Mapped[str] = mapped_column(Text)
+    environment_id: Mapped[int | None] = mapped_column(ForeignKey("environments.id"), nullable=True)
+    recorded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class UpdateSource(Base):

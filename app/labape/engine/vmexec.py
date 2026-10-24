@@ -17,10 +17,11 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from requests.adapters import HTTPAdapter
 from sqlalchemy.orm import Session
 
 from ..models import Environment, KvmHost
-from . import hostio
+from . import hostio, vmidentity
 
 MASK = "***"
 
@@ -100,8 +101,11 @@ def _ssh_argv(params: dict, command: str, tmp: Path, via: KvmHost | None,
               tty: bool = False) -> tuple[list[str], dict, list[str]]:
     """ssh arguments, extra environment and the secrets to mask."""
     user, address, port = params["username"], params["hostname"], str(params.get("port") or 22)
-    argv = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
-            "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-p", port, *(["-tt"] if tty else [])]
+    # The VM's host key must match the record (question 198); with no record yet it is learned into the
+    # temp known_hosts file, which the caller stores with `vmidentity.learn_file` after the connection.
+    argv = ["ssh", *vmidentity.ssh_options(tmp / "known_hosts", address, params.get("known-keys")),
+            "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-p", port,
+            *(["-tt"] if tty else [])]
     extra: dict = {}
     secrets: list[str] = []
     if via is not None:
@@ -131,11 +135,49 @@ def _run_linux(params: dict, command: str, via: KvmHost | None, timeout: float, 
         argv, extra, secrets = _ssh_argv(params, command, Path(d), via)
         env = {**hostio.tool_env(), **extra}
         r = run_process(argv, env=env, timeout=timeout, cap=cap)
+        if not params.get("known-keys") and r.exit_code != 255:      # it got far enough to see the host key
+            vmidentity.learn_file(params["hostname"], Path(d) / "known_hosts")
     r.stdout, r.stderr = mask(r.stdout, secrets), mask(r.stderr, secrets)
+    if "Host key verification failed" in r.stderr or "HOST IDENTIFICATION HAS CHANGED" in r.stderr:
+        r.stderr = r.stderr.rstrip("\n") + "\nlabape: " + vmidentity.CHANGED_HINT + "\n"
     return r
 
 
-def _run_windows(host: dict, params: dict, command: str, timeout: float, cap: int) -> Result:
+class _PinnedAdapter(HTTPAdapter):
+    """Accepts only the server certificate with this SHA-256 (hex), whatever name it carries."""
+
+    def __init__(self, sha256: str, **kw):
+        self._sha256 = sha256
+        super().__init__(**kw)
+
+    def init_poolmanager(self, *args, **kw):
+        super().init_poolmanager(*args, assert_fingerprint=self._sha256, **kw)
+
+
+def _pin_winrm(session, sha256: str) -> None:
+    """Make a pywinrm session talk only to the server whose certificate has this SHA-256."""
+    s = session.protocol.transport.build_session()
+    s.mount("https://", _PinnedAdapter(sha256))
+
+
+def _winrm_pin(address: str, port: int, recorded: str | None) -> str:
+    """The certificate fingerprint to hold the connection to: the record, or (none yet) what the VM presents
+    now, which is recorded (trust on first use)."""
+    if recorded:
+        return recorded
+    try:
+        found = vmidentity.fetch_certificate(address, port)
+    except OSError as exc:
+        raise ExecError(f"WinRM: {address}:{port} did not answer ({exc})") from exc
+    from ..db import session_factory
+    with session_factory()() as db:
+        if vmidentity.trusted(db, address, vmidentity.WINRM) is None:
+            vmidentity.remember(db, address, vmidentity.WINRM, found, replace=False)
+        return vmidentity.trusted(db, address, vmidentity.WINRM) or found
+
+
+def _run_windows(host: dict, params: dict, command: str, timeout: float, cap: int,
+                 recorded: str | None = None) -> Result:
     import winrm                                              # noqa: PLC0415 (pywinrm is in the image)
     user, domain = str(params.get("username") or "Administrator"), str(params.get("domain") or "")
     login = f"{domain}\\{user}" if domain and "\\" not in user and "@" not in user else user
@@ -150,11 +192,17 @@ def _run_windows(host: dict, params: dict, command: str, timeout: float, cap: in
                             transport=transport,
                             server_cert_validation="ignore", operation_timeout_sec=max(5, int(timeout)),
                             read_timeout_sec=max(10, int(timeout) + 10))
+    if scheme == "https":     # the certificate is the VM's: check it against the record (question 198)
+        _pin_winrm(session, _winrm_pin(params["hostname"], port, recorded))
     secrets = [params.get("password", "")]
     try:
         r = session.run_ps(command)
     except Exception as exc:  # noqa: BLE001
         text = mask(str(exc), secrets)
+        if "Fingerprints did not match" in text or "fingerprint" in text.lower():
+            raise ExecError("WinRM: the VM's certificate is not the one LABaPe recorded. If the VM was rebuilt "
+                            "outside LABaPe, an administrator can run `labape vm-identity forget <address>`; "
+                            "otherwise treat this as a possible impersonation of the VM.") from exc
         if "timed out" in text.lower() or "timeout" in text.lower():
             return Result(None, "", "", False, True, time.monotonic() - start)
         raise ExecError(f"WinRM: {text[:300]}") from exc
@@ -197,5 +245,6 @@ def run(db: Session, env: Environment, vm: str, command: str, *, account: str = 
     """Run `command` on `vm` as the access user, or as the environment account `account`."""
     pl = plan(db, env, vm, account)
     if pl.windows:
-        return _run_windows(pl.host, pl.target["params"], command, timeout, cap)
+        return _run_windows(pl.host, pl.target["params"], command, timeout, cap,
+                            vmidentity.trusted(db, pl.target["params"]["hostname"], vmidentity.WINRM))
     return _run_linux(pl.target["params"], command, pl.via, timeout, cap)
