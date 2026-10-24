@@ -7,6 +7,7 @@ import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, LinearProgress, MenuItem, Paper, Stack, Table,
   TableBody, TableCell, TableHead, TableRow, Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { api, fmtTime, KvmHost, Network } from "../api";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import { ActionButton, useConfirm } from "./Confirm";
@@ -330,18 +331,36 @@ export function DiskLink({ host, disk, metric, label = "Drive details" }: { host
   );
 }
 
-function DiskRows({ devs, depth = 0, host }: { devs: Any[]; depth?: number; host?: number }): ReactNode {
+type DiskFlags = Record<string, { level: "error" | "warning" | "info"; messages: string[] }>;
+
+/** The disk warnings by device (the same ones the Dashboard section lists), worst level first. */
+function diskFlags(warnings: AdminView["warnings"]): DiskFlags {
+  const out: DiskFlags = {};
+  for (const w of warnings) {
+    if (!w.disk) continue;
+    const cur = out[w.disk] ?? { level: "info", messages: [] };
+    const rank = { error: 2, warning: 1, info: 0 };
+    out[w.disk] = { level: rank[w.level] > rank[cur.level] ? w.level : cur.level, messages: [...cur.messages, w.message] };
+  }
+  return out;
+}
+
+function DiskRows({ devs, depth = 0, host, flags = {} }: { devs: Any[]; depth?: number; host?: number; flags?: DiskFlags }): ReactNode {
   return devs.map((d) => (
     <Fragment key={d.path ?? d.name}>
-      <TableRow>
+      <TableRow sx={d.path && flags[d.path] && flags[d.path].level !== "info" ? { bgcolor: (t) => alpha(t.palette[flags[d.path].level].main, 0.12) } : undefined}>
         <TableCell sx={{ pl: 2 + depth * 3, fontFamily: "monospace" }}>
           {host && d.type === "disk" && d.path ? <RouterLink to={`/hosts/${host}/disks/${encodeURIComponent(d.serial || d.path)}`} title="Open this drive's page">{d.name}</RouterLink> : d.name}
+          {d.path && flags[d.path] && (
+            <Chip size="small" sx={{ ml: 1 }} label={flags[d.path].level === "error" ? "FAILING" : "warning"} color={flags[d.path].level === "error" ? "error" : "warning"}
+              title={flags[d.path].messages.join("\n")} />
+          )}
         </TableCell>
         <TableCell>{d.type}</TableCell><TableCell>{gb(d.size)}</TableCell>
         <TableCell>{[d.model, d.tran, d.rota === false || d.rota === "0" ? "SSD" : d.type === "disk" ? "HDD" : ""].filter(Boolean).join(" · ")}</TableCell>
         <TableCell>{d.fstype ?? ""}</TableCell><TableCell>{(d.mountpoints ?? []).filter(Boolean).join(", ")}</TableCell>
       </TableRow>
-      {d.children && <DiskRows devs={d.children} depth={depth + 1} host={host} />}
+      {d.children && <DiskRows devs={d.children} depth={depth + 1} host={host} flags={flags} />}
     </Fragment>
   ));
 }
@@ -499,8 +518,13 @@ export function DrivesSection({ view }: { view: AdminView }) {
   const [showLoop, setShowLoop] = useState(false);
   const disks: Any[] = f.disks ?? [];
   const loops = disks.filter((d) => d.type === "loop").length;
+  const flags = diskFlags(view.warnings);
+  const flagged = view.warnings.filter((w) => w.disk && w.level !== "info");
   return (
     <Stack spacing={2}>
+      {flagged.map((w, i) => (
+        <Alert key={i} severity={w.level} action={<DiskLink host={view.host.id} disk={w.disk!} />}>{w.message}</Alert>
+      ))}
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
         <Typography variant="subtitle1">Disks and partitions</Typography>
         {loops > 0 && <FormControlLabel label={`Show loop devices (${loops})`}
@@ -508,7 +532,7 @@ export function DrivesSection({ view }: { view: AdminView }) {
       </Stack>
       <Table size="small">
         <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Type</TableCell><TableCell>Size</TableCell><TableCell>Model</TableCell><TableCell>FS</TableCell><TableCell>Mounted</TableCell></TableRow></TableHead>
-        <TableBody><DiskRows devs={showLoop ? disks : disks.filter((d) => d.type !== "loop")} host={view.host.id} /></TableBody>
+        <TableBody><DiskRows devs={showLoop ? disks : disks.filter((d) => d.type !== "loop")} host={view.host.id} flags={flags} /></TableBody>
       </Table>
       <Typography variant="subtitle1">Disk health (SMART)</Typography>
       {!smart.available ? <Alert severity="info">smartctl isn&apos;t installed on the host (package smartmontools).</Alert> : (
@@ -516,14 +540,19 @@ export function DrivesSection({ view }: { view: AdminView }) {
           <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Model</TableCell><TableCell>Health</TableCell><TableCell>Temp</TableCell><TableCell>Power-on</TableCell><TableCell>Reallocated / pending</TableCell><TableCell>Wear</TableCell></TableRow></TableHead>
           <TableBody>
             {(smart.disks ?? []).map((d: Any) => (
-              <TableRow key={d.device}>
+              <TableRow key={d.device} sx={flags[d.device] && flags[d.device].level !== "info" ? { bgcolor: (t) => alpha(t.palette[flags[d.device].level].main, 0.12) } : undefined}>
                 <TableCell><RouterLink to={`/hosts/${view.host.id}/disks/${encodeURIComponent(d.serial || d.device)}`} title="Open this drive's page: history and SMART attributes">{d.device}</RouterLink></TableCell>
                 <TableCell>{d.model} <Typography variant="caption" color="text.secondary">{d.serial}</Typography></TableCell>
-                <TableCell><Chip size="small" label={d.passed === false ? "FAILED" : d.passed ? "passed" : "unknown"} color={d.passed === false ? "error" : d.passed ? "success" : "default"} /></TableCell>
+                <TableCell>
+                  <Chip size="small" label={d.passed === false ? "FAILED" : d.passed ? "passed" : "unknown"} color={d.passed === false ? "error" : d.passed ? "success" : "default"} />
+                  {d.passed !== false && flags[d.device] && flags[d.device].level !== "info" && (
+                    <Chip size="small" sx={{ ml: 0.5 }} label="check it" color={flags[d.device].level} title={flags[d.device].messages.join("\n")} />
+                  )}
+                </TableCell>
                 <TableCell>{d.temperature != null ? `${d.temperature} °C` : "—"}</TableCell>
                 <TableCell>{d.power_on_hours != null ? `${Math.round(d.power_on_hours / 24)} d` : "—"}</TableCell>
-                <TableCell>{d.reallocated ?? "—"} / {d.pending ?? "—"}</TableCell>
-                <TableCell>{d.wear_pct != null ? `${d.wear_pct}%` : "—"}</TableCell>
+                <TableCell sx={(d.reallocated || d.pending) ? { color: "warning.main", fontWeight: 600 } : undefined}>{d.reallocated ?? "—"} / {d.pending ?? "—"}</TableCell>
+                <TableCell sx={(d.wear_pct ?? 0) >= 80 ? { color: "warning.main", fontWeight: 600 } : undefined}>{d.wear_pct != null ? `${d.wear_pct}%` : "—"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
