@@ -9531,7 +9531,7 @@
    "type": "container",
    "name": "postgres:17-alpine",
    "version": "17-alpine",
-   "purl": "pkg:oci/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24?repository_url=docker.io/library/postgres&tag=17-alpine",
+   "purl": "pkg:oci/postgres@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb?repository_url=docker.io/library/postgres&tag=17-alpine",
    "description": "LABaPe's database, the syslog collector's and Conjur's",
    "licenses": [
     {
@@ -9552,7 +9552,7 @@
     },
     {
      "name": "labape:digest",
-     "value": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+     "value": "sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb"
     }
    ]
   },

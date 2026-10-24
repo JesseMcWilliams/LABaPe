@@ -15,6 +15,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Changed
 
+- **New environment:** a host group's **Count** of 0 asks whether to remove the group (Cancel puts the count back to 1), and each group has a **Remove host group** button where there was a small icon.
 - **The store Fix "give LABaPe a new login"** runs the stores' full setup; when the update agent runs it, a command-line vault that has drifted is a warning with the rebuild command, no longer a reason to stop. OpenBao's `labape-cli` policy may read the engine's vault (Conjur's already could).
 
 ### Fixed

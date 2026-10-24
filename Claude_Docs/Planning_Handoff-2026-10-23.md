@@ -6,7 +6,7 @@
 
 **Latest release:** v0.6.0 (2026-10-23)
 
-`main` has everything below merged and **no PR is open except the release-prep one** (SBOM, guides, CHANGELOG, this handoff). **Not released yet:** the next release is **v0.6.0** (new features: environment templates and the Fix buttons); `release.sh` is not run until the user says so. The summary paragraph for it is in `Release-Summary-0.6.0.local.md` (gitignored). pytest: **529 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves (the `test:writes` ones, and the ones waiting on something overdue); the suite now also opens the Templates page and starts a form from a starter.
+`main` has everything below merged. **v0.6.0** was released the same day (environment templates, the Fix buttons); **v0.6.1** follows (template history, the store-setup fix, count 0 on the New environment form, clearer missing-ISO messages, and a stack copying what a job needs from a linked stack: the release-prep PR is the last open one). The summary paragraph is in `Release-Summary-0.6.1.local.md` (gitignored). pytest: **560 passed, 1 skipped**. Playwright (`web/e2e`, against OZ): **all pass** apart from the 5 tests that skip themselves (the `test:writes` ones, and the ones waiting on something overdue); the suite now also opens the Templates page and starts a form from a starter.
 
 The session ran in two parts: the lab checks left over from 2026-10-22, then the follow-ups that came out of them.
 
@@ -21,7 +21,14 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 | #226 | **Fix buttons** on the admin checks: Directory (Authentik, from an admin token used once) and Email | §67 |
 | #227, #228, #230, #231 | **Environment templates**: save from an environment, parameters, warnings, starters; **parts** (sub-assemblies) with prefixes and values; YAML export and import; a part **pinned to a version** | §68, §69, §71 |
 | #229, #232 | **Fix buttons** for the Platform CA and OpenBao / Conjur (update agent `restart_service`, unseal after) and for Syslog | §70, §72 |
-| (this PR) | SBOM, `User_Docs/` brought up to date (the user-docs backlog is empty), CHANGELOG `[Unreleased]`, this handoff | |
+| #233, #234 | v0.6.0 release prep and the release | |
+| #235 | Tests for the update agent's `restart_service` and `stores_setup` (real script, stub commands) | §70 |
+| #236 | The store Fix "new login" (= the stores' full setup) survives a drifted command-line vault: a warning, a `--rebuild` for that vault, OpenBao's CLI policy reads the engine vault | log |
+| #237 | **Template history**: versions, what changed between two, restore | §73 |
+| #238 | New environment: **count 0 asks to remove the host group**; a labelled Remove host group button | |
+| #239 | A missing install ISO is said plainly before anything is created (found on the Director) | log |
+| #240 | **A stack copies by itself what a job needs from a linked stack** (the install ISO of an OS, installers of chosen applications) | §74 |
+| (this PR) | v0.6.1 release prep: SBOM, guides, CHANGELOG, this handoff | |
 
 ## 2. How much of it has been seen
 
@@ -38,19 +45,20 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 
 ## 3. What's left (in order)
 
-1. **Release v0.6.0:** merge the release-prep PR, then `tools/helpers/release.sh 0.6.0 Release-Summary-0.6.0.local.md --dry-run`, then the same without `--dry-run` (it takes over ten minutes: run it in the background). It stamps this file's `Latest release:` line. `deploy-web.sh` from clean `main` must have been run since the last code change (the SBOM comes from the worker image).
-2. **After the release:** reset the lab clone (`git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main`, then `~/LABaPe-web/deploy/update-agent/install.sh`: the agent must be reinstalled for the new `restart_service` action), and update the **Director** to v0.6.0 (the user runs it).
-3. **Try the rest for real:** a linked template download and a deploy of a group that picks a template only a linked stack has; a new store login and a Conjur restart through the Fix dialog; the syslog fix against a real outside server.
-4. **Replace the failing disk** `kvm1: /dev/sdc` (the user said to ignore it for now). **Kerberos click-through** on `krbw1` (manual).
-5. **Later:** the published `.docx` guides (`release.sh --docx`); the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; comparing and restoring template versions; a bundle signature for template files; the rest of the older queue in the 2026-10-19 handoff §3.
+1. **Release v0.6.1** (if not done yet): merge the release-prep PR, then `tools/helpers/release.sh 0.6.1 Release-Summary-0.6.1.local.md --dry-run`, then without `--dry-run` (over ten minutes: run it in the background). `deploy-web.sh` from clean `main` must have been run since the last code change.
+2. **Update the Director to v0.6.1 and try the automatic copy for real:** it has no Rocky 9 ISO and OZ has one, so a Rocky 9 template build (or an environment from the ISO) on `garagepc` should say "no ISO for rocky9 here; copying ... from the linked stack ..." in its log. Then the deploy-time copy of a *template* only OZ has (OZ has `debian13-linktest-2026.10` for that, 2 GB; delete it when done: `/data/VMs/LABaPe/templates/debian13-linktest-2026.10.*` on kvm1). Also, on the Director, the Directory (group search) Fix.
+3. **Reset the lab clone** (`git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main`) and reinstall the agent (`~/LABaPe-web/deploy/update-agent/install.sh`) after a release; the clone was clean at v0.6.0.
+4. **Try the rest for real:** the syslog fix against a real outside server (against OZ's own TLS collector it works); a template download from a linked stack.
+5. **Replace the failing disk** `kvm1: /dev/sdc`. **Kerberos click-through** on `krbw1` (manual).
+6. **Later:** the published `.docx` guides (`release.sh --docx`); comparing the *composed* result of two template versions; naming a version; a bundle signature for template files; the Kerberos domain side as an installer step; mail relays against a real outside SMTP account; the rest of the older queue in the 2026-10-19 handoff §3.
 
 ## 4. Lab state (2026-10-23)
 
 | Thing | State |
 |---|---|
-| kvm1 / OZ | Runs `main` as built by `deploy-web.sh` on 2026-10-23 (not the release; `v0.5.7-45-ga2a802f`); migrations through **0035**. `~/LABaPe-web` is dirty until the reset in §3.2. The update agent copy on the host has `restart_service` (installed by hand on 2026-10-23). The CA's provisioner has the attribute template (inlined in `ca.json`; backup `ca.json.bak-pre-attrs` in the container) and **The CA applies extra attributes** is ticked |
+| kvm1 / OZ | Runs `main` as built by `deploy-web.sh` (`v0.6.0-17-g793d1a7`, then the v0.6.1 release); migrations through **0035**. `~/LABaPe-web` is dirty until the reset in §3.2. The update agent copy on the host has `restart_service` (installed by hand on 2026-10-23). The CA's provisioner has the attribute template (inlined in `ca.json`; backup `ca.json.bak-pre-attrs` in the container) and **The CA applies extra attributes** is ticked |
 | Authentik (`https://oz.jlm.abq:9445`) | The groups `labape-auditors`, `labape-console`, `labape-ca-admins`, `labape-ca-requesters`, `labape-ca-auditors` now exist (no members); `zz-requester` was created for a test and deleted |
-| Test data left behind | Revoked test certificates (`zz-cert-test…`, `zz-attr-test…`, `zz-req-test…`); the destroyed environment `zz-t1`; the files `node-v24…msi`, `gpg4win-5.1.1.exe` copied from the Director; a Notepad window open in `l2win1`'s RDP session; the earlier `zz-` catalog drafts |
+| Test data left behind | The template `debian13-linktest-2026.10` (copy of an image, for the linked-copy test); `secrets.vault.yml.bak-orphaned-*` in `~/LABaPe/` (the command-line vault before it was rebuilt); revoked test certificates (`zz-cert-test…`, `zz-attr-test…`, `zz-req-test…`); the destroyed environment `zz-t1`; the files `node-v24…msi`, `gpg4win-5.1.1.exe` copied from the Director; a Notepad window open in `l2win1`'s RDP session; the earlier `zz-` catalog drafts |
 
 ## 5. Gotchas learned this session
 
@@ -63,6 +71,10 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 7. **guacamole-common-js 1.5.0:** `SessionRecording` ignores a Blob (use a tunnel); the guacd terminal pastes on Ctrl+Shift+V or a middle click, not Ctrl+V.
 8. **Stacked PRs conflict in the same doc appendices** (design doc, backlog, log): resolve by keeping both sides, theirs first. `main.py`'s router list is the other place two PRs collide.
 9. **A scheduled VM-key rotation can run while an environment deploys**: it now waits (30 minutes at most); a VM that still missed it is healed at first use.
+
+10. **`stores.sh setup` is the stores' full provisioning**, not a light "new login": it pulls images, restarts stores, reconfigures OpenBao, people, VM sign-in, Conjur and LABaPe's logins. Its last check (the command-line vault) used to stop it; the agent now runs it with `LABAPE_STORES_CLI_CHECK=warn`. The store keeps only 7 previous vault passwords: a copy not used between 8 rotations is orphaned (`store_get.py vault-pass --rebuild` fixes that).
+11. **A job that names a host file in its error is wrong help in the web interface** (the Director's missing ISO said `os_iso_paths`): say what to do under Files first.
+12. **`wait_healthy N` in the update agent waits all N seconds** (it needs healthy checks to the end); the restart action uses `LABAPE_RESTART_HEALTH_SECONDS` (60).
 
 ## 6. Where things are
 
