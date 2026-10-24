@@ -1788,6 +1788,17 @@ Questions 167-173. Built batch by batch.
 | Free-space alert | Settings → Monitoring's **Free space below (%)** (`disk_free_pct`, default 20) replaces "Disk full at (%)" (`disk_pct`, 85, stack hosts only; KVM hosts had a fixed 90% full). Each host can set its own (**Free-space alert (%)** on its settings; empty = the global one). `hostadmin.warnings` applies it to every host's filesystems (pseudo filesystems under `/sys`, `/proc`, `/dev`, `/run` left out): a warning below the threshold, an error below a quarter of it; the host page and the alerts (dashboard, syslog, email) use the same rule. |
 | Verified | pytest (the path rule in the app and the installer, an old cached copy moved not copied, the move script (Linux), the warning levels, pseudo filesystems, the per-host threshold in the alerts). Live on nkvm1: its files path is `/data/Files`; set to `/data/LabFiles` the folders were created (owned by `kvmsvc`) and the move job ran; a test file in `Other/` moved back to `/data/Files/Other` when the path was reset; the empty `/data/LabFiles` was left (root-owned parent) and removed by hand. kvm1's and nkvm1's filesystems are far below the threshold (no warnings). |
 
+### 50.3a Folder permissions on a host (built, 2026-10-23)
+
+| Area | As built |
+|---|---|
+| What | `engine/pathperms.py`: a script run as root through the access account (sudo) that checks a host's VM, template and files folders for the service user (writes) and the hypervisor's user (`libvirt-qemu` or `qemu`; reads, and passes through every folder above). With `fix` off it reports; with it on it changes, then checks again. |
+| It checks | The path isn't a system folder; the mount isn't read-only; an `/etc/fstab` entry for it is mounted (the fix mounts it); every folder above lets the hypervisor's user through (the fix adds `o+x` only at or below the drive's mount point, never in `/home` or other system folders); the folder exists and is writable by the service user and readable by the hypervisor's user (the fix creates it or sets `service user:libvirt`, 2775, on that folder only, never its contents); the SELinux label `virt_image_t` where it enforces; free space. |
+| AppArmor | Never changed. It reports whether AppArmor enforces and whether the kernel log holds `DENIED` lines under the path; with denials, the line to add to `/etc/apparmor.d/local/abstractions/libvirt-qemu`. libvirt allows each VM's disks itself, so a fresh path with no denials needs nothing. ACLs aren't read. |
+| API | `POST /api/hosts/{id}/paths` (admin): `vm_storage_path`, `template_storage_path`, `files_path`, `fix`; a preview, or the changes made. `PUT /api/hosts/{id}` does the fix for a changed folder before saving and refuses the save (field error, nothing saved) on a problem it can't fix. Hosts without an SSH access account are saved as before. |
+| Page | On the host's settings, saving changed folders first previews what would change and shows it in the confirm dialog (a problem it can't fix stops the save); **Check folders** and **Fix folders** work on the folders as typed. |
+| Verified | pytest (fake host); the script run for real under WSL as a plain user: dry run changes nothing, fix creates the folders, a second run changes nothing. Not yet against a real host with `libvirt-qemu`. |
+
 ### 50.4 E2: connect as one of the environment's accounts (built)
 
 | Area | As built |

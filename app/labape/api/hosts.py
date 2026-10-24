@@ -21,7 +21,7 @@ from ..db import get_db
 from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
-from ..engine import hostadmin, hostdelete, hostpools, hostpower
+from ..engine import hostadmin, hostdelete, hostpools, hostpower, pathperms
 from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
@@ -176,6 +176,30 @@ def create_host(body: HostIn, request: Request, db: Session = Depends(get_db),
     return _out(h)
 
 
+def _fix_paths(db: Session, h: KvmHost, old_paths: tuple[str, str], old_files: str, new_files: str) -> None:
+    """A changed VM, template or files folder is checked on the host and its permissions fixed
+    (what the new path needs for the service user and the hypervisor's user); a problem it can't
+    fix refuses the save. Hosts without an access account are saved as before."""
+    if h.is_primary or h.files_from_share:
+        new_files = ""
+    changed = [s for s, was, now in (("vm", old_paths[0], h.vm_storage_path), ("templates", old_paths[1], h.template_storage_path),
+                                     ("files", old_files, new_files)) if now and now != was]
+    if not changed or pathperms.available(h):
+        return
+    want = {"vm": h.vm_storage_path, "templates": h.template_storage_path, "files": new_files}
+    try:
+        results = pathperms.check(h, [{"path": want[k].rstrip("/"), "kind": k} for k in changed], fix=True)
+    except hostadmin.AdminError as exc:
+        db.rollback()
+        raise FieldError("vm_storage_path", f"checking the folders on {h.name} failed: {exc}") from exc
+    for r in results:
+        bad = [i["text"] for i in r["items"] if i["level"] == "problem"]
+        if bad:
+            db.rollback()
+            field = {"vm": "vm_storage_path", "templates": "template_storage_path", "files": "files_path"}[r["kind"]]
+            raise FieldError(field, f"{r['path']}: {'; '.join(bad)}")
+
+
 @router.put("/{host_id}")
 def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depends(get_db),
                 p: Principal = Depends(require_roles("admin"))):
@@ -197,9 +221,11 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
             other.is_primary = False                    # one primary (question 135)
     became_primary = bool(data.get("is_primary")) and not h.is_primary
     old_files = filedist.files_path(h)
+    old_paths = (h.vm_storage_path, h.template_storage_path)
     for k, v in data.items():
         setattr(h, k, v)
     new_files = filedist.files_path(h)
+    _fix_paths(db, h, old_paths, old_files, new_files)
     move = None
     if new_files != old_files and not h.is_primary and not h.files_from_share:
         try:                                   # F1: created through the access account, then the files moved
@@ -268,6 +294,36 @@ def _host(db: Session, host_id: int) -> KvmHost:
     if h is None:
         raise HTTPException(status_code=404, detail="No such host")
     return h
+
+
+class PathsIn(BaseModel):
+    vm_storage_path: str = Field(pattern=r"^/[A-Za-z0-9._/-]*$", max_length=255)
+    template_storage_path: str = Field(pattern=r"^/[A-Za-z0-9._/-]*$", max_length=255)
+    files_path: str = Field(default="", pattern=r"^(/[A-Za-z0-9._/-]+)?$", max_length=255)
+    fix: bool = False
+
+
+@router.post("/{host_id}/paths")
+def check_paths(host_id: int, body: PathsIn, request: Request, db: Session = Depends(get_db),
+                p: Principal = Depends(require_roles("admin"))):
+    """What the host's folders need for the service user and the hypervisor's user (VM disks, templates,
+    files): a preview with `fix` off, the changes made with it on (the New path's save does the same)."""
+    h = _host(db, host_id)
+    why = pathperms.available(h)
+    if why:
+        return {"available": False, "reason": why, "paths": [], "ok": True, "changes": 0}
+    files = "" if h.is_primary or h.files_from_share else (body.files_path or filedist.files_path(h))
+    try:
+        results = pathperms.check(h, pathperms.specs(h, body.vm_storage_path, body.template_storage_path, files),
+                                  fix=body.fix)
+    except hostadmin.AdminError as exc:
+        raise HTTPException(status_code=502, detail=f"checking the folders on {h.name} failed: {exc}") from exc
+    if body.fix:
+        audit(db, p.username, "host.paths_fix", object_type="kvm_host", object_id=h.id,
+              detail={"paths": [r["path"] for r in results], "changes": sum(r["changes"] for r in results)},
+              source_ip=client_ip(request))
+    return {"available": True, "reason": "", "paths": results, "ok": all(r["ok"] for r in results),
+            "changes": sum(r["changes"] for r in results)}
 
 
 class AccessIn(BaseModel):
