@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-23
+
+v0.6.1 adds template history and lets a stack copy by itself what a job needs from a linked stack. A template's History button lists its versions, compares any two in plain sentences and restores an older one as a new version. A deploy or template build whose OS has no ISO on this stack now takes one from a linked stack that has it (and a deploy takes the installers of the applications you chose), as the first step of the job, with progress in its log: the stack no longer fails and waits for a manual Copy here. A missing ISO is also said plainly, before anything is created. On the New environment form a host group's Count of 0 asks whether to remove the group, and each group has a Remove host group button. The store Fix that gives LABaPe a new login now finishes when the command-line vault on the host has drifted, with a warning and a command to rebuild it.
+
 ### Added
 
 - **A stack copies by itself what a job needs from a linked stack:** a deploy or template build whose OS has no ISO here gets one from a linked stack that has it (the default there, else the newest by name), and a deploy gets the installers of the chosen applications that Files lacks. The copy is the job's first step, with progress and resume in its log, and cancelling the job stops it. Nothing is copied that is here already, and a stack that doesn't answer is skipped.
