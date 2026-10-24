@@ -631,7 +631,7 @@ def run(job_id: int, worker: str) -> None:
             else:
                 if job.type == "environment.deploy":    # a safety snapshot first, if the setting asks (§39)
                     snapshots.before_deploy(db, job, env, host, lambda m: _append(job, m))
-                    vmidentity.forget(db, env_id=env.id)    # the VMs are rebuilt: new keys (question 198)
+                    vmidentity.forget_env(db, env)    # the VMs are rebuilt: new keys (question 198)
                 parts = plan_parts(db, job, env)
         except Exception as exc:  # noqa: BLE001 — any setup failure fails the job, visibly
             _append(job, f"labape: could not start: {exc}\n")
@@ -962,8 +962,8 @@ def _finish(db: Session, job: Job, env: Environment | None, rc: int | None, work
         elif job.type == "environment.destroy":
             env.status = "destroyed"
             env.inventory = ""
+            vmidentity.forget_env(db, env)      # before the addresses are released
             release(db, env.id)
-            vmidentity.forget(db, env_id=env.id)
             put_secret(db, f"environment/{env.id}/credentials", "")
             put_secret(db, f"environment/{env.id}/inventory", "")
             # Rotated passwords (design §24, R4) belonged to these VMs; a new

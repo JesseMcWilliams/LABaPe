@@ -88,6 +88,11 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 11. **A job that names a host file in its error is wrong help in the web interface** (the Director's missing ISO said `os_iso_paths`): say what to do under Files first.
 12. **`wait_healthy N` in the update agent waits all N seconds** (it needs healthy checks to the end); the restart action uses `LABAPE_RESTART_HEALTH_SECONDS` (60).
 
+13. **The lab stack uses `Caddyfile.labape-ca` or `Caddyfile.names`** (`LABAPE_CADDYFILE` in `container/.env`), not `Caddyfile`: a change to the web server's config goes into all three, and the Caddyfile is a bind mount, so `docker compose restart caddy` (a recreate is not needed).
+14. **guacd's `host-key` takes exactly one known_hosts entry** and negotiates ECDSA first; several lines, or an ed25519 or RSA line when ECDSA is offered, all abort the session ("Aborted. See logs.").
+15. **`deploy-web.sh` while a deploy runs kills it** (it recreates the worker); check the jobs first. A heredoc or a Python string with `
+` inside breaks edits: use the Edit tool for lines that contain it.
+
 ## 6. Where things are
 
 | Need | Look at |
@@ -100,4 +105,6 @@ The session ran in two parts: the lab checks left over from 2026-10-22, then the
 
 ## 7. Project review (2026-10-23, after #249)
 
-The review's findings, with what is done, decided and open, are in [Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md). Quick fixes are on the branch `2026-10-23-review-quick-fixes` (not yet merged; the web build has not been run for it). Answered: 196 (a token ends with its owner), 197 (revoke ends break-glass sessions), 198 (SSH and WinRM verify); not built yet. Open: 199-202 in `Planning_Questions.md`; the next free question is 203.
+The review's findings are in [Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md). **Built and merged:** the quick fixes (#252), questions 196-198 (#254: tokens end with their owner, `revoke` ends break-glass sessions, VM SSH and WinRM verify) and 199-202 (#255: download addresses, grants by account, sharing and hand-over, the Users page). **Run live on OZ on 2026-10-24** (log: "Live run of the review's decisions"); the live run found four bugs, fixed on the branch `2026-10-24-live-findings` (PR open, not merged): the headers missing from two Caddyfile variants, the Directory role not viewing users, guacd's one-entry host key, and records left after a destroy. OZ runs that working tree (`v0.6.2-20-...-dirty`); the next release should be cut from `main` after the PR.
+
+Still open from the review: items 8-14 and 18 (small security items, the over-long files, imports inside functions, Hyper-V remnants, Postgres test runs, a session that expires mid-use, help text for form fields). The next free question is 203.

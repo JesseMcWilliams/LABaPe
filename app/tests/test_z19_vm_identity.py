@@ -77,7 +77,9 @@ def test_vm_target_carries_the_recorded_keys(client):
         vmidentity.remember(db, "10.0.0.5", "ssh", KEYS)
         got = remote._vm_host_keys(db, "10.0.0.5")
         assert got["known-keys"] == KEYS
-        assert got["host-key"] == "10.0.0.5 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOnlyATest"
+        assert got["host-key"] == "10.0.0.5 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOnlyATest"      # one entry: guacd reads one
+        vmidentity.remember(db, "10.0.0.6", "ssh", "ssh-rsa AAAArsa\necdsa-sha2-nistp256 AAAAecdsa\nssh-ed25519 AAAAed")
+        assert remote._vm_host_keys(db, "10.0.0.6")["host-key"] == "10.0.0.6 ecdsa-sha2-nistp256 AAAAecdsa"   # guacd's order
 
 
 def test_record_env_stores_what_the_vms_answer(client, monkeypatch):
@@ -165,3 +167,24 @@ def test_pywinrm_session_uses_the_pin(tls_server):
 
     assert "ingerprint" in attempt("00" * 32)                 # refused before anything is sent
     assert "ingerprint" not in attempt(fp)                    # the right certificate gets as far as the (fake) server
+
+
+def test_learned_records_are_linked_to_the_environment_and_a_destroy_clears_them(client):
+    from labape.models import IpAllocation, Network
+    with session_factory()() as db:
+        host = KvmHost(name="h3", libvirt_uri="qemu:///system")
+        db.add(host)
+        db.commit()
+        env = Environment(name="e3", kvm_host_id=host.id, spec={}, created_by="t")
+        db.add(env)
+        net = Network(name="n3", cidr="10.9.0.0/24", gateway="10.9.0.1", dns_servers=[])
+        db.add(net)
+        db.commit()
+        db.add(IpAllocation(network_id=net.id, address="10.9.0.7", environment_id=env.id, vm_name="v"))
+        db.commit()
+        vmidentity.remember(db, "10.9.0.7", "ssh", KEYS)                    # learned at first use: owned by nothing
+        vmidentity.remember(db, "10.9.0.8", "winrm", "ab" * 32)
+        vmidentity.link(db, "10.9.0.8", env.id)
+        assert db.query(VmIdentity).filter_by(address="10.9.0.8").one().environment_id == env.id
+        assert vmidentity.forget_env(db, env) == 2                          # one by owner, one by the address it held
+        assert db.query(VmIdentity).count() == 0

@@ -269,14 +269,19 @@ def vm_target(db: Session, env: Environment, vm: str, account: str = "", protoco
 
 def _vm_host_keys(db: Session, address: str) -> dict:
     """The SSH host keys recorded for a VM (question 198): `known-keys` for the commands and text sessions,
-    and `host-key` (one known_hosts line) for guacd's browser SSH. Empty until a record exists."""
+    and `host-key` for guacd's browser SSH. guacd reads exactly one known_hosts entry (several lines all fail), so
+    it gets the key its libssh2 negotiates first: ECDSA, then ed25519, then RSA (found against a real VM, whose
+    ed25519 and RSA keys alone were refused). Empty until a record exists."""
     from .engine import vmidentity
     value = vmidentity.trusted(db, address, vmidentity.SSH)
     if not value:
         return {}
     lines = vmidentity.known_hosts(address, value).splitlines()
-    best = next((x for x in lines if " ssh-ed25519 " in x), lines[0])
-    return {"known-keys": value, "host-key": best}
+    for prefix in ("ecdsa-", "ssh-ed25519", "ssh-rsa"):
+        pick = next((x for x in lines if x.split(" ", 2)[1].startswith(prefix)), None)
+        if pick:
+            return {"known-keys": value, "host-key": pick}
+    return {"known-keys": value, "host-key": lines[0]}
 
 
 def host_target(h: KvmHost) -> dict:

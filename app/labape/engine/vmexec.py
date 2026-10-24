@@ -244,7 +244,10 @@ def run(db: Session, env: Environment, vm: str, command: str, *, account: str = 
         cap: int = 262144) -> Result:
     """Run `command` on `vm` as the access user, or as the environment account `account`."""
     pl = plan(db, env, vm, account)
-    if pl.windows:
-        return _run_windows(pl.host, pl.target["params"], command, timeout, cap,
-                            vmidentity.trusted(db, pl.target["params"]["hostname"], vmidentity.WINRM))
-    return _run_linux(pl.target["params"], command, pl.via, timeout, cap)
+    try:
+        if pl.windows:
+            return _run_windows(pl.host, pl.target["params"], command, timeout, cap,
+                                vmidentity.trusted(db, pl.target["params"]["hostname"], vmidentity.WINRM))
+        return _run_linux(pl.target["params"], command, pl.via, timeout, cap)
+    finally:
+        vmidentity.link(db, pl.target["params"]["hostname"], env.id)       # a key learned just now belongs to this environment
