@@ -25,6 +25,7 @@ const HELP_FOR: [string, "guide" | "admin", string][] = [
   ["/admin/sessions", "admin", "Remote access"],
   ["/admin/links", "admin", "Linked stacks"],
   ["/admin/quotas", "admin", "Quotas, leases"],
+  ["/admin/users", "admin", "Users"],
   ["/", "guide", "The dashboard"],
 ];
 

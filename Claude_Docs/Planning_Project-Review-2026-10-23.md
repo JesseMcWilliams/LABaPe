@@ -12,9 +12,9 @@
 | 2 | Sessions are signed cookies only: sign-out ends one browser, `breakglass revoke` doesn't end open break-glass sessions | `main.py` SessionMiddleware, `auth/breakglass.py` `revoke_all` | **done** (question 197; same branch) |
 | 3 | VM SSH (`StrictHostKeyChecking=no`) and WinRM (`server_cert_validation="ignore"`) send passwords without checking the VM | `engine/vmexec.py`, `engine/vmadmin.py` | **done** (question 198): SSH host keys and the WinRM certificate fingerprint are recorded and checked (`engine/vmidentity.py`); Ansible's deploy-time connections, RDP and the guacd `host-key` format are not covered or not tried live |
 | 4 | No browser security headers | `container/caddy/Caddyfile` | **done** (HSTS, nosniff, Referrer-Policy, `frame-ancestors 'self'`; a script CSP is left out on purpose) |
-| 5 | Download from URL blocks link-local only: loopback and the stack's own containers (OpenBao, step-ca) are reachable | `engine/downloads.py` `check_url` | open (question 199) |
+| 5 | Download from URL blocks link-local only: loopback and the stack's own containers (OpenBao, step-ca) are reachable | `engine/downloads.py` `check_url` | **done** (question 199): loopback, unspecified, `localhost`, single-label names and the container network are refused too |
 | 6 | CSV exports don't neutralize `= + - @` cells (syslog lines come from any host) | `web/src/components/Paging.tsx` `csv` | **done** (a text cell that starts with one gets a leading quote; numbers are untouched) |
-| 7 | Grants and role bindings match the username, which comes from `preferred_username` or email; a rename could pick up someone else's grants | `permissions.py`, `security.py` `resolve_roles`, `auth/oidc.py` | open (question 200) |
+| 7 | Grants and role bindings match the username, which comes from `preferred_username` or email; a rename could pick up someone else's grants | `permissions.py`, `security.py` `resolve_roles`, `auth/oidc.py` | **done** (question 200): grants and bindings are tied to the account's subject at its next sign-in (migration 0038) |
 | 8 | Small: `/hosts/{id}/resources` answers for any host; tus `Upload-Length` unchecked and bad headers give a 500; `/api/docs` public; `caddy:2` and `postgres:17-alpine` float; the API image runs as root; raw errors to the browser (`api/remote.py` create_session); an environment without a named network allows IPs of every network in its certificates (`api/ca.py`) | as named | later |
 
 ## Code
@@ -35,8 +35,8 @@ Ruff otherwise: the syslog SQL hit is a false alarm (bound parameters), `sha1` i
 
 | # | Feature | Status |
 |---|---|---|
-| 15 | Sharing an environment or handing it to another owner (a viewer sees nothing; stuck when the owner leaves) | open (question 201) |
-| 16 | A Users page for admins (last sign-in, disable, which revokes tokens and sessions, and open sessions) | open (question 202); it is also what makes decisions 196 and 197 visible |
+| 15 | Sharing an environment or handing it to another owner (a viewer sees nothing; stuck when the owner leaves) | **done** (question 201): Sharing panel on an environment, `api/env_sharing.py`; not yet seen in a browser |
+| 16 | A Users page for admins (last sign-in, disable, which revokes tokens and sessions, and open sessions) | **done** (question 202): Admin → Users; not yet seen in a browser |
 
 ## Tooltips and descriptions
 

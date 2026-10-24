@@ -13,6 +13,7 @@ import { ActionButton } from "../components/Confirm";
 import VmPower from "../components/VmPower";
 import AddHosts from "../components/AddHosts";
 import EnvAccounts from "../components/EnvAccounts";
+import Sharing from "../components/Sharing";
 import EnvSecrets from "../components/EnvSecrets";
 import Desktops from "../components/Desktops";
 import RedeployPreview from "../components/RedeployPreview";
@@ -202,6 +203,7 @@ export default function EnvironmentDetail() {
       )}
       {env.is_owner && env.status === "deployed" && <PasswordRotation envId={id!} />}
       {env.status !== "destroyed" && <EnvAccounts envId={id!} />}
+      {env.is_owner && env.status !== "destroyed" && <Sharing envId={id!} isOwner={env.is_owner} />}
       {env.is_owner && env.status !== "destroyed" && <EnvSecrets envId={id!} />}
       {env.is_owner && env.status !== "destroyed" && <Desktops envId={id!} groups={env.spec.host_groups} onSaved={load} />}
       {(env.status === "deployed" || env.status === "failed") && (

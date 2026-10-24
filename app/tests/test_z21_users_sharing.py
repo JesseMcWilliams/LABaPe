@@ -105,5 +105,5 @@ def test_users_page_is_for_admins_and_auditors(client):
     _as(client, ids["bob"], "bob", {"deployer"})
     assert client.get("/api/admin/users").status_code == 403
     _as(client, ids["bob"], "bob", {"auditor"})
-    assert client.get("/api/admin/users").status_code == 200
+    assert client.get("/api/admin/users").status_code == 403
     assert client.post(f"/api/admin/users/{ids['carol']}/disable").status_code == 403

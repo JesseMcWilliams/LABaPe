@@ -12,11 +12,13 @@ import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import HubIcon from "@mui/icons-material/Hub";
 import SpeedIcon from "@mui/icons-material/Speed";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
+import PeopleIcon from "@mui/icons-material/People";
 import { hasRole, useAuth } from "../App";
 
 export const ADMIN_PAGES = [
   { path: "hosts", label: "KVM hosts", icon: <DnsIcon />, help: "Register KVM hosts; their load, storage and networks" },
   { path: "networks", label: "Networks", icon: <LanIcon />, help: "The networks VMs may use, their pools and who may deploy on them" },
+  { path: "users", label: "Users", icon: <PeopleIcon />, help: "Who has signed in, their tokens and sessions; disable an account" },
   { path: "quotas", label: "Quotas", icon: <SpeedIcon />, help: "Limits on what each user's environments may use" },
   { path: "settings", label: "Settings", icon: <SettingsIcon />, help: "Branding, files, backups, history, syslog, email, directory, stores" },
   { path: "mail", label: "Mail", icon: <MailOutlineIcon />, help: "The stack's mail server (Mailpit): what it caught, and forwarding to real inboxes" },

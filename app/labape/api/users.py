@@ -31,7 +31,7 @@ def _row(db: Session, u: User, tokens: dict[int, int], sessions: dict[str, int])
 
 @router.get("")
 def list_users(q: str = "", disabled: bool = False, limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
-               db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin", "auditor"))):
+               db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
     stmt = select(User).where(User.provider != "breakglass")
     if q.strip():
         like = f"%{q.strip().lower()}%"

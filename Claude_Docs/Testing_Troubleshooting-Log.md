@@ -765,3 +765,11 @@ Project review item 3, question 198. `vmexec`/`vmadmin` ran ssh with `StrictHost
 - **Fix:** `engine/vmidentity.py` and the `vm_identities` table (migration 0037). SSH: the recorded keys go into a temp known_hosts file and ssh runs `StrictHostKeyChecking=yes`; with no record it runs `accept-new` and the keys it learned are stored afterwards. WinRM: pywinrm's session gets an adapter with urllib3 `assert_fingerprint` for the recorded SHA-256 (the listener's certificate is self-signed with the computer name, so a normal name check can't work). Browser SSH gets guacd's `host-key`. The record is made after a deploy (`_record_identities`), forgotten when a deploy starts and removed on destroy.
 - **Not covered:** Ansible during a deploy (`host_key_checking = False`, `server_cert_validation: ignore`), RDP (`ignore-cert`), and KVM host SSH (already `accept-new` with the worker's known_hosts). A remote KVM host's VMs are learned at first use (the scan can't tunnel).
 - **Not run for real:** guacd's `host-key` format (one `address type key` line) has not been tried in a browser session; a failure there shows as the SSH session not opening. The check against a real VM and a real rebuilt VM is also still to do.
+
+## Review: download addresses, grants by name, sharing, Users (2026-10-23)
+
+Questions 199-202 ([Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md) items 5, 7, 15, 16), built on the recommended answers.
+
+- **199:** `engine/downloads.py` `_blocked`. The tests' local file server needs `downloads.ALLOW_LOOPBACK` (the `server` fixture sets it). The container network is guessed from the API container's own address, so on a stack with an unusual network size it may cover too little or too much; the lab's other networks stay open on purpose.
+- **200:** `Principal.subject`, `security.adopt_subject` (at sign-in), `permissions._principal_filter`, `resolve_roles(..., subject)`. A Principal built without a subject (tests, overrides) falls back to name matching. Break-glass is unaffected (admin by session).
+- **201/202:** `api/env_sharing.py`, `api/users.py`, `web/src/components/Sharing.tsx`, `web/src/pages/Users.tsx`. Hand over deletes or demotes the old owner rows without breaking the grants' uniqueness. Not tried in a browser yet (the web type-check and build pass).
