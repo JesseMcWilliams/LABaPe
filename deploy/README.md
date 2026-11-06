@@ -66,6 +66,8 @@ Nothing secret is ever written to the answers file.
 | `Prereq.Packages` | QEMU/KVM, libvirt, virt-install, xorriso, Python, NetworkManager, smartmontools, lm-sensors (apt; dnf on the RHEL family, plus SELinux tools, `dnf-utils` and, on 9.x, Python 3.12 for Ansible) | apt, dnf |
 | `Prereq.Libvirt` | libvirt's modular daemons (sockets, where the system has them, e.g. RHEL 9+) or `libvirtd`; service user in `libvirt` and `kvm` | systemctl, usermod |
 | `Prereq.NoSleep` | The host never sleeps: masks the `sleep`, `suspend`, `hibernate`, `hybrid-sleep` and `suspend-then-hibernate` targets and writes `/etc/systemd/logind.conf.d/90-labape-no-sleep.conf` (idle, suspend key and lid ignored). Without it, a desktop install's login screen suspends the host after 15 idle minutes | systemctl |
+| `Prereq.AlertMail` | A mail program for the host's own mail (mdadm, smartd, cron), pointed at the stack's Mailpit: Debian gets `msmtp-mta` and `/etc/msmtprc`; the RHEL family tries `msmtp` (EPEL) and falls back to syslog only. A mail program already there is left alone. Skipped when `AlertMailHost` is empty | apt-get, dnf |
+| `Prereq.RaidAlerts` | On a host with software RAID arrays: array events (a failed or missing disk, a rebuild) also go to syslog, so the stack's collector shows them even when the host has no mail program. Writes `/usr/local/sbin/labape-raid-event` and one `PROGRAM` line in `mdadm.conf` (a `MAILADDR` stays). If the file already has another `PROGRAM`, the installer asks whether to replace it (`ReplaceRaidProgram`; an unattended run keeps it). A host with no arrays skips it | mdadm, systemctl |
 | `Net.Validate` | Checks the network answers: a default exists, ranges are inside their networks, static addressing has a pool | |
 | `Net.BridgeNetfilter` | Stops iptables filtering bridged VM traffic; otherwise Docker drops it (Claude_Docs/Testing_Troubleshooting-Log.md) | sysctl |
 | `Net.Bridges` | Creates each missing VM bridge on its NIC with NetworkManager. The host takes a DHCP address on it but never its default route. Refuses the NIC carrying the default route. | nmcli |
@@ -103,6 +105,9 @@ Nothing secret is ever written to the answers file.
 | `InstallWebUi` | The web stack; follows the profile | per profile |
 | `InstallConjur`, `InstallSyslog`, `InstallRemoteAccess`, `InstallUpdateAgent`, `InstallAuthentik` | Optional services of the web stack (question 140); OpenBao is always installed | yes (`InstallAuthentik`: no when an older answer file named another `AuthMode`) |
 | `SyslogBind` | The address the syslog collector publishes 514 and 6514 on (`0.0.0.0`: every address) | this host's IP |
+| `MailBind` | The address the stack's Mailpit publishes its SMTP port (1025) on, for the hosts' own mail; never asked (`127.0.0.1`: this host only). An existing stack sets `LABAPE_MAIL_BIND` in `container/.env` and updates | this host's IP |
+| `AlertMailHost` | `host:port` of the Mailpit this host's own mail goes to. Prepare gives a KVM host the stack's address | web stacks: this host's IP:1025; `kvm`: empty |
+| `ReplaceRaidProgram` | Only asked when `mdadm.conf` already has a `PROGRAM` line: replace it with LABaPe's (array events to syslog)? Unattended runs keep it | no |
 | `WorkerPublicKey` | `kvm` profile: the web interface's worker key (`labape worker-key`, or the host's page) to add to the service user's `authorized_keys` | empty (skip) |
 | `RemoteKvmUri` | `web` profile: the KVM host to register, `qemu+ssh://user@host/system` | prompted |
 | `KvmHostName` | This host's name in the web interface | short hostname |

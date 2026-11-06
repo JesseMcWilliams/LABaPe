@@ -85,12 +85,15 @@ services:
   # The stack's mail server (design §52): Mailpit catches what LABaPe sends (alerts, job emails) and shows
   # it in a web page (Admin -> Mail opens it, behind Caddy at /mail/ for admins). It can forward chosen
   # recipients through a real SMTP server: Admin -> Mail sets that, and supervise.sh restarts Mailpit with the
-  # new options. Reachable inside the stack only (SMTP 1025, UI 8025); not published on the host.
+  # new options. SMTP 1025 is published on LABAPE_MAIL_BIND (default 127.0.0.1); the UI (8025) stays inside the stack.
   labape-mailpit:
     image: docker.io/axllent/mailpit:v1.31.5
     restart: unless-stopped
     logging: *logging
     entrypoint: ["/bin/sh", "/usr/local/bin/labape-mailpit.sh"]
+    ports:
+      # SMTP for the hosts' own mail (the installer's Prereq.AlertMail); localhost unless LABAPE_MAIL_BIND says otherwise.
+      - "${LABAPE_MAIL_BIND:-127.0.0.1}:1025:1025"
     environment:
       MP_DATABASE: /data/mailpit.db
       MP_SMTP_BIND_ADDR: 0.0.0.0:1025

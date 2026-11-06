@@ -64,6 +64,46 @@ def test_a_healthy_mirror():
     assert hostpools.warnings(facts()) == []
 
 
+DETAIL10 = """/dev/md10:
+        Raid Level : raid10
+             State : clean, degraded
+            Layout : near=2
+              UUID : 8beabe67:a8e57c79:437836f4:ec479ec0
+
+    Number   Major   Minor   RaidDevice State
+       0       8       17        0      active sync set-A   /dev/sdb1
+       -       0        0        1      removed
+       2       8       33        2      active sync set-A   /dev/sdc1
+       3       8       65        3      active sync set-B   /dev/sde1
+"""
+
+
+def _disk(n, serial, uuid="8beabe67:a8e57c79:437836f4:ec479ec0"):
+    return {"name": f"sd{n}", "path": f"/dev/sd{n}", "type": "disk", "size": "3000", "model": "HITACHI", "serial": serial,
+            "children": [{"name": f"sd{n}1", "path": f"/dev/sd{n}1", "type": "part", "size": "2999",
+                          "fstype": "linux_raid_member", "uuid": uuid}]}
+
+
+def test_a_missing_drive_is_named_by_its_serial():
+    """OZ, 2026-11-06: slot 1 of a RAID 10 was empty; the drive that was failed out still carried the array."""
+    f = facts(md={"md10": {"level": "raid10", "array_state": "clean", "sync_action": "idle", "degraded": "1", "raid_disks": "4",
+                           "size": "11720531968", "detail": DETAIL10,
+                           "members": {"sdb1": {"state": "in_sync", "slot": "0", "errors": "0"},
+                                       "sdc1": {"state": "in_sync", "slot": "2", "errors": "0"},
+                                       "sde1": {"state": "in_sync", "slot": "3", "errors": "0"}}}},
+              disks=[_disk("b", "SERB"), _disk("c", "SERC"), _disk("d", "P8G8JSPR", uuid="8beabe67-a8e5-7c79-4378-36f4ec479ec0"),
+                     _disk("e", "SERE"), _disk("f", "OTHER", uuid="ffffffff:ffffffff:ffffffff:ffffffff")])
+    (p,) = hostpools.build(f)
+    assert p["missing"] == [{"slot": 1, "state": "removed", "partner": "/dev/sdb1"}]
+    assert p["at_risk"] == ["/dev/sdb1"]
+    assert [(m["name"], m["disk"], m["serial"]) for m in p["members"]][0] == ("/dev/sdb1", "/dev/sdb", "SERB")
+    assert [(m["name"], m["disk"], m["serial"]) for m in p["former_members"]] == [("/dev/sdd1", "/dev/sdd", "P8G8JSPR")]
+    flag = [w for w in hostpools.warnings(f) if w.get("disk")]
+    assert [(w["disk"], w["level"]) for w in flag] == [("/dev/sdd", "warning")] and "serial P8G8JSPR" in flag[0]["message"]
+    msg = hostpools.warnings(f)[0]["message"]
+    assert "degraded (1 of 4 drives missing)" in msg and "/dev/sdd1 (serial P8G8JSPR)" in msg and "only copy of its data is on /dev/sdb1" in msg
+
+
 def test_a_degraded_then_rebuilding_array():
     f = facts()
     f["md"]["md0"].update(degraded="1", members={"sda1": {"state": "in_sync", "slot": "0", "errors": "0"},

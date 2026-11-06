@@ -23,12 +23,14 @@ export interface AdminView {
   series: Record<string, (number | null)[]> & { t: string[] }; resources: Any; stack?: Any;
   pools?: Pool[]; pool_candidates?: { path: string; size: number; model: string }[];
 }
-export interface PoolMember { name: string; role: string; state: string; errors: number; depth?: number }
+export interface PoolMember { name: string; role: string; state: string; errors: number; depth?: number; slot?: string; disk?: string; model?: string; serial?: string }
+export interface FormerMember { name: string; disk: string; model: string; serial: string; size: number | null }
 export interface Pool {
   id: string; type: "mdadm" | "zfs" | "lvm"; name: string; level: string; state: string; size: number | null; used: number | null;
   free: number | null; mounts: string[]; uuid: string; members: PoolMember[]; errors: number; actions: string[];
   sync: { action: string; percent: number | null; speed: number | null; text?: string }; raid_disks?: number; degraded?: number;
   data_errors?: string; logical_volumes?: { name: string; size: number }[];
+  missing?: { slot: number; state: string; partner?: string }[]; at_risk?: string[]; former_members?: FormerMember[];
 }
 
 export const SECTIONS = [
@@ -446,12 +448,13 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
                 </Box>
               )}
               <Table size="small">
-                <TableHead><TableRow><TableCell>Drive</TableCell><TableCell>Role</TableCell><TableCell>State</TableCell><TableCell>Errors</TableCell><TableCell /></TableRow></TableHead>
+                <TableHead><TableRow><TableCell>Drive</TableCell><TableCell>Serial</TableCell><TableCell>Role</TableCell><TableCell>State</TableCell><TableCell>Errors</TableCell><TableCell /></TableRow></TableHead>
                 <TableBody>
                   {p.members.map((m) => (
                     <TableRow key={m.name}>
                       <TableCell sx={{ fontFamily: "monospace", pl: 2 + (m.depth ?? 0) * 2 }}>{m.name}</TableCell>
-                      <TableCell>{m.role}</TableCell>
+                      <TableCell title={m.model ?? ""}>{m.serial || "—"}</TableCell>
+                      <TableCell>{m.role}{m.slot && m.slot !== "none" ? ` (slot ${m.slot})` : ""}</TableCell>
                       <TableCell><Chip size="small" label={m.state} color={/faulty|FAULT|UNAVAIL|missing|REMOVED/.test(m.state) ? "error" : /OFFLINE|DEGRADED/.test(m.state) ? "warning" : "default"} /></TableCell>
                       <TableCell>{m.errors || "—"}</TableCell>
                       <TableCell align="right">
@@ -466,8 +469,33 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(p.missing ?? []).map((s) => (
+                    <TableRow key={`slot${s.slot}`} sx={{ bgcolor: (th) => alpha(th.palette.error.main, 0.08) }}>
+                      <TableCell sx={{ fontFamily: "monospace", pl: 2 }}>(empty)</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>slot {s.slot}</TableCell>
+                      <TableCell><Chip size="small" color="error" label="missing" /></TableCell>
+                      <TableCell>—</TableCell><TableCell />
+                    </TableRow>
+                  ))}
+                  {(p.former_members ?? []).map((f) => (
+                    <TableRow key={f.name} sx={{ bgcolor: (th) => alpha(th.palette.warning.main, 0.1) }}>
+                      <TableCell sx={{ fontFamily: "monospace", pl: 2 }}>{f.name}</TableCell>
+                      <TableCell title={f.model}>{f.serial || "—"}</TableCell>
+                      <TableCell>was in this array</TableCell>
+                      <TableCell><Chip size="small" color="warning" label="out of the array" /></TableCell>
+                      <TableCell>—</TableCell><TableCell />
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
+              {(p.missing?.length || p.former_members?.length) ? (
+                <Alert severity="error">
+                  {p.missing?.length ? `${p.missing.length} drive${p.missing.length === 1 ? " is" : "s are"} missing (slot ${p.missing.map((s) => s.slot).join(", ")}). ` : ""}
+                  {p.former_members?.length ? `${p.former_members.map((f) => `${f.name}${f.serial ? ` (serial ${f.serial}${f.model ? `, ${f.model}` : ""})` : ""}`).join(", ")} still carr${p.former_members.length === 1 ? "ies" : "y"} this array's label but ${p.former_members.length === 1 ? "is" : "are"} not in it: ${p.former_members.length === 1 ? "that is" : "those are"} the drive${p.former_members.length === 1 ? "" : "s"} that ${p.former_members.length === 1 ? "was" : "were"} failed out; match the serial to the label on the drive before pulling it. ` : "A drive that is gone entirely can only be told by the serial numbers of the others. "}
+                  {p.at_risk?.length ? `Until it is replaced and rebuilt, ${p.at_risk.join(", ")} holds the only copy of what that slot mirrored.` : ""}
+                </Alert>
+              ) : null}
               {p.logical_volumes && p.logical_volumes.length > 0 && (
                 <Typography variant="body2" color="text.secondary">Logical volumes: {p.logical_volumes.map((l) => `${l.name} (${gb(l.size)})`).join(", ")}</Typography>
               )}

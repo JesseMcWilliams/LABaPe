@@ -169,7 +169,8 @@ def test_the_stack_files():
                    "./mailpit/supervise.sh:/usr/local/bin/labape-mailpit.sh:ro", "MP_WEBROOT: /mail"):
         assert needle in compose, needle
     mailpit_block = compose.split("labape-mailpit:\n")[1].split("\n  labape-ca:")[0]
-    assert "ports:" not in mailpit_block                                                        # inside the stack only
+    assert '"${LABAPE_MAIL_BIND:-127.0.0.1}:1025:1025"' in mailpit_block                        # SMTP for the hosts' own mail
+    assert "8025:" not in mailpit_block.split("healthcheck")[0].split("ports:")[1]              # the web page stays inside the stack
     for name in ("Caddyfile", "Caddyfile.labape-ca", "Caddyfile.names"):
         text = (ROOT / "container" / "caddy" / name).read_text(encoding="utf-8")
         assert "forward_auth labape-api:8000" in text and "uri /api/mail/auth" in text and "reverse_proxy labape-mailpit:8025" in text

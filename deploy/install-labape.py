@@ -74,6 +74,8 @@ STEPS = [
     ("Prereq.Packages", S.prereq_packages, [], None, "apt packages: QEMU/KVM, libvirt, virt-install, xorriso, Python, smartmontools, lm-sensors"),
     ("Prereq.Libvirt", S.prereq_libvirt, ["ServiceUser"], kvm, "libvirtd running; service user in libvirt and kvm"),
     ("Prereq.NoSleep", S.prereq_no_sleep, [], None, "Never sleep: mask the sleep targets, logind ignores idle and the suspend key"),
+    ("Prereq.AlertMail", S.prereq_alert_mail, ["AlertMailHost"], None, "A mail program for the host's own mail, sending to the stack's Mailpit"),
+    ("Prereq.RaidAlerts", S.prereq_raid_alerts, [], None, "Software RAID: array events (a failed or missing disk) also go to syslog"),
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
     ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], full, "Don't filter bridged VM traffic with iptables (Docker)"),
     ("Net.Bridges", S.net_bridges, ["Networks"], kvm, "Create missing VM bridges on their NICs (NetworkManager)"),

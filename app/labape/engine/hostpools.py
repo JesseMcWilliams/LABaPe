@@ -45,7 +45,53 @@ def _mounts(facts: dict, devices: list[str]) -> tuple[list[str], int | None, int
     return mounts, (fs[0]["size"] if fs else None), (fs[0]["used"] if fs else None)
 
 
+def _devices(facts: dict) -> dict[str, tuple[dict, dict]]:
+    """{device path: (its lsblk node, the whole disk it sits on)} for every disk and partition."""
+    idx: dict[str, tuple[dict, dict]] = {}
+
+    def walk(nodes, disk=None):
+        for n in nodes:
+            d = n if n.get("type") == "disk" else (disk or n)
+            idx[n.get("path") or f"/dev/{n.get('name')}"] = (n, d)
+            walk(n.get("children") or [], d)
+    walk(facts.get("disks") or [])
+    return idx
+
+
+def _identity(idx: dict, path: str) -> dict:
+    """Which physical drive a device is: the disk, its model and serial number (they stay the same when the
+    kernel renames /dev/sdc to /dev/sdd after a reboot)."""
+    node, disk = idx.get(path) or ({}, {})
+    return {"disk": disk.get("path") or "", "model": (disk.get("model") or "").strip(),
+            "serial": (disk.get("serial") or "").strip(), "disk_size": _int(disk.get("size")) or None}
+
+
+def _uuid_key(v: str) -> str:
+    return re.sub(r"[^0-9a-f]", "", (v or "").lower())
+
+
+def _md_missing(detail: str, level: str, members: list[dict]) -> tuple[list[dict], list[str]]:
+    """Slots `mdadm --detail` lists as removed (no drive in them), and the members left holding the only
+    copy of what that slot mirrored (RAID 1; RAID 10 with two near copies, where slots 2n and 2n+1 are a pair)."""
+    missing = []
+    for ln in detail.splitlines():
+        m = re.match(r"^\s*-\s+\d+\s+\d+\s+(\d+)\s+removed\s*$", ln)
+        if m:
+            missing.append({"slot": int(m.group(1)), "state": "removed"})
+    near2 = level == "raid10" and re.search(r"^\s*Layout\s*:\s*near=2\b", detail, re.M) is not None
+    by_slot = {_int(m["slot"], -1): m["name"] for m in members if m["role"] == "active" and m["slot"] != ""}
+    risk: list[str] = []
+    for s in missing:
+        if level == "raid1":
+            risk += [m["name"] for m in members if m["role"] == "active"]
+        elif near2 and by_slot.get(s["slot"] ^ 1):
+            s["partner"] = by_slot[s["slot"] ^ 1]
+            risk.append(s["partner"])
+    return missing, sorted(set(risk))
+
+
 def _md(facts: dict) -> list[dict]:
+    idx = _devices(facts)
     pools = []
     for name, d in sorted((facts.get("md") or {}).items()):
         action = (d.get("sync_action") or "idle").strip()
@@ -63,7 +109,8 @@ def _md(facts: dict) -> list[dict]:
             flags = [s.strip() for s in st.split(",") if s.strip()]
             role = "faulty" if "faulty" in flags else "spare" if "spare" in flags else "active"
             members.append({"name": f"/dev/{dev}", "role": role, "state": st or "unknown",
-                            "errors": _int(m.get("errors")), "slot": (m.get("slot") or "").strip()})
+                            "errors": _int(m.get("errors")), "slot": (m.get("slot") or "").strip(),
+                            **_identity(idx, f"/dev/{dev}")})
         if array_state in ("inactive", "broken") or (not members and array_state not in ("clean", "active", "active-idle")):
             state = "failed"
         elif action in ("recover", "resync", "reshape"):
@@ -77,6 +124,12 @@ def _md(facts: dict) -> list[dict]:
         detail = d.get("detail") or ""
         uuid = (re.search(r"^\s*UUID\s*:\s*(\S+)", detail, re.M) or [None, ""])[1]
         level = (d.get("level") or "").strip()
+        missing, at_risk = _md_missing(detail, level, members)
+        # Drives that carry this array's superblock but are not in it: the ones that were failed out.
+        key, names = _uuid_key(uuid), {m["name"] for m in members}
+        former = [{"name": p, **_identity(idx, p), "size": _int(n.get("size")) or None}
+                  for p, (n, _d) in sorted(idx.items())
+                  if n.get("fstype") == "linux_raid_member" and key and _uuid_key(n.get("uuid")) == key and p not in names]
         mounts, fs_size, fs_used = _mounts(facts, [f"/dev/{name}"])
         size = _int(d.get("size")) * 512 or None
         actions = ["check", "stop-sync", "resync", "add-spare"] if level not in ("raid0", "linear") else ["check"]
@@ -87,7 +140,8 @@ def _md(facts: dict) -> list[dict]:
                       "mounts": mounts, "uuid": uuid, "members": members,
                       "sync": {"action": action, "percent": pct, "speed": _int(d.get("sync_speed")) or None},
                       "errors": sum(m["errors"] for m in members),
-                      "raid_disks": _int(d.get("raid_disks")), "degraded": degraded, "actions": actions})
+                      "raid_disks": _int(d.get("raid_disks")), "degraded": degraded, "actions": actions,
+                      "missing": missing, "at_risk": at_risk, "former_members": former})
     return pools
 
 
@@ -226,10 +280,18 @@ def warnings(facts: dict | None) -> list[dict]:
             w.append({"level": "error", "message": f"{kind} {p['name']} has failed"})
         elif p["state"] == "degraded":
             extra = f" ({p['degraded']} of {p['raid_disks']} drives missing)" if p.get("degraded") and p.get("raid_disks") else ""
+            out = [f"{f['name']}" + (f" (serial {f['serial']})" if f.get("serial") else "") for f in p.get("former_members") or []]
+            extra += f"; out of the array: {', '.join(out)}" if out else ""
+            extra += f"; the only copy of its data is on {', '.join(p['at_risk'])}" if p.get("at_risk") else ""
             w.append({"level": "error", "message": f"{kind} {p['name']} is degraded{extra}"})
         elif p["state"] == "rebuilding":
             pct = p["sync"].get("percent")
             w.append({"level": "warning", "message": f"{kind} {p['name']} is rebuilding" + (f" ({pct:.0f}% done)" if pct is not None else "")})
+        for f in p.get("former_members") or []:
+            # Names the whole disk, so the Drives and volumes page flags the row (and links to its details).
+            ident = f"{f['disk'] or f['name']}" + (f", serial {f['serial']}" if f.get("serial") else "")
+            w.append({"level": "warning", "disk": f["disk"] or f["name"],
+                      "message": f"{ident}, is not in {kind} {p['name']} but still carries its label: it was failed out; replace it or add it back"})
         faulty = [m["name"] for m in p["members"] if m.get("role") == "faulty"]
         if faulty and p["state"] not in ("failed", "degraded", "rebuilding"):
             w.append({"level": "warning", "message": f"{kind} {p['name']} has a faulty drive: {', '.join(faulty)}"})
