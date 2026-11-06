@@ -285,6 +285,7 @@ def _mail_ctx(tmp_path, monkeypatch, host, sendmail=False, rhc=False):
     if sendmail:
         sm.write_text("")
     monkeypatch.setattr(S, "MSMTPRC", rc)
+    monkeypatch.setattr(S, "MSMTP_ALIASES", tmp_path / "msmtp-aliases")
     monkeypatch.setattr(S, "SENDMAILS", [sm])
     monkeypatch.setattr(S, "os_family", lambda info=None: "rhel" if rhc else "debian")
     monkeypatch.setattr(S.socket, "gethostname", lambda: "kvm9")
@@ -313,6 +314,7 @@ def test_alert_mail_installs_msmtp_and_points_it_at_mailpit(tmp_path, monkeypatc
     assert ran[0][:3] == ["apt-get", "install", "-y"] and "msmtp-mta" in ran[0]
     text = rc.read_text()
     assert text.startswith(S.MSMTPRC_MARK) and "host 172.21.20.11\nport 1025\n" in text and "from root@kvm9" in text
+    assert f"aliases {tmp_path / 'msmtp-aliases'}" in text and "default: root@kvm9" in (tmp_path / "msmtp-aliases").read_text()
     assert "172.21.20.11:1025" in msg
     assert S.split_host_port("stack.example") == ("stack.example", 1025)
 

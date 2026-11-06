@@ -256,6 +256,7 @@ def prereq_no_sleep(c: Ctx):
 # Syslog tab show.
 SENDMAILS = [Path("/usr/sbin/sendmail"), Path("/usr/lib/sendmail"), Path("/usr/bin/sendmail")]
 MSMTPRC = Path("/etc/msmtprc")
+MSMTP_ALIASES = Path("/etc/msmtp-aliases")
 MSMTPRC_MARK = "# LABaPe (Prereq.AlertMail)"
 
 
@@ -287,11 +288,15 @@ def prereq_alert_mail(c: Ctx):
         if not has_sendmail() and not c.r.dry_run:
             return DONE, "no mail program could be installed (RHEL family: enable EPEL for msmtp); alerts go to syslog only"
     name = socket.gethostname()
+    # Mailpit refuses a recipient without a domain, and mdadm and smartd write to plain "root": the aliases
+    # file gives every local name a full address.
+    c.r.write(MSMTP_ALIASES, f"{MSMTPRC_MARK}: every local recipient (root, ...) gets this address.\ndefault: root@{name}\n")
     c.r.write(MSMTPRC, f"""{MSMTPRC_MARK}: hand this host's mail to the stack's Mailpit.
 defaults
 auth off
 tls off
 syslog on
+aliases {MSMTP_ALIASES}
 account default
 host {host}
 port {port}
