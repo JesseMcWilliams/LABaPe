@@ -98,6 +98,8 @@ def test_a_missing_drive_is_named_by_its_serial():
     assert p["at_risk"] == ["/dev/sdb1"]
     assert [(m["name"], m["disk"], m["serial"]) for m in p["members"]][0] == ("/dev/sdb1", "/dev/sdb", "SERB")
     assert [(m["name"], m["disk"], m["serial"]) for m in p["former_members"]] == [("/dev/sdd1", "/dev/sdd", "P8G8JSPR")]
+    flag = [w for w in hostpools.warnings(f) if w.get("disk")]
+    assert [(w["disk"], w["level"]) for w in flag] == [("/dev/sdd", "warning")] and "serial P8G8JSPR" in flag[0]["message"]
     msg = hostpools.warnings(f)[0]["message"]
     assert "degraded (1 of 4 drives missing)" in msg and "/dev/sdd1 (serial P8G8JSPR)" in msg and "only copy of its data is on /dev/sdb1" in msg
 

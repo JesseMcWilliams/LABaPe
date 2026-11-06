@@ -287,6 +287,11 @@ def warnings(facts: dict | None) -> list[dict]:
         elif p["state"] == "rebuilding":
             pct = p["sync"].get("percent")
             w.append({"level": "warning", "message": f"{kind} {p['name']} is rebuilding" + (f" ({pct:.0f}% done)" if pct is not None else "")})
+        for f in p.get("former_members") or []:
+            # Names the whole disk, so the Drives and volumes page flags the row (and links to its details).
+            ident = f"{f['disk'] or f['name']}" + (f", serial {f['serial']}" if f.get("serial") else "")
+            w.append({"level": "warning", "disk": f["disk"] or f["name"],
+                      "message": f"{ident}, is not in {kind} {p['name']} but still carries its label: it was failed out; replace it or add it back"})
         faulty = [m["name"] for m in p["members"] if m.get("role") == "faulty"]
         if faulty and p["state"] not in ("failed", "degraded", "rebuilding"):
             w.append({"level": "warning", "message": f"{kind} {p['name']} has a faulty drive: {', '.join(faulty)}"})
