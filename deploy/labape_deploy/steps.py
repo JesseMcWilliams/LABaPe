@@ -305,6 +305,41 @@ from root@{name}
     return DONE, f"local mail goes to {host}:{port}"
 
 
+SMARTD_CONFS = [Path("/etc/smartd.conf"), Path("/etc/smartmontools/smartd.conf")]      # Debian, RHEL
+
+
+def prereq_smart_alerts(c: Ctx):
+    """smartd warns of a failing disk (pending sectors, ATA errors) by running `mail`, and Debian's
+    runner script needs /usr/bin/mail, which msmtp-mta doesn't provide: on OZ every warning failed with
+    'Your system does not have /usr/bin/mail' (2026-11-02). Install the `mail` command on top of the
+    mail program Prereq.AlertMail set up, so smartd's mail lands in the stack's Mailpit too."""
+    if not c.r.which("smartctl"):
+        return NA, "smartmontools isn't installed"
+    if not has_sendmail():
+        return DONE, "no mail program, so smartd's warnings stay in syslog"
+    changed = False
+    if not c.r.which("mail"):
+        pkg = ["dnf", "install", "-y", "-q", "mailx"] if os_family() == "rhel" else \
+              ["apt-get", "install", "-y", "--no-install-recommends", "bsd-mailx"]
+        c.r.run(pkg, env=None if os_family() == "rhel" else {"DEBIAN_FRONTEND": "noninteractive"}, check=False)
+        if not c.r.which("mail") and not c.r.dry_run:
+            return DONE, "the mail command couldn't be installed (RHEL family: enable EPEL?); smartd's warnings stay in syslog"
+        changed = True
+    conf = next((p for p in SMARTD_CONFS if p.is_file()), None)
+    text = conf.read_text(encoding="utf-8", errors="replace") if conf else ""
+    active = [ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if conf and active and not any(" -m " in f" {ln} " for ln in active):
+        # Not edited: the lines are the admin's. Without -m, smartd sends no mail at all.
+        return DONE, f"{conf} has no '-m root' on its lines, so smartd sends no mail (add it by hand)"
+    c.r.run(["systemctl", "enable", "--now", "smartd"], check=False)
+    if changed:
+        c.r.run(["systemctl", "try-restart", "smartd"], check=False)
+        # A test message, so the first line in Mailpit shows the path works.
+        c.r.run(f"echo 'smartd mail from {socket.gethostname()} is set up (LABaPe Prereq.SmartAlerts).' | "
+                f"mail -s 'LABaPe: smartd mail test' root", check=False)
+    return DONE, "smartd's warnings are mailed to root (the stack's Mailpit)" if changed else "already configured"
+
+
 MDSTAT = Path("/proc/mdstat")
 MDADM_CONFS = [Path("/etc/mdadm/mdadm.conf"), Path("/etc/mdadm.conf")]      # Debian, RHEL
 RAID_EVENT_PROGRAM = Path("/usr/local/sbin/labape-raid-event")
@@ -352,6 +387,26 @@ def prereq_raid_alerts(c: Ctx):
         c.r.run(["systemctl", "try-restart", "mdmonitor"], check=False)       # re-read the file
     mail = "mail is also sent" if has_sendmail() else "no mail program: syslog only"
     return DONE, f"{', '.join(md_arrays())} reported to syslog ({mail})" if changed else "already configured"
+
+
+SCTERC_RULE = Path("/etc/udev/rules.d/90-labape-scterc.rules")
+SCTERC_RULE_TEXT = """# LABaPe (Prereq.RaidDiskTimeouts): a SATA disk in a RAID array gives up on a bad sector after 7 seconds
+# (the setting is lost at power-off), so md can rewrite it from the mirror instead of waiting out the disk's
+# own retries (OZ's failing disk stalled md for 30+ seconds, 2026-11-02). Disks without support ignore it.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd[a-z]*", ENV{DEVTYPE}=="disk", ENV{ID_BUS}=="ata", RUN+="%s -q errorsonly -l scterc,70,70 /dev/%%k"
+"""
+
+
+def prereq_raid_disk_timeouts(c: Ctx):
+    smartctl = c.r.which("smartctl")
+    if not smartctl or not md_arrays():
+        return NA, "no software RAID arrays (or no smartctl)"
+    changed = c.r.write(SCTERC_RULE, SCTERC_RULE_TEXT % smartctl)
+    if not changed:
+        return DONE, "already configured"
+    c.r.run(["udevadm", "control", "--reload"], check=False)
+    c.r.run(["udevadm", "trigger", "--subsystem-match=block", "--action=change"], check=False)
+    return DONE, "disks in arrays give up on a bad sector after 7 seconds (udev rule)"
 
 
 # --- host networking ------------------------------------------------------------

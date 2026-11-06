@@ -76,6 +76,8 @@ STEPS = [
     ("Prereq.NoSleep", S.prereq_no_sleep, [], None, "Never sleep: mask the sleep targets, logind ignores idle and the suspend key"),
     ("Prereq.AlertMail", S.prereq_alert_mail, ["AlertMailHost"], None, "A mail program for the host's own mail, sending to the stack's Mailpit"),
     ("Prereq.RaidAlerts", S.prereq_raid_alerts, [], None, "Software RAID: array events (a failed or missing disk) also go to syslog"),
+    ("Prereq.SmartAlerts", S.prereq_smart_alerts, [], None, "smartd's disk warnings are mailed too (the mail command, on top of Prereq.AlertMail)"),
+    ("Prereq.RaidDiskTimeouts", S.prereq_raid_disk_timeouts, [], None, "Software RAID: SATA disks give up on a bad sector after 7 seconds (SCT ERC)"),
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
     ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], full, "Don't filter bridged VM traffic with iptables (Docker)"),
     ("Net.Bridges", S.net_bridges, ["Networks"], kvm, "Create missing VM bridges on their NICs (NetworkManager)"),

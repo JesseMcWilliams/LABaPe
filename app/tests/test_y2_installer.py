@@ -340,6 +340,73 @@ def test_alert_mail_needs_a_server_and_survives_rhel_without_epel(tmp_path, monk
     assert A.Resolver(interactive=False).need("MailBind") is not None
 
 
+def _smart_ctx(tmp_path, monkeypatch, conf_text, have=("smartctl",), sendmail=True, rhc=False):
+    sm = tmp_path / "sendmail"
+    if sendmail:
+        sm.write_text("")
+    conf = tmp_path / "smartd.conf"
+    if conf_text is not None:
+        conf.write_text(conf_text)
+    monkeypatch.setattr(S, "SENDMAILS", [sm])
+    monkeypatch.setattr(S, "SMARTD_CONFS", [conf])
+    monkeypatch.setattr(S, "os_family", lambda info=None: "rhel" if rhc else "debian")
+    monkeypatch.setattr(S.socket, "gethostname", lambda: "kvm9")
+    present, ran = set(have), []
+
+    class R:
+        dry_run = False
+
+        def which(self, name):
+            return "/bin/x" if name in present else None
+
+        def run(self, cmd, **kw):
+            ran.append(cmd)
+            if isinstance(cmd, list) and cmd[0] in ("apt-get", "dnf"):
+                present.add("mail")
+
+    return S.Ctx(r=R(), a=A.Resolver(interactive=False), repo=tmp_path, deploy_root=tmp_path), ran
+
+
+def test_smart_alerts_install_the_mail_command_for_smartd(tmp_path, monkeypatch):
+    c, ran = _smart_ctx(tmp_path, monkeypatch, "DEVICESCAN -a -m root -M exec /usr/share/smartmontools/smartd-runner\n")
+    status, msg = S.prereq_smart_alerts(c)
+    assert status == S.DONE and "mailed to root" in msg
+    assert ran[0][:2] == ["apt-get", "install"] and "bsd-mailx" in ran[0]
+    assert ["systemctl", "try-restart", "smartd"] in ran and any("smartd mail test" in str(r) for r in ran)
+    ran.clear()
+    assert S.prereq_smart_alerts(c) == (S.DONE, "already configured") and not any("mail test" in str(r) for r in ran)
+    c, ran = _smart_ctx(tmp_path, monkeypatch, "DEVICESCAN -a\n", have=("smartctl", "mail"))
+    assert "no '-m root'" in S.prereq_smart_alerts(c)[1]
+    c, ran = _smart_ctx(tmp_path, monkeypatch, None, rhc=True)
+    S.prereq_smart_alerts(c)
+    assert ran[0] == ["dnf", "install", "-y", "-q", "mailx"]
+
+
+def test_smart_alerts_skip_without_smartctl_or_a_mail_program(tmp_path, monkeypatch):
+    c, ran = _smart_ctx(tmp_path, monkeypatch, None, have=())
+    assert S.prereq_smart_alerts(c)[0] == S.NA and not ran
+    (tmp_path / "sendmail").unlink(missing_ok=True)
+    c, ran = _smart_ctx(tmp_path, monkeypatch, None, sendmail=False)
+    assert "syslog" in S.prereq_smart_alerts(c)[1] and not ran
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Prereq.AlertMail") < names.index("Prereq.SmartAlerts") < names.index("Net.Validate")
+
+
+def test_raid_disk_timeouts_write_a_udev_rule_only_with_arrays(tmp_path, monkeypatch):
+    c, conf, prog, ran = _raid_ctx(tmp_path, monkeypatch, None)
+    rule = tmp_path / "scterc.rules"
+    monkeypatch.setattr(S, "SCTERC_RULE", rule)
+    c.r.which = lambda name: "/usr/sbin/smartctl" if name == "smartctl" else None
+    assert S.prereq_raid_disk_timeouts(c)[0] == S.DONE
+    assert "/usr/sbin/smartctl -q errorsonly -l scterc,70,70 /dev/%k" in rule.read_text()
+    assert ["udevadm", "trigger", "--subsystem-match=block", "--action=change"] in ran
+    ran.clear()
+    assert S.prereq_raid_disk_timeouts(c) == (S.DONE, "already configured") and not ran
+    c, *_ = _raid_ctx(tmp_path, monkeypatch, None, arrays=False)
+    c.r.which = lambda name: "/usr/sbin/smartctl"
+    assert S.prereq_raid_disk_timeouts(c)[0] == S.NA
+
+
 def test_installing_networkmanager_keeps_the_dns_servers(tmp_path, monkeypatch):
     resolv = tmp_path / "resolv.conf"
     resolv.write_text("nameserver 172.21.48.1\n")
