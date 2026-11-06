@@ -404,7 +404,7 @@ def host_admin(host_id: int, hours: int = 24, db: Session = Depends(get_db),
             "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None,
                                           h.disk_free_pct or appsettings.get(db, "monitoring", cached=True).disk_free_pct),
             "series": hostadmin.series(db, h, min(max(hours, 1), 168)),
-            "pools": hostpools.build(facts), "pool_candidates": hostpools.unused_disks(facts),
+            "pools": hostpools.build(facts, smart), "pool_candidates": hostpools.unused_disks(facts),
             "resources": _resources(db, h.id), "stack": _stack(db, h)}
 
 
@@ -489,6 +489,8 @@ class PoolActionIn(BaseModel):
     pool: str = Field(max_length=80)                  # the pool's id from the page: "md:md0", "zfs:tank"
     op: str = Field(max_length=20)
     device: str | None = Field(default=None, max_length=130)
+    full: bool = False                                # re-add: wipe the old label and rebuild the whole drive
+    confirm: str | None = Field(default=None, max_length=130)      # re-add of a drive that fails the check: its name, typed
 
 
 @router.post("/{host_id}/pools/action")
@@ -497,8 +499,9 @@ def pool_action(host_id: int, body: PoolActionIn, request: Request, db: Session 
     """A safe action on one drive pool (design §53.4): check/scrub, stop or restart a resync, take a drive out,
     add a spare. The pool and the drive come from the host's last facts; the host's facts are read again after."""
     h = _host(db, host_id)
-    facts = (db.get(HostFacts, h.id).facts if db.get(HostFacts, h.id) else {}) or {}
-    pool = next((x for x in hostpools.build(facts) if x["id"] == body.pool), None)
+    row = db.get(HostFacts, h.id)
+    facts, smart = (row.facts if row else {}) or {}, (row.smart if row else {}) or {}
+    pool = next((x for x in hostpools.build(facts, smart) if x["id"] == body.pool), None)
     if pool is None:
         raise HTTPException(status_code=404, detail="No such pool on this host (refresh the page)")
     detail = {"pool": body.pool, "device": body.device}
@@ -507,7 +510,17 @@ def pool_action(host_id: int, body: PoolActionIn, request: Request, db: Session 
             raise hostadmin.AdminError("that drive isn't in this pool")
         if body.op == "add-spare" and body.device not in {d["path"] for d in hostpools.unused_disks(facts)}:
             raise hostadmin.AdminError("that drive isn't free: it is mounted, has a filesystem, or is in a pool already")
-        out = hostpools.run_action(hostadmin.for_host(h), pool, body.op, body.device)
+        if body.op == "re-add":
+            former = next((f for f in pool.get("former_members", []) if f["name"] == body.device), None)
+            if former is None:
+                raise hostadmin.AdminError("that drive isn't a former member of this pool (refresh the page)")
+            detail.update(full=body.full, reasons=former["assessment"]["reasons"])
+            if not former["assessment"]["ok"]:
+                if body.confirm != body.device:
+                    raise hostadmin.AdminError(f"this drive didn't pass the check ({'; '.join(former['assessment']['reasons'])}): "
+                                               f"type {body.device} to re-add it anyway")
+                detail["forced"] = True
+        out = hostpools.run_action(hostadmin.for_host(h), pool, body.op, body.device, body.full)
     except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
         audit(db, p.username, f"host.pool.{body.op}", object_type="kvm_host", object_id=h.id, outcome="failed",
               detail={**detail, "error": str(exc)[:300]}, source_ip=client_ip(request))

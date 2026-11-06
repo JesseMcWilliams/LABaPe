@@ -209,3 +209,69 @@ def test_the_pool_action_api(client, monkeypatch):
     assert "host.pool.check" in actions and "host.pool.add-spare" in actions
     fake.rc = 1
     assert post(pool="md:md0", op="stop-sync").status_code == 422
+
+
+def _oz_facts():
+    return facts(md={"md10": {"level": "raid10", "array_state": "clean", "sync_action": "idle", "degraded": "1", "raid_disks": "4",
+                              "size": "11720531968", "detail": DETAIL10,
+                              "members": {"sdb1": {"state": "in_sync", "slot": "0", "errors": "0"},
+                                          "sdc1": {"state": "in_sync", "slot": "2", "errors": "0"},
+                                          "sde1": {"state": "in_sync", "slot": "3", "errors": "0"}}}},
+                 disks=[_disk("b", "SERB"), _disk("c", "SERC"), _disk("d", "P8G8JSPR", uuid="8beabe67-a8e5-7c79-4378-36f4ec479ec0"),
+                        _disk("e", "SERE")])
+
+
+def _smart(**kw):
+    return {"disks": [{"device": "/dev/sdd", "serial": "P8G8JSPR", "passed": True, "reallocated": 0, "pending": 0,
+                       "uncorrectable": 0, **kw}]}
+
+
+def test_readd_check_judges_the_former_drive_by_its_smart_reading():
+    """OZ, 2026-11-06: P8G8JSPR had 77 reallocated sectors, so it needs a typed confirmation to go back."""
+    (p,) = hostpools.build(_oz_facts(), _smart())
+    (f,) = p["former_members"]
+    assert f["assessment"] == {"ok": True, "reasons": []} and "re-add" in p["actions"]
+    (p,) = hostpools.build(_oz_facts(), _smart(reallocated=77, pending=1, passed=False))
+    assert p["former_members"][0]["assessment"] == {"ok": False, "reasons": [
+        "its SMART health check failed", "77 reallocated sectors", "1 pending sector"]}
+    (p,) = hostpools.build(_oz_facts(), {})
+    assert p["former_members"][0]["assessment"] == {"ok": False, "reasons": ["no SMART reading for this drive yet"]}
+    f = facts()
+    assert "re-add" not in hostpools.build(f)[0]["actions"]                      # a healthy array has nothing to re-add
+
+
+def test_readd_scripts():
+    (p,) = hostpools.build(_oz_facts(), _smart())
+    assert hostpools.action_script(p, "re-add", "/dev/sdd1") == "mdadm /dev/md10 --re-add /dev/sdd1"
+    full = hostpools.action_script(p, "re-add", "/dev/sdd1", full=True)
+    assert full == "set -e; mdadm --zero-superblock /dev/sdd1; mdadm /dev/md10 --add /dev/sdd1"
+    with pytest.raises(hostadmin.AdminError):
+        hostpools.action_script(p, "re-add", "/dev/sdd1; reboot")
+
+
+def test_the_readd_api_asks_for_a_typed_confirmation_when_the_drive_fails_the_check(client, monkeypatch):
+    _admin_session(client)
+    host_id = _host(client)
+    with session_factory()() as db:
+        h = db.get(KvmHost, host_id)
+        h.access_status, h.ssh_address, h.ssh_user = "ready", "oz.lab", "localadmin01"
+        db.add(HostFacts(kvm_host_id=host_id, facts=_oz_facts(), smart=_smart(reallocated=77)))
+        db.commit()
+    fake = FakeSsh()
+    monkeypatch.setattr(hostadmin, "for_host", lambda h: fake)
+    monkeypatch.setattr(hostadmin, "collect_facts", lambda db, h, smart=False: None)
+    view = client.get(f"/api/hosts/{host_id}/admin").json()
+    assert view["pools"][0]["former_members"][0]["assessment"]["reasons"] == ["77 reallocated sectors"]
+    post = lambda **b: client.post(f"/api/hosts/{host_id}/pools/action", json={"pool": "md:md10", "op": "re-add", **b})   # noqa: E731
+    assert post(device="/dev/sdb1").status_code == 422                          # a current member
+    assert post(device="/dev/sdd1").status_code == 422 and not fake.calls       # no confirmation
+    assert post(device="/dev/sdd1", confirm="yes").status_code == 422 and not fake.calls
+    assert post(device="/dev/sdd1", confirm="/dev/sdd1").status_code == 200
+    assert "--re-add /dev/sdd1" in fake.calls[-1] and "findmnt" in fake.calls[-1]
+    log = [a for a in client.get("/api/admin/audit").json() if a["action"] == "host.pool.re-add" and a.get("outcome") != "failed"]
+    assert log and log[0]["detail"]["forced"] is True and log[0]["detail"]["reasons"] == ["77 reallocated sectors"]
+    with session_factory()() as db:                                             # a drive that passed needs none
+        db.get(HostFacts, host_id).smart = _smart()
+        db.commit()
+    assert post(device="/dev/sdd1", full=True).status_code == 200
+    assert "--zero-superblock /dev/sdd1" in fake.calls[-1]
