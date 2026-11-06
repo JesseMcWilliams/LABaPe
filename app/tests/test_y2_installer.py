@@ -205,6 +205,139 @@ def test_no_sleep_step_masks_what_is_unmasked(tmp_path, monkeypatch):
     assert names.index("Prereq.NoSleep") < names.index("Net.Validate")
 
 
+def _raid_ctx(tmp_path, monkeypatch, conf_text, replace=False, arrays=True, sendmail=False):
+    mdstat = tmp_path / "mdstat"
+    mdstat.write_text("Personalities : [raid10]\nmd10 : active raid10 sdb1[0] sdc1[2]\n      5860 blocks\n" if arrays
+                      else "Personalities :\nunused devices: <none>\n")
+    conf = tmp_path / "mdadm.conf"
+    if conf_text is not None:
+        conf.write_text(conf_text)
+    prog = tmp_path / "labape-raid-event"
+    monkeypatch.setattr(S, "MDSTAT", mdstat)
+    monkeypatch.setattr(S, "MDADM_CONFS", [conf])
+    monkeypatch.setattr(S, "RAID_EVENT_PROGRAM", prog)
+    sm = tmp_path / "sendmail"
+    if sendmail:
+        sm.write_text("")
+    monkeypatch.setattr(S, "SENDMAILS", [sm])
+    ran = []
+
+    class R:
+        dry_run = False
+
+        def which(self, name):
+            return "/bin/x" if name == "mdadm" else None
+
+        def write(self, path, content, mode=0o644, owner=None):
+            if path.is_file() and path.read_text() == content:
+                return False
+            path.write_text(content)
+            return True
+
+        def run(self, cmd, **kw):
+            ran.append(cmd)
+
+    a = A.Resolver(interactive=False)
+    a.add({"ReplaceRaidProgram": replace})
+    return S.Ctx(r=R(), a=a, repo=tmp_path, deploy_root=tmp_path), conf, prog, ran
+
+
+def test_raid_alerts_add_a_program_line_and_leave_mailaddr(tmp_path, monkeypatch):
+    c, conf, prog, ran = _raid_ctx(tmp_path, monkeypatch, "HOMEHOST <system>\nMAILADDR root\nARRAY /dev/md/10 UUID=x\n")
+    status, msg = S.prereq_raid_alerts(c)
+    assert status == S.DONE and "md10" in msg and "syslog only" in msg
+    text = conf.read_text()
+    assert text.count("MAILADDR") == 1 and f"PROGRAM {prog}" in text and text.count("PROGRAM") == 1
+    assert "logger -t labape-raid" in prog.read_text()
+    assert ["systemctl", "try-restart", "mdmonitor"] in ran
+    ran.clear()
+    assert S.prereq_raid_alerts(c) == (S.DONE, "already configured") and not ran      # a second run changes nothing
+
+
+def test_raid_alerts_ask_before_replacing_another_program(tmp_path, monkeypatch):
+    c, conf, prog, _ = _raid_ctx(tmp_path, monkeypatch, "MAILADDR ops@example.test\nPROGRAM /usr/local/bin/mine\n")
+    status, msg = S.prereq_raid_alerts(c)
+    assert "kept the existing 'PROGRAM /usr/local/bin/mine'" in msg and not prog.exists()
+    assert "mine" in conf.read_text()
+    c, conf, prog, _ = _raid_ctx(tmp_path, monkeypatch, "MAILADDR ops@example.test\nPROGRAM /usr/local/bin/mine\n", replace=True)
+    S.prereq_raid_alerts(c)
+    text = conf.read_text()
+    assert "mine" not in text and f"PROGRAM {prog}" in text and "MAILADDR ops@example.test" in text
+    assert A.ANSWERS["ReplaceRaidProgram"].default is False                           # unattended runs keep the entry
+
+
+def test_raid_alerts_skip_a_host_without_arrays(tmp_path, monkeypatch):
+    c, conf, prog, ran = _raid_ctx(tmp_path, monkeypatch, None, arrays=False)
+    assert S.prereq_raid_alerts(c)[0] == S.NA and not ran and not conf.exists()
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Prereq.RaidAlerts") < names.index("Net.Validate")
+
+
+def test_raid_alerts_add_mailaddr_when_there_is_none(tmp_path, monkeypatch):
+    c, conf, _prog, _ = _raid_ctx(tmp_path, monkeypatch, "ARRAY /dev/md/10 UUID=x\n", sendmail=True)
+    status, msg = S.prereq_raid_alerts(c)
+    assert "MAILADDR root" in conf.read_text() and "mail is also sent" in msg
+
+
+def _mail_ctx(tmp_path, monkeypatch, host, sendmail=False, rhc=False):
+    rc = tmp_path / "msmtprc"
+    sm = tmp_path / "sendmail"
+    if sendmail:
+        sm.write_text("")
+    monkeypatch.setattr(S, "MSMTPRC", rc)
+    monkeypatch.setattr(S, "SENDMAILS", [sm])
+    monkeypatch.setattr(S, "os_family", lambda info=None: "rhel" if rhc else "debian")
+    monkeypatch.setattr(S.socket, "gethostname", lambda: "kvm9")
+    ran = []
+
+    class R:
+        dry_run = False
+
+        def run(self, cmd, **kw):
+            ran.append(cmd)
+            if cmd[0] == "apt-get":                       # the package brings the sendmail command
+                sm.write_text("")
+
+        def write(self, path, content, mode=0o644, owner=None):
+            path.write_text(content)
+            return True
+
+    a = A.Resolver(interactive=False)
+    a.add({"AlertMailHost": host})
+    return S.Ctx(r=R(), a=a, repo=tmp_path, deploy_root=tmp_path), rc, ran
+
+
+def test_alert_mail_installs_msmtp_and_points_it_at_mailpit(tmp_path, monkeypatch):
+    c, rc, ran = _mail_ctx(tmp_path, monkeypatch, "172.21.20.11:1025")
+    status, msg = S.prereq_alert_mail(c)
+    assert ran[0][:3] == ["apt-get", "install", "-y"] and "msmtp-mta" in ran[0]
+    text = rc.read_text()
+    assert text.startswith(S.MSMTPRC_MARK) and "host 172.21.20.11\nport 1025\n" in text and "from root@kvm9" in text
+    assert "172.21.20.11:1025" in msg
+    assert S.split_host_port("stack.example") == ("stack.example", 1025)
+
+
+def test_alert_mail_leaves_another_mail_program_alone(tmp_path, monkeypatch):
+    c, rc, ran = _mail_ctx(tmp_path, monkeypatch, "172.21.20.11:1025", sendmail=True)
+    status, msg = S.prereq_alert_mail(c)
+    assert "kept the mail program" in msg and not ran and not rc.exists()
+    rc.write_text(S.MSMTPRC_MARK + ": old\n")                # our own file from an earlier run: rewritten
+    S.prereq_alert_mail(c)
+    assert "host 172.21.20.11" in rc.read_text() and not ran
+
+
+def test_alert_mail_needs_a_server_and_survives_rhel_without_epel(tmp_path, monkeypatch):
+    c, rc, ran = _mail_ctx(tmp_path, monkeypatch, "")
+    assert S.prereq_alert_mail(c)[0] == S.NA and not ran
+    c, rc, ran = _mail_ctx(tmp_path, monkeypatch, "10.0.0.5:1025", rhc=True)
+    status, msg = S.prereq_alert_mail(c)
+    assert ran == [["dnf", "install", "-y", "-q", "msmtp"]] and "syslog only" in msg and not rc.exists()
+    assert A.ANSWERS["AlertMailHost"].validate("10.0.0.5:1025") is None and A.ANSWERS["AlertMailHost"].validate("a b")
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Prereq.AlertMail") < names.index("Prereq.RaidAlerts")
+    assert A.Resolver(interactive=False).need("MailBind") is not None
+
+
 def test_installing_networkmanager_keeps_the_dns_servers(tmp_path, monkeypatch):
     resolv = tmp_path / "resolv.conf"
     resolv.write_text("nameserver 172.21.48.1\n")

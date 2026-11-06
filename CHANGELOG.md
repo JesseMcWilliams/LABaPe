@@ -7,6 +7,12 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **A degraded drive pool names the missing drive:** Drive Pools shows each member's serial number, the empty slot, the drive that was failed out (found by the array label it still carries, with its serial and model) and, for a RAID 1 or RAID 10, which drive now holds the only copy.
+- **A host's own mail reaches the stack's Mailpit:** the installer's new `Prereq.AlertMail` step installs `msmtp-mta` (Debian) and points it at Mailpit, whose SMTP port the stack now publishes on `LABAPE_MAIL_BIND` (default localhost; the installer sets the host's address). Prepare sends a KVM host the stack's address.
+- **The installer reports a degraded software RAID:** the new `Prereq.RaidAlerts` step makes `mdadm --monitor` write array events to syslog (and so to the stack's collector) on hosts with arrays; it asks before replacing an existing `PROGRAM` line in `mdadm.conf`. OZ's `/data` had run degraded for days with the alert mail going nowhere.
+
 ## [0.7.0] - 2026-10-24
 
 v0.7.0 is the release that came out of a project review of security, code, features and guides. API tokens now end with their owner (a person deactivated or removed in Authentik loses their personal tokens within 15 minutes), `breakglass revoke` ends open sessions, and commands, text sessions and browser SSH on a VM check its SSH host key (WinRM checks its certificate) against what was recorded after the deploy. Grants and role bindings are tied to the account rather than a name. New: an Admin → Users page with Disable and Enable, and a Sharing panel to share an environment with a user or group and hand it over. Download from URL refuses addresses on the stack itself, the web server sends browser security headers, and a CSV export no longer lets a cell run as a formula. Every decision was run against the lab stack, which found and fixed four bugs. An existing stack runs **Fix** on the dashboard's directory check once, so the Directory token's role can view users. Needs migrations 0036-0038.

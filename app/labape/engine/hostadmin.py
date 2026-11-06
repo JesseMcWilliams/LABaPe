@@ -844,6 +844,17 @@ def attach_networks(db: Session, h: KvmHost, answers: dict) -> list[str]:
     return done
 
 
+def stack_mail_host(db: Session) -> str:
+    """host:port of the stack's Mailpit for a host's own mail (a failing disk, mdadm): the stack's address,
+    as for the syslog collector, and Mailpit's SMTP port. '' when the stack has no address."""
+    from .. import appsettings, syslogstack
+    try:
+        address = syslogstack.collector_address(appsettings.get(db, "syslog_collector"))
+    except Exception:                                                      # noqa: BLE001 - settings not readable: no mail
+        return ""
+    return f"{address}:1025" if address else ""
+
+
 def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     """The `host.install` job: copy the installer to the host and run
     `install-labape.py --profile kvm` there as root, unattended, from the answers in the job's
@@ -863,6 +874,7 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
         return 1
     answers = {**(job.params or {}).get("answers", {}), "Profile": "kvm", "InstallWebUi": False,
                "WorkerPublicKey": hostio.ensure_key(), "TemplatesToBuild": []}     # templates: web jobs
+    answers.setdefault("AlertMailHost", stack_mail_host(db))              # the host's own mail goes to the stack's Mailpit
     root = INSTALL_ROOT
     engine = get_settings().engine_dir
     # The copy needs tar on the host; minimal RHEL-family images don't have it.

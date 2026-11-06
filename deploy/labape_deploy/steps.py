@@ -12,6 +12,7 @@ import pwd
 import platform
 import secrets
 import shutil
+import socket
 import string
 import subprocess
 import tempfile
@@ -247,6 +248,105 @@ def prereq_no_sleep(c: Ctx):
     if not changed and not unmasked:
         return DONE, "already configured"
     return DONE, f"masked {', '.join(unmasked)}" if unmasked else "logind configured"
+
+
+# A degraded software RAID is reported by `mdadm --monitor` by mail, and a host without a mail
+# program drops the message (OZ's /data ran degraded for days, 2026-11-06). A PROGRAM line is run
+# besides the mail, so the event also lands in syslog, which the stack's collector and the
+# Syslog tab show.
+SENDMAILS = [Path("/usr/sbin/sendmail"), Path("/usr/lib/sendmail"), Path("/usr/bin/sendmail")]
+MSMTPRC = Path("/etc/msmtprc")
+MSMTPRC_MARK = "# LABaPe (Prereq.AlertMail)"
+
+
+def has_sendmail() -> bool:
+    return any(p.exists() for p in SENDMAILS)
+
+
+def split_host_port(v: str) -> tuple[str, int]:
+    host, _, port = str(v).strip().rpartition(":")
+    return (host, int(port)) if host and port.isdigit() else (str(v).strip(), 1025)
+
+
+def prereq_alert_mail(c: Ctx):
+    """A mail program for the host's own mail (mdadm, smartd, cron), pointed at the stack's Mailpit, so
+    a failing disk is read in the web interface's mail page. OZ had none: mdadm's alert went nowhere."""
+    v = c.a.need("AlertMailHost")
+    if not v:
+        return NA, "no mail server given (AlertMailHost)"
+    host, port = split_host_port(v)
+    ours = MSMTPRC.is_file() and MSMTPRC.read_text(encoding="utf-8", errors="replace").startswith(MSMTPRC_MARK)
+    if has_sendmail() and not ours:
+        return DONE, "kept the mail program already here (it sends where it is set to; point it at Mailpit by hand)"
+    if not has_sendmail():
+        if os_family() == "rhel":
+            c.r.run(["dnf", "install", "-y", "-q", "msmtp"], check=False)           # EPEL on Rocky and Alma
+        else:
+            c.r.run(["apt-get", "install", "-y", "--no-install-recommends", "msmtp-mta"],
+                    env={"DEBIAN_FRONTEND": "noninteractive"}, check=False)
+        if not has_sendmail() and not c.r.dry_run:
+            return DONE, "no mail program could be installed (RHEL family: enable EPEL for msmtp); alerts go to syslog only"
+    name = socket.gethostname()
+    c.r.write(MSMTPRC, f"""{MSMTPRC_MARK}: hand this host's mail to the stack's Mailpit.
+defaults
+auth off
+tls off
+syslog on
+account default
+host {host}
+port {port}
+from root@{name}
+""")
+    return DONE, f"local mail goes to {host}:{port}"
+
+
+MDSTAT = Path("/proc/mdstat")
+MDADM_CONFS = [Path("/etc/mdadm/mdadm.conf"), Path("/etc/mdadm.conf")]      # Debian, RHEL
+RAID_EVENT_PROGRAM = Path("/usr/local/sbin/labape-raid-event")
+RAID_EVENT_SCRIPT = """#!/bin/sh
+# LABaPe (Prereq.RaidAlerts): mdadm --monitor runs this for every array event with the event,
+# the array and, for some events, the member. It writes the event to syslog.
+event="$1"; array="$2"; member="$3"
+case "$event" in
+    Fail|FailSpare|DegradedArray|DeviceDisappeared|SparesMissing) prio=daemon.crit ;;
+    Rebuild*|SpareActive|NewArray|TestMessage|MoveSpare) prio=daemon.notice ;;
+    *) prio=daemon.warning ;;
+esac
+exec logger -t labape-raid -p "$prio" "mdadm: $event on $array${member:+ ($member)}"
+"""
+
+
+def md_arrays(mdstat: Path | None = None) -> list[str]:
+    try:
+        text = (mdstat or MDSTAT).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [ln.split()[0] for ln in text.splitlines() if ln.startswith("md") and " : " in ln]
+
+
+def prereq_raid_alerts(c: Ctx):
+    if not c.r.which("mdadm") or not md_arrays():
+        return NA, "no software RAID arrays"
+    conf = next((p for p in MDADM_CONFS if p.is_file()), MDADM_CONFS[0])
+    lines = conf.read_text(encoding="utf-8", errors="replace").splitlines() if conf.is_file() else []
+    ours = f"PROGRAM {RAID_EVENT_PROGRAM}"
+    others = [ln.strip() for ln in lines if ln.split()[:1] == ["PROGRAM"] and ln.strip() != ours]
+    if others:
+        # mdadm runs one PROGRAM; a MAILADDR next to it is no conflict and stays as it is.
+        print(f"{conf} already has: {others[0]}")
+        if not c.a.need("ReplaceRaidProgram"):
+            return DONE, f"kept the existing '{others[0]}' (answer ReplaceRaidProgram=true to use LABaPe's)"
+    changed = c.r.write(RAID_EVENT_PROGRAM, RAID_EVENT_SCRIPT, mode=0o755)
+    kept = [ln for ln in lines if ln.strip() not in others]
+    if ours not in kept:
+        kept += ["", "# LABaPe (Prereq.RaidAlerts): array events also go to syslog", ours]
+    if not any(ln.split()[:1] == ["MAILADDR"] for ln in kept):
+        kept += ["MAILADDR root"]
+    changed |= c.r.write(conf, "\n".join(kept).rstrip("\n") + "\n")
+    if changed:
+        c.r.run(["systemctl", "try-restart", "mdmonitor"], check=False)       # re-read the file
+    mail = "mail is also sent" if has_sendmail() else "no mail program: syslog only"
+    return DONE, f"{', '.join(md_arrays())} reported to syslog ({mail})" if changed else "already configured"
 
 
 # --- host networking ------------------------------------------------------------
@@ -684,7 +784,7 @@ def stack_services(c: Ctx):
         if override.is_file() and not override.read_text(encoding="utf-8").startswith(OVERRIDE_HEADER):
             raise StepError(f"{override} exists and wasn't written by the installer; merge it by hand")
         c.r.write(override, text, mode=0o644, owner=c.user)
-    env = {"LABAPE_CONJUR": "yes" if c.a.need("InstallConjur") else "no"}
+    env = {"LABAPE_CONJUR": "yes" if c.a.need("InstallConjur") else "no", "LABAPE_MAIL_BIND": c.a.need("MailBind")}
     if c.a.need("InstallSyslog"):
         env["LABAPE_SYSLOG_BIND"] = c.a.need("SyslogBind")
     _set_env(c, cdir / ".env", env)

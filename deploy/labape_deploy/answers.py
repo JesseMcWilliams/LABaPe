@@ -105,6 +105,18 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     # the same one the VMs' certificates chain to (download it from the dashboard).
     Answer("Tls", "HTTPS certificate: 'labape-ca' (LABaPe's platform CA, recommended), 'internal' (Caddy's own CA) "
            "or an email address for ACME", default="labape-ca"),
+    # Asked only when /etc/mdadm/mdadm.conf already has a PROGRAM line of its own (mdadm runs just one).
+    Answer("ReplaceRaidProgram", "mdadm.conf already has a PROGRAM line: replace it with LABaPe's (array events to syslog)?",
+           kind="bool", default=False),
+    # The stack's Mailpit takes mail on port 1025 inside the stack; it is published on MailBind so the
+    # hosts' own mail (a failing disk, mdadm) can reach it. A KVM host the web interface prepares is
+    # given the stack's address; empty: no mail program is set up.
+    Answer("MailBind", "Address the stack's mail server (Mailpit, SMTP 1025) is published on (127.0.0.1: this host only)",
+           default=lambda a: _primary_ip() or "127.0.0.1", ask=False,
+           validate=lambda v: None if _is_ip(v) else "give an IPv4 address"),
+    Answer("AlertMailHost", "Mail server for this host's own mail, host:port (the stack's Mailpit; empty: none)",
+           default=lambda a: "" if a.get("Profile", "full") == "kvm" or not _primary_ip() else f"{_primary_ip()}:1025", optional=True,
+           validate=lambda v: None if not v or re.fullmatch(r"[A-Za-z0-9._-]+(:\d{1,5})?", str(v)) else "host or host:port"),
     Answer("ContainerRuntime", "Container runtime", kind="choice", choices=("docker", "podman"), default="docker"),
     # Services the web interface's stack runs (question 140): each defaults to yes. OpenBao is
     # always installed (the update agent's login and the boot-time unseal use it).

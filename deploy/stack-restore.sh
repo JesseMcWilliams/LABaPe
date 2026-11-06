@@ -134,7 +134,7 @@ put_tree() {   # put_tree SRCDIR DSTDIR: every file under SRCDIR
   (cd "$src" && find . -type f -print0) | while IFS= read -r -d '' f; do put "$src/$f" "$dst/${f#./}"; done
 }
 say "putting back the configuration and secrets"
-KEEP_KEYS=(LABAPE_SYSLOG_BIND LABAPE_STORES_BIND)
+KEEP_KEYS=(LABAPE_SYSLOG_BIND LABAPE_STORES_BIND LABAPE_MAIL_BIND)
 declare -A keep=()
 for k in "${KEEP_KEYS[@]}"; do keep[$k]="$(envval "$k")"; done
 put "$W/files/container/.env" "$C/.env"
