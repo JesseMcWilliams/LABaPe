@@ -12,9 +12,10 @@ import { ActionButton, useConfirm } from "../components/Confirm";
 import { ErrorSummary, Field, FieldErrors, fromApiError } from "../forms";
 import HostNetworks from "./HostNetworks";
 import {
-  AccessSection, AccountsSection, DashboardSection, DrivesSection, GroupsSection, NicsSection, OsSection, PoolsSection, SECTIONS,
+  AccessSection, AccountsSection, DashboardSection, DrivesSection, GroupsSection, NicsSection, OsSection, SECTIONS,
   SectionHeader, sectionsFor, StackSection, useAdminView, VmsSection,
 } from "../components/HostSections";
+import { PoolsSection } from "../components/PoolsSection";
 
 type HostForm = Omit<KvmHost, "id" | "resources">;
 interface CheckResult { ok: boolean; remote: boolean; libvirt: string; problems: string[] }

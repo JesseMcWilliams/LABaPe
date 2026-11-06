@@ -90,7 +90,24 @@ def _md_missing(detail: str, level: str, members: list[dict]) -> tuple[list[dict
     return missing, sorted(set(risk))
 
 
-def _md(facts: dict) -> list[dict]:
+def readd_check(smart: dict | None, serial: str, disk: str) -> dict:
+    """Is a drive that was failed out of an array fit to go back? Its own SMART reading decides: a drive that
+    passed, with no reallocated, pending or uncorrectable sectors, was probably dropped by a cable, a power
+    glitch or a controller reset. Anything else (or no reading) needs an admin's typed confirmation."""
+    rows = (smart or {}).get("disks") or []
+    d = next((x for x in rows if serial and x.get("serial") == serial), None) or         next((x for x in rows if disk and x.get("device") == disk), None)
+    if d is None:
+        return {"ok": False, "reasons": ["no SMART reading for this drive yet"]}
+    reasons = []
+    if d.get("passed") is False:
+        reasons.append("its SMART health check failed")
+    for key, label in (("reallocated", "reallocated"), ("pending", "pending"), ("uncorrectable", "offline-uncorrectable")):
+        if _int(d.get(key)) > 0:
+            reasons.append(f"{_int(d.get(key))} {label} sector{'s' if _int(d.get(key)) != 1 else ''}")
+    return {"ok": not reasons, "reasons": reasons}
+
+
+def _md(facts: dict, smart: dict | None = None) -> list[dict]:
     idx = _devices(facts)
     pools = []
     for name, d in sorted((facts.get("md") or {}).items()):
@@ -130,11 +147,15 @@ def _md(facts: dict) -> list[dict]:
         former = [{"name": p, **_identity(idx, p), "size": _int(n.get("size")) or None}
                   for p, (n, _d) in sorted(idx.items())
                   if n.get("fstype") == "linux_raid_member" and key and _uuid_key(n.get("uuid")) == key and p not in names]
+        for f in former:
+            f["assessment"] = readd_check(smart, f["serial"], f["disk"])
         mounts, fs_size, fs_used = _mounts(facts, [f"/dev/{name}"])
         size = _int(d.get("size")) * 512 or None
         actions = ["check", "stop-sync", "resync", "add-spare"] if level not in ("raid0", "linear") else ["check"]
         if level not in ("raid0", "linear"):
             actions.insert(3, "fail-remove")
+            if former and degraded > 0:
+                actions.append("re-add")
         pools.append({"id": f"md:{name}", "type": "mdadm", "name": name, "level": level, "state": state, "size": size,
                       "used": fs_used, "free": (fs_size - fs_used) if fs_size is not None and fs_used is not None else None,
                       "mounts": mounts, "uuid": uuid, "members": members,
@@ -231,10 +252,10 @@ def _lvm(facts: dict) -> list[dict]:
     return pools
 
 
-def build(facts: dict | None) -> list[dict]:
-    """Every pool the host's facts show, mdadm first."""
+def build(facts: dict | None, smart: dict | None = None) -> list[dict]:
+    """Every pool the host's facts show, mdadm first. The SMART readings judge a drive that could go back (re-add)."""
     facts = facts or {}
-    return [*_md(facts), *_zfs(facts), *_lvm(facts)]
+    return [*_md(facts, smart), *_zfs(facts), *_lvm(facts)]
 
 
 def pool_members(pools: list[dict]) -> set[str]:
@@ -309,12 +330,12 @@ def _check(name: str, device: str | None, needs_device: bool) -> None:
         raise hostadmin.AdminError("give the drive as a /dev path")
 
 
-def action_script(pool: dict, op: str, device: str | None) -> str:
+def action_script(pool: dict, op: str, device: str | None, full: bool = False) -> str:
     """The shell script that does `op` on `pool`; raises AdminError for anything not allowed."""
     name, kind = pool["name"], pool["type"]
     if op not in pool.get("actions", []):
         raise hostadmin.AdminError(f"{op} isn't available for this {kind} pool")
-    needs = op in ("fail-remove", "add-spare", "offline", "online")
+    needs = op in ("fail-remove", "add-spare", "re-add", "offline", "online")
     _check(name, device, needs)
     dev = shlex.quote(device) if device else ""
     pn = shlex.quote(name)
@@ -327,6 +348,9 @@ def action_script(pool: dict, op: str, device: str | None) -> str:
             "resync": f"echo repair > {sysfs}",
             "fail-remove": f"set -e; mdadm {md} --fail {dev}; mdadm {md} --remove {dev}",
             "add-spare": f"mdadm {md} --add {dev}",
+            # --re-add copies only what changed (the array's write-intent bitmap); full wipes the old label and
+            # rebuilds the whole drive, for when mdadm refuses the quick way.
+            "re-add": f"set -e; mdadm --zero-superblock {dev}; mdadm {md} --add {dev}" if full else f"mdadm {md} --re-add {dev}",
         }[op]
     if kind == "zfs":
         return {
@@ -339,10 +363,10 @@ def action_script(pool: dict, op: str, device: str | None) -> str:
     raise hostadmin.AdminError(f"{kind} pools are read-only here")
 
 
-def run_action(ssh, pool: dict, op: str, device: str | None = None) -> str:
-    """Run the action as root over SSH and return its output; a mounted or pooled drive is refused for add-spare."""
-    script = action_script(pool, op, device)
-    if op == "add-spare":
+def run_action(ssh, pool: dict, op: str, device: str | None = None, full: bool = False) -> str:
+    """Run the action as root over SSH and return its output; a mounted drive is refused for add-spare and re-add."""
+    script = action_script(pool, op, device, full)
+    if op in ("add-spare", "re-add"):
         script = (f"if findmnt -rn -S {shlex.quote(device)} >/dev/null 2>&1; then echo 'that drive is mounted' >&2; exit 1; fi; "
                   f"test -b {shlex.quote(device)} || {{ echo 'not a block device' >&2; exit 1; }}; {script}")
     r = ssh.run(f"sudo -n bash -c {shlex.quote(script)}", timeout=120)
