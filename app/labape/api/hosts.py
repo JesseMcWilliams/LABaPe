@@ -21,8 +21,8 @@ from ..db import get_db
 from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
-from ..engine import hostadmin, hostdelete, hostpools, hostpower, pathperms
-from ..models import HostFacts, HostMetric, HostStats, Job, KvmHost, Network
+from ..engine import hostadmin, hostcontainers, hostdelete, hostpools, hostpower, pathperms
+from ..models import HostContainers, HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
 from ..security import Principal, audit, client_ip, current_principal, require_roles
@@ -59,7 +59,8 @@ def _out(h: KvmHost) -> dict:
                                        "bridge", "concurrency_limit", "enabled", "ssh_address", "ssh_port",
                                        "ssh_user", "access_status", "access_error", "access_at", "log_forward",
                                        "log_forward_until", "log_forward_error", "is_primary",
-                                       "files_from_share", "role", "stack_url", "files_path", "disk_free_pct")} | {
+                                       "files_from_share", "role", "stack_url", "files_path", "disk_free_pct",
+                                       "container_alerts")} | {
         # What it uses now (F1): the primary keeps the stack's file locations (Settings → File locations).
         "files_dir": "" if h.is_primary else filedist.files_path(h)}
 
@@ -404,6 +405,7 @@ def host_admin(host_id: int, hours: int = 24, db: Session = Depends(get_db),
             "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None,
                                           h.disk_free_pct or appsettings.get(db, "monitoring", cached=True).disk_free_pct),
             "series": hostadmin.series(db, h, min(max(hours, 1), 168)),
+            "containers": hostcontainers.summary(db.get(HostContainers, h.id)),
             "pools": hostpools.build(facts, smart), "pool_candidates": hostpools.unused_disks(facts),
             "resources": _resources(db, h.id), "stack": _stack(db, h)}
 

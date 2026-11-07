@@ -482,6 +482,11 @@ def collect_due(db: Session) -> None:
                     f = s.get(HostFacts, h.id)
                     if f is None or f.collected_at is None or now - _aware(f.collected_at) >= FACTS_EVERY:
                         collect_facts(s, h)
+                    try:
+                        from . import hostcontainers
+                        hostcontainers.collect_due(s, h, now)
+                    except Exception:  # noqa: BLE001 - a host's containers must not stop the others being read
+                        s.rollback()
                     if h.log_forward and (h.log_forward_until is None
                                           or _aware(h.log_forward_until) - now < LOG_FORWARD_RENEW):
                         set_log_forwarding(s, h, True)     # renew the client certificate

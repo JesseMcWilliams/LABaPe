@@ -88,6 +88,8 @@ class KvmHost(Base):
     deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[str] = mapped_column(String(255), default="")
     purged: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Containers page (plan: Planning_Container-Management.md): alerts for the host's own containers.
+    container_alerts: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Network(Base):
@@ -385,6 +387,18 @@ class MonitorSilence(Base):
     created_by: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     until: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+
+
+class HostContainers(Base):
+    """The containers, images and volumes a host's Docker or Podman holds, read over SSH every 5 minutes
+    (plan C1). Separate from HostFacts, which is rewritten as a whole every hour."""
+
+    __tablename__ = "host_containers"
+
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), primary_key=True)
+    collected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
 
 
 class HostFacts(Base):
