@@ -33,6 +33,7 @@ def test_what_needs_a_look():
     assert hostcontainers.attention(c("a", state="exited", exit_code=137, oom=True)) == "ran out of memory and was killed"
     assert hostcontainers.attention(c("a", state="restarting")) == "is restarting"
     assert hostcontainers.attention(c("a", health="unhealthy")) == "is unhealthy"
+    assert hostcontainers.attention(c("a", state="exited", exit_code=0, health="unhealthy")) == ""        # stale health of a stopped one
 
 
 def test_the_page_marks_the_stacks_own_containers_and_what_uses_what():

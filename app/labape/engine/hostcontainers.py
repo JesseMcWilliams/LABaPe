@@ -146,7 +146,7 @@ def attention(c: dict) -> str:
     exit code `stop` leaves) is not a problem; one that is restarting, dead, unhealthy or was killed is."""
     if c.get("state") in ("restarting", "dead"):
         return f"is {c['state']}"
-    if c.get("health") == "unhealthy":
+    if c.get("health") == "unhealthy" and c.get("state") == "running":      # a stopped container keeps its last health
         return "is unhealthy"
     if c.get("state") == "exited" and (c.get("oom") or c.get("exit_code") not in CLEAN_EXIT):
         return "ran out of memory and was killed" if c.get("oom") else f"exited with code {c.get('exit_code')}"
