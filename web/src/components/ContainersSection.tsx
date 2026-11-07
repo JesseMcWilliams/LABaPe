@@ -1,30 +1,53 @@
-// Containers (plan C1, Planning_Container-Management.md): what a host's Docker or Podman holds, read-only.
+// Containers (plan C1 and C2, Planning_Container-Management.md): what a host's Docker or Podman holds, and the guarded actions.
 // The collector reads every 5 minutes; Refresh reads now; logs and live stats are fetched on request and never stored.
+// Start, stop, restart and recreate follow the host's level (off, known, new, all); the Stack's own containers are never changed here.
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, Switch, Tab, Table, TableBody,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, Switch, Tab, Table, TableBody,
   TableCell, TableHead, TableRow, Tabs, Typography,
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { Field } from "../forms";
+import { ActionButton } from "./Confirm";
 
 interface Mount { type: string; source: string; target: string; rw: boolean }
 interface Container {
   name: string; id: string; image: string; project: string; service: string; state: string; health: string; exit_code: number | null; oom: boolean;
-  error: string; started_at: string; finished_at: string; restarts: number; restart_policy: string; ports: string[]; mounts: Mount[]; networks: string[];
+  error: string; started_at: string; finished_at: string; restarts: number; restart_policy: string; unit: string; compose_dir: string; ports: string[]; mounts: Mount[]; networks: string[];
   stats: { cpu: string; memory: string; memory_pct: string } | null; attention: string; stack_own: boolean; quadlet: boolean;
+  actionable: boolean; why_not: string; ops: string[];
 }
 interface Image { id: string; repository: string; tag: string; size: string; created: string; dangling: boolean; in_use: boolean }
 interface Volume { name: string; driver: string; size: string | null; used_by: string[] }
 interface Page {
-  runtime: string; version: string; collected_at: string | null; error: string; alerts: boolean; containers: Container[]; images: Image[]; volumes: Volume[];
+  runtime: string; version: string; collected_at: string | null; error: string; alerts: boolean; level: string; known: string[]; containers: Container[]; images: Image[]; volumes: Volume[];
   summary: { total: number; running: number; attention: number };
 }
 interface Live { cpu: string; memory: string; memory_pct: string; pids: string; net: string; block: string }
 
+const ACTION_LABEL: Record<string, string> = { start: "Start", stop: "Stop", restart: "Restart", recreate: "Pull and recreate" };
+const ACTION_TIP: Record<string, string> = {
+  start: "Start the stopped container", stop: "Stop the container (it stays until started again)", restart: "Restart the container",
+  recreate: "Pull the compose service's image; the container is recreated only if a newer image came down",
+};
+const ACTION_BODY: Record<string, (c: Container) => string> = {
+  start: (c) => `${c.name} is started. Whatever depends on it can use it again.`,
+  stop: (c) => `${c.name} is stopped${c.restart_policy && c.restart_policy !== "no" ? ` (its restart policy is ${c.restart_policy}, so it stays down only until the next host or runtime restart)` : ""}. Anything that uses it stops working until it is started.`,
+  restart: (c) => c.quadlet ? `${c.name} belongs to the systemd unit ${c.unit}, which is restarted. It is briefly unavailable.` : `${c.name} is stopped and started again. It is briefly unavailable.`,
+  recreate: (c) => `Pulls the newest image of ${c.project}/${c.service} and recreates ${c.name} from the compose file in ${c.compose_dir}. If no newer image was published, nothing is replaced and it keeps running. If one was, it is unavailable while it is replaced.`,
+};
+
+const LEVEL_LABEL: Record<string, string> = { off: "Nothing (read-only)", known: "Known containers", new: "Known and new containers", all: "All containers" };
+const LEVEL_HELP: Record<string, string> = {
+  off: "This page only reads.",
+  known: "Only the containers ticked in the Known column.",
+  new: "Known containers, and any created after this was set.",
+  all: "Every container except the stack's own.",
+};
+
 const stateColor = (c: Container) => (c.attention ? "error" : c.state === "running" ? "success" : "default");
 
-function Detail({ hostId, c, onClose }: { hostId: number; c: Container; onClose: () => void }) {
+function Detail({ hostId, c, onClose, onChanged }: { hostId: number; c: Container; onClose: () => void; onChanged: () => void }) {
   const [tab, setTab] = useState(0);
   const [tail, setTail] = useState(200);
   const [since, setSince] = useState("");
@@ -33,6 +56,21 @@ function Detail({ hostId, c, onClose }: { hostId: number; c: Container; onClose:
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState("");
+  const act = async (op: string) => {
+    setBusy(true);
+    setError("");
+    setDone("");
+    try {
+      await api.post(`/api/hosts/${hostId}/containers/action`, { name: c.name, op });
+      setDone(`${op}: done on ${c.name}.`);
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const call = async (what: "logs" | "stats") => {
     setBusy(true);
     setError("");
@@ -53,6 +91,7 @@ function Detail({ hostId, c, onClose }: { hostId: number; c: Container; onClose:
           <Tab label="Details" /><Tab label="Logs" />
         </Tabs>
         {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+        {done && <Alert severity="success" sx={{ mb: 1 }}>{done}</Alert>}
         {tab === 0 && (
           <Stack spacing={1}>
             {c.attention && <Alert severity="error">This container {c.attention}{c.error ? `: ${c.error}` : ""}.</Alert>}
@@ -70,6 +109,16 @@ function Detail({ hostId, c, onClose }: { hostId: number; c: Container; onClose:
                 ))}
               </TableBody>
             </Table>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+              {(["start", "stop", "restart", "recreate"] as const).map((op) => (
+                <ActionButton key={op} size="small" variant="outlined" color={op === "stop" || op === "recreate" ? "warning" : "primary"}
+                  disabled={busy || !c.ops.includes(op)}
+                  tip={!c.actionable ? `Not available: ${c.why_not}` : !c.ops.includes(op) ? `${op} doesn't apply while it is ${c.state}` : ACTION_TIP[op]}
+                  confirm={{ title: `${ACTION_LABEL[op]} ${c.name}?`, confirmLabel: ACTION_LABEL[op], danger: op !== "start", body: ACTION_BODY[op](c) }}
+                  onClick={() => act(op)}>{ACTION_LABEL[op]}</ActionButton>
+              ))}
+              {!c.actionable && <Typography variant="body2" color="text.secondary">{c.why_not}.</Typography>}
+            </Stack>
             <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
               <Button size="small" variant="outlined" disabled={busy || c.state !== "running"} onClick={() => call("stats")}
                 title={c.state === "running" ? "Read the container's CPU and memory now" : "Only a running container has a reading"}>Read now</Button>
@@ -116,7 +165,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState<Container | null>(null);
+  const [openName, setOpenName] = useState("");
   const load = useCallback(async () => {
     try {
       setPage(await api.get<Page>(`/api/hosts/${hostId}/containers`));
@@ -138,6 +187,14 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
       setBusy(false);
     }
   };
+  const post = async (path: string, body: unknown) => {
+    try {
+      await api.post(`/api/hosts/${hostId}/containers/${path}`, body);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const setAlerts = async (enabled: boolean) => {
     try {
       await api.post(`/api/hosts/${hostId}/containers/alerts`, { enabled });
@@ -149,11 +206,12 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
   if (!page) return error ? <Alert severity="error">{error}</Alert> : <Typography color="text.secondary">Loading…</Typography>;
   if (!page.runtime) return <Alert severity="info">This host has neither Docker nor Podman, or its containers haven&apos;t been read yet (they are read every 5 minutes once SSH access is set up).</Alert>;
   const s = page.summary;
+  const open = page.containers.find((x) => x.name === openName) ?? null;
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
         {page.runtime === "podman" ? "Podman" : "Docker"} {page.version} · {s.total} container{s.total === 1 ? "" : "s"}, {s.running} running
-        {s.attention ? `, ${s.attention} need a look` : ""}. Read every 5 minutes{page.collected_at ? ` (last ${fmtTime(page.collected_at)})` : ""}; this page only reads: it doesn&apos;t change anything on the host.
+        {s.attention ? `, ${s.attention} need a look` : ""}. Read every 5 minutes{page.collected_at ? ` (last ${fmtTime(page.collected_at)})` : ""}; it changes a container only when you ask, as far as the setting below allows.
       </Typography>
       {(page.error || error) && <Alert severity="warning">{page.error ? `The last read failed: ${page.error}` : error}</Alert>}
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap" }}>
@@ -161,13 +219,29 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
         <FormControlLabel control={<Switch checked={page.alerts} onChange={(e) => setAlerts(e.target.checked)} />}
           label="Alert when a container of this host is down, unhealthy or restarting" />
       </Stack>
+      <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+        <Field select label="Changes from this page" value={page.level} onChange={(e) => post("level", { level: e.target.value })} sx={{ width: 240 }}
+          help={LEVEL_HELP[page.level]}>
+          {Object.entries(LEVEL_LABEL).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+        </Field>
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 260, pt: 1 }}>
+          The LABaPe stack&apos;s own containers (marked <em>stack</em>) are never changed from here, whatever this says.
+        </Typography>
+      </Stack>
       <Table size="small">
         <TableHead>
-          <TableRow><TableCell>Container</TableCell><TableCell>State</TableCell><TableCell>Image</TableCell><TableCell>Compose</TableCell><TableCell>Ports</TableCell><TableCell>CPU</TableCell><TableCell>Memory</TableCell><TableCell>Restarts</TableCell></TableRow>
+          <TableRow>{(page.level === "known" || page.level === "new") && <TableCell>Known</TableCell>}<TableCell>Container</TableCell><TableCell>State</TableCell><TableCell>Image</TableCell><TableCell>Compose</TableCell><TableCell>Ports</TableCell><TableCell>CPU</TableCell><TableCell>Memory</TableCell><TableCell>Restarts</TableCell></TableRow>
         </TableHead>
         <TableBody>
           {page.containers.map((c) => (
-            <TableRow key={c.name} hover sx={{ cursor: "pointer" }} onClick={() => setOpen(c)}>
+            <TableRow key={c.name} hover sx={{ cursor: "pointer" }} onClick={() => setOpenName(c.name)}>
+              {(page.level === "known" || page.level === "new") && (
+                <TableCell onClick={(e) => e.stopPropagation()} padding="checkbox">
+                  <Checkbox size="small" disabled={c.stack_own} checked={page.known.includes(c.name)}
+                    onChange={(e) => post("known", { name: c.name, known: e.target.checked })}
+                    title={c.stack_own ? "The stack's own containers are never changed from here" : "A known container may be started, stopped, restarted and recreated from this page"} />
+                </TableCell>
+              )}
               <TableCell sx={{ fontFamily: "monospace" }}>{c.name}{c.stack_own && <Chip size="small" label="stack" sx={{ ml: 1 }} title="Part of this LABaPe stack" />}</TableCell>
               <TableCell><Chip size="small" color={stateColor(c)} label={c.health ? `${c.state} · ${c.health}` : c.state} title={c.attention ? `This container ${c.attention}` : undefined} /></TableCell>
               <TableCell sx={{ fontSize: 12 }}>{c.image}</TableCell>
@@ -205,7 +279,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
           ))}
         </TableBody>
       </Table>
-      {open && <Detail hostId={hostId} c={open} onClose={() => setOpen(null)} />}
+      {open && <Detail hostId={hostId} c={open} onClose={() => setOpenName("")} onChanged={() => void load()} />}
     </Stack>
   );
 }

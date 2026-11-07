@@ -150,3 +150,87 @@ def test_the_containers_api(client, monkeypatch):
     assert post("stats", name="db").json()["cpu"] == "1.5%"
     assert post("alerts", enabled=False).json() == {"alerts": False}
     assert client.get(f"/api/hosts/{host_id}/containers").json()["alerts"] is False
+
+
+# --- batch C2: the guarded actions ---------------------------------------------------------------------
+
+def host(level="off", known=(), at=None):
+    return KvmHost(name="h", libvirt_uri="x", container_level=level, container_known=list(known), container_level_at=at)
+
+
+def test_who_may_be_acted_on():
+    db_, web, api = c("db"), c("web", created="2026-11-07T00:00:00.1Z"), c("labape-api", project="labape")
+    assert hostcontainers.actionable(host("off"), db_) == (False, "actions are off for this host")
+    assert hostcontainers.actionable(host("known", ["db"]), db_) == (True, "")
+    assert hostcontainers.actionable(host("known", ["db"]), web) == (False, "not marked known")
+    since = dt.datetime(2026, 11, 6, tzinfo=dt.timezone.utc)
+    assert hostcontainers.actionable(host("new", [], since), web)[0] is True                      # created after the level was set
+    assert hostcontainers.actionable(host("new", [], since), c("old", created="2026-10-01T00:00:00Z"))[0] is False
+    assert hostcontainers.actionable(host("new", ["old"], since), c("old", created="2026-10-01T00:00:00Z"))[0] is True
+    assert hostcontainers.actionable(host("all"), db_) == (True, "")
+    for level in hostcontainers.LEVELS:
+        assert hostcontainers.actionable(host(level, ["labape-api"]), api) == (False, "part of this LABaPe stack")
+
+
+def test_which_actions_fit_the_state_and_the_scripts():
+    run = c("web", compose_dir="/srv/web", compose_files="/srv/web/compose.yaml,/srv/web/extra.yaml")
+    assert hostcontainers.ops_for("docker", run) == ["stop", "restart", "recreate"]
+    assert hostcontainers.ops_for("docker", c("web", state="exited", project="")) == ["start", "restart"]
+    assert hostcontainers.ops_for("podman", run) == ["stop", "restart"]                      # recreate needs docker compose
+    assert hostcontainers.action_script("docker", run, "restart") == "docker restart web"
+    s = hostcontainers.action_script("docker", run, "recreate")
+    assert s == ("set -e; cd /srv/web; docker compose -p web -f /srv/web/compose.yaml -f /srv/web/extra.yaml pull web; "
+                 "docker compose -p web -f /srv/web/compose.yaml -f /srv/web/extra.yaml up -d --no-deps web")
+    q = c("app", quadlet=True, unit="app.service")
+    assert hostcontainers.action_script("podman", q, "restart") == "systemctl restart app.service"      # question 204
+    for bad in (dict(unit="app.service; reboot"), dict(unit="../x")):
+        try:
+            hostcontainers.action_script("podman", c("app", quadlet=True, **bad), "stop")
+        except hostadmin.AdminError:
+            pass
+        else:
+            raise AssertionError(bad)
+    for bad in (dict(compose_dir="/srv/web; reboot"), dict(project="web;x"), dict(compose_files="/a b")):
+        try:
+            hostcontainers.action_script("docker", c("web", **{"compose_dir": "/srv/web", **bad}), "recreate")
+        except hostadmin.AdminError:
+            pass
+        else:
+            raise AssertionError(bad)
+
+
+def test_the_action_api_follows_the_level(client, monkeypatch):
+    _admin_session(client)
+    host_id = _ready_host(client)
+    with session_factory()() as db:
+        db.add(HostContainers(kvm_host_id=host_id, collected_at=utcnow(), data=data(
+            c("web", compose_dir="/srv/web"), c("old", state="exited"), c("labape-api", project="labape"))))
+        db.commit()
+    ssh = FakeSsh(text=b"ok\n")
+    monkeypatch.setattr(hostadmin, "for_host", lambda h: ssh)
+    monkeypatch.setattr(hostcontainers, "collect", lambda db, h, now=None: None)
+    act = lambda name, op: client.post(f"/api/hosts/{host_id}/containers/action", json={"name": name, "op": op})        # noqa: E731
+    level = lambda lv: client.post(f"/api/hosts/{host_id}/containers/level", json={"level": lv})                      # noqa: E731
+    mark = lambda name, known=True: client.post(f"/api/hosts/{host_id}/containers/known", json={"name": name, "known": known})   # noqa: E731
+    page = client.get(f"/api/hosts/{host_id}/containers").json()
+    assert page["level"] == "off" and not any(x["actionable"] for x in page["containers"])
+    assert act("web", "restart").status_code == 422 and not ssh.calls                          # off: nothing
+    assert level("everything").status_code == 422
+    assert level("known").json() == {"level": "known", "known": []}
+    assert act("web", "restart").status_code == 422                                           # not marked
+    assert mark("nope").status_code == 422 and mark("web").json()["known"] == ["web"]
+    page = client.get(f"/api/hosts/{host_id}/containers").json()
+    assert {x["name"]: x["ops"] for x in page["containers"]}["web"] == ["stop", "restart", "recreate"]
+    assert act("web", "restart").status_code == 200 and ssh.calls[-1].startswith("sudo -n bash -c") and "docker restart web" in ssh.calls[-1]
+    assert act("web", "start").status_code == 422                                             # it is running
+    assert act("web", "reboot").status_code == 422
+    assert act("web", "recreate").status_code == 200 and "up -d --no-deps web" in ssh.calls[-1]
+    assert level("all").status_code == 200
+    assert act("old", "start").status_code == 200 and "docker start old" in ssh.calls[-1]
+    assert act("labape-api", "restart").status_code == 422                                    # the stack's own, even at "all"
+    assert mark("web", False).json()["known"] == []
+    actions = [(a["action"], a["outcome"]) for a in client.get("/api/admin/audit").json() if a["action"].startswith("host.container.")]
+    assert ("host.container.restart", "ok") in actions and ("host.container.restart", "failed") in actions
+    assert any(a == "host.container.level" for a, _ in actions) and any(a == "host.container.known" for a, _ in actions)
+    ssh.rc = 1
+    assert act("old", "restart").status_code == 422
