@@ -230,6 +230,8 @@ def logs(ssh, row: HostContainers | None, name: str, tail: int = 200, since: str
     tail = max(1, min(int(tail), LOG_MAX_LINES))
     if since and not re.fullmatch(r"[0-9]{1,4}[smhd]", since):
         raise hostadmin.AdminError("since is a number and s, m, h or d (10m, 2h)")
+    if since.endswith("d"):
+        since = f"{int(since[:-1]) * 24}h"                  # docker and podman take no "d"
     cmd = [c["runtime"], "logs", "--timestamps", "--tail", str(tail)] + (["--since", since] if since else []) + [name]
     r = ssh.run("sudo -n " + " ".join(shlex.quote(x) for x in cmd) + " 2>&1", timeout=60)
     text = r.stdout.decode(errors="replace")

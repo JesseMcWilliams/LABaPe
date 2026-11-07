@@ -137,6 +137,8 @@ def test_the_containers_api(client, monkeypatch):
     r = post("logs", name="db", tail=50, since="10m").json()
     assert "hunter2" not in r["text"] and "DB_PASSWORD=***" in r["text"] and r["lines"] == 2
     assert "sudo -n docker logs --timestamps --tail 50 --since 10m db" in ssh.calls[-1]
+    post("logs", name="db", since="2d")
+    assert "--since 48h" in ssh.calls[-1]                                    # the runtimes take no "d"
     assert post("logs", name="db", filter="ready").json()["lines"] == 1
     assert post("logs", name="nope").status_code == 422                      # not a container of this host
     assert post("logs", name="db; reboot").status_code == 422
