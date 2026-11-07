@@ -1,6 +1,6 @@
 # Plan: a Containers page for Stack and KVM hosts
 
-> **Stage: Planning / building.** The idea of 2026-11-06 (after OZ's failed-out drive), with the decisions the user gave the same day. Questions 203-207 are answered ([Planning_Questions.md](Planning_Questions.md)). **C1 (read) is built** (design §75); C2 (actions) and C3 (clean-up) are next. Today's Stack section is [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) §30; Drive Pools (§53.4) is the model for guarded host actions.
+> **Stage: Planning / building.** The idea of 2026-11-06 (after OZ's failed-out drive), with the decisions the user gave the same day. Questions 203-207 are answered ([Planning_Questions.md](Planning_Questions.md)). **C1 (read), C2 (actions) and C3 (clean-up) are built** (design §75). Today's Stack section is [Planning_Web-Interface-Design.md](Planning_Web-Interface-Design.md) §30; Drive Pools (§53.4) is the model for guarded host actions.
 
 ## 0. Decisions so far (2026-11-06)
 

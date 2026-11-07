@@ -90,6 +90,11 @@ class KvmHost(Base):
     purged: Mapped[bool] = mapped_column(Boolean, default=False)
     # Containers page (plan: Planning_Container-Management.md): alerts for the host's own containers.
     container_alerts: Mapped[bool] = mapped_column(Boolean, default=True)
+    # What the Containers page may act on (plan C2): off, known (the names listed), new (known, and containers
+    # created after container_level_at) or all. The Stack's own containers are never actionable.
+    container_level: Mapped[str] = mapped_column(String(8), default="off")
+    container_level_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    container_known: Mapped[list] = mapped_column(JSON, default=list)
 
 
 class Network(Base):

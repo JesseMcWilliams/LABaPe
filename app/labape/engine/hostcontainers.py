@@ -78,7 +78,9 @@ if rt:
             "mounts": [{"type": m.get("Type", ""), "source": m.get("Name") or m.get("Source", ""),
                         "target": m.get("Destination", ""), "rw": bool(m.get("RW", True))} for m in c.get("Mounts") or []],
             "networks": sorted((c.get("NetworkSettings") or {}).get("Networks") or {}),
-            "quadlet": bool(labels.get("PODMAN_SYSTEMD_UNIT")), "stats": stats.get(name)})
+            "quadlet": bool(labels.get("PODMAN_SYSTEMD_UNIT")), "unit": labels.get("PODMAN_SYSTEMD_UNIT", ""),
+            "compose_dir": labels.get("com.docker.compose.project.working_dir", ""),
+            "compose_files": labels.get("com.docker.compose.project.config_files", ""), "stats": stats.get(name)})
     for i in lines(sh(rt, "images", "-a", "--format", "{{json .}}")):
         out["images"].append({"id": (i.get("ID") or i.get("Id") or "")[:12],
                               "repository": i.get("Repository") or "", "tag": i.get("Tag") or "",
@@ -95,7 +97,9 @@ if rt:
             except ValueError:
                 pass
     for v in lines(sh(rt, "volume", "ls", "--format", "{{json .}}")):
-        out["volumes"].append({"name": v.get("Name", ""), "driver": v.get("Driver", ""), "size": sizes.get(v.get("Name", ""))})
+        lab = v.get("Labels") or ""
+        proj = next((p.split("=", 1)[1] for p in (lab.split(",") if isinstance(lab, str) else []) if p.startswith("com.docker.compose.project=")), "")
+        out["volumes"].append({"name": v.get("Name", ""), "driver": v.get("Driver", ""), "size": sizes.get(v.get("Name", "")), "project": proj})
 print(json.dumps(out))
 '''
 
@@ -164,7 +168,98 @@ def summary(row: HostContainers | None) -> dict:
     return {"runtime": data.get("runtime", ""), "total": len(cs), "attention": sum(bool(attention(c)) for c in cs)}
 
 
-def build(row: HostContainers | None) -> dict:
+# --- the guarded actions (plan C2) -----------------------------------------------------------------
+
+LEVELS = ("off", "known", "new", "all")
+OPS = ("start", "stop", "restart", "recreate")
+SAFE_WORD = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+SAFE_PATH = re.compile(r"^/[A-Za-z0-9._/@+-]{0,255}$")
+SAFE_UNIT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,127}\.service$")
+
+
+def _created(c: dict) -> dt.datetime | None:
+    try:
+        return dt.datetime.fromisoformat(str(c.get("created", ""))[:19]).replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        return None
+
+
+def actionable(h: KvmHost | None, c: dict) -> tuple[bool, str]:
+    """May the page act on this container, and if not, why. The Stack's own are never actionable."""
+    if is_stack_own(c):
+        return False, "part of this LABaPe stack"
+    level = h.container_level if h is not None else "off"
+    if level == "all":
+        return True, ""
+    if level == "off" or h is None:
+        return False, "actions are off for this host"
+    if c["name"] in (h.container_known or []):
+        return True, ""
+    if level == "new":
+        made, since = _created(c), _aware(h.container_level_at)
+        if made is not None and since is not None and made > since:
+            return True, ""
+        return False, "not marked known, and it existed before the level was set"
+    return False, "not marked known"
+
+
+def ops_for(runtime: str, c: dict) -> list[str]:
+    """The actions that make sense for the container as it is now."""
+    state = c.get("state")
+    ops = []
+    if state in ("exited", "created"):
+        ops.append("start")
+    if state in ("running", "restarting"):
+        ops.append("stop")
+    if state in ("running", "restarting", "exited", "created"):
+        ops.append("restart")
+    if runtime == "docker" and c.get("project") and c.get("service") and c.get("compose_dir") and not c.get("quadlet"):
+        ops.append("recreate")
+    return ops
+
+
+def action_script(runtime: str, c: dict, op: str) -> str:
+    """The shell script for one action on one container; every word in it was checked here."""
+    name = c["name"]
+    if op not in OPS:
+        raise hostadmin.AdminError("not an action")
+    if not SAFE_WORD.match(name):
+        raise hostadmin.AdminError("not a container name")
+    if c.get("quadlet") and c.get("unit"):
+        # A Quadlet container belongs to a systemd unit: acting on the container directly, systemd would undo it.
+        if op == "recreate":
+            raise hostadmin.AdminError("a Quadlet container is recreated by restarting its unit")
+        if not SAFE_UNIT.match(c["unit"]):
+            raise hostadmin.AdminError("the container's systemd unit has an unexpected name")
+        return f"systemctl {op} {shlex.quote(c['unit'])}"
+    if op != "recreate":
+        return f"{runtime} {op} {shlex.quote(name)}"
+    if runtime != "docker":
+        raise hostadmin.AdminError("recreate needs docker compose")
+    project, service, folder = c.get("project", ""), c.get("service", ""), c.get("compose_dir", "")
+    files = [f for f in (c.get("compose_files") or "").split(",") if f]
+    if not (SAFE_WORD.match(project) and SAFE_WORD.match(service) and SAFE_PATH.match(folder) and all(SAFE_PATH.match(f) for f in files)):
+        raise hostadmin.AdminError("this container's compose labels can't be used safely")
+    base = f"docker compose -p {shlex.quote(project)} " + "".join(f"-f {shlex.quote(f)} " for f in files)
+    return f"set -e; cd {shlex.quote(folder)}; {base}pull {shlex.quote(service)}; {base}up -d --no-deps {shlex.quote(service)}"
+
+
+def run_action(ssh, h: KvmHost, row: HostContainers | None, name: str, op: str) -> str:
+    """Do `op` on the container `name` of host `h`, after every check; returns the tail of the output."""
+    c = _known(row, name)
+    ok, why = actionable(h, c)
+    if not ok:
+        raise hostadmin.AdminError(f"{name} can't be changed from here: {why}")
+    if op not in ops_for(c["runtime"], c):
+        raise hostadmin.AdminError(f"{op} doesn't apply to {name} as it is now ({c.get('state')})")
+    r = ssh.run(f"sudo -n bash -c {shlex.quote(action_script(c['runtime'], c, op))}", timeout=900 if op == "recreate" else 120)
+    text = (r.stdout + r.stderr).decode(errors="replace").strip()
+    if r.returncode != 0:
+        raise hostadmin.AdminError(text[-400:] or f"exit {r.returncode}")
+    return text[-400:]
+
+
+def build(row: HostContainers | None, h: KvmHost | None = None) -> dict:
     """The page: containers with their flags, images and volumes (with what uses them), and a summary."""
     data = (row.data if row else {}) or {}
     containers = []
@@ -173,12 +268,15 @@ def build(row: HostContainers | None) -> dict:
         for m in c.get("mounts") or []:
             if m.get("type") == "volume":
                 used_vols.setdefault(m["source"], []).append(c["name"])
-        containers.append({**c, "attention": attention(c), "stack_own": is_stack_own(c)})
+        ok, why = actionable(h, c)
+        containers.append({**c, "attention": attention(c), "stack_own": is_stack_own(c), "actionable": ok, "why_not": why,
+                           "ops": ops_for(data.get("runtime", ""), c) if ok else []})
     images = [{**i, "in_use": any(i["id"] and c["image_id"].removeprefix("sha256:").startswith(i["id"]) for c in containers)}
               for i in data.get("images") or []]
     volumes = [{**v, "used_by": sorted(used_vols.get(v["name"], []))} for v in data.get("volumes") or []]
     return {"runtime": data.get("runtime", ""), "version": data.get("version", ""),
             "collected_at": row.collected_at if row else None, "error": row.error if row else "",
+            "level": h.container_level if h is not None else "off", "known": list(h.container_known or []) if h is not None else [],
             "containers": containers, "images": images, "volumes": volumes,
             "summary": {"total": len(containers), "running": sum(c["state"] == "running" for c in containers),
                         "attention": sum(bool(c["attention"]) for c in containers)}}
@@ -202,6 +300,79 @@ def alerts(h: KvmHost, row: HostContainers | None, now: dt.datetime, stack: bool
         if t and now - _aware(dt.datetime.fromisoformat(t)) < RESTART_WINDOW:
             out.append(("warning", f"container {c['name']} restarted (restart count {c.get('restarts')})", "restart"))
     return out
+
+
+# --- clean-up (plan C3): a preview first, then only what was picked ---------------------------------
+
+UNITS = {"B": 1, "KB": 10**3, "MB": 10**6, "GB": 10**9, "TB": 10**12, "KIB": 1024, "MIB": 1024**2, "GIB": 1024**3}
+IMAGE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/@-]{0,255}$")
+IMAGE_ID = re.compile(r"^[0-9a-f]{12}$")
+
+
+def parse_size(text) -> int:
+    """'190MB', '2.338kB', '1.2GiB' -> bytes; 0 when it can't be read."""
+    m = re.fullmatch(r"\s*([0-9]*\.?[0-9]+)\s*([A-Za-z]*)\s*", str(text or ""))
+    return int(float(m.group(1)) * UNITS.get(m.group(2).upper() or "B", 0)) if m else 0
+
+
+def cleanup_candidates(page: dict) -> dict:
+    """What could be removed from a built page: stopped containers the level allows, images nothing uses (untagged
+    ones apart from tagged ones), and volumes no container refers to, never the Stack's own. Docker itself also
+    refuses to remove anything in use, since nothing here forces it."""
+    out = {"containers": [], "dangling_images": [], "unused_images": [], "volumes": []}
+    for c in page["containers"]:
+        if c["state"] in ("exited", "created", "dead") and c["actionable"]:
+            out["containers"].append({"key": c["name"], "label": c["name"], "bytes": 0,
+                                      "detail": f"{c['state']}{'' if c.get('exit_code') in (None, 0) else f', exit code {c['exit_code']}'}, {c['image']}"})
+    for i in page["images"]:
+        if i["in_use"]:
+            continue
+        size = parse_size(i["size"])
+        if i["dangling"]:
+            out["dangling_images"].append({"key": i["id"], "label": i["id"], "bytes": size, "detail": f"untagged, {i['size']}, {i['created']}"})
+        else:
+            ref = f"{i['repository']}:{i['tag']}"
+            out["unused_images"].append({"key": ref, "label": ref, "bytes": size, "detail": f"{i['size']}, {i['created']}"})
+    for v in page["volumes"]:
+        if not v["used_by"] and v.get("project") not in STACK_PROJECTS:
+            out["volumes"].append({"key": v["name"], "label": v["name"], "bytes": parse_size(v["size"]),
+                                   "detail": f"{v['size'] or 'size not read yet'}, no container uses it"})
+    out["totals"] = {k: {"count": len(out[k]), "bytes": sum(x["bytes"] for x in out[k])} for k in ("containers", "dangling_images", "unused_images", "volumes")}
+    return out
+
+
+def cleanup_script(runtime: str, kind: str, keys: list[str]) -> str:
+    """One removal per item, each reported; no force flag, so the runtime refuses anything still in use."""
+    if kind == "containers":
+        verb, ok = f"{runtime} rm", lambda k: bool(SAFE_WORD.match(k))
+    elif kind in ("dangling_images", "unused_images"):
+        verb, ok = f"{runtime} rmi", lambda k: bool(IMAGE_ID.match(k) if kind == "dangling_images" else IMAGE_REF.match(k))
+    elif kind == "volumes":
+        verb, ok = f"{runtime} volume rm", lambda k: bool(SAFE_WORD.match(k))
+    else:
+        raise hostadmin.AdminError("not a kind of clean-up")
+    if not keys or not all(ok(k) for k in keys):
+        raise hostadmin.AdminError("nothing to remove, or a name that can't be used safely")
+    return "\n".join(f"{verb} {shlex.quote(k)} >/dev/null 2>&1 && echo {shlex.quote('removed ' + k)} || echo {shlex.quote('kept ' + k)}"
+                     for k in keys)
+
+
+def run_cleanup(ssh, h: KvmHost, row: HostContainers | None, kind: str, keys: list[str], confirm: str = "") -> dict:
+    if h.container_level == "off":
+        raise hostadmin.AdminError("changes are off for this host: choose what the page may change first")
+    page = build(row, h)
+    if not page["runtime"]:
+        raise hostadmin.AdminError("this host has no container runtime")
+    wanted = {x["key"] for x in cleanup_candidates(page).get(kind, [])} if kind in ("containers", "dangling_images", "unused_images", "volumes") else set()
+    if not set(keys) <= wanted:
+        raise hostadmin.AdminError("something picked isn't a candidate any more (refresh the page)")
+    if kind == "volumes" and confirm != "delete":
+        raise hostadmin.AdminError("removing volumes deletes their data: type delete to confirm")
+    r = ssh.run(f"sudo -n bash -c {shlex.quote(cleanup_script(page['runtime'], kind, keys))}", timeout=600)
+    lines = r.stdout.decode(errors="replace").splitlines()
+    if r.returncode != 0 and not lines:
+        raise hostadmin.AdminError((r.stderr or r.stdout).decode(errors="replace").strip()[-300:] or f"exit {r.returncode}")
+    return {"removed": [x[8:] for x in lines if x.startswith("removed ")], "kept": [x[5:] for x in lines if x.startswith("kept ")]}
 
 
 # --- on request: logs and live stats (never stored) ------------------------------------------------
