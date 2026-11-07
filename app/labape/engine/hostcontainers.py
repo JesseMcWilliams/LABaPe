@@ -1,0 +1,264 @@
+"""The Containers page (plan C1, Planning_Container-Management.md): what a host's Docker or Podman holds.
+
+A script run over the SSH access account (as root, like the host facts) reads containers, images and volumes
+in one shape for both runtimes; `build` turns the stored values into the page. Logs and live stats are read on
+request and never stored. Nothing here changes a container: actions are batch C2.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import re
+import shlex
+import subprocess
+
+from sqlalchemy.orm import Session
+
+from ..models import HostContainers, KvmHost, utcnow
+from . import hostadmin
+
+COLLECT_EVERY = dt.timedelta(minutes=5)
+VOLUME_SIZES_EVERY = dt.timedelta(hours=1)          # `system df -v` walks every volume: hourly only
+RESTART_WINDOW = dt.timedelta(minutes=30)
+# The Stack's own compose projects: shown, never actionable (plan §0.3).
+STACK_PROJECTS = ("labape", "authentik-test")
+LOG_MAX_LINES, LOG_MAX_BYTES = 2000, 1_000_000
+NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+CLEAN_EXIT = (0, 137, 143)                           # finished, or stopped by `stop`/SIGTERM/SIGKILL
+
+SCRIPT = r'''
+import json, shutil, subprocess
+def sh(*a, timeout=120):
+    try:
+        r = subprocess.run(a, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+def lines(text):
+    out = []
+    text = text.strip()
+    if text.startswith("["):
+        try:
+            return json.loads(text)
+        except ValueError:
+            return []
+    for ln in text.splitlines():
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            pass
+    return out
+rt = "docker" if shutil.which("docker") else ("podman" if shutil.which("podman") else "")
+out = {"runtime": rt, "version": "", "containers": [], "images": [], "volumes": [], "warnings": []}
+if rt:
+    out["version"] = sh(rt, "version", "--format", "{{.Server.Version}}" if rt == "docker" else "{{.Version}}").strip()
+    names = sh(rt, "ps", "-a", "--format", "{{.Names}}").split()
+    stats = {}
+    for s in lines(sh(rt, "stats", "--no-stream", "--format", "{{json .}}", timeout=60)):
+        stats[s.get("Name") or s.get("name") or ""] = {"cpu": s.get("CPUPerc") or s.get("cpu_percent") or "",
+                                                       "memory": s.get("MemUsage") or s.get("mem_usage") or "",
+                                                       "memory_pct": s.get("MemPerc") or s.get("mem_percent") or ""}
+    for c in (json.loads(sh(rt, "inspect", *names) or "[]") if names else []):
+        st = c.get("State") or {}
+        cfg = c.get("Config") or {}
+        host = c.get("HostConfig") or {}
+        labels = cfg.get("Labels") or {}
+        ports = []
+        for cport, binds in ((c.get("NetworkSettings") or {}).get("Ports") or {}).items():
+            for b in binds or [None]:
+                ports.append(f"{b.get('HostIp') or '0.0.0.0'}:{b.get('HostPort')}->{cport}" if b else cport)
+        name = c.get("Name", "").lstrip("/")
+        out["containers"].append({
+            "name": name, "id": (c.get("Id") or "")[:12], "image": cfg.get("Image", ""), "image_id": (c.get("Image") or "")[:19],
+            "project": labels.get("com.docker.compose.project", ""), "service": labels.get("com.docker.compose.service", ""),
+            "state": st.get("Status", ""), "health": (st.get("Health") or {}).get("Status", ""),
+            "exit_code": st.get("ExitCode"), "oom": bool(st.get("OOMKilled")), "error": (st.get("Error") or "")[:300],
+            "started_at": st.get("StartedAt", ""), "finished_at": st.get("FinishedAt", ""), "created": c.get("Created", ""),
+            "restarts": c.get("RestartCount", 0), "restart_policy": (host.get("RestartPolicy") or {}).get("Name", ""),
+            "ports": sorted(set(ports)),
+            "mounts": [{"type": m.get("Type", ""), "source": m.get("Name") or m.get("Source", ""),
+                        "target": m.get("Destination", ""), "rw": bool(m.get("RW", True))} for m in c.get("Mounts") or []],
+            "networks": sorted((c.get("NetworkSettings") or {}).get("Networks") or {}),
+            "quadlet": bool(labels.get("PODMAN_SYSTEMD_UNIT")), "stats": stats.get(name)})
+    for i in lines(sh(rt, "images", "-a", "--format", "{{json .}}")):
+        out["images"].append({"id": (i.get("ID") or i.get("Id") or "")[:12],
+                              "repository": i.get("Repository") or "", "tag": i.get("Tag") or "",
+                              "size": i.get("Size") or "", "created": i.get("CreatedSince") or i.get("CreatedAt") or ""})
+    dangling = set(sh(rt, "images", "-q", "-f", "dangling=true").split())
+    for i in out["images"]:
+        i["dangling"] = i["id"] in dangling or (i["repository"] in ("<none>", "") and i["tag"] in ("<none>", ""))
+    sizes = {}
+    if ARGS.get("volume_sizes") and rt == "docker":
+        for ln in sh(rt, "system", "df", "-v", "--format", "{{json .}}", timeout=600).splitlines():
+            try:
+                for v in json.loads(ln).get("Volumes") or []:
+                    sizes[v.get("Name", "")] = v.get("Size", "")
+            except ValueError:
+                pass
+    for v in lines(sh(rt, "volume", "ls", "--format", "{{json .}}")):
+        out["volumes"].append({"name": v.get("Name", ""), "driver": v.get("Driver", ""), "size": sizes.get(v.get("Name", ""))})
+print(json.dumps(out))
+'''
+
+
+def _aware(t: dt.datetime | None) -> dt.datetime | None:
+    return t.replace(tzinfo=dt.timezone.utc) if t is not None and t.tzinfo is None else t
+
+
+def collect(db: Session, h: KvmHost, now: dt.datetime | None = None) -> HostContainers:
+    """Read the host's containers now. A host without Docker or Podman is stored as runtime "" (no section)."""
+    now = now or utcnow()
+    row = db.get(HostContainers, h.id) or HostContainers(kvm_host_id=h.id, data={})
+    old = dict(row.data or {})
+    try:
+        sizes = not old.get("volume_sizes_at") or now - dt.datetime.fromisoformat(old["volume_sizes_at"]) >= VOLUME_SIZES_EVERY
+        got = hostadmin.for_host(h).python(SCRIPT, {"volume_sizes": sizes}, timeout=900)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired, ValueError) as exc:
+        row.error = str(exc)[:1000]
+        db.merge(row)
+        db.commit()
+        return row
+    before = {c["name"]: c for c in old.get("containers") or []}
+    seen = dict(old.get("restart_seen") or {})
+    for c in got.get("containers", []):
+        prev = before.get(c["name"])
+        if prev is not None and c["restarts"] > prev.get("restarts", 0):
+            seen[c["name"]] = now.isoformat()
+    if not sizes:                                              # keep the last sizes between the hourly reads
+        known = {v["name"]: v.get("size") for v in old.get("volumes") or []}
+        for v in got.get("volumes", []):
+            v["size"] = known.get(v["name"])
+    got.update(restart_seen=seen, volume_sizes_at=now.isoformat() if sizes else old.get("volume_sizes_at"))
+    row.data, row.collected_at, row.error = got, now, ""
+    db.merge(row)
+    db.commit()
+    return row
+
+
+def collect_due(db: Session, h: KvmHost, now: dt.datetime | None = None) -> None:
+    now = now or utcnow()
+    row = db.get(HostContainers, h.id)
+    if row is None or row.collected_at is None or now - _aware(row.collected_at) >= COLLECT_EVERY - dt.timedelta(seconds=20):
+        collect(db, h, now)
+
+
+def attention(c: dict) -> str:
+    """Why a container needs a look, else "". A container that was stopped on purpose (exit 0, or the
+    exit code `stop` leaves) is not a problem; one that is restarting, dead, unhealthy or was killed is."""
+    if c.get("state") in ("restarting", "dead"):
+        return f"is {c['state']}"
+    if c.get("health") == "unhealthy" and c.get("state") == "running":      # a stopped container keeps its last health
+        return "is unhealthy"
+    if c.get("state") == "exited" and (c.get("oom") or c.get("exit_code") not in CLEAN_EXIT):
+        return "ran out of memory and was killed" if c.get("oom") else f"exited with code {c.get('exit_code')}"
+    return ""
+
+
+def is_stack_own(c: dict) -> bool:
+    return c.get("project") in STACK_PROJECTS
+
+
+def summary(row: HostContainers | None) -> dict:
+    """What the host's page needs to know before opening the section: is there a runtime, and how many need a look."""
+    data = (row.data if row else {}) or {}
+    cs = data.get("containers") or []
+    return {"runtime": data.get("runtime", ""), "total": len(cs), "attention": sum(bool(attention(c)) for c in cs)}
+
+
+def build(row: HostContainers | None) -> dict:
+    """The page: containers with their flags, images and volumes (with what uses them), and a summary."""
+    data = (row.data if row else {}) or {}
+    containers = []
+    used_vols: dict[str, list[str]] = {}
+    for c in data.get("containers") or []:
+        for m in c.get("mounts") or []:
+            if m.get("type") == "volume":
+                used_vols.setdefault(m["source"], []).append(c["name"])
+        containers.append({**c, "attention": attention(c), "stack_own": is_stack_own(c)})
+    images = [{**i, "in_use": any(i["id"] and c["image_id"].removeprefix("sha256:").startswith(i["id"]) for c in containers)}
+              for i in data.get("images") or []]
+    volumes = [{**v, "used_by": sorted(used_vols.get(v["name"], []))} for v in data.get("volumes") or []]
+    return {"runtime": data.get("runtime", ""), "version": data.get("version", ""),
+            "collected_at": row.collected_at if row else None, "error": row.error if row else "",
+            "containers": containers, "images": images, "volumes": volumes,
+            "summary": {"total": len(containers), "running": sum(c["state"] == "running" for c in containers),
+                        "attention": sum(bool(c["attention"]) for c in containers)}}
+
+
+def alerts(h: KvmHost, row: HostContainers | None, now: dt.datetime, stack: bool) -> list[tuple[str, str, str]]:
+    """(level, message, kind) for the host's containers that are wrong now. The Stack's own containers
+    are watched by stackmon, so a stack host's compose projects are skipped here."""
+    if row is None or not h.container_alerts or not (row.data or {}).get("runtime"):
+        return []
+    out = []
+    seen = (row.data or {}).get("restart_seen") or {}
+    for c in row.data.get("containers") or []:
+        if stack and is_stack_own(c):
+            continue
+        why = attention(c)
+        if why:
+            out.append(("warning" if c.get("state") == "exited" or c.get("health") == "unhealthy" else "error",
+                        f"container {c['name']} {why}", "container"))
+        t = seen.get(c["name"])
+        if t and now - _aware(dt.datetime.fromisoformat(t)) < RESTART_WINDOW:
+            out.append(("warning", f"container {c['name']} restarted (restart count {c.get('restarts')})", "restart"))
+    return out
+
+
+# --- on request: logs and live stats (never stored) ------------------------------------------------
+
+SECRET_KEY = re.compile(r"(?i)\b([A-Z0-9_.-]*(?:PASSWORD|PASSWD|TOKEN|SECRET|KEY)[A-Z0-9_.-]*)(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+
+
+def mask_secrets(text: str) -> str:
+    """Hide the value of `NAME_PASSWORD=...`, `token: ...` and the like (plan question 206)."""
+    return SECRET_KEY.sub(lambda m: f"{m.group(1)}{m.group(2)}***", text)
+
+
+def _known(row: HostContainers | None, name: str, runtime: bool = True) -> dict:
+    if not NAME.match(name or ""):
+        raise hostadmin.AdminError("not a container name")
+    data = (row.data if row else {}) or {}
+    c = next((x for x in data.get("containers") or [] if x["name"] == name), None)
+    if c is None or not data.get("runtime"):
+        raise hostadmin.AdminError("no such container on this host (refresh the page)")
+    return {"runtime": data["runtime"], **c}
+
+
+def logs(ssh, row: HostContainers | None, name: str, tail: int = 200, since: str = "", needle: str = "") -> dict:
+    """The container's recent log lines, capped and with secrets masked; `since` is like "10m" or "2h"."""
+    c = _known(row, name)
+    tail = max(1, min(int(tail), LOG_MAX_LINES))
+    if since and not re.fullmatch(r"[0-9]{1,4}[smhd]", since):
+        raise hostadmin.AdminError("since is a number and s, m, h or d (10m, 2h)")
+    if since.endswith("d"):
+        since = f"{int(since[:-1]) * 24}h"                  # docker and podman take no "d"
+    cmd = [c["runtime"], "logs", "--timestamps", "--tail", str(tail)] + (["--since", since] if since else []) + [name]
+    r = ssh.run("sudo -n " + " ".join(shlex.quote(x) for x in cmd) + " 2>&1", timeout=60)
+    text = r.stdout.decode(errors="replace")
+    if r.returncode != 0:
+        raise hostadmin.AdminError(text.strip()[-300:] or f"exit {r.returncode}")
+    lines = text.splitlines()
+    if needle:
+        lines = [ln for ln in lines if needle.lower() in ln.lower()]
+    out = "\n".join(lines)
+    truncated = len(out.encode()) > LOG_MAX_BYTES
+    if truncated:
+        out = out.encode()[-LOG_MAX_BYTES:].decode(errors="replace")
+    return {"text": mask_secrets(out), "lines": len(lines), "truncated": truncated}
+
+
+def live_stats(ssh, row: HostContainers | None, name: str) -> dict:
+    """One fresh CPU and memory reading for one container."""
+    c = _known(row, name)
+    cmd = ["sudo", "-n", c["runtime"], "stats", "--no-stream", "--format", "{{json .}}", name]
+    r = ssh.run(" ".join(shlex.quote(x) for x in cmd), timeout=60)
+    if r.returncode != 0:
+        raise hostadmin.AdminError((r.stderr or r.stdout).decode(errors="replace").strip()[-300:] or f"exit {r.returncode}")
+    import json
+    try:
+        s = json.loads(r.stdout.decode().strip().splitlines()[-1])
+    except (ValueError, IndexError) as exc:
+        raise hostadmin.AdminError("the runtime returned no reading") from exc
+    return {"cpu": s.get("CPUPerc") or s.get("cpu_percent") or "", "memory": s.get("MemUsage") or s.get("mem_usage") or "",
+            "memory_pct": s.get("MemPerc") or s.get("mem_percent") or "", "pids": s.get("PIDs") or s.get("pids") or "",
+            "net": s.get("NetIO") or s.get("net_io") or "", "block": s.get("BlockIO") or s.get("block_io") or ""}

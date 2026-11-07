@@ -21,6 +21,7 @@ export interface AdminView {
   host: KvmHost; collected_at: string | null; smart_at: string | null; error: string;
   facts: Any; smart: Any; latest: Any; warnings: { level: "error" | "warning" | "info"; message: string; disk?: string }[];
   series: Record<string, (number | null)[]> & { t: string[] }; resources: Any; stack?: Any;
+  containers?: { runtime: string; total: number; attention: number };
   pools?: Pool[]; pool_candidates?: { path: string; size: number; model: string }[];
 }
 export interface PoolMember { name: string; role: string; state: string; errors: number; depth?: number; slot?: string; disk?: string; model?: string; serial?: string }
@@ -34,7 +35,7 @@ export interface Pool {
 }
 
 export const SECTIONS = [
-  { key: "dashboard", label: "Dashboard" }, { key: "drives", label: "Drives and volumes" }, { key: "pools", label: "Drive Pools" },
+  { key: "dashboard", label: "Dashboard" }, { key: "drives", label: "Drives and volumes" }, { key: "pools", label: "Drive Pools" }, { key: "containers", label: "Containers" },
   { key: "nics", label: "NICs" },
   { key: "os", label: "OS" }, { key: "accounts", label: "Accounts" }, { key: "groups", label: "Groups" },
   { key: "vms", label: "VMs" }, { key: "stack", label: "Stack" }, { key: "access", label: "SSH access" },
@@ -42,9 +43,9 @@ export const SECTIONS = [
 ] as const;
 
 /** The sections a host's role calls for (design §30): VMs for KVM hosts, Stack for stack hosts. */
-export const sectionsFor = (role: string | undefined, hasPools = false) =>
+export const sectionsFor = (role: string | undefined, hasPools = false, hasContainers = false) =>
   SECTIONS.filter((x) => (x.key !== "vms" || role !== "stack") && (x.key !== "stack" || role === "stack" || role === "both")
-    && (x.key !== "pools" || hasPools));
+    && (x.key !== "pools" || hasPools) && (x.key !== "containers" || hasContainers));
 
 const ago2 = (iso?: string | null) => (iso ? fmtTime(iso) : "—");
 
