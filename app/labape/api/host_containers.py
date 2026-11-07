@@ -165,3 +165,40 @@ def container_known(host_id: int, body: KnownIn, request: Request, db: Session =
     audit(db, p.username, "host.container.known", object_type="kvm_host", object_id=h.id,
           detail={"container": body.name, "known": body.known}, source_ip=client_ip(request))
     return {"level": h.container_level, "known": h.container_known}
+
+
+@router.get("/{host_id}/containers/cleanup")
+def cleanup_preview(host_id: int, db: Session = Depends(get_db), _: Principal = Depends(require_roles("admin"))):
+    """What could be removed and what it would free: stopped containers the level allows, images nothing uses,
+    volumes no container refers to. Computed from the last read; nothing is removed by asking."""
+    h = _host(db, host_id)
+    page = hostcontainers.build(db.get(HostContainers, h.id), h)
+    return {"level": h.container_level, **hostcontainers.cleanup_candidates(page)}
+
+
+class CleanupIn(BaseModel):
+    kind: str = Field(pattern=r"^(containers|dangling_images|unused_images|volumes)$")
+    keys: list[str] = Field(min_length=1, max_length=500)
+    confirm: str = Field(default="", max_length=20)
+
+
+@router.post("/{host_id}/containers/cleanup")
+def cleanup(host_id: int, body: CleanupIn, request: Request, db: Session = Depends(get_db),
+            p: Principal = Depends(require_roles("admin"))):
+    """Remove the picked items, every one of which must still be a candidate. Removing volumes deletes their data
+    and needs the word `delete`. The runtime itself refuses anything in use (no force flag)."""
+    h = _host(db, host_id)
+    detail = {"kind": body.kind, "count": len(body.keys)}
+    try:
+        out = hostcontainers.run_cleanup(hostadmin.for_host(h), h, db.get(HostContainers, h.id), body.kind, body.keys, body.confirm)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
+        audit(db, p.username, "host.container.cleanup", object_type="kvm_host", object_id=h.id, outcome="failed",
+              detail={**detail, "error": str(exc)[:300]}, source_ip=client_ip(request))
+        raise FieldError("keys", str(exc)) from exc
+    audit(db, p.username, "host.container.cleanup", object_type="kvm_host", object_id=h.id,
+          detail={**detail, "removed": len(out["removed"]), "kept": len(out["kept"]), "items": body.keys[:50]}, source_ip=client_ip(request))
+    try:
+        hostcontainers.collect(db, h)
+    except Exception:  # noqa: BLE001 - the clean-up worked; the next scheduled read will catch up
+        pass
+    return out

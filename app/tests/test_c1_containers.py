@@ -234,3 +234,72 @@ def test_the_action_api_follows_the_level(client, monkeypatch):
     assert any(a == "host.container.level" for a, _ in actions) and any(a == "host.container.known" for a, _ in actions)
     ssh.rc = 1
     assert act("old", "restart").status_code == 422
+
+
+# --- batch C3: clean-up ----------------------------------------------------------------------------------
+
+def test_sizes_are_read():
+    assert hostcontainers.parse_size("190MB") == 190_000_000 and hostcontainers.parse_size("2.338kB") == 2338
+    assert hostcontainers.parse_size("1.5GiB") == 1_610_612_736 and hostcontainers.parse_size("0B") == 0
+    assert hostcontainers.parse_size(None) == 0 and hostcontainers.parse_size("n/a") == 0
+
+
+def _cleanup_data():
+    d = data(c("db", mounts=[{"type": "volume", "source": "pgdata", "target": "/x", "rw": True}]),
+             c("job", state="exited", exit_code=1), c("labape-old", project="labape", state="exited"))
+    d["images"].append({"id": "333333333333", "repository": "redis", "tag": "7", "size": "100MB", "created": "3 months ago", "dangling": False})
+    d["volumes"] += [{"name": "labape_data", "driver": "local", "size": "1GB", "project": "labape"}]
+    return d
+
+
+def test_the_cleanup_candidates():
+    row = HostContainers(kvm_host_id=1, data=_cleanup_data(), collected_at=utcnow())
+    page = hostcontainers.build(row, host("all"))
+    got = hostcontainers.cleanup_candidates(page)
+    assert [x["key"] for x in got["containers"]] == ["job"]                        # the stack's own stopped one is not offered
+    assert [x["key"] for x in got["dangling_images"]] == ["222222222222"]
+    assert [x["key"] for x in got["unused_images"]] == ["redis:7"]                 # nginx:1 is used by db
+    assert [x["key"] for x in got["volumes"]] == ["old"]                           # pgdata is used; the stack's volume is never offered
+    assert got["totals"]["dangling_images"] == {"count": 1, "bytes": 5_000_000}
+    assert hostcontainers.cleanup_candidates(hostcontainers.build(row, host("off")))["containers"] == []     # not allowed to touch it
+
+
+def test_cleanup_scripts_are_checked():
+    s = hostcontainers.cleanup_script("docker", "dangling_images", ["222222222222", "333333333333"])
+    assert s.splitlines()[0] == "docker rmi 222222222222 >/dev/null 2>&1 && echo 'removed 222222222222' || echo 'kept 222222222222'"
+    assert "docker volume rm old" in hostcontainers.cleanup_script("docker", "volumes", ["old"])
+    for kind, bad in (("containers", "a; reboot"), ("dangling_images", "redis:7"), ("unused_images", "x y"), ("volumes", "-f")):
+        try:
+            hostcontainers.cleanup_script("docker", kind, [bad])
+        except hostadmin.AdminError:
+            pass
+        else:
+            raise AssertionError((kind, bad))
+
+
+def test_the_cleanup_api(client, monkeypatch):
+    _admin_session(client)
+    host_id = _ready_host(client)
+    with session_factory()() as db:
+        db.add(HostContainers(kvm_host_id=host_id, collected_at=utcnow(), data=_cleanup_data()))
+        db.commit()
+    ssh = FakeSsh(text=b"removed 222222222222\n")
+    monkeypatch.setattr(hostadmin, "for_host", lambda h: ssh)
+    monkeypatch.setattr(hostcontainers, "collect", lambda db, h, now=None: None)
+    url = f"/api/hosts/{host_id}/containers/cleanup"
+    go = lambda kind, keys, confirm="": client.post(url, json={"kind": kind, "keys": keys, "confirm": confirm})        # noqa: E731
+    assert client.get(url).json()["totals"]["dangling_images"]["count"] == 1
+    assert go("dangling_images", ["222222222222"]).status_code == 422 and not ssh.calls         # the level is off
+    client.post(f"/api/hosts/{host_id}/containers/level", json={"level": "known"})
+    assert go("dangling_images", ["222222222222"]).json() == {"removed": ["222222222222"], "kept": []}
+    assert "docker rmi 222222222222" in ssh.calls[-1]
+    assert go("dangling_images", ["999999999999"]).status_code == 422                            # not a candidate
+    assert go("unused_images", ["nginx:1"]).status_code == 422                                   # in use
+    assert go("containers", ["job"]).status_code == 422                                          # known level: job isn't marked
+    assert go("volumes", ["old"]).status_code == 422                                             # needs the word
+    assert go("volumes", ["labape_data"], "delete").status_code == 422                           # the stack's own volume
+    n = len(ssh.calls)
+    assert go("volumes", ["old"], "delete").status_code == 200 and len(ssh.calls) == n + 1 and "docker volume rm old" in ssh.calls[-1]
+    assert go("sandwiches", ["x"]).status_code == 422
+    log = [a for a in client.get("/api/admin/audit").json() if a["action"] == "host.container.cleanup"]
+    assert any(a["outcome"] == "ok" and a["detail"]["kind"] == "volumes" for a in log)

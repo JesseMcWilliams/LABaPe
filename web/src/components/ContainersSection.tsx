@@ -9,6 +9,7 @@ import {
 import { api, fmtTime } from "../api";
 import { Field } from "../forms";
 import { ActionButton } from "./Confirm";
+import { CleanupDialog } from "./ContainersCleanup";
 
 interface Mount { type: string; source: string; target: string; rw: boolean }
 interface Container {
@@ -166,6 +167,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [openName, setOpenName] = useState("");
+  const [cleaning, setCleaning] = useState(false);
   const load = useCallback(async () => {
     try {
       setPage(await api.get<Page>(`/api/hosts/${hostId}/containers`));
@@ -216,6 +218,8 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
       {(page.error || error) && <Alert severity="warning">{page.error ? `The last read failed: ${page.error}` : error}</Alert>}
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap" }}>
         <Button size="small" variant="outlined" disabled={busy} onClick={refresh} title="Read the host's containers now">Refresh</Button>
+        <Button size="small" variant="outlined" onClick={() => setCleaning(true)}
+          title="See what could be removed (stopped containers, unused images and volumes) and what it frees; nothing is removed until you confirm">Clean up…</Button>
         <FormControlLabel control={<Switch checked={page.alerts} onChange={(e) => setAlerts(e.target.checked)} />}
           label="Alert when a container of this host is down, unhealthy or restarting" />
       </Stack>
@@ -279,6 +283,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
           ))}
         </TableBody>
       </Table>
+      {cleaning && <CleanupDialog hostId={hostId} onClose={() => setCleaning(false)} onChanged={() => void load()} />}
       {open && <Detail hostId={hostId} c={open} onClose={() => setOpenName("")} onChanged={() => void load()} />}
     </Stack>
   );
