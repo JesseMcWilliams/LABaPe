@@ -340,6 +340,32 @@ def prereq_smart_alerts(c: Ctx):
     return DONE, "smartd's warnings are mailed to root (the stack's Mailpit)" if changed else "already configured"
 
 
+# plan S1: smartd runs a short self-test every Sunday at 02:00 and a long one on the 1st at 03:00. Debian ships
+# DEVICESCAN with no schedule, so no drive was ever tested (OZ's failed drive: none in about 40,000 hours).
+SMART_SCHEDULE = "-s (S/../../7/02|L/../01/./03)"
+
+
+def prereq_smart_tests(c: Ctx):
+    if not c.r.which("smartctl"):
+        return NA, "smartmontools isn't installed"
+    conf = next((p for p in SMARTD_CONFS if p.is_file()), None)
+    if conf is None:
+        return DONE, "no smartd.conf here, so no schedule was set"
+    lines = conf.read_text(encoding="utf-8", errors="replace").splitlines()
+    scan = [i for i, ln in enumerate(lines) if ln.split()[:1] == ["DEVICESCAN"]]
+    if not scan:
+        return DONE, f"{conf} has no DEVICESCAN line: add '-s ...' to your drives' lines by hand"
+    if all(" -s " in f" {lines[i]} " for i in scan):
+        return DONE, "already scheduled"
+    for i in scan:
+        if " -s " not in f" {lines[i]} ":
+            lines[i] = f"{lines[i].rstrip()} {SMART_SCHEDULE}"
+    lines.insert(scan[0], "# LABaPe (Prereq.SmartTests): weekly short and monthly long self-tests on every drive")
+    c.r.write(conf, "\n".join(lines) + "\n")
+    c.r.run(["systemctl", "try-restart", "smartd"], check=False)
+    return DONE, "weekly short and monthly long self-tests scheduled"
+
+
 MDSTAT = Path("/proc/mdstat")
 MDADM_CONFS = [Path("/etc/mdadm/mdadm.conf"), Path("/etc/mdadm.conf")]      # Debian, RHEL
 RAID_EVENT_PROGRAM = Path("/usr/local/sbin/labape-raid-event")

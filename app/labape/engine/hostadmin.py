@@ -349,7 +349,14 @@ if out["available"]:
                    "thresh": a.get("thresh"), "raw": a.get("raw", {}).get("string") or a.get("raw", {}).get("value"),
                    "failed": a.get("when_failed", "")} for a in table]
         nv = j.get("nvme_smart_health_information_log", {})
-        out["disks"].append({"device": d["name"], "model": j.get("model_name", ""), "serial": j.get("serial_number", ""),
+        tests = {}
+        for t in (j.get("ata_smart_self_test_log", {}).get("standard", {}).get("table") or []):     # newest first
+            kind = (t.get("type") or {}).get("string", "")
+            key = "short" if kind.startswith("Short") else "long" if kind.startswith("Extended") else ""
+            if key and key not in tests:
+                st = t.get("status") or {}
+                tests[key] = {"hours": t.get("lifetime_hours"), "passed": st.get("passed"), "status": st.get("string", "")}
+        out["disks"].append({**({"tests": tests} if "ata_smart_self_test_log" in j else {}),"device": d["name"], "model": j.get("model_name", ""), "serial": j.get("serial_number", ""),
                              "passed": j.get("smart_status", {}).get("passed"),
                              "temperature": j.get("temperature", {}).get("current"),
                              "power_on_hours": j.get("power_on_time", {}).get("hours"),
@@ -536,6 +543,28 @@ def series(db: Session, h: KvmHost, hours: int = 24) -> dict:
     return out
 
 
+SELFTEST_STALE_HOURS = 14 * 24          # plan S1: no self-test in two weeks of running is worth a look
+
+
+def selftest_warnings(d: dict) -> list[dict]:
+    """A drive that was never self-tested, hasn't been for two weeks of running, or whose last test failed.
+    Only ATA drives report `tests`; a reading from before this existed has none and says nothing."""
+    tests, poh, dev = d.get("tests"), d.get("power_on_hours"), d.get("device")
+    if tests is None or poh is None:
+        return []
+    out = []
+    for kind, t in tests.items():
+        if t and t.get("passed") is False:
+            out.append({"level": "error", "disk": dev, "message": f"{dev}: the last {kind} SMART self-test failed ({t.get('status') or 'no detail'})"})
+    done = [t["hours"] for t in tests.values() if t and t.get("hours") is not None]
+    if not done:
+        out.append({"level": "warning", "disk": dev, "message": f"{dev}: no SMART self-test has ever run (schedule one: Prereq.SmartTests)"})
+    elif poh - max(done) > SELFTEST_STALE_HOURS:
+        out.append({"level": "warning", "disk": dev,
+                    "message": f"{dev}: no SMART self-test in {(poh - max(done)) // 24} days of running (the last at hour {max(done)})"})
+    return out
+
+
 def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) -> list[dict]:
     """What the Dashboard section flags: SMART failures and wear, heat, filesystems with less than
     `free_pct` percent free (an error below a quarter of it), failed units, a pending reboot, many updates."""
@@ -549,6 +578,7 @@ def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) 
             w.append({"level": "warning", "disk": d["device"],
                       "message": f"{d['device']}: {d.get('reallocated') or 0} reallocated, "
                                  f"{d.get('pending') or 0} pending sectors"})
+        w += selftest_warnings(d)
         if (d.get("wear_pct") or 0) >= 80:
             w.append({"level": "warning", "disk": d["device"],
                       "message": f"{d['device']}: {d['wear_pct']}% of its rated wear used"})

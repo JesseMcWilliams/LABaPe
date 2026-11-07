@@ -2262,3 +2262,14 @@ Plan and decisions: [Planning_Container-Management.md](Planning_Container-Manage
 | Clean-up (C3) | **Clean up…** on the page opens a preview, `GET /api/hosts/{id}/containers/cleanup`, worked out from the last read and removing nothing: stopped containers the level allows, images nothing uses (untagged ones apart from tagged ones) and volumes no container refers to (a stopped container's mounts count as use), each with its size, with totals. The Stack's own containers and compose volumes (the volume's `com.docker.compose.project` label) are never offered. `POST .../containers/cleanup {kind, keys, confirm}` removes the picked ones: each key must still be a candidate, the host's level must not be `off`, removing volumes needs the word `delete`, and the commands are `docker rm|rmi|volume rm` per item with no force flag, so the runtime itself refuses anything still in use (reported as kept). Audited as `host.container.cleanup` (kind, counts, the names). The facts are read again after. |
 | Verified | pytest `test_c1_containers.py` (attention rules, the page's marks, masking, restart memory and the kept sizes, alerts and the switch, the levels, the scripts and their refusals, the API with a fake SSH). Live on OZ (2026-11-06): the collector on kvm1 and pi1, logs and stats of real containers; the actions on a throwaway container. |
 
+## 76. Scheduled SMART self-tests (plan S1, built 2026-11-06)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Schedule | `Prereq.SmartTests` (installer): on every active `DEVICESCAN` line of `smartd.conf` without a `-s`, appends `-s (S/../../7/02|L/../01/./03)` (short test Sundays 02:00, long test the 1st at 03:00) after a comment line, and restarts smartd. A file with no `DEVICESCAN`, or an admin's own `-s`, is left alone and said so. |
+| Read | The SMART read keeps, for an ATA drive, the newest short and long test of the drive's self-test log (`tests.short|long`: power-on hours, passed, status text); vendor tests are ignored; NVMe and readings from before this have no `tests`. |
+| Warnings | `hostadmin.selftest_warnings`, part of `warnings`: no test ever = warning; none within 14 days of running (power-on hours against the newest test) = warning; the last short or long test failed = error. Shown on Dashboard and Drives and volumes, and raised as Monitoring alerts like the other drive warnings. |
+| Page | Drives and volumes has a **Last self-test** column (days of running ago and the kind; the tooltip has each kind's result; "never" and a failure are highlighted). |
+| Verified | pytest `test_s1_selftests.py` (the thresholds, a failed test, the SMART script run against fake `smartctl` JSON) and `test_y2_installer.py` (the step, run twice). |
