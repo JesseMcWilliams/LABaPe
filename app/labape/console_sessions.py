@@ -144,6 +144,16 @@ def get(session_id: int) -> TextSession | None:
     return _sessions.get(session_id)
 
 
+def close_for_tokens(token_ids: set[int], reason: str) -> int:
+    """End every open text session of these tokens (the owner was disabled); the sweeper finalizes them."""
+    n = 0
+    for s in list(_sessions.values()):
+        if s.open and s.token_id in token_ids:
+            s.close(reason)
+            n += 1
+    return n
+
+
 def sweep(now: float | None = None) -> list[TextSession]:
     """Close sessions past their length or idle time; returns the closed ones not yet finalized."""
     now = time.monotonic() if now is None else now

@@ -463,8 +463,11 @@ async def open_guacd(target: dict, width: int, height: int, dpi: int, address=GU
 INPUT_OPCODES = {"key", "mouse", "touch", "clipboard", "size"}
 
 
+WATCH_SECONDS = 5
+
+
 async def relay(ws, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, leftover: str,
-                idle_seconds: int) -> str:
+                idle_seconds: int, still_allowed=None) -> str:
     """Pump instructions both ways until either side closes or the session is idle too long.
     Returns why it ended."""
     loop = asyncio.get_running_loop()
@@ -513,7 +516,15 @@ async def relay(ws, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, 
             if loop.time() - last_input[0] > idle_seconds:
                 return f"closed after {idle_seconds // 60} idle minutes"
 
-    tasks = [asyncio.create_task(c) for c in (from_guacd(), from_browser(), idle_watch())]
+    async def allowed_watch():
+        """A user disabled while a session is open loses it within a few seconds."""
+        while still_allowed is not None:
+            await asyncio.sleep(WATCH_SECONDS)
+            if not await asyncio.to_thread(still_allowed):
+                return "closed: the account was disabled"
+        await asyncio.Event().wait()
+
+    tasks = [asyncio.create_task(c) for c in (from_guacd(), from_browser(), idle_watch(), allowed_watch())]
     done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     for t in pending:
         t.cancel()
