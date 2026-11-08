@@ -32,6 +32,8 @@ export interface Pool {
   sync: { action: string; percent: number | null; speed: number | null; text?: string }; raid_disks?: number; degraded?: number;
   data_errors?: string; logical_volumes?: { name: string; size: number }[];
   missing?: { slot: number; state: string; partner?: string }[]; at_risk?: string[]; former_members?: FormerMember[];
+  replace?: { template: string; template_serial: string; partition: number; need: number; at_risk: string[];
+    pull: { disk: string; model: string; serial: string; size: number | null }[]; candidates: { path: string; size: number; model: string; serial: string }[] } | null;
 }
 
 export const SECTIONS = [

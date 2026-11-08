@@ -7,6 +7,7 @@ import { alpha } from "@mui/material/styles";
 import { api } from "../api";
 import { Field } from "../forms";
 import { useConfirm } from "./Confirm";
+import { ReplaceDialog } from "./PoolReplace";
 import { Facts } from "./PageParts";
 import { AdminView, FormerMember, gb, Pool, PoolMember } from "./HostSections";
 
@@ -23,6 +24,7 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<Pool | null>(null);
   const [spare, setSpare] = useState("");
+  const [replacing, setReplacing] = useState<Pool | null>(null);
   const [readding, setReadding] = useState<{ pool: Pool; drive: FormerMember } | null>(null);
   const [typed, setTyped] = useState("");
   const [full, setFull] = useState(false);
@@ -165,6 +167,10 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
                       Re-add {f.name}…
                     </Button>
                   ))}
+                  {p.replace && (
+                    <Button size="small" variant="contained" color="warning" disabled={busy} onClick={() => setReplacing(p)}
+                      title="Guided: which drive to pull, prepare the new one, add it and rebuild">Replace a drive…</Button>
+                  )}
                   {p.actions.includes("add-spare") && (
                     <Button size="small" variant="outlined" disabled={busy || free.length === 0} onClick={() => { setAdding(p); setSpare(free[0]?.path ?? ""); }}
                       title={free.length === 0 ? "No free drive: every disk is mounted, has a filesystem or is in a pool" : "Add a free drive as a spare or replacement"}>Add a drive…</Button>
@@ -175,6 +181,8 @@ export function PoolsSection({ view, hostId, reload }: { view: AdminView; hostId
           </Paper>
         );
       })}
+      {replacing && <ReplaceDialog pool={replacing} hostId={hostId} onClose={() => setReplacing(null)}
+        onDone={(m) => { setReplacing(null); setDone(m); reload(); }} />}
       <Dialog open={Boolean(readding)} onClose={() => setReadding(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Re-add {readding?.drive.name} to {readding?.pool.name}</DialogTitle>
         <DialogContent>

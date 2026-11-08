@@ -2301,3 +2301,14 @@ Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications
 | Digest | `notifications.digest`: at `monitoring.digest_hour` (UTC) once per day (Setting `notifications.digest_day`), to the channels of enabled rules with `send_digest`: open alerts and those cleared in the last 24 h that match the rule; nothing on a quiet day. Migration 0042. |
 | Verified | `test_n2_heartbeat.py` (ok, two lost, no mail program, unreachable host, once a day, digest). Live on kvm1: mail and syslog both arrived; pi1 and garagepc reported no mail program (a real gap: `Prereq.AlertMail` hasn't run there). |
 
+## 79. Guided drive replacement (plan R1, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Plan | `hostpools.replace_plan`: for a degraded md array (not raid0/linear) whose members are partitions, the surviving member's disk is the template, the partition number comes from the failed-out member (or the template's), `pull` lists the former members by serial and model, `candidates` are unused whole disks at least as large as the template disk. Shown in each pool as `replace`. |
+| Action | `POST /api/hosts/{id}/pools/replace` (admin): the device must be a candidate and `confirm` must equal its serial (its path when it has none). `hostpools.replace_script` runs as root: refuse a mounted drive, a smaller one or one with signatures (`wipefs -n`); `sfdisk -d` of the template without `label-id` and partition `uuid=`, into `sfdisk` on the new disk; settle and `partprobe`; `mdadm --add` the new partition (`sdg1`, `nvme0n1p1`). The rebuild shows on the pool as usual. Audited as `host.pool.replace` (the serial, no secrets). |
+| Limits | One array per replacement: a disk that already has partitions is no longer a candidate, so a host whose drives carry several arrays gets the other arrays added by hand (Add a drive…) or by repeating after the table exists. Members that are whole disks are not offered a replacement. Power-down and the physical swap stay manual. |
+| Verified | `test_r1_replace.py` (plan, candidates, partition names, script, API incl. the typed serial). Not yet run on a real array: the first real use should be OZ's `md10`. |
+

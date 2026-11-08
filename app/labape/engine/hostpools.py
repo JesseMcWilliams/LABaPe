@@ -252,10 +252,74 @@ def _lvm(facts: dict) -> list[dict]:
     return pools
 
 
-def build(facts: dict | None, smart: dict | None = None) -> list[dict]:
+def build(facts: dict | None, smart: dict | None = None, plans: bool = True) -> list[dict]:
     """Every pool the host's facts show, mdadm first. The SMART readings judge a drive that could go back (re-add)."""
     facts = facts or {}
-    return [*_md(facts, smart), *_zfs(facts), *_lvm(facts)]
+    pools = [*_md(facts, smart), *_zfs(facts), *_lvm(facts)]
+    for p in pools if plans else []:
+        p["replace"] = replace_plan(p, facts)
+    return pools
+
+
+def part_name(disk: str, number: int) -> str:
+    """/dev/sdb + 1 -> /dev/sdb1, /dev/nvme0n1 + 1 -> /dev/nvme0n1p1."""
+    return f"{disk}{'p' if disk[-1].isdigit() else ''}{number}"
+
+
+def replace_plan(pool: dict, facts: dict) -> dict | None:
+    """What a drive replacement (plan R1) would do for a degraded md array: the drive to pull, the surviving drive whose
+    partition table is copied, the partition that joins the array, and the free whole disks big enough to take it."""
+    if pool["type"] != "mdadm" or not pool.get("degraded") or pool["level"] in ("raid0", "linear"):
+        return None
+    active = [m for m in pool["members"] if m["role"] == "active" and m.get("disk")]
+    if not active:
+        return None
+    idx = _devices(facts)
+    tpl = active[0]
+    former = (pool.get("former_members") or [None])[0]
+    ref = former["name"] if former else tpl["name"]
+    m = re.search(r"(\d+)$", ref)
+    if not m or not tpl["disk"] or ref == tpl["disk"] or idx.get(tpl["name"], ({}, {}))[0].get("type") != "part":
+        return None                                    # members that are whole disks have no table to copy
+    number, need = int(m.group(1)), tpl.get("disk_size") or 0
+    cands = []
+    for d in unused_disks(facts):
+        node = idx.get(d["path"], ({}, {}))[0]
+        if node.get("type") == "disk" and d["size"] >= need:
+            cands.append({**d, "serial": (node.get("serial") or "").strip()})
+    return {"template": tpl["disk"], "template_serial": tpl.get("serial", ""), "partition": number, "need": need,
+            "pull": [{"disk": f["disk"], "model": f["model"], "serial": f["serial"], "size": f.get("size")} for f in pool.get("former_members") or []],
+            "at_risk": pool.get("at_risk") or [], "candidates": cands}
+
+
+def replace_script(pool: dict, device: str) -> str:
+    """Copy the surviving drive's partition table to the new drive (new disk and partition ids), then add the partition
+    to the array; the array rebuilds onto it."""
+    plan = pool.get("replace")
+    if not plan:
+        raise hostadmin.AdminError("this pool has no replacement to do")
+    _check(pool["name"], device, True)
+    if device not in {c["path"] for c in plan["candidates"]}:
+        raise hostadmin.AdminError("that drive isn't free, or it is smaller than the drive it replaces")
+    tpl, part = shlex.quote(plan["template"]), shlex.quote(part_name(device, plan["partition"]))
+    new, md = shlex.quote(device), shlex.quote(f"/dev/{pool['name']}")
+    return (f"set -eo pipefail; "
+            f"if findmnt -rn -S {new} >/dev/null 2>&1; then echo 'that drive is mounted' >&2; exit 1; fi; "
+            f"test -b {new} || {{ echo 'not a block device' >&2; exit 1; }}; "
+            f"[ \"$(blockdev --getsize64 {new})\" -ge \"$(blockdev --getsize64 {tpl})\" ] || {{ echo 'the new drive is smaller' >&2; exit 1; }}; "
+            f"if [ -n \"$(wipefs -n {new})\" ]; then echo 'the new drive has signatures on it' >&2; exit 1; fi; "
+            f"sfdisk -d {tpl} | grep -v '^label-id:' | sed -E 's/, *uuid=[^,]+//' | sfdisk {new}; "
+            f"udevadm settle; partprobe {new} || true; udevadm settle; "
+            f"test -b {part} || {{ echo 'the new partition did not appear' >&2; exit 1; }}; "
+            f"mdadm {md} --add {part}")
+
+
+def run_replace(ssh, pool: dict, device: str) -> str:
+    r = ssh.run(f"sudo -n bash -c {shlex.quote(replace_script(pool, device))}", timeout=180)
+    text = (r.stdout + r.stderr).decode(errors="replace").strip()
+    if r.returncode != 0:
+        raise hostadmin.AdminError(text[-400:] or f"exit {r.returncode}")
+    return text[-400:]
 
 
 def pool_members(pools: list[dict]) -> set[str]:
@@ -272,7 +336,7 @@ def pool_members(pools: list[dict]) -> set[str]:
 def unused_disks(facts: dict | None) -> list[dict]:
     """Whole disks and partitions that nothing uses: not mounted, no filesystem, no children, not in a pool."""
     facts = facts or {}
-    taken = pool_members(build(facts))
+    taken = pool_members(build(facts, plans=False))
     out = []
 
     def busy(n: dict) -> bool:

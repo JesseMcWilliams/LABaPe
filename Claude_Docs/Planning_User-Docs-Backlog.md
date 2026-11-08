@@ -11,3 +11,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Installer: `Prereq.AlertMail` (the host's own mail to the stack's Mailpit; `MailBind`, `AlertMailHost`): `Web-Interface-Admin.md` §6.1 and the install guides.
 - Admin → Notifications (channels, rules, quiet hours, reminders, delivery log; secrets write-only): `Web-Interface-Admin.md` (new section) and the Settings → Monitoring text.
 - Settings → Monitoring: the daily alert-path check (heartbeat) and digest hour; Notifications rule option "daily digest": `Web-Interface-Admin.md`.
+- Drive Pools: **Replace a drive…** (guided replacement of a failed md member; typed serial): `Web-Interface-Admin.md` Drive Pools.
