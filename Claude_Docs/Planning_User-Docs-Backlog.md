@@ -9,3 +9,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Drive Pools: **Re-add** a drive failed out of an md array (health check first, typed confirmation for a drive that fails it, full-rebuild option): `Web-Interface-Admin.md` Drive Pools.
 - Installer: `Prereq.RaidDiskTimeouts` (SCT error recovery control 7 s on SATA disks of a host with RAID arrays, via a udev rule): `Web-Interface-Admin.md` §6.1 and the install guide.
 - Installer: `Prereq.AlertMail` (the host's own mail to the stack's Mailpit; `MailBind`, `AlertMailHost`): `Web-Interface-Admin.md` §6.1 and the install guides.
+- Admin → Notifications (channels, rules, quiet hours, reminders, delivery log; secrets write-only): `Web-Interface-Admin.md` (new section) and the Settings → Monitoring text.

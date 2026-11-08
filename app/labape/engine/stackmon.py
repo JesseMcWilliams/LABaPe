@@ -302,6 +302,8 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
             out[f"link:{link.url}"] = (None, "error", f"linked stack {link.name} isn't answering ({link.error[:200]})")
     from .secret_health import alerts as secret_alerts      # S1: secrets that failed their check
     out.update(secret_alerts(db))
+    from . import notifications           # N1: a channel that can't deliver
+    out.update(notifications.alerts(db))
     em = email_state(db)
     if em.get("ok") is False:
         out[EMAIL_KEY] = (None, "error", f"alert emails can't be sent: {em.get('error', '')[:300]}")
@@ -361,6 +363,11 @@ def sync_alerts(db: Session, current: dict, now: dt.datetime | None = None, send
         err = (send or announce)(db, started, cleared)
         if err is not None:
             _put_email_state(db, not err, err, now)
+    from . import notifications
+    try:
+        notifications.run(db, now, cleared, set(hush))
+    except Exception:  # noqa: BLE001 — the built-in email and syslog already went
+        log.exception("notification rules")
     return started, cleared
 
 

@@ -377,6 +377,8 @@ class MonitorAlert(Base):
     announced_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     acked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     acked_by: Mapped[str] = mapped_column(String(255), default="")
+    # Notification rules this alert was sent to (rule id -> when last), for reminders and the all-clear (plan N1).
+    reminded: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class MonitorSilence(Base):
@@ -776,3 +778,54 @@ class EnvTemplateVersion(Base):
     includes: Mapped[list] = mapped_column(JSON, default=list)
     created_by: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class NotificationChannel(Base):
+    """Where an alert can be sent besides the built-in email list and syslog (plan N1): email, webhook, ntfy, syslog.
+    The webhook URL or ntfy token is a secret in the platform store (`notify/channel-<id>`), never in this row."""
+
+    __tablename__ = "notification_channels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    kind: Mapped[str] = mapped_column(String(16))                     # email | webhook | ntfy | syslog
+    enabled: Mapped[bool] = mapped_column(default=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)          # to / shape / server+topic / host to show
+    secret_set: Mapped[bool] = mapped_column(default=False)
+    last_ok: Mapped[bool | None] = mapped_column(nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    last_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationRule(Base):
+    """Which alerts go to which channels (plan N1): level, hosts, categories, quiet hours (UTC), a reminder."""
+
+    __tablename__ = "notification_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    min_level: Mapped[str] = mapped_column(String(8), default="warning")      # warning | error
+    host_ids: Mapped[list] = mapped_column(JSON, default=list)               # empty: every host (and the stack itself)
+    categories: Mapped[list] = mapped_column(JSON, default=list)             # empty: every category
+    channel_ids: Mapped[list] = mapped_column(JSON, default=list)
+    quiet_start: Mapped[str] = mapped_column(String(5), default="")          # "HH:MM" UTC; both empty: never quiet
+    quiet_end: Mapped[str] = mapped_column(String(5), default="")
+    reminder_hours: Mapped[int] = mapped_column(default=0)                   # 0: no reminders
+    send_cleared: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class NotificationLog(Base):
+    """The last 100 sends: when, which channel, whether it worked (plan N1)."""
+
+    __tablename__ = "notification_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    channel_id: Mapped[int | None] = mapped_column(nullable=True)
+    channel_name: Mapped[str] = mapped_column(String(80), default="")
+    rule_name: Mapped[str] = mapped_column(String(80), default="")
+    ok: Mapped[bool] = mapped_column(default=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")

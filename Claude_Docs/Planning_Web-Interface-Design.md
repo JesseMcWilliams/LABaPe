@@ -2273,3 +2273,18 @@ Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications
 | Warnings | `hostadmin.selftest_warnings`, part of `warnings`: no test ever = warning; none within 14 days of running (power-on hours against the newest test) = warning; the last short or long test failed = error. Shown on Dashboard and Drives and volumes, and raised as Monitoring alerts like the other drive warnings. |
 | Page | Drives and volumes has a **Last self-test** column (days of running ago and the kind; the tooltip has each kind's result; "never" and a failure are highlighted). |
 | Verified | pytest `test_s1_selftests.py` (the thresholds, a failed test, the SMART script run against fake `smartctl` JSON) and `test_y2_installer.py` (the step, run twice). |
+
+## 77. Notifications page (plan N1, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Built-in | The email list and syslog switch of Settings → Monitoring (`stackmon.announce`) are untouched and shown read-only on the page; channels and rules add to them. (The plan said they would become the first channel and rule; leaving them alone keeps every install's behaviour identical.) |
+| Data | `notification_channels` (kind email, webhook, ntfy, syslog; non-secret config; `secret_set`, last result), `notification_rules` (level, host ids, categories, quiet start/end UTC, reminder hours, send-cleared, created_at), `notification_log` (last 100), `monitor_alerts.reminded` (rule id to last send). Migration 0041. |
+| Secrets | A webhook address or ntfy token is written with `put_secret` as `notify/channel-<id>`; the API returns only `secret_set` and the host name; audit rows never hold it. |
+| Engine | `engine/notifications.py`: `category(key, message)` (disk, raid, container, certificate, backup, secret, stack, alert-path), `matches`, `in_quiet`, `run(db, now, cleared)` called at the end of `stackmon.sync_alerts` every minute: an announced, open, unacknowledged, unsilenced alert is sent once per rule (only if announced after the rule was created), again every `reminder_hours`, held through quiet hours and sent when they end, and its all-clear is sent to rules that sent it. One message per channel per rule per tick; an alert goes to a channel once per tick even when several rules match. |
+| Failure | A send never raises: the channel records the result, the log gets a row, and a failed channel raises the warning `monitor:channel:<id>` (category alert-path). |
+| API | `/api/admin/notifications` (GET) and `/channels`, `/channels/{id}` (PUT, DELETE), `/channels/{id}/test`, `/rules`, `/rules/{id}`; admin only, audited as `notification.*`. A channel a rule uses can't be deleted. |
+| Verified | `test_n1_notifications.py` (categories, quiet hours, shapes, once/reminder/clear, held and old alerts, failure alert, the API incl. secret never echoed, `sync_alerts` end to end). Not yet run against a real webhook or ntfy. |
+

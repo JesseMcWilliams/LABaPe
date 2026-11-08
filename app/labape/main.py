@@ -12,7 +12,7 @@ from .api import env_templates as env_templates_api
 from .api import linked_library as linked_api
 from .api import fixes as fixes_api
 from .api import env_sharing
-from .api import (admin, auth, ca, catalog, console, console_text, dashboard, certificates, env_hosts, help_docs, host_containers, host_disks, mcp as mcp_api, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
+from .api import (admin, auth, ca, catalog, console, console_text, dashboard, certificates, env_hosts, help_docs, host_containers, host_disks, notifications as notifications_api, mcp as mcp_api, directory, env_secrets, environments, files, mail, package_updates, hosts, jobs, links,
                   maintenance, metrics, networks, quotas, remote, reports, secrets, settings, syslog, templates, tokens,
                   update, users)
 from . import maintenance_mode
@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
         environments.router,
         env_secrets.router,
         mail.router,
+        notifications_api.router,
         package_updates.router,
         jobs.router,
         admin.router,
