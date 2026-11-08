@@ -55,7 +55,7 @@ interface AllSettings {
   syslog_collector: Collector;
   file_distribution: { wait_minutes: number; copy_templates_to_all: boolean };
   lab_mail_relay: { enabled: boolean; host: string; port: number; starttls: boolean; username: string; allow: string[]; has_password?: boolean };
-  monitoring: { email_to: string[]; syslog: boolean; disk_free_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number; heartbeat: boolean; digest_hour: number };
+  monitoring: { email_to: string[]; syslog: boolean; disk_free_pct: number; temp_c: number; cert_days: number; backup_hours: number; peer_failures: number; heartbeat: boolean; digest_hour: number; container_reclaim_gb: number };
   file_roots: Record<string, string>;
 }
 interface BackupList {
@@ -308,7 +308,7 @@ export default function Settings() {
           <FormControlLabel label="Check each day that hosts' alerts arrive" title="Each host sends itself a heartbeat mail and syslog line; an alert follows when two days in a row get lost"
             control={<Checkbox checked={s.monitoring.heartbeat} onChange={(e) => set("monitoring", { heartbeat: e.target.checked })} />} />
           {([["disk_free_pct", "Free space below (%)"], ["temp_c", "Hot at (°C)"], ["cert_days", "Certificate days left"], ["backup_hours", "Backup older than (hours)"],
-            ["peer_failures", "Missed probes"], ["digest_hour", "Daily digest hour (UTC)"]] as const).map(([k, label]) => (
+            ["peer_failures", "Missed probes"], ["digest_hour", "Daily digest hour (UTC)"], ["container_reclaim_gb", "Unused images alert (GB, 0 off)"]] as const).map(([k, label]) => (
             <Field key={k} label={label} type="number" value={s.monitoring[k]} sx={{ width: 170 }}
               onChange={(e) => set("monitoring", { [k]: Number(e.target.value) })} />
           ))}

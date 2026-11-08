@@ -131,6 +131,7 @@ export interface KvmHost {
   files_dir?: string;
   disk_free_pct?: number | null;
   container_alerts?: boolean;
+  heartbeat?: boolean;
 }
 
 export interface Network {

@@ -30,7 +30,7 @@ CATEGORIES = ("disk", "raid", "container", "certificate", "backup", "secret", "s
 LOG_KEEP = 100
 HTTP_TIMEOUT = 10
 
-_KIND_OF_KEY = {"fs": "disk", "temp": "disk", "container": "container", "restart": "container", "cert": "certificate",
+_KIND_OF_KEY = {"fs": "disk", "temp": "disk", "container": "container", "restart": "container", "reclaim": "container", "cert": "certificate",
                 "backup": "backup", "stack-backup": "backup", "stack-backup-check": "backup", "peer": "stack"}
 
 

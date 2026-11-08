@@ -118,3 +118,19 @@ def test_the_monitoring_tick_has_the_new_alert(client, monkeypatch):
     beat(host_id, now + dt.timedelta(days=1))
     with session_factory()() as db:
         assert f"monitor:heartbeat:{host_id}" in stackmon.evaluate(db)
+
+
+def test_a_host_can_opt_out(client, monkeypatch):
+    host_id, ssh = setup(client, monkeypatch)
+    monkeypatch.setattr(HB.stack_mail, "available", lambda: True)
+    monkeypatch.setattr(HB, "WAIT_SECONDS", 0)
+    with session_factory()() as db:
+        db.get(KvmHost, host_id).heartbeat = False
+        db.commit()
+        HB.due(db, utcnow())
+        assert not ssh.calls
+        db.get(KvmHost, host_id).heartbeat = True
+        db.commit()
+        HB.due(db, utcnow())
+        assert len(ssh.calls) == 1
+    assert client.get(f"/api/hosts/{host_id}").json()["heartbeat"] is True

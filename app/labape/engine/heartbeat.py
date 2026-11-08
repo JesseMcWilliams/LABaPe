@@ -119,7 +119,7 @@ def due(db: Session, now: dt.datetime) -> None:
     """Heartbeat every ready host that is due; called from the monitoring tick."""
     if not appsettings.get(db, "monitoring").heartbeat or not stack_mail.available():
         return
-    for h in db.scalars(select(KvmHost).where(KvmHost.access_status == "ready").order_by(KvmHost.id)):
+    for h in db.scalars(select(KvmHost).where(KvmHost.access_status == "ready", KvmHost.heartbeat.is_(True)).order_by(KvmHost.id)):
         last = state(db, h.id).get("checked")
         if last and now - dt.datetime.fromisoformat(last).astimezone(dt.timezone.utc) < EVERY - dt.timedelta(minutes=2):
             continue
@@ -131,7 +131,7 @@ def alerts(db: Session) -> dict[str, tuple[int, str, str]]:
     out = {}
     if not appsettings.get(db, "monitoring").heartbeat:
         return out
-    for h in db.scalars(select(KvmHost).where(KvmHost.access_status == "ready")):
+    for h in db.scalars(select(KvmHost).where(KvmHost.access_status == "ready", KvmHost.heartbeat.is_(True))):
         s = state(db, h.id)
         if s.get("misses", 0) < MISSES_BEFORE_ALERT:
             continue

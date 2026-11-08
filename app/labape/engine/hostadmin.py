@@ -492,6 +492,8 @@ def collect_due(db: Session) -> None:
                     try:
                         from . import hostcontainers
                         hostcontainers.collect_due(s, h, now)
+                        from . import containerupdates
+                        containerupdates.due(s, h, now)
                     except Exception:  # noqa: BLE001 - a host's containers must not stop the others being read
                         s.rollback()
                     if h.log_forward and (h.log_forward_until is None

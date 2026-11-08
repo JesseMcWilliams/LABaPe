@@ -52,6 +52,7 @@ class HostIn(BaseModel):
     # Settings → Monitoring's).
     files_path: str = Field(default="", pattern=r"^(/[A-Za-z0-9._/-]+)?$", max_length=255)
     disk_free_pct: int | None = Field(default=None, ge=1, le=50)
+    heartbeat: bool = True
 
 
 def _out(h: KvmHost) -> dict:
@@ -60,7 +61,7 @@ def _out(h: KvmHost) -> dict:
                                        "ssh_user", "access_status", "access_error", "access_at", "log_forward",
                                        "log_forward_until", "log_forward_error", "is_primary",
                                        "files_from_share", "role", "stack_url", "files_path", "disk_free_pct",
-                                       "container_alerts")} | {
+                                       "container_alerts", "heartbeat")} | {
         # What it uses now (F1): the primary keeps the stack's file locations (Settings → File locations).
         "files_dir": "" if h.is_primary else filedist.files_path(h)}
 
@@ -210,7 +211,7 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
     _check_uri(body.libvirt_uri)
     data = body.model_dump()
     for k in ("ssh_address", "ssh_port", "ssh_user", "is_primary", "files_from_share", "role",
-              "stack_url", "files_path", "disk_free_pct"):    # kept unless sent
+              "stack_url", "files_path", "disk_free_pct", "heartbeat"):    # kept unless sent
         if k not in body.model_fields_set:
             data.pop(k)
     if data.get("is_primary") is False and h.is_primary:

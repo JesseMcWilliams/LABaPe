@@ -270,6 +270,8 @@ function HostSettings({ embedded = false }: { embedded?: boolean }) {
                   help="https://… of its web interface; another stack's is probed every minute"
                   onChange={(e) => setForm({ ...form, stack_url: e.target.value })} />
               )}
+              <FormControlLabel label="Check that its alerts arrive" sx={{ mt: 0.5 }} title="A daily heartbeat mail and syslog line (Settings → Monitoring); turn it off for a host that has no mail program"
+                control={<Checkbox checked={form.heartbeat ?? true} onChange={(e) => setForm({ ...form, heartbeat: e.target.checked })} />} />
               <FormControlLabel label="Enabled" sx={{ mt: 0.5 }}
                 control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} />
               <FormControlLabel label="Primary file host" sx={{ mt: 0.5 }}

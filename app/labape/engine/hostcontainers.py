@@ -131,7 +131,7 @@ def collect(db: Session, h: KvmHost, now: dt.datetime | None = None) -> HostCont
         known = {v["name"]: v.get("size") for v in old.get("volumes") or []}
         for v in got.get("volumes", []):
             v["size"] = known.get(v["name"])
-    got.update(restart_seen=seen, volume_sizes_at=now.isoformat() if sizes else old.get("volume_sizes_at"))
+    got.update(restart_seen=seen, volume_sizes_at=now.isoformat() if sizes else old.get("volume_sizes_at"), updates=old.get("updates"))
     row.data, row.collected_at, row.error = got, now, ""
     db.merge(row)
     db.commit()
@@ -270,19 +270,23 @@ def build(row: HostContainers | None, h: KvmHost | None = None) -> dict:
                 used_vols.setdefault(m["source"], []).append(c["name"])
         ok, why = actionable(h, c)
         containers.append({**c, "attention": attention(c), "stack_own": is_stack_own(c), "actionable": ok, "why_not": why,
-                           "ops": ops_for(data.get("runtime", ""), c) if ok else []})
+                           "ops": ops_for(data.get("runtime", ""), c) if ok else [],
+                           "image_update": ((data.get("updates") or {}).get("images") or {}).get(c.get("image"), "")})
     images = [{**i, "in_use": any(i["id"] and c["image_id"].removeprefix("sha256:").startswith(i["id"]) for c in containers)}
               for i in data.get("images") or []]
     volumes = [{**v, "used_by": sorted(used_vols.get(v["name"], []))} for v in data.get("volumes") or []]
     return {"runtime": data.get("runtime", ""), "version": data.get("version", ""),
             "collected_at": row.collected_at if row else None, "error": row.error if row else "",
             "level": h.container_level if h is not None else "off", "known": list(h.container_known or []) if h is not None else [],
+            "updates": {"enabled": bool(h.container_updates) if h is not None else False, "at": (data.get("updates") or {}).get("at"),
+                        "errors": (data.get("updates") or {}).get("errors") or {}},
             "containers": containers, "images": images, "volumes": volumes,
             "summary": {"total": len(containers), "running": sum(c["state"] == "running" for c in containers),
-                        "attention": sum(bool(c["attention"]) for c in containers)}}
+                        "attention": sum(bool(c["attention"]) for c in containers),
+                        "newer_images": sum(c["image_update"] == "newer" for c in containers)}}
 
 
-def alerts(h: KvmHost, row: HostContainers | None, now: dt.datetime, stack: bool) -> list[tuple[str, str, str]]:
+def alerts(h: KvmHost, row: HostContainers | None, now: dt.datetime, stack: bool, reclaim_gb: int = 0) -> list[tuple[str, str, str]]:
     """(level, message, kind) for the host's containers that are wrong now. The Stack's own containers
     are watched by stackmon, so a stack host's compose projects are skipped here."""
     if row is None or not h.container_alerts or not (row.data or {}).get("runtime"):
@@ -299,6 +303,12 @@ def alerts(h: KvmHost, row: HostContainers | None, now: dt.datetime, stack: bool
         t = seen.get(c["name"])
         if t and now - _aware(dt.datetime.fromisoformat(t)) < RESTART_WINDOW:
             out.append(("warning", f"container {c['name']} restarted (restart count {c.get('restarts')})", "restart"))
+    if reclaim_gb:
+        # Images nothing uses (sizes are per image and layers are shared, so what is freed is less than this).
+        cand = cleanup_candidates(build(row, h))["totals"]
+        gb = (cand["dangling_images"]["bytes"] + cand["unused_images"]["bytes"]) / 1e9
+        if gb >= reclaim_gb:
+            out.append(("warning", f"about {gb:.0f} GB of container images nothing uses can be cleaned up (Containers → Clean up…)", "reclaim"))
     return out
 
 

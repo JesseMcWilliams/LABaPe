@@ -2312,3 +2312,16 @@ Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications
 | Limits | One array per replacement: a disk that already has partitions is no longer a candidate, so a host whose drives carry several arrays gets the other arrays added by hand (Add a drive…) or by repeating after the table exists. Members that are whole disks are not offered a replacement. Power-down and the physical swap stay manual. |
 | Verified | `test_r1_replace.py` (plan, candidates, partition names, script, API incl. the typed serial). Not yet run on a real array: the first real use should be OZ's `md10`. |
 
+## 80. Container extras (plan C4, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Unused images | `hostcontainers.alerts(..., reclaim_gb)`: dangling plus tagged-unused image sizes (`cleanup_candidates`) at or above `monitoring.container_reclaim_gb` (default 20, 0 off) raise a warning `host<id>:reclaim:...` (category container) pointing to Clean up…; sizes are per image and layers are shared, so less is freed. |
+| Project update | `engine/containerupdates.py`: `POST /api/hosts/{id}/containers/project` runs `docker compose -p <project> -f ... pull; up -d` in the project's folder, only when every container of the project is allowed by the host's level and none is a Quadlet or the Stack's own. Docker only. Audited `host.container.project`. |
+| Newer image | Off per host (`kvm_hosts.container_updates`). Weekly (and Check now): the host runs `docker buildx imagetools inspect <ref>` (Podman: `skopeo inspect`) for each running container's registry tag and compares the digest with its `RepoDigests`; the verdict `newer`, `current` or `unknown` (private, locally built, or no answer) is kept in `host_containers.data.updates` and shown as a chip and a count. Digest compare only; nothing is pulled. |
+| Heartbeat switch | `kvm_hosts.heartbeat` (default on): host settings → "Check that its alerts arrive"; off skips the host's daily heartbeat and its alert. Migrations 0043, 0044. |
+| Not built | CPU and memory history charts, and rootless Podman containers of the access account: both stay open (see the plan, C4). |
+| Verified | `test_c4_container_extras.py`, `test_n2_heartbeat.py` (opt-out). Not yet run against a real registry. |
+

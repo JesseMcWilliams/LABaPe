@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..engine import hostadmin, hostcontainers
+from ..engine import containerupdates, hostadmin, hostcontainers
 from ..errors import FieldError
 from ..models import HostContainers, KvmHost, utcnow
 from ..security import Principal, audit, client_ip, require_roles
@@ -100,6 +100,59 @@ def container_alerts(host_id: int, body: AlertsIn, request: Request, db: Session
     audit(db, p.username, "host.container.alerts", object_type="kvm_host", object_id=h.id,
           detail={"enabled": body.enabled}, source_ip=client_ip(request))
     return {"alerts": h.container_alerts}
+
+
+class SwitchIn(BaseModel):
+    enabled: bool
+
+
+@router.post("/{host_id}/containers/updates/switch")
+def updates_switch(host_id: int, body: SwitchIn, request: Request, db: Session = Depends(get_db),
+                   p: Principal = Depends(require_roles("admin"))):
+    """The weekly check for newer images: off unless turned on, since the host then reaches out to registries."""
+    h = _host(db, host_id)
+    h.container_updates = body.enabled
+    db.commit()
+    audit(db, p.username, "host.container.updates_switch", object_type="kvm_host", object_id=h.id,
+          detail={"enabled": body.enabled}, source_ip=client_ip(request))
+    return {"enabled": h.container_updates}
+
+
+@router.post("/{host_id}/containers/updates/check")
+def updates_check(host_id: int, request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
+    """Ask the registries now (digests only; nothing is pulled)."""
+    h = _host(db, host_id)
+    try:
+        res = containerupdates.check(db, h)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(status_code=502, detail=f"The check failed: {exc}") from exc
+    audit(db, p.username, "host.container.updates_check", object_type="kvm_host", object_id=h.id,
+          detail={"newer": sorted(r for r, v in res["images"].items() if v == "newer")}, source_ip=client_ip(request))
+    return hostcontainers.build(db.get(HostContainers, h.id), h)
+
+
+class ProjectIn(BaseModel):
+    project: str = Field(max_length=128)
+
+
+@router.post("/{host_id}/containers/project")
+def project_update(host_id: int, body: ProjectIn, request: Request, db: Session = Depends(get_db),
+                   p: Principal = Depends(require_roles("admin"))):
+    """Pull and recreate a whole compose project (every container of it must be one the host's level allows)."""
+    h = _host(db, host_id)
+    detail = {"project": body.project, "level": h.container_level}
+    try:
+        out = containerupdates.run_project(hostadmin.for_host(h), h, db.get(HostContainers, h.id), body.project)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
+        audit(db, p.username, "host.container.project", object_type="kvm_host", object_id=h.id, outcome="failed",
+              detail={**detail, "error": str(exc)[:300]}, source_ip=client_ip(request))
+        raise FieldError("project", str(exc)) from exc
+    audit(db, p.username, "host.container.project", object_type="kvm_host", object_id=h.id, detail=detail, source_ip=client_ip(request))
+    try:
+        hostcontainers.collect(db, h)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "output": out}
 
 
 class ActionIn(BaseModel):

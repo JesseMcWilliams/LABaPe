@@ -42,7 +42,7 @@ def test_the_page_marks_the_stacks_own_containers_and_what_uses_what():
         c("labape-api", project="labape"), c("job", state="exited", exit_code=2)), collected_at=utcnow())
     page = hostcontainers.build(row)
     assert [x["stack_own"] for x in page["containers"]] == [False, True, False]
-    assert page["summary"] == {"total": 3, "running": 2, "attention": 1}
+    assert page["summary"] == {"total": 3, "running": 2, "attention": 1, "newer_images": 0}
     assert [(i["id"], i["in_use"], i["dangling"]) for i in page["images"]] == [("111111111111", True, False), ("222222222222", False, True)]
     assert [(v["name"], v["used_by"]) for v in page["volumes"]] == [("pgdata", ["db"]), ("old", [])]
     assert hostcontainers.build(None)["runtime"] == "" and hostcontainers.summary(None)["total"] == 0

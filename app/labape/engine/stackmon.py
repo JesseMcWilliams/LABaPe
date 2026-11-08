@@ -256,7 +256,7 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
                     if isinstance(t, (int, float)) and t >= cfg.temp_c:
                         add(h, "warning" if t < cfg.temp_c + 5 else "error", f"{name} at {t:.0f} °C", "temp")
         if h.access_status == "ready":
-            for level, message, kind in hostcontainers.alerts(h, db.get(HostContainers, h.id), now, stack):
+            for level, message, kind in hostcontainers.alerts(h, db.get(HostContainers, h.id), now, stack, cfg.container_reclaim_gb):
                 add(h, level, message, kind)
         if not stack:
             continue

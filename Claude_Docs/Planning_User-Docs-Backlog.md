@@ -12,3 +12,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Admin → Notifications (channels, rules, quiet hours, reminders, delivery log; secrets write-only): `Web-Interface-Admin.md` (new section) and the Settings → Monitoring text.
 - Settings → Monitoring: the daily alert-path check (heartbeat) and digest hour; Notifications rule option "daily digest": `Web-Interface-Admin.md`.
 - Drive Pools: **Replace a drive…** (guided replacement of a failed md member; typed serial): `Web-Interface-Admin.md` Drive Pools.
+- Containers: Update <project>, the weekly newer-image check (per-host switch, Check now, "newer image" chip), the unused-images alert (Settings → Monitoring); host setting "Check that its alerts arrive": `Web-Interface-Admin.md`.

@@ -141,6 +141,7 @@ class MonitoringSettings(BaseModel):
     cert_days: int = Field(default=7, ge=1, le=90)
     backup_hours: int = Field(default=26, ge=2, le=24 * 14)
     peer_failures: int = Field(default=2, ge=1, le=60)               # failed probes in a row before an alert
+    container_reclaim_gb: int = Field(default=20, ge=0, le=100000)  # C4: alert when this many GB of images nothing uses; 0 = never
     heartbeat: bool = True                                           # N2: daily check that hosts' mail and syslog reach the stack
     digest_hour: int = Field(default=7, ge=0, le=23)                 # N2: UTC hour of the daily digest (rules with "send the digest")
 
