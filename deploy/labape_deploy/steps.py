@@ -435,6 +435,32 @@ def prereq_raid_disk_timeouts(c: Ctx):
     return DONE, "disks in arrays give up on a bad sector after 7 seconds (udev rule)"
 
 
+SUDOERS_DIR = Path("/etc/sudoers.d")
+DIAG_SUDO_TEXT = """# LABaPe: the service user may read disk and array health without a password (smartctl, mdadm
+# --detail and --examine). Read-only; nothing here can change a disk or an array.
+%(user)s ALL=(root) NOPASSWD: %(smartctl)s *, %(mdadm)s --detail *, %(mdadm)s --examine *
+"""
+
+
+def prereq_diag_sudo(c: Ctx):
+    smartctl, mdadm = c.r.which("smartctl"), c.r.which("mdadm")
+    if not smartctl and not mdadm:
+        return NA, "no smartctl or mdadm"
+    user = c.user
+    cmds = {"user": user, "smartctl": smartctl or "/bin/false", "mdadm": mdadm or "/bin/false"}
+    final = SUDOERS_DIR / f"labape-diag-{user}"
+    text = DIAG_SUDO_TEXT % cmds
+    if final.is_file() and final.read_text(encoding="utf-8") == text:
+        return DONE, "already configured"
+    tmp = SUDOERS_DIR / f"labape-diag-{user}.tmp"       # sudo ignores names with a dot until it is checked
+    c.r.write(tmp, text, mode=0o440)
+    checked = c.r.run(["visudo", "-cf", str(tmp)], check=False)
+    if getattr(checked, "returncode", 0) != 0 and not c.r.dry_run:
+        tmp.unlink(missing_ok=True)
+        raise StepError(f"the sudoers rule for {user} did not pass visudo; nothing was installed")
+    c.r.run(["mv", str(tmp), str(final)])
+    return DONE, f"{user} may run smartctl and mdadm --detail/--examine with sudo, no password"
+
 # --- host networking ------------------------------------------------------------
 
 BRIDGE_NF = """# LABaPe: libvirt VMs are bridged onto the LAN. Docker loads br_netfilter,

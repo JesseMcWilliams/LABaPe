@@ -411,6 +411,24 @@ def test_raid_disk_timeouts_write_a_udev_rule_only_with_arrays(tmp_path, monkeyp
     assert S.prereq_raid_disk_timeouts(c)[0] == S.NA
 
 
+def test_diag_sudo_grants_read_only_disk_tools(tmp_path, monkeypatch):
+    c, conf, prog, ran = _raid_ctx(tmp_path, monkeypatch, None)
+    monkeypatch.setattr(S, "SUDOERS_DIR", tmp_path)
+    monkeypatch.setattr(c.a, "need", lambda n: "labuser" if n == "ServiceUser" else "full")
+    c.r.which = lambda name: f"/usr/sbin/{name}" if name in ("smartctl", "mdadm") else None
+    status, msg = S.prereq_diag_sudo(c)
+    assert status == S.DONE and "labuser" in msg
+    assert ["visudo", "-cf", str(tmp_path / "labape-diag-labuser.tmp")] in ran
+    assert ["mv", str(tmp_path / "labape-diag-labuser.tmp"), str(tmp_path / "labape-diag-labuser")] in ran
+    text = (tmp_path / "labape-diag-labuser.tmp").read_text()
+    assert "labuser ALL=(root) NOPASSWD: /usr/sbin/smartctl *, /usr/sbin/mdadm --detail *" in text
+    (tmp_path / "labape-diag-labuser").write_text(text)
+    ran.clear()
+    assert S.prereq_diag_sudo(c) == (S.DONE, "already configured") and not ran
+    c.r.which = lambda name: None
+    assert S.prereq_diag_sudo(c)[0] == S.NA
+
+
 def test_installing_networkmanager_keeps_the_dns_servers(tmp_path, monkeypatch):
     resolv = tmp_path / "resolv.conf"
     resolv.write_text("nameserver 172.21.48.1\n")
