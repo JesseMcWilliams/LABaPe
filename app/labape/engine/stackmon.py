@@ -302,8 +302,9 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
             out[f"link:{link.url}"] = (None, "error", f"linked stack {link.name} isn't answering ({link.error[:200]})")
     from .secret_health import alerts as secret_alerts      # S1: secrets that failed their check
     out.update(secret_alerts(db))
-    from . import notifications           # N1: a channel that can't deliver
+    from . import heartbeat, notifications           # N1: a channel that can't deliver; N2: a host whose alerts may not arrive
     out.update(notifications.alerts(db))
+    out.update(heartbeat.alerts(db))
     em = email_state(db)
     if em.get("ok") is False:
         out[EMAIL_KEY] = (None, "error", f"alert emails can't be sent: {em.get('error', '')[:300]}")
@@ -463,7 +464,10 @@ def tick(db_factory) -> None:
                 from .. import links
                 links.poll_all(db, now)            # linked stacks' summaries (design §34)
                 recheck_email(db, now)
+                from . import heartbeat, notifications
+                heartbeat.due(db, now)
                 sync_alerts(db, evaluate(db, now), now)
+                notifications.digest(db, now)
         except Exception:  # noqa: BLE001
             log.exception("stack monitoring")
         finally:

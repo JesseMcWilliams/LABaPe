@@ -813,6 +813,7 @@ class NotificationRule(Base):
     quiet_end: Mapped[str] = mapped_column(String(5), default="")
     reminder_hours: Mapped[int] = mapped_column(default=0)                   # 0: no reminders
     send_cleared: Mapped[bool] = mapped_column(default=True)
+    send_digest: Mapped[bool] = mapped_column(default=False)                 # N2: also the daily digest
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

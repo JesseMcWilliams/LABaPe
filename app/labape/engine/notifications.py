@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from .. import appsettings, notify
 from ..config import get_settings
-from ..models import MonitorAlert, NotificationChannel, NotificationLog, NotificationRule, utcnow
+from ..models import MonitorAlert, NotificationChannel, NotificationLog, NotificationRule, Setting, utcnow
 from ..security import get_secret, put_secret
 
 log = logging.getLogger("labape.notifications")
@@ -207,6 +207,43 @@ def run(db: Session, now: dt.datetime, cleared: list[MonitorAlert], silenced_key
             if what != "cleared":
                 a.reminded = {**(a.reminded or {}), str(rule.id): now.isoformat()}
         db.commit()
+    return count
+
+
+DIGEST_KEY = "notifications.digest_day"
+
+
+def digest(db: Session, now: dt.datetime) -> int:
+    """Once a day, at the chosen UTC hour: what is open and what cleared in the last day, to the channels of rules
+    that ask for it. Nothing is sent on a quiet day. Returns how many messages went."""
+    if now.hour != appsettings.get(db, "monitoring").digest_hour:
+        return 0
+    today = now.strftime("%Y-%m-%d")
+    row = db.get(Setting, DIGEST_KEY)
+    if row is not None and row.value.get("day") == today:
+        return 0
+    rules = list(db.scalars(select(NotificationRule).where(NotificationRule.enabled.is_(True), NotificationRule.send_digest.is_(True))))
+    if row is None:
+        row = Setting(key=DIGEST_KEY, value={})
+        db.add(row)
+    row.value = {"day": today}
+    db.commit()
+    open_ = list(db.scalars(select(MonitorAlert).where(MonitorAlert.cleared_at.is_(None)).order_by(MonitorAlert.started_at)))
+    done = list(db.scalars(select(MonitorAlert).where(MonitorAlert.cleared_at >= now - dt.timedelta(days=1)).order_by(MonitorAlert.cleared_at)))
+    if not rules or not (open_ or done):
+        return 0
+    channels = {c.id: c for c in db.scalars(select(NotificationChannel).where(NotificationChannel.enabled.is_(True)))}
+    count = 0
+    for rule in rules:
+        o, d = [a for a in open_ if matches(rule, a)], [a for a in done if matches(rule, a)]
+        if not (o or d):
+            continue
+        lines = [f"[OPEN since {_aware(a.started_at).strftime('%Y-%m-%d %H:%M')} UTC, {a.level}] {a.message}" for a in o]             + [f"[CLEARED {_aware(a.cleared_at).strftime('%H:%M')} UTC] {a.message}" for a in d]
+        title = f"{_title()}: daily digest, {len(o)} open, {len(d)} cleared"
+        for cid in rule.channel_ids:
+            if cid in channels:
+                deliver(db, channels[cid], rule.name, title, lines, now)
+                count += 1
     return count
 
 

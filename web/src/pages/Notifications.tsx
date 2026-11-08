@@ -16,7 +16,7 @@ interface Channel {
 }
 interface Rule {
   id: number; name: string; enabled: boolean; min_level: string; host_ids: number[]; categories: string[]; channel_ids: number[];
-  quiet_start: string; quiet_end: string; reminder_hours: number; send_cleared: boolean;
+  quiet_start: string; quiet_end: string; reminder_hours: number; send_cleared: boolean; send_digest: boolean;
 }
 interface View {
   builtin: { email_to: string[]; syslog: boolean }; kinds: string[]; shapes: string[]; categories: string[];
@@ -90,7 +90,7 @@ function RuleDialog({ view, edit, onClose, onSaved }: { view: View; edit: Rule |
   const [f, setF] = useState<Omit<Rule, "id">>({
     name: edit?.name ?? "", enabled: edit?.enabled ?? true, min_level: edit?.min_level ?? "warning", host_ids: edit?.host_ids ?? [],
     categories: edit?.categories ?? [], channel_ids: edit?.channel_ids ?? [], quiet_start: edit?.quiet_start ?? "", quiet_end: edit?.quiet_end ?? "",
-    reminder_hours: edit?.reminder_hours ?? 0, send_cleared: edit?.send_cleared ?? true,
+    reminder_hours: edit?.reminder_hours ?? 0, send_cleared: edit?.send_cleared ?? true, send_digest: edit?.send_digest ?? false,
   });
   const [error, setError] = useState("");
   const set = (p: Partial<typeof f>) => setF({ ...f, ...p });
@@ -132,6 +132,7 @@ function RuleDialog({ view, edit, onClose, onSaved }: { view: View; edit: Rule |
           <Field label="Remind every (hours)" type="number" value={f.reminder_hours} onChange={(e) => set({ reminder_hours: Number(e.target.value) })}
             help="0: no reminders. Otherwise an alert still open (and not acknowledged) is sent again this often." />
           <FormControlLabel label="Also send the all-clear" control={<Checkbox checked={f.send_cleared} onChange={(e) => set({ send_cleared: e.target.checked })} />} />
+          <FormControlLabel label="Also send the daily digest (open alerts, what cleared, hosts whose alerts may not arrive)" control={<Checkbox checked={f.send_digest} onChange={(e) => set({ send_digest: e.target.checked })} />} />
           <FormControlLabel label="On" control={<Checkbox checked={f.enabled} onChange={(e) => set({ enabled: e.target.checked })} />} />
           <Typography variant="caption" color="text.secondary">A new rule sends alerts that start after it is saved, not the ones already open.</Typography>
         </Stack>
@@ -226,7 +227,7 @@ export default function Notifications() {
                     </TableCell>
                     <TableCell sx={{ fontSize: 12 }}>{r.channel_ids.map(name).join(", ")}</TableCell>
                     <TableCell sx={{ fontSize: 12 }}>
-                      {r.quiet_start ? `quiet ${r.quiet_start}–${r.quiet_end} UTC` : "always"}{r.reminder_hours ? ` · remind every ${r.reminder_hours} h` : ""}{r.send_cleared ? " · all-clear" : ""}
+                      {r.quiet_start ? `quiet ${r.quiet_start}–${r.quiet_end} UTC` : "always"}{r.reminder_hours ? ` · remind every ${r.reminder_hours} h` : ""}{r.send_cleared ? " · all-clear" : ""}{r.send_digest ? " · daily digest" : ""}
                     </TableCell>
                     <TableCell align="right">
                       <Button size="small" onClick={() => setRuleDlg(r)}>Edit</Button>

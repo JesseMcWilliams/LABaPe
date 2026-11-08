@@ -2288,3 +2288,16 @@ Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications
 | API | `/api/admin/notifications` (GET) and `/channels`, `/channels/{id}` (PUT, DELETE), `/channels/{id}/test`, `/rules`, `/rules/{id}`; admin only, audited as `notification.*`. A channel a rule uses can't be deleted. |
 | Verified | `test_n1_notifications.py` (categories, quiet hours, shapes, once/reminder/clear, held and old alerts, failure alert, the API incl. secret never echoed, `sync_alerts` end to end). Not yet run against a real webhook or ntfy. |
 
+## 78. Alert-path check and daily digest (plan N2, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Heartbeat | `engine/heartbeat.py`: once per 24 h per ready host (from the monitoring tick, switch `monitoring.heartbeat`) the stack runs on the host, over SSH with sudo, `mail -s "LABaPe heartbeat <host> <token>" root` (falling back to `sendmail -t`) and `logger -t labape-heartbeat <token>`, then looks for the token in Mailpit's search API and in the syslog collector for up to 30 s. This exercises the same path mdadm and smartd use (msmtp aliases, the Mailpit address). |
+| Syslog | Judged only for a host the collector has heard from in the last 7 days; otherwise `n/a`. |
+| State | Setting `heartbeat.host<id>`: last result (`mail` ok/lost/failed/none, `syslog` ok/lost/n/a), `misses` in a row, `last_ok_at`. An unreachable host is not a miss (the host alerts cover it). |
+| Alert | Two misses in a row: warning `monitor:heartbeat:<id>` (category alert-path) saying which path is dead; it clears on the next good heartbeat. |
+| Digest | `notifications.digest`: at `monitoring.digest_hour` (UTC) once per day (Setting `notifications.digest_day`), to the channels of enabled rules with `send_digest`: open alerts and those cleared in the last 24 h that match the rule; nothing on a quiet day. Migration 0042. |
+| Verified | `test_n2_heartbeat.py` (ok, two lost, no mail program, unreachable host, once a day, digest). Live on kvm1: mail and syslog both arrived; pi1 and garagepc reported no mail program (a real gap: `Prereq.AlertMail` hasn't run there). |
+

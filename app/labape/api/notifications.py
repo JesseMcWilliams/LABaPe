@@ -47,6 +47,7 @@ class RuleIn(BaseModel):
     quiet_end: str = ""
     reminder_hours: int = Field(default=0, ge=0, le=24 * 30)
     send_cleared: bool = True
+    send_digest: bool = False
 
 
 def _config(body: ChannelIn, secret_set: bool) -> dict:
@@ -114,7 +115,7 @@ def _view(db: Session) -> dict:
         "channels": [N.public(c) for c in db.scalars(select(NotificationChannel).order_by(NotificationChannel.name))],
         "rules": [{"id": r.id, "name": r.name, "enabled": r.enabled, "min_level": r.min_level, "host_ids": r.host_ids,
                    "categories": r.categories, "channel_ids": r.channel_ids, "quiet_start": r.quiet_start, "quiet_end": r.quiet_end,
-                   "reminder_hours": r.reminder_hours, "send_cleared": r.send_cleared}
+                   "reminder_hours": r.reminder_hours, "send_cleared": r.send_cleared, "send_digest": r.send_digest}
                   for r in db.scalars(select(NotificationRule).order_by(NotificationRule.name))],
         "hosts": [{"id": h.id, "name": h.name} for h in db.scalars(select(KvmHost).order_by(KvmHost.name))],
         "log": [{"at": e.at, "channel": e.channel_name, "rule": e.rule_name, "ok": e.ok, "error": e.error, "summary": e.summary}
