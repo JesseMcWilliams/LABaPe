@@ -359,6 +359,10 @@ def _smart_ctx(tmp_path, monkeypatch, conf_text, have=("smartctl",), sendmail=Tr
         def which(self, name):
             return "/bin/x" if name in present else None
 
+        def write(self, path, content, mode=0o644, owner=None):
+            path.write_text(content)
+            return True
+
         def run(self, cmd, **kw):
             ran.append(cmd)
             if isinstance(cmd, list) and cmd[0] in ("apt-get", "dnf"):
@@ -405,6 +409,24 @@ def test_raid_disk_timeouts_write_a_udev_rule_only_with_arrays(tmp_path, monkeyp
     c, *_ = _raid_ctx(tmp_path, monkeypatch, None, arrays=False)
     c.r.which = lambda name: "/usr/sbin/smartctl"
     assert S.prereq_raid_disk_timeouts(c)[0] == S.NA
+
+
+def test_diag_sudo_grants_read_only_disk_tools(tmp_path, monkeypatch):
+    c, conf, prog, ran = _raid_ctx(tmp_path, monkeypatch, None)
+    monkeypatch.setattr(S, "SUDOERS_DIR", tmp_path)
+    monkeypatch.setattr(c.a, "need", lambda n: "labuser" if n == "ServiceUser" else "full")
+    c.r.which = lambda name: f"/usr/sbin/{name}" if name in ("smartctl", "mdadm") else None
+    status, msg = S.prereq_diag_sudo(c)
+    assert status == S.DONE and "labuser" in msg
+    assert ["visudo", "-cf", str(tmp_path / "labape-diag-labuser.tmp")] in ran
+    assert ["mv", str(tmp_path / "labape-diag-labuser.tmp"), str(tmp_path / "labape-diag-labuser")] in ran
+    text = (tmp_path / "labape-diag-labuser.tmp").read_text()
+    assert "labuser ALL=(root) NOPASSWD: /usr/sbin/smartctl *, /usr/sbin/mdadm --detail *" in text
+    (tmp_path / "labape-diag-labuser").write_text(text)
+    ran.clear()
+    assert S.prereq_diag_sudo(c) == (S.DONE, "already configured") and not ran
+    c.r.which = lambda name: None
+    assert S.prereq_diag_sudo(c)[0] == S.NA
 
 
 def test_installing_networkmanager_keeps_the_dns_servers(tmp_path, monkeypatch):
@@ -569,3 +591,23 @@ def test_repo_version_runs_git_as_the_checkouts_owner(monkeypatch, tmp_path):
     monkeypatch.setattr(type(tmp_path), "stat", lambda self, **kw: St())
     assert S.repo_version(tmp_path) == "v0.5.4-10-g98f9cfb"
     assert seen["user"] == 1001 and seen["group"] == 1002 and seen["env"]["HOME"] == "/home/svc"
+
+
+def test_smart_tests_are_scheduled_on_devicescan_once(tmp_path, monkeypatch):
+    c, ran = _smart_ctx(tmp_path, monkeypatch, "# comment\nDEVICESCAN -d removable -n standby -m root -M exec /usr/share/smartmontools/smartd-runner\n")
+    conf = tmp_path / "smartd.conf"
+    status, msg = S.prereq_smart_tests(c)
+    text = conf.read_text()
+    assert status == S.DONE and "scheduled" in msg
+    assert "smartd-runner -s (S/../../7/02|L/../01/./03)" in text and text.count("-s (") == 1 and "Prereq.SmartTests" in text
+    assert ["systemctl", "try-restart", "smartd"] in ran
+    ran.clear()
+    assert S.prereq_smart_tests(c) == (S.DONE, "already scheduled") and not ran       # a second run changes nothing
+    c, ran = _smart_ctx(tmp_path, monkeypatch, "/dev/sda -a -s L/../../1/03 -m root\n")
+    assert "no DEVICESCAN" in S.prereq_smart_tests(c)[1] and (tmp_path / "smartd.conf").read_text().startswith("/dev/sda")
+    c, ran = _smart_ctx(tmp_path, monkeypatch, "DEVICESCAN -a -s L/../../1/03\n")
+    assert S.prereq_smart_tests(c) == (S.DONE, "already scheduled")                  # the admin's own schedule stays
+    c, ran = _smart_ctx(tmp_path, monkeypatch, None, have=())
+    assert S.prereq_smart_tests(c)[0] == S.NA
+    names = [s[0] for s in _installer().STEPS]
+    assert names.index("Prereq.SmartAlerts") < names.index("Prereq.SmartTests") < names.index("Net.Validate")

@@ -340,6 +340,32 @@ def prereq_smart_alerts(c: Ctx):
     return DONE, "smartd's warnings are mailed to root (the stack's Mailpit)" if changed else "already configured"
 
 
+# plan S1: smartd runs a short self-test every Sunday at 02:00 and a long one on the 1st at 03:00. Debian ships
+# DEVICESCAN with no schedule, so no drive was ever tested (OZ's failed drive: none in about 40,000 hours).
+SMART_SCHEDULE = "-s (S/../../7/02|L/../01/./03)"
+
+
+def prereq_smart_tests(c: Ctx):
+    if not c.r.which("smartctl"):
+        return NA, "smartmontools isn't installed"
+    conf = next((p for p in SMARTD_CONFS if p.is_file()), None)
+    if conf is None:
+        return DONE, "no smartd.conf here, so no schedule was set"
+    lines = conf.read_text(encoding="utf-8", errors="replace").splitlines()
+    scan = [i for i, ln in enumerate(lines) if ln.split()[:1] == ["DEVICESCAN"]]
+    if not scan:
+        return DONE, f"{conf} has no DEVICESCAN line: add '-s ...' to your drives' lines by hand"
+    if all(" -s " in f" {lines[i]} " for i in scan):
+        return DONE, "already scheduled"
+    for i in scan:
+        if " -s " not in f" {lines[i]} ":
+            lines[i] = f"{lines[i].rstrip()} {SMART_SCHEDULE}"
+    lines.insert(scan[0], "# LABaPe (Prereq.SmartTests): weekly short and monthly long self-tests on every drive")
+    c.r.write(conf, "\n".join(lines) + "\n")
+    c.r.run(["systemctl", "try-restart", "smartd"], check=False)
+    return DONE, "weekly short and monthly long self-tests scheduled"
+
+
 MDSTAT = Path("/proc/mdstat")
 MDADM_CONFS = [Path("/etc/mdadm/mdadm.conf"), Path("/etc/mdadm.conf")]      # Debian, RHEL
 RAID_EVENT_PROGRAM = Path("/usr/local/sbin/labape-raid-event")
@@ -408,6 +434,32 @@ def prereq_raid_disk_timeouts(c: Ctx):
     c.r.run(["udevadm", "trigger", "--subsystem-match=block", "--action=change"], check=False)
     return DONE, "disks in arrays give up on a bad sector after 7 seconds (udev rule)"
 
+
+SUDOERS_DIR = Path("/etc/sudoers.d")
+DIAG_SUDO_TEXT = """# LABaPe: the service user may read disk and array health without a password (smartctl, mdadm
+# --detail and --examine). Read-only; nothing here can change a disk or an array.
+%(user)s ALL=(root) NOPASSWD: %(smartctl)s *, %(mdadm)s --detail *, %(mdadm)s --examine *
+"""
+
+
+def prereq_diag_sudo(c: Ctx):
+    smartctl, mdadm = c.r.which("smartctl"), c.r.which("mdadm")
+    if not smartctl and not mdadm:
+        return NA, "no smartctl or mdadm"
+    user = c.user
+    cmds = {"user": user, "smartctl": smartctl or "/bin/false", "mdadm": mdadm or "/bin/false"}
+    final = SUDOERS_DIR / f"labape-diag-{user}"
+    text = DIAG_SUDO_TEXT % cmds
+    if final.is_file() and final.read_text(encoding="utf-8") == text:
+        return DONE, "already configured"
+    tmp = SUDOERS_DIR / f"labape-diag-{user}.tmp"       # sudo ignores names with a dot until it is checked
+    c.r.write(tmp, text, mode=0o440)
+    checked = c.r.run(["visudo", "-cf", str(tmp)], check=False)
+    if getattr(checked, "returncode", 0) != 0 and not c.r.dry_run:
+        tmp.unlink(missing_ok=True)
+        raise StepError(f"the sudoers rule for {user} did not pass visudo; nothing was installed")
+    c.r.run(["mv", str(tmp), str(final)])
+    return DONE, f"{user} may run smartctl and mdadm --detail/--examine with sudo, no password"
 
 # --- host networking ------------------------------------------------------------
 

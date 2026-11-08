@@ -335,3 +335,10 @@ Also 2026-10-14: Authentik high availability (several server and worker replicas
 205. ~~**The default action level and the Stack host (Containers plan).**~~ **Answered (2026-11-06): yes to both.** Default off; the Stack host may be set above off for its non-LABaPe containers only (batch C2). Original question: Recommendation: off by default; the Stack host may be set above off, for its non-LABaPe containers only.
 206. ~~**Log reads (Containers plan).**~~ **Answered (2026-11-06): yes. Built in C1:** 2,000 lines / 1 MB, values after `*PASSWORD*`, `*TOKEN*`, `*SECRET*` and `*KEY*` masked. Original question: Cap and masking. Recommendation: 2,000 lines / 1 MB, values of `*_PASSWORD`, `*_TOKEN`, `*_SECRET` and `*_KEY` masked.
 207. ~~**Alerts for containers on non-stack hosts (Containers plan).**~~ **Answered (2026-11-06): on, switchable per host. Built in C1** (a switch on the Containers page, `kvm_hosts.container_alerts`). Original question: Recommendation: on, switchable per host.
+208. **SMART self-test schedule (Disk health plan).** Open. Recommendation: short test every Sunday 02:00, long test on the 1st at 03:00, on `DEVICESCAN`. See [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md) §3.
+209. **Notification channel types (N1).** Open. Recommendation: email, generic webhook (Teams, Slack and Discord shapes), ntfy, syslog.
+210. **What a notification rule matches on (N1).** Open. Recommendation: level, hosts, category and quiet hours, plus a reminder every N hours while open.
+211. **Where channel secrets live (N1).** Open. Recommendation: the platform secret store, referenced by name, never shown again.
+212. **Heartbeat and digest times (N2).** Open. Recommendation: heartbeat daily, alert after two missed; digest daily at 07:00 local, only when something is open or cleared.
+213. **Writing the partition table of a replacement drive (R1).** Open. Recommendation: yes, with the new drive's serial typed, only to a drive with no filesystem and no array label.
+214. **Registry checks for newer container images (C4).** Open. Recommendation: off by default, per-host switch, weekly, digest compare only.

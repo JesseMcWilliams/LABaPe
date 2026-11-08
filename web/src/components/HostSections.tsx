@@ -32,6 +32,8 @@ export interface Pool {
   sync: { action: string; percent: number | null; speed: number | null; text?: string }; raid_disks?: number; degraded?: number;
   data_errors?: string; logical_volumes?: { name: string; size: number }[];
   missing?: { slot: number; state: string; partner?: string }[]; at_risk?: string[]; former_members?: FormerMember[];
+  replace?: { template: string; template_serial: string; partition: number; need: number; at_risk: string[];
+    pull: { disk: string; model: string; serial: string; size: number | null }[]; candidates: { path: string; size: number; model: string; serial: string }[] } | null;
 }
 
 export const SECTIONS = [
@@ -169,6 +171,18 @@ export function StackSection({ view }: { view: AdminView }) {
     </Stack>
   );
 }
+
+/** The last SMART self-test of an ATA drive, in days of running ago; NVMe and older readings have none to show. */
+const lastTest = (d: Any): { text: string; tip: string; warn: boolean } => {
+  const tests = d.tests as Record<string, { hours: number | null; passed: boolean | null; status: string }> | undefined;
+  if (!tests || d.power_on_hours == null) return { text: "—", tip: "", warn: false };
+  const done = Object.entries(tests).filter(([, t]) => t && t.hours != null);
+  if (!done.length) return { text: "never", tip: "No self-test has ever run on this drive", warn: true };
+  const [kind, t] = done.sort((a, b) => (b[1].hours as number) - (a[1].hours as number))[0];
+  const days = Math.floor((d.power_on_hours - (t.hours as number)) / 24);
+  const failed = Object.values(tests).some((x) => x && x.passed === false);
+  return { text: `${failed ? "FAILED, " : ""}${days === 0 ? "today" : `${days} d ago`} (${kind})`, tip: Object.entries(tests).map(([k, x]) => `${k}: ${x?.status ?? "—"}`).join("\n"), warn: failed || days > 14 };
+};
 
 export const gb = (b?: number | null) => (b == null ? "—" : b >= 2 ** 40 ? `${(b / 2 ** 40).toFixed(2)} TB` : `${(b / 2 ** 30).toFixed(1)} GB`);
 const rate = (v: number) => (v >= 2 ** 20 ? `${(v / 2 ** 20).toFixed(1)} MB/s` : `${(v / 1024).toFixed(0)} KB/s`);
@@ -394,7 +408,7 @@ export function DrivesSection({ view }: { view: AdminView }) {
       <Typography variant="subtitle1">Disk health (SMART)</Typography>
       {!smart.available ? <Alert severity="info">smartctl isn&apos;t installed on the host (package smartmontools).</Alert> : (
         <Table size="small">
-          <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Model</TableCell><TableCell>Health</TableCell><TableCell>Temp</TableCell><TableCell>Power-on</TableCell><TableCell>Reallocated / pending</TableCell><TableCell>Wear</TableCell></TableRow></TableHead>
+          <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Model</TableCell><TableCell>Health</TableCell><TableCell>Temp</TableCell><TableCell>Power-on</TableCell><TableCell>Last self-test</TableCell><TableCell>Reallocated / pending</TableCell><TableCell>Wear</TableCell></TableRow></TableHead>
           <TableBody>
             {(smart.disks ?? []).map((d: Any) => (
               <TableRow key={d.device} sx={flags[d.device] && flags[d.device].level !== "info" ? { bgcolor: (t) => alpha(t.palette[flags[d.device].level].main, 0.12) } : undefined}>
@@ -408,6 +422,7 @@ export function DrivesSection({ view }: { view: AdminView }) {
                 </TableCell>
                 <TableCell>{d.temperature != null ? `${d.temperature} °C` : "—"}</TableCell>
                 <TableCell>{d.power_on_hours != null ? `${Math.round(d.power_on_hours / 24)} d` : "—"}</TableCell>
+                <TableCell sx={lastTest(d).warn ? { color: "warning.main", fontWeight: 600 } : undefined} title={lastTest(d).tip}>{lastTest(d).text}</TableCell>
                 <TableCell sx={(d.reallocated || d.pending) ? { color: "warning.main", fontWeight: 600 } : undefined}>{d.reallocated ?? "—"} / {d.pending ?? "—"}</TableCell>
                 <TableCell sx={(d.wear_pct ?? 0) >= 80 ? { color: "warning.main", fontWeight: 600 } : undefined}>{d.wear_pct != null ? `${d.wear_pct}%` : "—"}</TableCell>
               </TableRow>

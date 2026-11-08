@@ -77,6 +77,8 @@ STEPS = [
     ("Prereq.AlertMail", S.prereq_alert_mail, ["AlertMailHost"], None, "A mail program for the host's own mail, sending to the stack's Mailpit"),
     ("Prereq.RaidAlerts", S.prereq_raid_alerts, [], None, "Software RAID: array events (a failed or missing disk) also go to syslog"),
     ("Prereq.SmartAlerts", S.prereq_smart_alerts, [], None, "smartd's disk warnings are mailed too (the mail command, on top of Prereq.AlertMail)"),
+    ("Prereq.SmartTests", S.prereq_smart_tests, [], None, "smartd runs a short self-test weekly and a long one monthly on every drive"),
+    ("Prereq.DiagSudo", S.prereq_diag_sudo, ["ServiceUser"], None, "The service user may run smartctl and mdadm --detail/--examine with sudo, no password"),
     ("Prereq.RaidDiskTimeouts", S.prereq_raid_disk_timeouts, [], None, "Software RAID: SATA disks give up on a bad sector after 7 seconds (SCT ERC)"),
     ("Net.Validate", S.network_validate, ["Networks", "DefaultNetwork"], None, "Check the VM network answers"),
     ("Net.BridgeNetfilter", S.net_bridge_netfilter, [], full, "Don't filter bridged VM traffic with iptables (Docker)"),

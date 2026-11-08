@@ -2262,3 +2262,66 @@ Plan and decisions: [Planning_Container-Management.md](Planning_Container-Manage
 | Clean-up (C3) | **Clean up…** on the page opens a preview, `GET /api/hosts/{id}/containers/cleanup`, worked out from the last read and removing nothing: stopped containers the level allows, images nothing uses (untagged ones apart from tagged ones) and volumes no container refers to (a stopped container's mounts count as use), each with its size, with totals. The Stack's own containers and compose volumes (the volume's `com.docker.compose.project` label) are never offered. `POST .../containers/cleanup {kind, keys, confirm}` removes the picked ones: each key must still be a candidate, the host's level must not be `off`, removing volumes needs the word `delete`, and the commands are `docker rm|rmi|volume rm` per item with no force flag, so the runtime itself refuses anything still in use (reported as kept). Audited as `host.container.cleanup` (kind, counts, the names). The facts are read again after. |
 | Verified | pytest `test_c1_containers.py` (attention rules, the page's marks, masking, restart memory and the kept sizes, alerts and the switch, the levels, the scripts and their refusals, the API with a fake SSH). Live on OZ (2026-11-06): the collector on kvm1 and pi1, logs and stats of real containers; the actions on a throwaway container. |
 
+## 76. Scheduled SMART self-tests (plan S1, built 2026-11-06)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Schedule | `Prereq.SmartTests` (installer): on every active `DEVICESCAN` line of `smartd.conf` without a `-s`, appends `-s (S/../../7/02|L/../01/./03)` (short test Sundays 02:00, long test the 1st at 03:00) after a comment line, and restarts smartd. A file with no `DEVICESCAN`, or an admin's own `-s`, is left alone and said so. |
+| Read | The SMART read keeps, for an ATA drive, the newest short and long test of the drive's self-test log (`tests.short|long`: power-on hours, passed, status text); vendor tests are ignored; NVMe and readings from before this have no `tests`. |
+| Warnings | `hostadmin.selftest_warnings`, part of `warnings`: no test ever = warning; none within 14 days of running (power-on hours against the newest test) = warning; the last short or long test failed = error. Shown on Dashboard and Drives and volumes, and raised as Monitoring alerts like the other drive warnings. |
+| Page | Drives and volumes has a **Last self-test** column (days of running ago and the kind; the tooltip has each kind's result; "never" and a failure are highlighted). |
+| Verified | pytest `test_s1_selftests.py` (the thresholds, a failed test, the SMART script run against fake `smartctl` JSON) and `test_y2_installer.py` (the step, run twice). |
+
+## 77. Notifications page (plan N1, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Built-in | The email list and syslog switch of Settings → Monitoring (`stackmon.announce`) are untouched and shown read-only on the page; channels and rules add to them. (The plan said they would become the first channel and rule; leaving them alone keeps every install's behaviour identical.) |
+| Data | `notification_channels` (kind email, webhook, ntfy, syslog; non-secret config; `secret_set`, last result), `notification_rules` (level, host ids, categories, quiet start/end UTC, reminder hours, send-cleared, created_at), `notification_log` (last 100), `monitor_alerts.reminded` (rule id to last send). Migration 0041. |
+| Secrets | A webhook address or ntfy token is written with `put_secret` as `notify/channel-<id>`; the API returns only `secret_set` and the host name; audit rows never hold it. |
+| Engine | `engine/notifications.py`: `category(key, message)` (disk, raid, container, certificate, backup, secret, stack, alert-path), `matches`, `in_quiet`, `run(db, now, cleared)` called at the end of `stackmon.sync_alerts` every minute: an announced, open, unacknowledged, unsilenced alert is sent once per rule (only if announced after the rule was created), again every `reminder_hours`, held through quiet hours and sent when they end, and its all-clear is sent to rules that sent it. One message per channel per rule per tick; an alert goes to a channel once per tick even when several rules match. |
+| Failure | A send never raises: the channel records the result, the log gets a row, and a failed channel raises the warning `monitor:channel:<id>` (category alert-path). |
+| API | `/api/admin/notifications` (GET) and `/channels`, `/channels/{id}` (PUT, DELETE), `/channels/{id}/test`, `/rules`, `/rules/{id}`; admin only, audited as `notification.*`. A channel a rule uses can't be deleted. |
+| Verified | `test_n1_notifications.py` (categories, quiet hours, shapes, once/reminder/clear, held and old alerts, failure alert, the API incl. secret never echoed, `sync_alerts` end to end). Not yet run against a real webhook or ntfy. |
+
+## 78. Alert-path check and daily digest (plan N2, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Heartbeat | `engine/heartbeat.py`: once per 24 h per ready host (from the monitoring tick, switch `monitoring.heartbeat`) the stack runs on the host, over SSH with sudo, `mail -s "LABaPe heartbeat <host> <token>" root` (falling back to `sendmail -t`) and `logger -t labape-heartbeat <token>`, then looks for the token in Mailpit's search API and in the syslog collector for up to 30 s. This exercises the same path mdadm and smartd use (msmtp aliases, the Mailpit address). |
+| Syslog | Judged only for a host the collector has heard from in the last 7 days; otherwise `n/a`. |
+| State | Setting `heartbeat.host<id>`: last result (`mail` ok/lost/failed/none, `syslog` ok/lost/n/a), `misses` in a row, `last_ok_at`. An unreachable host is not a miss (the host alerts cover it). |
+| Alert | Two misses in a row: warning `monitor:heartbeat:<id>` (category alert-path) saying which path is dead; it clears on the next good heartbeat. |
+| Digest | `notifications.digest`: at `monitoring.digest_hour` (UTC) once per day (Setting `notifications.digest_day`), to the channels of enabled rules with `send_digest`: open alerts and those cleared in the last 24 h that match the rule; nothing on a quiet day. Migration 0042. |
+| Verified | `test_n2_heartbeat.py` (ok, two lost, no mail program, unreachable host, once a day, digest). Live on kvm1: mail and syslog both arrived; pi1 and garagepc reported no mail program (a real gap: `Prereq.AlertMail` hasn't run there). |
+
+## 79. Guided drive replacement (plan R1, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Plan | `hostpools.replace_plan`: for a degraded md array (not raid0/linear) whose members are partitions, the surviving member's disk is the template, the partition number comes from the failed-out member (or the template's), `pull` lists the former members by serial and model, `candidates` are unused whole disks at least as large as the template disk. Shown in each pool as `replace`. |
+| Action | `POST /api/hosts/{id}/pools/replace` (admin): the device must be a candidate and `confirm` must equal its serial (its path when it has none). `hostpools.replace_script` runs as root: refuse a mounted drive, a smaller one or one with signatures (`wipefs -n`); `sfdisk -d` of the template without `label-id` and partition `uuid=`, into `sfdisk` on the new disk; settle and `partprobe`; `mdadm --add` the new partition (`sdg1`, `nvme0n1p1`). The rebuild shows on the pool as usual. Audited as `host.pool.replace` (the serial, no secrets). |
+| Limits | One array per replacement: a disk that already has partitions is no longer a candidate, so a host whose drives carry several arrays gets the other arrays added by hand (Add a drive…) or by repeating after the table exists. Members that are whole disks are not offered a replacement. Power-down and the physical swap stay manual. |
+| Verified | `test_r1_replace.py` (plan, candidates, partition names, script, API incl. the typed serial). Not yet run on a real array: the first real use should be OZ's `md10`. |
+
+## 80. Container extras (plan C4, built 2026-11-08)
+
+Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).
+
+| Area | As built |
+|---|---|
+| Unused images | `hostcontainers.alerts(..., reclaim_gb)`: dangling plus tagged-unused image sizes (`cleanup_candidates`) at or above `monitoring.container_reclaim_gb` (default 20, 0 off) raise a warning `host<id>:reclaim:...` (category container) pointing to Clean up…; sizes are per image and layers are shared, so less is freed. |
+| Project update | `engine/containerupdates.py`: `POST /api/hosts/{id}/containers/project` runs `docker compose -p <project> -f ... pull; up -d` in the project's folder, only when every container of the project is allowed by the host's level and none is a Quadlet or the Stack's own. Docker only. Audited `host.container.project`. |
+| Newer image | Off per host (`kvm_hosts.container_updates`). Weekly (and Check now): the host runs `docker buildx imagetools inspect <ref>` (Podman: `skopeo inspect`) for each running container's registry tag and compares the digest with its `RepoDigests`; the verdict `newer`, `current` or `unknown` (private, locally built, or no answer) is kept in `host_containers.data.updates` and shown as a chip and a count. Digest compare only; nothing is pulled. |
+| Heartbeat switch | `kvm_hosts.heartbeat` (default on): host settings → "Check that its alerts arrive"; off skips the host's daily heartbeat and its alert. Migrations 0043, 0044. |
+| Not built | CPU and memory history charts, and rootless Podman containers of the access account: both stay open (see the plan, C4). |
+| Verified | `test_c4_container_extras.py`, `test_n2_heartbeat.py` (opt-out). Not yet run against a real registry. |
+

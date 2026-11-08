@@ -16,13 +16,14 @@ interface Container {
   name: string; id: string; image: string; project: string; service: string; state: string; health: string; exit_code: number | null; oom: boolean;
   error: string; started_at: string; finished_at: string; restarts: number; restart_policy: string; unit: string; compose_dir: string; ports: string[]; mounts: Mount[]; networks: string[];
   stats: { cpu: string; memory: string; memory_pct: string } | null; attention: string; stack_own: boolean; quadlet: boolean;
-  actionable: boolean; why_not: string; ops: string[];
+  actionable: boolean; why_not: string; ops: string[]; image_update: string;
 }
 interface Image { id: string; repository: string; tag: string; size: string; created: string; dangling: boolean; in_use: boolean }
 interface Volume { name: string; driver: string; size: string | null; used_by: string[] }
 interface Page {
   runtime: string; version: string; collected_at: string | null; error: string; alerts: boolean; level: string; known: string[]; containers: Container[]; images: Image[]; volumes: Volume[];
-  summary: { total: number; running: number; attention: number };
+  summary: { total: number; running: number; attention: number; newer_images: number };
+  updates: { enabled: boolean; at: string | null; errors: Record<string, string> };
 }
 interface Live { cpu: string; memory: string; memory_pct: string; pids: string; net: string; block: string }
 
@@ -205,9 +206,30 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
       setError((e as Error).message);
     }
   };
+  const setUpdates = async (enabled: boolean) => post("updates/switch", { enabled });
+  const checkUpdates = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/api/hosts/${hostId}/containers/updates/check`);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   if (!page) return error ? <Alert severity="error">{error}</Alert> : <Typography color="text.secondary">Loading…</Typography>;
   if (!page.runtime) return <Alert severity="info">This host has neither Docker nor Podman, or its containers haven&apos;t been read yet (they are read every 5 minutes once SSH access is set up).</Alert>;
   const s = page.summary;
+  const projects = Object.values(page.containers.reduce<Record<string, { name: string; names: string[]; ok: boolean }>>((acc, c) => {
+    if (!c.project || !c.compose_dir) return acc;
+    const e = acc[c.project] ?? { name: c.project, names: [], ok: true };
+    e.names.push(c.service || c.name);
+    e.ok = e.ok && c.actionable && !c.quadlet;
+    acc[c.project] = e;
+    return acc;
+  }, {})).filter((p) => p.ok && page.runtime === "docker");
   const open = page.containers.find((x) => x.name === openName) ?? null;
   return (
     <Stack spacing={2}>
@@ -222,6 +244,15 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
           title="See what could be removed (stopped containers, unused images and volumes) and what it frees; nothing is removed until you confirm">Clean up…</Button>
         <FormControlLabel control={<Switch checked={page.alerts} onChange={(e) => setAlerts(e.target.checked)} />}
           label="Alert when a container of this host is down, unhealthy or restarting" />
+      </Stack>
+      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+        <FormControlLabel control={<Switch checked={page.updates.enabled} onChange={(e) => setUpdates(e.target.checked)} />}
+          label="Check weekly for newer images" title="The host asks each image's registry for its current digest (nothing is pulled). Off by default because the host reaches out to the internet." />
+        <Button size="small" variant="outlined" disabled={busy || !page.updates.enabled} onClick={checkUpdates} title="Ask the registries now">Check now</Button>
+        <Typography variant="body2" color="text.secondary">
+          {page.updates.at ? `Last checked ${fmtTime(page.updates.at)}: ${s.newer_images} container${s.newer_images === 1 ? "" : "s"} with a newer image.` : page.updates.enabled ? "Not checked yet." : "Off."}
+          {Object.keys(page.updates.errors).length ? ` ${Object.keys(page.updates.errors).length} image(s) couldn't be checked (private or locally built).` : ""}
+        </Typography>
       </Stack>
       <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
         <Field select label="Changes from this page" value={page.level} onChange={(e) => post("level", { level: e.target.value })} sx={{ width: 240 }}
@@ -248,7 +279,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
               )}
               <TableCell sx={{ fontFamily: "monospace" }}>{c.name}{c.stack_own && <Chip size="small" label="stack" sx={{ ml: 1 }} title="Part of this LABaPe stack" />}</TableCell>
               <TableCell><Chip size="small" color={stateColor(c)} label={c.health ? `${c.state} · ${c.health}` : c.state} title={c.attention ? `This container ${c.attention}` : undefined} /></TableCell>
-              <TableCell sx={{ fontSize: 12 }}>{c.image}</TableCell>
+              <TableCell sx={{ fontSize: 12 }}>{c.image}{c.image_update === "newer" && <Chip size="small" color="info" label="newer image" sx={{ ml: 1 }} title="The registry has a newer version of this tag than the one on the host" />}</TableCell>
               <TableCell>{c.project ? `${c.project}/${c.service}` : "—"}</TableCell>
               <TableCell sx={{ fontSize: 12 }}>{c.ports.join(", ") || "—"}</TableCell>
               <TableCell>{c.stats?.cpu ?? "—"}</TableCell><TableCell>{c.stats?.memory?.split(" / ")[0] ?? "—"}</TableCell>
@@ -257,6 +288,17 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
           ))}
         </TableBody>
       </Table>
+      {projects.length > 0 && (
+        <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+          <Typography variant="subtitle2">Compose projects</Typography>
+          {projects.map((p) => (
+            <ActionButton key={p.name} size="small" variant="outlined" color="warning" disabled={busy} tip={`Pull the newest images of ${p.name} and recreate any service that changed`}
+              confirm={{ title: `Update ${p.name}?`, confirmLabel: "Update", danger: true,
+                body: `Runs “docker compose pull” and “up -d” for ${p.name}: ${p.names.join(", ")}. Services whose image changed are recreated, which restarts them. This can take several minutes.` }}
+              onClick={() => post("project", { project: p.name })}>Update {p.name}</ActionButton>
+          ))}
+        </Stack>
+      )}
       <Typography variant="subtitle2">Images</Typography>
       <Table size="small">
         <TableHead><TableRow><TableCell>Image</TableCell><TableCell>ID</TableCell><TableCell>Size</TableCell><TableCell>Created</TableCell><TableCell>Used</TableCell></TableRow></TableHead>

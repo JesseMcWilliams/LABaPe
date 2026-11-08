@@ -19,6 +19,7 @@ const HELP_FOR: [string, "guide" | "admin", string][] = [
   ["/admin/networks", "admin", "Networks"],
   ["/admin/settings", "admin", "Settings"],
   ["/admin/mail", "admin", "The stack's mail server"],
+  ["/admin/notifications", "admin", "Notifications"],
   ["/admin/secrets", "admin", "Secrets and rotation"],
   ["/admin/audit", "admin", "Audit log"],
   ["/admin/errors", "admin", "Audit log"],

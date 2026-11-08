@@ -52,6 +52,7 @@ class HostIn(BaseModel):
     # Settings → Monitoring's).
     files_path: str = Field(default="", pattern=r"^(/[A-Za-z0-9._/-]+)?$", max_length=255)
     disk_free_pct: int | None = Field(default=None, ge=1, le=50)
+    heartbeat: bool = True
 
 
 def _out(h: KvmHost) -> dict:
@@ -60,7 +61,7 @@ def _out(h: KvmHost) -> dict:
                                        "ssh_user", "access_status", "access_error", "access_at", "log_forward",
                                        "log_forward_until", "log_forward_error", "is_primary",
                                        "files_from_share", "role", "stack_url", "files_path", "disk_free_pct",
-                                       "container_alerts")} | {
+                                       "container_alerts", "heartbeat")} | {
         # What it uses now (F1): the primary keeps the stack's file locations (Settings → File locations).
         "files_dir": "" if h.is_primary else filedist.files_path(h)}
 
@@ -210,7 +211,7 @@ def update_host(host_id: int, body: HostIn, request: Request, db: Session = Depe
     _check_uri(body.libvirt_uri)
     data = body.model_dump()
     for k in ("ssh_address", "ssh_port", "ssh_user", "is_primary", "files_from_share", "role",
-              "stack_url", "files_path", "disk_free_pct"):    # kept unless sent
+              "stack_url", "files_path", "disk_free_pct", "heartbeat"):    # kept unless sent
         if k not in body.model_fields_set:
             data.pop(k)
     if data.get("is_primary") is False and h.is_primary:
@@ -531,6 +532,44 @@ def pool_action(host_id: int, body: PoolActionIn, request: Request, db: Session 
     try:
         hostadmin.collect_facts(db, h)
     except Exception:  # noqa: BLE001 - the action worked; the next scheduled read will catch up
+        pass
+    return {"ok": True, "output": out}
+
+
+class ReplaceIn(BaseModel):
+    pool: str = Field(max_length=80)
+    device: str = Field(max_length=130)               # the new, empty whole disk
+    confirm: str = Field(max_length=130)              # its serial number (its name when it has none), typed
+
+
+@router.post("/{host_id}/pools/replace")
+def pool_replace(host_id: int, body: ReplaceIn, request: Request, db: Session = Depends(get_db),
+                 p: Principal = Depends(require_roles("admin"))):
+    """Guided drive replacement (plan R1): copy the surviving drive's partition table to a new, empty disk and add its
+    partition to the degraded array, which then rebuilds. Writes a partition table, so the new drive's serial is typed."""
+    h = _host(db, host_id)
+    row = db.get(HostFacts, h.id)
+    facts, smart = (row.facts if row else {}) or {}, (row.smart if row else {}) or {}
+    pool = next((x for x in hostpools.build(facts, smart) if x["id"] == body.pool), None)
+    if pool is None:
+        raise HTTPException(status_code=404, detail="No such pool on this host (refresh the page)")
+    cand = next((c for c in (pool.get("replace") or {}).get("candidates", []) if c["path"] == body.device), None)
+    detail = {"pool": body.pool, "device": body.device, "serial": (cand or {}).get("serial", "")}
+    try:
+        if cand is None:
+            raise hostadmin.AdminError("that drive isn't free, or it is smaller than the drive it replaces (refresh the page)")
+        want = cand["serial"] or body.device
+        if body.confirm.strip() != want:
+            raise hostadmin.AdminError(f"type {want} to confirm: its partition table is overwritten")
+        out = hostpools.run_replace(hostadmin.for_host(h), pool, body.device)
+    except (hostadmin.AdminError, subprocess.TimeoutExpired) as exc:
+        audit(db, p.username, "host.pool.replace", object_type="kvm_host", object_id=h.id, outcome="failed",
+              detail={**detail, "error": str(exc)[:300]}, source_ip=client_ip(request))
+        raise FieldError("pool", str(exc)) from exc
+    audit(db, p.username, "host.pool.replace", object_type="kvm_host", object_id=h.id, detail=detail, source_ip=client_ip(request))
+    try:
+        hostadmin.collect_facts(db, h)
+    except Exception:  # noqa: BLE001 - it worked; the next scheduled read will catch up
         pass
     return {"ok": True, "output": out}
 

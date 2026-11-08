@@ -256,7 +256,7 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
                     if isinstance(t, (int, float)) and t >= cfg.temp_c:
                         add(h, "warning" if t < cfg.temp_c + 5 else "error", f"{name} at {t:.0f} °C", "temp")
         if h.access_status == "ready":
-            for level, message, kind in hostcontainers.alerts(h, db.get(HostContainers, h.id), now, stack):
+            for level, message, kind in hostcontainers.alerts(h, db.get(HostContainers, h.id), now, stack, cfg.container_reclaim_gb):
                 add(h, level, message, kind)
         if not stack:
             continue
@@ -302,6 +302,9 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
             out[f"link:{link.url}"] = (None, "error", f"linked stack {link.name} isn't answering ({link.error[:200]})")
     from .secret_health import alerts as secret_alerts      # S1: secrets that failed their check
     out.update(secret_alerts(db))
+    from . import heartbeat, notifications           # N1: a channel that can't deliver; N2: a host whose alerts may not arrive
+    out.update(notifications.alerts(db))
+    out.update(heartbeat.alerts(db))
     em = email_state(db)
     if em.get("ok") is False:
         out[EMAIL_KEY] = (None, "error", f"alert emails can't be sent: {em.get('error', '')[:300]}")
@@ -361,6 +364,11 @@ def sync_alerts(db: Session, current: dict, now: dt.datetime | None = None, send
         err = (send or announce)(db, started, cleared)
         if err is not None:
             _put_email_state(db, not err, err, now)
+    from . import notifications
+    try:
+        notifications.run(db, now, cleared, set(hush))
+    except Exception:  # noqa: BLE001 — the built-in email and syslog already went
+        log.exception("notification rules")
     return started, cleared
 
 
@@ -456,7 +464,10 @@ def tick(db_factory) -> None:
                 from .. import links
                 links.poll_all(db, now)            # linked stacks' summaries (design §34)
                 recheck_email(db, now)
+                from . import heartbeat, notifications
+                heartbeat.due(db, now)
                 sync_alerts(db, evaluate(db, now), now)
+                notifications.digest(db, now)
         except Exception:  # noqa: BLE001
             log.exception("stack monitoring")
         finally:
