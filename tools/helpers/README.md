@@ -196,3 +196,7 @@ The `live/` scripts sign in as the test Authentik's `labape-admin` (and `labape-
 | `live/sync_redirects.sh` | lab host | Run `tools/authentik-test/sync-redirects.sh` for the stack's current names and show the result |
 | `live/tz_check.ps1` | on a Windows VM | The VM's zone, UTC and local time, and `RealTimeIsUniversal` (design §57) |
 | `live/krb_client_setup.ps1` | on a domain-joined Windows VM | Trust the platform root CA, put the stack's name in the Local intranet zone and allow it for Kerberos in Edge and Chrome (run it with `ad_run.py <env> <vm address> krb_client_setup.ps1 vm/<vm>/windows_admin`); `krb_negotiate.py` takes `--winrm-secret/--winrm-user` to run its test from that VM |
+
+### test-postgres.sh
+
+Runs `pytest app/tests` (or the paths and options you pass) against a throwaway PostgreSQL 17 container instead of SQLite, as production runs. Needs `LABAPE_LAB_SSH` (and `LABAPE_LAB_KEY`) for a container on the lab host reached through an SSH tunnel, or `LABAPE_LOCAL_DOCKER=1`; `PYTHON` names the interpreter with the app and pytest installed. `LABAPE_TEST_DATABASE_URL` is what the tests' conftest reads. On PostgreSQL a stub host is created for rows that name a host id no test created (SQLite doesn't enforce foreign keys). Known gaps on a Windows box: the backup-job test needs `pg_dump` and `test_update.py::test_cli_commands` needs a capturable stdout; run it on the lab host for a clean pass.

@@ -127,3 +127,27 @@ def test_trust_adds_the_platform_root(monkeypatch):
         raise ca.CaError("no root")
     monkeypatch.setattr(ca, "root_pem", missing)
     assert ca.trust() is not None                    # the system roots only
+
+
+def test_an_environment_without_a_named_network_gets_only_its_allocations_and_the_allowed_ranges(client, monkeypatch, tmp_root):
+    from labape import appsettings
+    _admin_session(client)
+    _host(client)
+    g = {"name": "web", "os": "rocky9", "roles": ["linux_server"], "count": 1}
+    env_id = client.post("/api/environments", json={"name": "nonet", "kvm_host_id": 1, "host_groups": [g]}).json()["environment"]["id"]
+    monkeypatch.setattr(ca, "root_pem", lambda: "ROOT")
+    monkeypatch.setattr(ca, "sign", lambda pem, hours=720: "LEAF")
+    with session_factory()() as db:
+        job = Job(type="environment.deploy", environment_id=env_id, requested_by="admin", state="running", started_at=utcnow())
+        db.add(job)
+        db.commit()
+        job_id = job.id
+        put_secret(db, token_name(job_id), "tok")
+    post = lambda ip: client.post("/api/engine/certificates", json={"host": "web1", "csr": _csr("web1", ["web1"], [ip])},     # noqa: E731
+                                  headers={"X-LABaPe-Job": str(job_id), "X-LABaPe-Token": "tok"})
+    assert post("192.0.2.5").status_code == 422                                    # no named network, no range
+    r = client.put("/api/certificates/settings", json={"environment_ranges": ["192.0.2.0/24"]})
+    assert r.status_code == 200 and r.json()["environment_ranges"] == ["192.0.2.0/24"]
+    assert post("192.0.2.5").status_code == 200                                    # inside the allowed range
+    assert post("198.51.100.5").status_code == 422                                 # outside it
+    assert client.put("/api/certificates/settings", json={"environment_ranges": ["not-a-range"]}).status_code == 422

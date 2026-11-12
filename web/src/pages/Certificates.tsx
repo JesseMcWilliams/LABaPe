@@ -22,7 +22,7 @@ interface CaInfo {
   configured: boolean; healthy: boolean | null; health: string; url: string; total: number; counts: Record<string, number>;
   root: { subject: string; serial: string; not_before: string; not_after: string; fingerprint: string } | null; provisioners: { type: string; name: string }[];
 }
-interface CertSettings { allowed_domains: string[]; allowed_networks: string[]; default_days: number; max_days: number; attributes_enabled: boolean; always_allowed: string[]; can_edit: boolean }
+interface CertSettings { allowed_domains: string[]; allowed_networks: string[]; environment_ranges: string[]; default_days: number; max_days: number; attributes_enabled: boolean; always_allowed: string[]; can_edit: boolean }
 interface Issued { certificate: Cert; chain: string; key: string; root: string }
 
 // Extra attributes a request may ask for (certs.USES in the API): extended key usages, then key usages.
@@ -287,17 +287,17 @@ function PemBox({ title, text, file }: { title: string; text: string; file: stri
 function CaPage({ canEdit }: { canEdit: boolean }) {
   const [info, setInfo] = useState<CaInfo | null>(null);
   const [cfg, setCfg] = useState<CertSettings | null>(null);
-  const [form, setForm] = useState({ domains: "", networks: "", def: 30, max: 90, attrs: false });
+  const [form, setForm] = useState({ domains: "", networks: "", ranges: "", def: 30, max: 90, attrs: false });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pem, setPem] = useState("");
   const [note, setNote] = useState("");
   const load = () => {
     api.get<CaInfo>("/api/certificates/ca").then(setInfo, (e) => setMsg({ ok: false, text: e.message }));
-    api.get<CertSettings>("/api/certificates/settings").then((c) => { setCfg(c); setForm({ domains: c.allowed_domains.join("\n"), networks: c.allowed_networks.join("\n"), def: c.default_days, max: c.max_days, attrs: c.attributes_enabled }); }, () => undefined);
+    api.get<CertSettings>("/api/certificates/settings").then((c) => { setCfg(c); setForm({ domains: c.allowed_domains.join("\n"), networks: c.allowed_networks.join("\n"), ranges: (c.environment_ranges ?? []).join("\n"), def: c.default_days, max: c.max_days, attrs: c.attributes_enabled }); }, () => undefined);
   };
   useEffect(load, []);
   const counts = useMemo(() => Object.entries(info?.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(" · "), [info]);
-  const saveCfg = () => api.put("/api/certificates/settings", { allowed_domains: lines(form.domains), allowed_networks: lines(form.networks), default_days: form.def, max_days: form.max, attributes_enabled: form.attrs })
+  const saveCfg = () => api.put("/api/certificates/settings", { allowed_domains: lines(form.domains), allowed_networks: lines(form.networks), environment_ranges: lines(form.ranges), default_days: form.def, max_days: form.max, attributes_enabled: form.attrs })
     .then(() => { setMsg({ ok: true, text: "Saved." }); load(); }, (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
   const doImport = () => api.post("/api/certificates/import", { pem, note }).then(() => { setMsg({ ok: true, text: "Added to the register." }); setPem(""); setNote(""); load(); },
     (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
@@ -324,6 +324,8 @@ function CaPage({ canEdit }: { canEdit: boolean }) {
               help="A name is allowed if it is, or ends in, one of these (one per line)" />
             <Field label="Allowed networks" value={form.networks} onChange={(e) => setForm({ ...form, networks: e.target.value })} multiline minRows={2} disabled={!canEdit}
               help="IP addresses must be inside one of these (CIDR, one per line)" />
+            <Field label="Extra ranges for environments" value={form.ranges} onChange={(e) => setForm({ ...form, ranges: e.target.value })} multiline minRows={2} disabled={!canEdit}
+              help="A deploy job may put addresses in these ranges in its VMs' certificates, besides its environment's own networks (CIDR, one per line). For an environment on a network LABaPe doesn't manage." />
             <Stack direction="row" spacing={2}>
               <Field label="Default lifetime (days)" type="number" value={form.def} sx={{ width: 190 }} disabled={!canEdit} onChange={(e) => setForm({ ...form, def: Number(e.target.value) })} />
               <Field label="Longest lifetime (days)" type="number" value={form.max} sx={{ width: 190 }} disabled={!canEdit} help="step-ca allows up to 90" onChange={(e) => setForm({ ...form, max: Number(e.target.value) })} />

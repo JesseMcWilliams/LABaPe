@@ -214,3 +214,45 @@ def test_a_stored_inventory_gets_the_running_jobs_key_path():
     import yaml
     assert yaml.safe_load(out)["all"]["hosts"]["lin2"]["ansible_ssh_private_key_file"] == \
         "{{ lookup('env', 'LABAPE_SSH_PRIVATE_KEY_PATH') }}"
+
+
+def test_relay_closes_when_the_user_is_no_longer_allowed(monkeypatch):
+    monkeypatch.setattr(remote, "WATCH_SECONDS", 0.05)
+
+    class FakeWs:
+        async def send_text(self, t):
+            pass
+
+        async def receive_text(self):
+            await asyncio.sleep(10)
+
+    async def go(allowed):
+        async def fake_guacd(reader, writer):
+            await asyncio.sleep(10)
+        server = await asyncio.start_server(fake_guacd, "127.0.0.1", 0)
+        reader, writer = await asyncio.open_connection("127.0.0.1", server.sockets[0].getsockname()[1])
+        try:
+            return await asyncio.wait_for(remote.relay(FakeWs(), reader, writer, "", 600, allowed), 3)
+        finally:
+            server.close()
+
+    calls = []
+
+    def allowed():
+        calls.append(1)
+        return len(calls) < 3                           # fine twice, then the account is disabled
+
+    assert asyncio.run(go(allowed)) == "closed: the account was disabled"
+
+
+def test_an_unexpected_error_opening_a_session_is_not_shown_raw(client, monkeypatch):
+    _admin_session(client)
+    eid = _env(client)
+
+    def boom(db, s):
+        raise RuntimeError("secret path /run/labape-secrets/xyz not readable")
+    monkeypatch.setattr(remote, "resolve", boom)
+    r = client.post("/api/remote/sessions", json={"target_type": "vm", "protocol": "rdp", "environment_id": eid, "vm": "win1"})
+    assert r.status_code == 422
+    msg = r.json()["errors"][0]["message"]
+    assert "RuntimeError" in msg and "/run/labape-secrets" not in msg

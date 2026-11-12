@@ -40,12 +40,18 @@ def _out(f: StoredFile) -> dict:
 
 # --- tus ------------------------------------------------------------------
 
+MAX_UPLOAD_BYTES = 200 * 2**30                  # one file; far above a Windows ISO, far below filling a disk by mistake
+
+
 def _meta(header: str) -> dict:
     out = {}
     for pair in (header or "").split(","):
         if pair.strip():
             key, _, val = pair.strip().partition(" ")
-            out[key] = base64.b64decode(val).decode("utf-8") if val else ""
+            try:
+                out[key] = base64.b64decode(val, validate=True).decode("utf-8") if val else ""
+            except (ValueError, UnicodeDecodeError):
+                raise FieldError("file", "The upload's Upload-Metadata isn't valid (each value is base64 text).") from None
     return out
 
 
@@ -80,6 +86,8 @@ def tus_create(request: Request, db: Session = Depends(get_db), p: Principal = D
         length = int(request.headers.get("upload-length", ""))
     except ValueError:
         raise FieldError("file", "The upload didn't say how big the file is (Upload-Length).") from None
+    if not 0 < length <= MAX_UPLOAD_BYTES:
+        raise FieldError("file", f"The file must be between 1 byte and {MAX_UPLOAD_BYTES // 2**30} GB (Upload-Length).")
     if category not in CATEGORIES:
         raise FieldError("category", f"Choose a category: {', '.join(CATEGORIES)}.")
     if not NAME_RE.match(name):
@@ -136,7 +144,11 @@ async def tus_patch(upload_id: str, request: Request, db: Session = Depends(get_
     up = _upload(db, upload_id, p)
     if request.headers.get("content-type") != "application/offset+octet-stream":
         raise HTTPException(status_code=415, detail="Expected application/offset+octet-stream", headers=TUS)
-    if int(request.headers.get("upload-offset", -1)) != up.offset:
+    try:
+        offset = int(request.headers.get("upload-offset", -1))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Upload-Offset must be a number", headers=TUS) from None
+    if offset != up.offset:
         raise HTTPException(status_code=409, detail=f"Offset mismatch; the server has {up.offset} bytes",
                             headers=TUS)
     written = 0

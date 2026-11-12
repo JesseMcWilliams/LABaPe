@@ -7,6 +7,15 @@ export default function Login() {
   const { appName, logo } = useAuth();
   const [providers, setProviders] = useState<Provider[] | null>(null);
   const [error, setError] = useState("");
+  const [ended] = useState(() => {            // set by api.ts when a 401 came back while the app was open
+    try {
+      const v = sessionStorage.getItem("labape.session-ended") === "1";
+      sessionStorage.removeItem("labape.session-ended");
+      return v;
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     api.get<Provider[]>("/api/auth/providers").then(setProviders, (e) => setError(String(e.message)));
@@ -17,6 +26,7 @@ export default function Login() {
       <Stack spacing={2}>
         {logo && <img src={`/api/branding/logo?v=${logo}`} alt="" style={{ height: 64, maxWidth: 240, objectFit: "contain", alignSelf: "center" }} />}
         <Typography variant="h5">Sign in to {appName}</Typography>
+        {ended && <Alert severity="warning">Your session ended (it expired, or you were signed out). Sign in again to carry on.</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
         {providers?.length === 0 && (
           <Alert severity="info">

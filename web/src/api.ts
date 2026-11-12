@@ -33,6 +33,12 @@ async function requestWithHeaders<T>(method: string, path: string, body?: unknow
     } catch {
       /* not JSON */
     }
+    // A session that ended while the page was open (expired, signed out elsewhere, the account disabled): tell the
+    // app, which returns to the sign-in page with a notice, instead of showing a bare "not signed in" on one widget.
+    if (res.status === 401 && !path.startsWith("/api/auth/")) {
+      try { sessionStorage.setItem("labape.session-ended", "1"); } catch { /* storage may be blocked */ }
+      window.dispatchEvent(new Event("labape:session-ended"));
+    }
     throw new ApiError(res.status, detail, errors);
   }
   return { data: (await res.json()) as T, headers: res.headers };

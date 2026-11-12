@@ -625,14 +625,14 @@
  },
  "images": {
   "axllent/mailpit:v1.31.5": "sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea",
-  "caddy:2": "sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772",
+  "caddy:2.11.7": "sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e",
   "cyberark/conjur:1.27.0": "sha256:6f1af820eea9c4edd3506c7d2a61ec3097daf65196d37578b7624a9eda3f15f4",
   "ghcr.io/goauthentik/server:2026.8.3": "sha256:ab9b4e8cc4ab3f8d1198d2db6aeea66bafea1963b3f2843589e0d163f97d9849",
   "guacamole/guacd:1.6.0": "sha256:8974eaa9ba32f713daf311e7cc8cd7e4cdfba1edea39eed75524e78ef4b08f4f",
   "nginx:1.28-alpine": "sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
   "openbao/openbao:2.7.1": "sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf",
   "postgres:16-alpine": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
-  "postgres:17-alpine": "sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb",
+  "postgres:17.11-alpine": "sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0",
   "smallstep/step-ca:0.30.2": "sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270"
  },
  "syslog_image": {

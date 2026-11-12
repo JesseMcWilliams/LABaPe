@@ -61,12 +61,15 @@ def disable(db: Session, user: User, reason: str, detail: str = "") -> int:
     """Mark the user disabled and revoke their personal tokens. Returns how many tokens were revoked."""
     now = utcnow()
     user.disabled_at, user.disabled_reason = now, reason
-    n = 0
+    n, ids = 0, set()
     for t in db.scalars(select(ApiToken).where(ApiToken.user_id == user.id, ApiToken.kind == "personal",
                                                ApiToken.revoked_at.is_(None))):
         t.revoked_at = now
+        ids.add(t.id)
         n += 1
     db.commit()
+    from . import console_sessions
+    console_sessions.close_for_tokens(ids, "the account was disabled")     # text sessions keep running past a revoked token
     audit(db, "system", "user.disable", object_type="user", object_id=user.id,
           detail={"user": user.username, "reason": reason, "why": detail, "tokens_revoked": n})
     return n

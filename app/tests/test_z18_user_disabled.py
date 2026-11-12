@@ -106,3 +106,36 @@ def test_sign_in_clears_the_sweeps_mark_not_an_admins(client):
         userstatus.disable(db, u, "admin")
         userstatus.enable_after_sign_in(db, u)
         assert u.disabled_at is not None
+
+
+def test_disabling_closes_the_owners_open_text_sessions(client):
+    from labape import console_sessions
+    uid, _ = _owner_with_token(client)
+    with session_factory()() as db:
+        tid = db.query(ApiToken).filter(ApiToken.user_id == uid).one().id
+
+        class Proc:
+            def poll(self):
+                return None
+
+            def kill(self):
+                pass
+            stdin = None
+
+        class S:
+            open = True
+            finalized = False
+            token_id = tid
+            closed = ""
+
+            def close(self, reason="closed"):
+                self.open, self.closed = False, reason
+        s, other = S(), S()
+        other.token_id = tid + 99
+        console_sessions._sessions.update({9001: s, 9002: other})
+        try:
+            userstatus.disable(db, db.get(User, uid), "admin", "test")
+            assert s.closed == "the account was disabled" and other.open is True
+        finally:
+            console_sessions._sessions.pop(9001, None)
+            console_sessions._sessions.pop(9002, None)

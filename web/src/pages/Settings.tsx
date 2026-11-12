@@ -279,13 +279,13 @@ export default function Settings() {
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Use a window" control={<Checkbox checked={s.maintenance_window.enabled}
             onChange={(e) => set("maintenance_window", { enabled: e.target.checked })} />} />
-          <Field select label="Day" value={s.maintenance_window.weekday} sx={{ width: 150 }}
+          <Field select label="Day" help="The day the weekly maintenance window opens" value={s.maintenance_window.weekday} sx={{ width: 150 }}
             onChange={(e) => set("maintenance_window", { weekday: Number(e.target.value) })}>
             {DAYS.map((d, i) => <MenuItem key={d} value={i}>{d}</MenuItem>)}
           </Field>
           <Field label="Start (UTC)" value={s.maintenance_window.time_of_day} sx={{ width: 120 }} help="HH:MM"
             onChange={(e) => set("maintenance_window", { time_of_day: e.target.value })} />
-          <Field label="Length (minutes)" type="number" value={s.maintenance_window.duration_minutes} sx={{ width: 150 }}
+          <Field label="Length (minutes)" type="number" help="How long the window stays open" value={s.maintenance_window.duration_minutes} sx={{ width: 150 }}
             onChange={(e) => set("maintenance_window", { duration_minutes: Number(e.target.value) })} />
           <Field label="Notice (hours)" type="number" value={s.maintenance_window.heads_up_hours} sx={{ width: 140 }}
             help="Banner before it starts" onChange={(e) => set("maintenance_window", { heads_up_hours: Number(e.target.value) })} />
@@ -404,7 +404,7 @@ export default function Settings() {
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Leases on" control={<Checkbox checked={s.leases.enabled}
             onChange={(e) => set("leases", { enabled: e.target.checked })} />} />
-          <Field label="New environments (days)" type="number" value={s.leases.default_days} sx={{ width: 190 }}
+          <Field label="New environments (days)" type="number" help="How long a new environment lives before its lease runs out" value={s.leases.default_days} sx={{ width: 190 }}
             onChange={(e) => set("leases", { default_days: num(e.target.value) })} />
           <Field label="Longest from now (days)" type="number" value={s.leases.max_days} sx={{ width: 190 }} help="How far owners can extend"
             onChange={(e) => set("leases", { max_days: num(e.target.value) })} />
@@ -412,7 +412,7 @@ export default function Settings() {
             onChange={(e) => set("leases", { remind_days: e.target.value.split(",").map((x) => Number(x.trim())).filter((x) => x > 0) })} />
           <Field label="Grace (days)" type="number" value={s.leases.grace_days} sx={{ width: 130 }} help="Shut down, then this long"
             onChange={(e) => set("leases", { grace_days: num(e.target.value) })} />
-          <Field select label="After the grace" value={s.leases.after_grace} sx={{ width: 190 }}
+          <Field select label="After the grace" help="What happens to an environment whose lease and grace period have ended" value={s.leases.after_grace} sx={{ width: 190 }}
             onChange={(e) => set("leases", { after_grace: e.target.value })}>
             <MenuItem value="destroy">Destroy it</MenuItem>
             <MenuItem value="keep">Keep it shut down</MenuItem>
@@ -596,17 +596,17 @@ export default function Settings() {
             onChange={(e) => set("syslog", { enabled: e.target.checked })} />} />
           <Field label="Server" value={s.syslog.host} sx={{ minWidth: 220 }} help="Host name or address"
             onChange={(e) => set("syslog", { host: e.target.value })} />
-          <Field label="Port" type="number" value={s.syslog.port} sx={{ width: 110 }}
+          <Field label="Port" type="number" help="The collector's port (514 for UDP/TCP, 6514 for TLS)" value={s.syslog.port} sx={{ width: 110 }}
             onChange={(e) => set("syslog", { port: num(e.target.value) })} />
-          <Field select label="Protocol" value={s.syslog.protocol} sx={{ width: 120 }}
+          <Field select label="Protocol" help="TLS is safest; UDP can lose messages" value={s.syslog.protocol} sx={{ width: 120 }}
             onChange={(e) => set("syslog", { protocol: e.target.value as Syslog["protocol"] })}>
             <MenuItem value="udp">UDP</MenuItem><MenuItem value="tcp">TCP</MenuItem><MenuItem value="tls">TLS</MenuItem>
           </Field>
-          <Field select label="Facility" value={s.syslog.facility} sx={{ width: 130 }}
+          <Field select label="Facility" help="The syslog facility the audit trail is sent as" value={s.syslog.facility} sx={{ width: 130 }}
             onChange={(e) => set("syslog", { facility: e.target.value })}>
             {FACILITIES.map((f) => <MenuItem key={f} value={f}>{f}</MenuItem>)}
           </Field>
-          <Field label="App name" value={s.syslog.app_name} sx={{ width: 150 }}
+          <Field label="App name" help="The application name in each message" value={s.syslog.app_name} sx={{ width: 150 }}
             onChange={(e) => set("syslog", { app_name: e.target.value })} />
           {s.syslog.protocol === "tls" && (
             <FormControlLabel label="Verify certificate" control={<Checkbox checked={s.syslog.verify_tls}
@@ -638,16 +638,16 @@ export default function Settings() {
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Enabled" control={<Checkbox checked={s.smtp.enabled}
             onChange={(e) => set("smtp", { enabled: e.target.checked })} />} />
-          <Field label="Server" value={s.smtp.host} sx={{ minWidth: 220 }}
+          <Field label="Server" help="The mail server LABaPe sends through (the stack's Mailpit by default)" value={s.smtp.host} sx={{ minWidth: 220 }}
             onChange={(e) => set("smtp", { host: e.target.value })} />
-          <Field label="Port" type="number" value={s.smtp.port} sx={{ width: 110 }}
+          <Field label="Port" type="number" help="Usually 25, 587 (STARTTLS) or 465 (SSL/TLS); Mailpit uses 1025" value={s.smtp.port} sx={{ width: 110 }}
             onChange={(e) => set("smtp", { port: num(e.target.value) })} />
-          <Field select label="Security" value={s.smtp.security} sx={{ width: 140 }}
+          <Field select label="Security" help="How the connection is protected" value={s.smtp.security} sx={{ width: 140 }}
             onChange={(e) => set("smtp", { security: e.target.value as Smtp["security"] })}>
             <MenuItem value="none">None</MenuItem><MenuItem value="starttls">STARTTLS</MenuItem>
             <MenuItem value="ssl">SSL/TLS</MenuItem>
           </Field>
-          <Field label="From address" value={s.smtp.from_address} sx={{ minWidth: 220 }}
+          <Field label="From address" help="The sender shown on LABaPe's email" value={s.smtp.from_address} sx={{ minWidth: 220 }}
             onChange={(e) => set("smtp", { from_address: e.target.value })} />
         </Stack>
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
@@ -671,9 +671,9 @@ export default function Settings() {
         <Stack direction="row" spacing={2} useFlexGap sx={row}>
           <FormControlLabel label="Forward allowed recipients" control={<Checkbox checked={s.lab_mail_relay.enabled}
             onChange={(e) => set("lab_mail_relay", { enabled: e.target.checked })} />} />
-          <Field label="Server" value={s.lab_mail_relay.host} sx={{ minWidth: 220 }}
+          <Field label="Server" help="The SMTP server that lab VMs' outgoing mail is relayed through" value={s.lab_mail_relay.host} sx={{ minWidth: 220 }}
             onChange={(e) => set("lab_mail_relay", { host: e.target.value })} />
-          <Field label="Port" type="number" value={s.lab_mail_relay.port} sx={{ width: 110 }}
+          <Field label="Port" type="number" help="Usually 25, 587 or 465" value={s.lab_mail_relay.port} sx={{ width: 110 }}
             onChange={(e) => set("lab_mail_relay", { port: num(e.target.value) })} />
           <FormControlLabel label="STARTTLS" control={<Checkbox checked={s.lab_mail_relay.starttls}
             onChange={(e) => set("lab_mail_relay", { starttls: e.target.checked })} />} />
@@ -746,13 +746,13 @@ export default function Settings() {
             onChange={(e) => set("store_openbao", { enabled: e.target.checked })} />} />
           <Field label="Address" value={s.store_openbao.url} sx={{ minWidth: 300 }} help="e.g. https://bao.example.com:8200"
             onChange={(e) => set("store_openbao", { url: e.target.value })} />
-          <Field label="KV mount" value={s.store_openbao.mount} sx={{ width: 160 }}
+          <Field label="KV mount" help="The KV engine's mount path" value={s.store_openbao.mount} sx={{ width: 160 }}
             onChange={(e) => set("store_openbao", { mount: e.target.value })} />
           <Field label="Path prefix" value={s.store_openbao.path_prefix} sx={{ width: 180 }} help="Optional folder in the mount"
             onChange={(e) => set("store_openbao", { path_prefix: e.target.value })} />
-          <Field label="AppRole mount" value={s.store_openbao.auth_mount} sx={{ width: 160 }}
+          <Field label="AppRole mount" help="The AppRole auth method's mount path" value={s.store_openbao.auth_mount} sx={{ width: 160 }}
             onChange={(e) => set("store_openbao", { auth_mount: e.target.value })} />
-          <Field label="Role ID" value={s.store_openbao.role_id} sx={{ minWidth: 300 }}
+          <Field label="Role ID" help="The AppRole role id LABaPe signs in with" value={s.store_openbao.role_id} sx={{ minWidth: 300 }}
             onChange={(e) => set("store_openbao", { role_id: e.target.value })} />
           <Field label="Secret ID" type="password" value={baoSecretId} sx={{ minWidth: 260 }} autoComplete="new-password"
             help={s.store_openbao.has_secret_id ? "Saved. Type a new one to replace it." : "Not set"}
@@ -777,11 +777,11 @@ export default function Settings() {
             onChange={(e) => set("store_conjur", { enabled: e.target.checked })} />} />
           <Field label="Address" value={s.store_conjur.url} sx={{ minWidth: 300 }} help="e.g. https://conjur.example.com"
             onChange={(e) => set("store_conjur", { url: e.target.value })} />
-          <Field label="Account" value={s.store_conjur.account} sx={{ width: 160 }}
+          <Field label="Account" help="The Conjur account name" value={s.store_conjur.account} sx={{ width: 160 }}
             onChange={(e) => set("store_conjur", { account: e.target.value })} />
           <Field label="Login" value={s.store_conjur.login} sx={{ minWidth: 220 }} help="e.g. host/labape/app"
             onChange={(e) => set("store_conjur", { login: e.target.value })} />
-          <Field label="Authenticator" value={s.store_conjur.authenticator} sx={{ width: 160 }}
+          <Field label="Authenticator" help="The authenticator LABaPe signs in with" value={s.store_conjur.authenticator} sx={{ width: 160 }}
             onChange={(e) => set("store_conjur", { authenticator: e.target.value })} />
           <Field label="Policy branch" value={s.store_conjur.branch} sx={{ minWidth: 200 }} help="Where its variables are declared"
             onChange={(e) => set("store_conjur", { branch: e.target.value })} />

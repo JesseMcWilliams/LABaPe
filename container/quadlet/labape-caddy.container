@@ -8,7 +8,7 @@ After=labape-api.service
 
 [Container]
 ContainerName=caddy
-Image=docker.io/library/caddy:2
+Image=docker.io/library/caddy:2.11.7
 Network=labape.network
 EnvironmentFile=/etc/labape/container.env
 PublishPort=443:443

@@ -3,6 +3,7 @@ the session log, recordings and .rdp files."""
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import time
 from pathlib import Path
 from typing import Literal
@@ -22,6 +23,8 @@ from ..errors import FieldError
 from ..models import Environment, KvmHost, RemoteSession, User, utcnow
 from ..permissions import can_see, is_owner
 from ..security import Principal, audit, client_ip, current_principal, require_roles
+
+log = logging.getLogger("labape.remote")
 
 router = APIRouter(prefix="/api/remote", tags=["remote"])
 RECORDINGS = Path("/var/lib/labape-recordings")           # guacd's recordings volume, read-only here
@@ -68,9 +71,13 @@ def create_session(body: SessionIn, request: Request, db: Session = Depends(get_
     db.flush()
     try:
         t = remote.resolve(db, s)                 # checks the target now, so errors show before the page opens
-    except (remote.RemoteError, Exception) as exc:  # noqa: BLE001 — missing secrets, keys, addresses
+    except remote.RemoteError as exc:             # written for the user: no secret, no key, no address
         db.rollback()
         raise FieldError("target", str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — anything else is ours: log it, tell the user only that it failed
+        db.rollback()
+        log.exception("opening a remote session")
+        raise FieldError("target", f"The session couldn't be set up ({exc.__class__.__name__}); an administrator can find the cause in the API log.") from exc
     token, s.token_hash = remote.new_token()
     s.address, s.recorded = t["address"], "recording-path" in t["params"]
     db.commit()
@@ -131,7 +138,7 @@ async def tunnel(ws: WebSocket, token: str = "", width: int = 1280, height: int 
             forward, port = await remote.start_forward(target["forward"])
             target["params"].update({"hostname": remote.API_HOST, "port": str(port)})
         reader, writer, leftover = await remote.open_guacd(target, max(width, 320), max(height, 240), dpi)
-        why = await remote.relay(ws, reader, writer, leftover, idle)
+        why = await remote.relay(ws, reader, writer, leftover, idle, lambda: _still_allowed(uname))
     except remote.RemoteError as exc:
         why = f"failed: {exc}"
         try:
@@ -154,6 +161,12 @@ async def tunnel(ws: WebSocket, token: str = "", width: int = 1280, height: int 
             db.commit()
             audit(db, uname, "remote.session.end", object_type="remote_session", object_id=sid,
                   detail={"why": why[:200]}, source_ip=ip)
+
+
+def _still_allowed(username: str) -> bool:
+    """False once the session's user has been disabled (Admin -> Users, or the provider check)."""
+    with session_factory()() as db:
+        return not any(u.disabled_at is not None for u in db.scalars(select(User).where(User.username == username)))
 
 
 @router.get("/sessions")

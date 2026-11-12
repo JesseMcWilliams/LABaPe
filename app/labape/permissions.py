@@ -1,7 +1,7 @@
 """Ownership checks on top of roles (Claude_Docs/Planning_Web-Interface-Design.md §5)."""
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session
 
 from .models import Environment, Grant, KvmHost
@@ -12,10 +12,9 @@ def _principal_filter(p: Principal):
     mine = (Grant.principal_type == "user") & (Grant.principal == p.username)
     if p.subject:           # a grant made for another account with this name isn't mine (question 200)
         mine = mine & (Grant.subject.is_(None) | (Grant.subject == p.subject))
-    return or_(
-        mine,
-        (Grant.principal_type == "group") & (Grant.principal.in_(p.groups or ["\x00"])),
-    )
+    # No groups: nothing matches (a placeholder in IN () that holds a NUL byte fails on PostgreSQL).
+    by_group = (Grant.principal_type == "group") & Grant.principal.in_(p.groups) if p.groups else false()
+    return or_(mine, by_group)
 
 
 def grant_levels(db: Session, p: Principal, object_type: str, object_id: int) -> set[str]:
