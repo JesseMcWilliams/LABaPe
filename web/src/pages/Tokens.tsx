@@ -109,7 +109,7 @@ export default function Tokens() {
         <DialogTitle>New API token</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. ci-deploy" />
+            <TextField label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. ci-deploy" helperText="Shown in the list and the audit log, so say what the token is for" />
             {admin && (
               <TextField select label="Kind" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value, roles: [] })}
                 helperText={form.kind === "service" ? "Not tied to your groups: acts as svc:<name> with exactly these roles" : "Acts as you"}>
@@ -146,16 +146,16 @@ export default function Tokens() {
                 {admin && <FormControlLabel label="May open KVM host consoles (needs the admin role too)" control={<Checkbox checked={form.host_consoles}
                   onChange={(e) => setForm({ ...form, host_consoles: e.target.checked })} />} />}
                 <Stack direction="row" spacing={1}>
-                  <TextField label="Calls per minute" type="number" size="small" value={form.rate_per_minute}
+                  <TextField label="Calls per minute" type="number" size="small" value={form.rate_per_minute} helperText="Further calls wait or are refused"
                     onChange={(e) => setForm({ ...form, rate_per_minute: Number(e.target.value) })} />
-                  <TextField label="Session minutes" type="number" size="small" value={form.max_session_minutes}
+                  <TextField label="Session minutes" type="number" size="small" value={form.max_session_minutes} helperText="A text session ends after this long"
                     onChange={(e) => setForm({ ...form, max_session_minutes: Number(e.target.value) })} />
-                  <TextField label="Output KB" type="number" size="small" value={form.max_output_kb}
+                  <TextField label="Output KB" type="number" size="small" value={form.max_output_kb} helperText="Most a command returns; the rest is cut"
                     onChange={(e) => setForm({ ...form, max_output_kb: Number(e.target.value) })} />
                 </Stack>
               </Stack>
             )}
-            <TextField select label="Expires after" value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })}>
+            <TextField select label="Expires after" helperText="The token stops working then; revoke it earlier from the list" value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })}>
               {[7, 30, 90, 180, 365].map((d) => <MenuItem key={d} value={d}>{d} days</MenuItem>)}
             </TextField>
             {formError && <Alert severity="error">{formError}</Alert>}

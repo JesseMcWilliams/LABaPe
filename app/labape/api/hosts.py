@@ -148,10 +148,10 @@ def get_host(host_id: int, db: Session = Depends(get_db), p: Principal = Depends
 
 @router.get("/{host_id}/resources")
 def host_resources(host_id: int, vcpus: int = 0, memory_mb: int = 0, disk_gb: int = 0,
-                   db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
+                   db: Session = Depends(get_db), p: Principal = Depends(current_principal)):
     """The host's resources and load; with vcpus/memory_mb/disk_gb, as if
-    that much more were deployed (the deploy form's projection)."""
-    if db.get(KvmHost, host_id) is None:
+    that much more were deployed (the deploy form's projection). Only for hosts the caller may see."""
+    if not any(h.id == host_id for h in visible_hosts(db, p)):
         raise HTTPException(status_code=404, detail="No such host")
     return _resources(db, host_id, {"vcpus": vcpus, "memory_mb": memory_mb, "disk_gb": disk_gb})
 

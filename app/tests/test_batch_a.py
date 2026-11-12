@@ -126,3 +126,15 @@ def test_host_capacity_assessment_and_block(client):
     assert r.status_code == 422 and r.json()["errors"][0]["field"] == "kvm_host_id"
     assert "100%" in r.json()["errors"][0]["message"]
     assert client.post("/api/environments", json=_env("fits", [_group("ok", memory_mb=1024)])).status_code == 201
+
+
+def test_host_resources_only_for_hosts_the_caller_may_see(client):
+    from labape.security import Principal, current_principal
+    _admin_session(client)
+    host_id = _host(client)
+    assert client.get(f"/api/hosts/{host_id}/resources").status_code == 200
+    client.app.dependency_overrides[current_principal] = lambda: Principal(99, "nobody", "Nobody", [], {"viewer"})
+    try:
+        assert client.get(f"/api/hosts/{host_id}/resources").status_code == 404       # a viewer with no environment there
+    finally:
+        client.app.dependency_overrides.pop(current_principal, None)
