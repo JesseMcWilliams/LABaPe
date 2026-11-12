@@ -6,7 +6,7 @@
 
 **Latest release:** v0.8.0 (2026-11-12)
 
-`main` has everything below merged; **nothing is released since v0.7.0** (the CHANGELOG's `[Unreleased]` is long: a v0.8.0 is due, §3.1). pytest in the Windows scratch venv: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: the venv has no `winrm`; it passes in the image). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **229** (227 and 228 are the root-image plan's, open with recommendations).
+`main` has everything below merged and **released as v0.8.0** (2026-11-12; the CHANGELOG's `[Unreleased]` is empty again). pytest on SQLite in a fresh Windows venv with `pip install -e app pytest requests`: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: no `winrm`; with `pywinrm` installed all pass); on PostgreSQL (the release's run): **680 passed, 3 skipped** (the two `pg_dump` tests skip without `pg_dump`). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **229** (227 and 228 are the root-image plan's, open with recommendations).
 
 | PR | What |
 |---|---|
@@ -18,8 +18,7 @@
 | #267, #269, #270 | **B2**: a Windows VM's WinRM listener answers with its platform-CA certificate, checked against the CA (not pinned); **B3**: Ansible's later runs check recorded SSH host keys and CA-signed WinRM certificates (plan: [Planning_WinRM-And-Host-Keys.md](Planning_WinRM-And-Host-Keys.md)) |
 | #268 | **A1**: container CPU and memory history (§81), migration 0045 |
 | #271 | A stale apt index no longer fails a Debian deploy; **A2**: rootless Podman of the access account on the Containers page, read-only (§82) |
-| #273 | Handoff |
-| (branch `2026-11-12-root-plan-and-review-items`) | The root-image plan ([Planning_Root-Image.md](Planning_Root-Image.md), not built); Hyper-V directories and renderer branch removed (question 218); `release.sh` runs the PostgreSQL test run (`--skip-postgres`; question 219); 58 stdlib imports hoisted; the user guides brought up to date for the unreleased work |
+| #273-#276 | Handoff; the root-image plan; Hyper-V removed; PostgreSQL run in `release.sh`; stdlib imports hoisted; guides up to date; a second `pg_dump` skip (#275); **Release v0.8.0** (#276) |
 | #272 | `runner.py` split into `runner` and `runner_prepare`; `api/environments.py` into `environments` and `environments_vms` (no code file is over 1,000 lines now) |
 
 Migrations are through **0045** (0039-0045 are new: host containers, container levels, notifications, digest, host heartbeat, container updates, container samples).
@@ -37,7 +36,7 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 
 ## 3. What's left (in order)
 
-1. **Release v0.8.0**: update the handoff (this file) and stamp it, bring `User_Docs/` up to date from [Planning_User-Docs-Backlog.md](Planning_User-Docs-Backlog.md) (about 25 lines: containers, notifications, heartbeat, replacement, CA ranges, WinRM, rootless, the Install guides' new steps), regenerate the SBOM from a worker image built from clean `main`, `release.sh` (`--docx` needs pandoc), signed tag, GitHub release. The user said "not yet" on 2026-11-08; ask first.
+1. ~~**Release v0.8.0**~~ **Done 2026-11-12** (PR #276, signed tag, GitHub release with the SBOM, the MCP bundle and the skill zip). No `.docx` guides: pandoc isn't installed on the Windows box (`Published_Docs/` stays empty). The release's PostgreSQL run found a second `pg_dump` test (#275).
 2. **The user, on OZ:** run the installer steps in [Testing_Manual-Checks-Disk-Notifications.md](Testing_Manual-Checks-Disk-Notifications.md) §1 (`Prereq.*`), then record the results table; run `Prereq.AlertMail` on pi1 and garagepc or untick "Check that its alerts arrive" on those hosts; **replace the failed drive `P8G8JSPR`** (Replace a drive…, not Re-add).
 3. **Build the non-root images** from [Planning_Root-Image.md](Planning_Root-Image.md) (questions 227-228): entrypoint, `user:` and `.env` keys, the agent's one-time volume `chown`, live test on OZ; then the hardening PR. (The plan is written, nothing built.)
 4. **Remaining small review items:** done 2026-11-12 (stdlib imports hoisted: the 325 imports of the package itself and `cryptography`, `httpx`, `winrm` stay on purpose; Hyper-V removed; Postgres run in `release.sh`). Left over: the WSL install guides are still a Hyper-V walkthrough (backlog line).
@@ -48,7 +47,7 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 
 | Thing | State |
 |---|---|
-| kvm1 / OZ | Runs the tree of PR #272 (`v0.7.0-44-…-dirty`), migrations through **0045**. The compose pins (`caddy:2.11.7`, `postgres:17.11-alpine`) are in the repo but its containers still run the older builds of the same versions until the stack is recreated. `md10` is healthy (the failed drive is back or replaced: confirm which). No Notifications channels or rules are configured (the test channel was removed) |
+| kvm1 / OZ | The web stack runs `v0.7.0-49-g96a5ebc` (main before #275; the release is v0.8.0, which differs by tests, the guides and docs only), put there by `deploy-web.sh`, so `~/LABaPe-web` is dirty: reset it and reinstall the update agent (§3 item 6). Migrations through **0045**. The compose pins (`caddy:2.11.7`, `postgres:17.11-alpine`) are in the repo but its containers still run the older builds of the same versions until the stack is recreated. `md10` is healthy (the failed drive is back or replaced: confirm which). No Notifications channels or rules are configured |
 | pi1, garagepc, nkvm1 | pi1 and garagepc raise "alerts from this host may not arrive" (no mail program); nkvm1 (172.21.50.3) is unreachable |
 | Test environments | `b2win`, `b3lin`, `fxcheck` were destroyed; `lab2`, `krbwin11`, `agent1`, `nestkvm`, `syslog1` are the long-lived ones (lab2's `l2lin1` did not answer on 2026-11-12) |
 | Test data left behind | A few notification log rows from the live test; the `container_samples` and `host_containers` data are real |
@@ -65,6 +64,9 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 8. **A Debian VM's package index goes stale** (the mirror drops superseded versions): the apt install now refreshes it.
 9. **The module split rule:** tests patch names on the module; after a split, patch the module that now holds the code (`runner_prepare.overlay_vault`).
 10. **Docs:** the SBOM is generated (`python tools/helpers/sbom.py`; it reads `steps_base.py`); a test fails when it is stale.
+
+11. **Releasing from the Windows box:** `release.sh` needs `LABAPE_LAB_SSH`, `LABAPE_LAB_KEY` and `PYTHON` (a venv with `pip install -e app pytest requests pywinrm`) set; run `deploy-web.sh` from clean `main` first or pass `--sbom-anyway`; the PostgreSQL run takes about 13 minutes; start the release in the background and poll its log. A `--dry-run` skips the PostgreSQL run. `--docx` needs pandoc (not installed).
+12. **A new `.sh` file may be CRLF in the working copy** (`scripts/test/test-opentofu-config.sh` was): git normalises it at commit, bash on the box can't run it until then.
 
 ## 6. Where things are
 
