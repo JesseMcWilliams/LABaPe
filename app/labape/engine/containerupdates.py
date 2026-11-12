@@ -48,7 +48,7 @@ print(json.dumps(out))
 def update_refs(row: HostContainers | None) -> list[str]:
     """Registry tags worth asking about: what running containers use, not digests, not ids."""
     cs = ((row.data if row else {}) or {}).get("containers") or []
-    return sorted({c["image"] for c in cs if c.get("state") == "running" and IMAGE_REF.match(c.get("image") or "")
+    return sorted({c["image"] for c in cs if c.get("state") == "running" and not c.get("owner") and IMAGE_REF.match(c.get("image") or "")
                    and "@" not in c["image"] and not c["image"].startswith("sha256:") and not IMAGE_ID.match(c["image"])})
 
 

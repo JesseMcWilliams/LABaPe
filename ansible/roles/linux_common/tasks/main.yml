@@ -197,6 +197,14 @@
     name: "{{ item.spec if item.spec is string
             else (item.spec.distributions | default({})).get(ansible_facts['distribution'], item.spec.package) }}"
     state: present
+    # A template's package index goes stale: the mirror drops a superseded version (a 404 on firefox-esr 153.4.0 failed a
+    # deploy 2026-11-12), so refresh it when it is more than ten minutes old, and try again once if a fetch still fails.
+    update_cache: true
+    cache_valid_time: 600
+  register: linux_common_apt_result
+  retries: 2
+  delay: 10
+  until: linux_common_apt_result is succeeded
   loop: "{{ linux_common_package_entries | rejectattr('spec.type', 'defined') | list }}"
   loop_control:
     label: "{{ item.name }}"

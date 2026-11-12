@@ -343,7 +343,7 @@ Also 2026-10-14: Authentik high availability (several server and worker replicas
 213. ~~**Writing the partition table of a replacement drive (R1).**~~ **Answered (2026-11-08):** built as recommended: yes, with the new drive's serial typed, only to a drive with no filesystem and no array label.
 214. ~~**Registry checks for newer container images (C4).**~~ **Answered (2026-11-08):** built as recommended: off by default, per-host switch, weekly, digest compare only.
 215. **Container history charts (next round, A1).** Open. Recommendation: sample every container's CPU and memory with each 5-minute read, keep 7 days in a table, chart them on the container's detail dialog; nothing else is sampled.
-216. **Rootless Podman (A2).** Open. Recommendation: read-only first: the access account's own rootless containers appear on the Containers page, marked "rootless"; actions follow the same level setting later.
+216. ~~**Rootless Podman (A2).**~~ **Answered (2026-11-12):** read-only first, as recommended (built). Recommendation was: read-only first: the access account's own rootless containers appear on the Containers page, marked "rootless"; actions follow the same level setting later.
 217. **Order of the queue (B).** Open. Recommendation: B1 small review items, then B4 (remote sessions close when a user is disabled), B2 (WinRM certificate from the platform CA), B3 (Ansible host-key checks), B5 Hyper-V remnants.
 218. **Hyper-V remnants (B5).** Open. Recommendation: remove them now in their own PR (question 175 already dropped support): `tofu/*/hyperv`, the parity doc stays as history.
 219. **Postgres test run (B1).** Open. Recommendation: a script that runs `pytest app/tests` against a Postgres container on the lab host, run before each release.
