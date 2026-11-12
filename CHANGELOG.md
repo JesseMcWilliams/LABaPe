@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-12
+
+LABaPe 0.8.0 adds the disk and notification work that followed OZ's failed drive (SMART self-tests, a Notifications page, a daily heartbeat and digest, guided drive replacement and re-add), a Containers page for any Docker or Podman host with history charts and rootless Podman, WinRM listeners on the platform CA's certificate and strict SSH host-key checks in Ansible's later runs, and removes the Hyper-V remnants (KVM/libvirt only).
+
 ### Added
 
 - **Internal: Hyper-V remnants removed** (question 218): `tofu/backends/hyperv`, `tofu/modules/{vm,network}/hyperv`, the renderer's Hyper-V branch and the provider's SBOM row. KVM (libvirt) is the only backend.
