@@ -12,7 +12,7 @@ Where each part comes from:
     tools/helpers/sbom_snapshot.py takes from the lab stack (tools/helpers/release.sh does it at each
     release). Python's declared requirements are only lower bounds (app/pyproject.toml), so the snapshot
     is the exact record;
-  - the declared pins in the repository (container/Dockerfile, compose files, deploy/labape_deploy/steps.py,
+  - the declared pins in the repository (container/Dockerfile, compose files, deploy/labape_deploy/steps_base.py,
     ansible roles): the tables below, kept in step by hand when those change.
 Licenses are as the packages and projects declare them; this is not a license or vulnerability audit.
 """
@@ -187,12 +187,13 @@ def plugins_with_versions(snap):
 
 
 def steps_lists():
-    tree = ast.parse((ROOT / "deploy" / "labape_deploy" / "steps.py").read_text(encoding="utf-8"))
     out = {}
-    for n in tree.body:
-        if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) \
-                and n.targets[0].id in ("APT_PACKAGES", "WEB_PACKAGES", "RPM_PACKAGES"):
-            out[n.targets[0].id] = ast.literal_eval(n.value)
+    for name in ("steps_base.py", "steps.py"):                  # the package lists live in steps_base.py
+        tree = ast.parse((ROOT / "deploy" / "labape_deploy" / name).read_text(encoding="utf-8"))
+        for n in tree.body:
+            if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) \
+                    and n.targets[0].id in ("APT_PACKAGES", "WEB_PACKAGES", "RPM_PACKAGES"):
+                out[n.targets[0].id] = ast.literal_eval(n.value)
     return out
 
 
@@ -440,7 +441,7 @@ Licenses of third-party images are the upstream projects', not checked against t
 ## 8. Hosts the installer prepares
 
 `deploy/install-labape.py` installs these from the host's own repositories (unpinned: whatever the distribution ships),
-plus tools downloaded with hashes checked. It reads `deploy/labape_deploy/steps.py`, which this table follows.
+plus tools downloaded with hashes checked. It reads `deploy/labape_deploy/steps_base.py`, which this table follows.
 
 """)
     parts.append(md_table(["Profile", "Packages"], [

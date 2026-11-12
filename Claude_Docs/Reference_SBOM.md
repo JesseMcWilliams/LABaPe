@@ -477,7 +477,7 @@ Packer plugins (`packer plugins install`, three tries):
 ## 8. Hosts the installer prepares
 
 `deploy/install-labape.py` installs these from the host's own repositories (unpinned: whatever the distribution ships),
-plus tools downloaded with hashes checked. It reads `deploy/labape_deploy/steps.py`, which this table follows.
+plus tools downloaded with hashes checked. It reads `deploy/labape_deploy/steps_base.py`, which this table follows.
 
 
 | Profile | Packages |
