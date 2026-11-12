@@ -14,3 +14,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Drive Pools: **Replace a drive…** (guided replacement of a failed md member; typed serial): `Web-Interface-Admin.md` Drive Pools.
 - Containers: Update <project>, the weekly newer-image check (per-host switch, Check now, "newer image" chip), the unused-images alert (Settings → Monitoring); host setting "Check that its alerts arrive": `Web-Interface-Admin.md`.
 - Admin → Users → Disable also closes the user's open remote and console sessions: `Web-Interface-Admin.md` Users.
+- `/api/docs` is for admins only; uploads over 200 GB are refused; a sign-in notice when the session ends mid-use: `Web-Interface-Admin.md`, `Command-Line.md` (API docs), `Web-Interface-Guide.md`.

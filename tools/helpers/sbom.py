@@ -70,10 +70,10 @@ WEB_PURPOSE = {
 IMAGES = [
     ("debian:trixie-slim", "Base of the LABaPe image (API, worker) and of the syslog image", "Various (Debian)", "container/Dockerfile, container/syslog/Dockerfile", "Debian 13; tag only, rebuilt on each image build."),
     ("node:22-bookworm-slim", "Builds the web UI; not in the final image", "MIT (Node.js); various (Debian)", "container/Dockerfile", "Build stage only: the final image carries just the built files."),
-    ("caddy:2", "Reverse proxy and HTTPS for the web interface and Authentik", "Apache-2.0", "container/compose.yaml", "Floating major tag."),
+    ("caddy:2.11.7", "Reverse proxy and HTTPS for the web interface and Authentik", "Apache-2.0", "container/compose.yaml", ""),
     ("smallstep/step-ca:0.30.2", "The platform certificate authority", "Apache-2.0", "container/compose.yaml", ""),
     ("guacamole/guacd:1.6.0", "Guacamole proxy daemon for browser RDP/SSH/VNC", "Apache-2.0", "container/compose.yaml", ""),
-    ("postgres:17-alpine", "LABaPe's database, the syslog collector's and Conjur's", "PostgreSQL", "container/compose.yaml", "Three separate containers."),
+    ("postgres:17.11-alpine", "LABaPe's database, the syslog collector's and Conjur's", "PostgreSQL", "container/compose.yaml", "Three separate containers."),
     ("axllent/mailpit:v1.31.5", "The stack's mail server: catches LABaPe's email, web page for admins at /mail/, optional forwarding", "MIT", "container/compose.yaml", "Alpine-based; run through container/mailpit/supervise.sh, which restarts it when Admin → Mail changes its options. Not published on the host."),
     ("openbao/openbao:2.7.1", "The secret store (platform secrets, environment secrets, VM sign-in)", "MPL-2.0", "container/compose.yaml", ""),
     ("cyberark/conjur:1.27.0", "Optional second secret store (Conjur Open Source)", "LGPL-3.0", "container/compose.yaml", "Optional (`LABAPE_CONJUR=no` leaves it out)."),
@@ -468,7 +468,7 @@ Admins can add sources of their own, so this list grows with use; the Updates ta
 
 1. **Python is locked** (`container/requirements.txt`, hash-checked at build), but only the worker image uses it: the installer's `ansible-core` venv on KVM hosts installs by range (it must cope with older Pythons).
 2. **Packer's Business Source License (BUSL-1.1)** applies from 1.10 on; OpenTofu is the open-source fork of Terraform for the same reason. Fine for internal use; check before offering LABaPe to others as a service.
-3. **Floating tags**: `caddy:2`, `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
+3. **Floating tags**: `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
 4. **Unpinned downloads on VMs**: Mailpit's latest release, `claude-code`, Chocolatey and distribution packages are whatever is current at deploy time.
 5. **Copyleft components.** `ansible-core` and its collections (GPL-3.0) run as separate processes, not linked into LABaPe. `psycopg` (LGPL-3.0) and `libvirt-python`/`PyGObject` (LGPL) are imported as libraries: fine to use unmodified, but a modified copy would need its source offered. Conjur Open Source is LGPL-3.0.
 6. **No vulnerability data here.** Run a scanner on `sbom/labape.cdx.json` regularly; the lab's Authentik, OpenBao and Conjur images are the most exposed, as they face the network.

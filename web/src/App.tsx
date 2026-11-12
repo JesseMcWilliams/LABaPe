@@ -81,6 +81,11 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {                       // an API call came back 401 while signed in: back to the sign-in page
+    const ended = () => setMe(null);
+    window.addEventListener("labape:session-ended", ended);
+    return () => window.removeEventListener("labape:session-ended", ended);
+  }, []);
   useEffect(() => {
     refresh();
     api.get<{ app_name: string; logo: string | null }>("/api/branding").then((b) => { setAppName(b.app_name); setLogo(b.logo); }, () => undefined);

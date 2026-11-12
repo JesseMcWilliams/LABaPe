@@ -378,10 +378,10 @@ Licenses across all 208 locked packages: MIT 188, ISC 10, BSD-3-Clause 5, Apache
 |---|---|---|---|---|---|
 | `debian:trixie-slim` | (tag only) | Base of the LABaPe image (API, worker) and of the syslog image | Various (Debian) | container/Dockerfile, container/syslog/Dockerfile | Debian 13; tag only, rebuilt on each image build. |
 | `node:22-bookworm-slim` | (tag only) | Builds the web UI; not in the final image | MIT (Node.js); various (Debian) | container/Dockerfile | Build stage only: the final image carries just the built files. |
-| `caddy:2` | sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772 | Reverse proxy and HTTPS for the web interface and Authentik | Apache-2.0 | container/compose.yaml | Floating major tag. |
+| `caddy:2.11.7` | sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e | Reverse proxy and HTTPS for the web interface and Authentik | Apache-2.0 | container/compose.yaml |  |
 | `smallstep/step-ca:0.30.2` | sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270 | The platform certificate authority | Apache-2.0 | container/compose.yaml |  |
 | `guacamole/guacd:1.6.0` | sha256:8974eaa9ba32f713daf311e7cc8cd7e4cdfba1edea39eed75524e78ef4b08f4f | Guacamole proxy daemon for browser RDP/SSH/VNC | Apache-2.0 | container/compose.yaml |  |
-| `postgres:17-alpine` | sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb | LABaPe's database, the syslog collector's and Conjur's | PostgreSQL | container/compose.yaml | Three separate containers. |
+| `postgres:17.11-alpine` | sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0 | LABaPe's database, the syslog collector's and Conjur's | PostgreSQL | container/compose.yaml | Three separate containers. |
 | `axllent/mailpit:v1.31.5` | sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea | The stack's mail server: catches LABaPe's email, web page for admins at /mail/, optional forwarding | MIT | container/compose.yaml | Alpine-based; run through container/mailpit/supervise.sh, which restarts it when Admin → Mail changes its options. Not published on the host. |
 | `openbao/openbao:2.7.1` | sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf | The secret store (platform secrets, environment secrets, VM sign-in) | MPL-2.0 | container/compose.yaml |  |
 | `cyberark/conjur:1.27.0` | sha256:6f1af820eea9c4edd3506c7d2a61ec3097daf65196d37578b7624a9eda3f15f4 | Optional second secret store (Conjur Open Source) | LGPL-3.0 | container/compose.yaml | Optional (`LABAPE_CONJUR=no` leaves it out). |
@@ -515,7 +515,7 @@ Admins can add sources of their own, so this list grows with use; the Updates ta
 
 1. **Python is locked** (`container/requirements.txt`, hash-checked at build), but only the worker image uses it: the installer's `ansible-core` venv on KVM hosts installs by range (it must cope with older Pythons).
 2. **Packer's Business Source License (BUSL-1.1)** applies from 1.10 on; OpenTofu is the open-source fork of Terraform for the same reason. Fine for internal use; check before offering LABaPe to others as a service.
-3. **Floating tags**: `caddy:2`, `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
+3. **Floating tags**: `debian:trixie-slim` and `node:22-bookworm-slim` move; the digests above are what the lab pulled on the capture date. Pin by digest for repeatable builds.
 4. **Unpinned downloads on VMs**: Mailpit's latest release, `claude-code`, Chocolatey and distribution packages are whatever is current at deploy time.
 5. **Copyleft components.** `ansible-core` and its collections (GPL-3.0) run as separate processes, not linked into LABaPe. `psycopg` (LGPL-3.0) and `libvirt-python`/`PyGObject` (LGPL) are imported as libraries: fine to use unmodified, but a modified copy would need its source offered. Conjur Open Source is LGPL-3.0.
 6. **No vulnerability data here.** Run a scanner on `sbom/labape.cdx.json` regularly; the lab's Authentik, OpenBao and Conjur images are the most exposed, as they face the network.

@@ -45,7 +45,7 @@ def test_the_pins_in_the_dockerfile_are_in_the_sbom():
         assert (name, version) in have, f"{name} {version} (Dockerfile) isn't in the SBOM: regenerate it"
     compose = (ROOT / "container" / "compose.yaml").read_text(encoding="utf-8")
     for image in ("openbao/openbao:2.7.1", "smallstep/step-ca:0.30.2", "guacamole/guacd:1.6.0", "cyberark/conjur:1.27.0",
-                  "postgres:17-alpine", "nginx:1.28-alpine"):
+                  "postgres:17.11-alpine", "nginx:1.28-alpine"):
         assert f"docker.io/{image}" in compose or f"docker.io/library/{image}" in compose
         assert any(c["name"] == image for c in bom["components"]), f"{image} isn't in the SBOM"
 

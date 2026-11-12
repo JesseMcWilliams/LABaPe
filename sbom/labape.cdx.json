@@ -9437,11 +9437,11 @@
    ]
   },
   {
-   "bom-ref": "image:caddy:2",
+   "bom-ref": "image:caddy:2.11.7",
    "type": "container",
-   "name": "caddy:2",
-   "version": "2",
-   "purl": "pkg:oci/caddy@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772?repository_url=docker.io/library/caddy&tag=2",
+   "name": "caddy:2.11.7",
+   "version": "2.11.7",
+   "purl": "pkg:oci/caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e?repository_url=docker.io/library/caddy&tag=2.11.7",
    "description": "Reverse proxy and HTTPS for the web interface and Authentik",
    "licenses": [
     {
@@ -9462,7 +9462,7 @@
     },
     {
      "name": "labape:digest",
-     "value": "sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2f020772"
+     "value": "sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e"
     }
    ]
   },
@@ -9527,11 +9527,11 @@
    ]
   },
   {
-   "bom-ref": "image:postgres:17-alpine",
+   "bom-ref": "image:postgres:17.11-alpine",
    "type": "container",
-   "name": "postgres:17-alpine",
-   "version": "17-alpine",
-   "purl": "pkg:oci/postgres@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb?repository_url=docker.io/library/postgres&tag=17-alpine",
+   "name": "postgres:17.11-alpine",
+   "version": "17.11-alpine",
+   "purl": "pkg:oci/postgres@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0?repository_url=docker.io/library/postgres&tag=17.11-alpine",
    "description": "LABaPe's database, the syslog collector's and Conjur's",
    "licenses": [
     {
@@ -9552,7 +9552,7 @@
     },
     {
      "name": "labape:digest",
-     "value": "sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb"
+     "value": "sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0"
     }
    ]
   },
@@ -9871,7 +9871,7 @@
    "dependsOn": []
   },
   {
-   "ref": "image:caddy:2",
+   "ref": "image:caddy:2.11.7",
    "dependsOn": []
   },
   {
@@ -9907,7 +9907,7 @@
    "dependsOn": []
   },
   {
-   "ref": "image:postgres:17-alpine",
+   "ref": "image:postgres:17.11-alpine",
    "dependsOn": []
   },
   {

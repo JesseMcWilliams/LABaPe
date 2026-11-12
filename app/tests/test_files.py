@@ -112,3 +112,27 @@ def test_the_os_is_given_at_upload(client, tmp_root):
     # Another file may name targets, or not.
     assert _upload(client, "notes.txt", b"plain text", category="files", targets="linux").status_code == 204
     assert client.get("/api/files?category=files").json()[0]["targets"] == ["linux"]
+
+
+def test_upload_headers_are_checked_instead_of_failing_with_a_500(client, tmp_root):
+    _admin_session(client)
+    good = _meta(filename="x.iso", category="isos")
+    post = lambda **h: client.post("/api/files/tus", headers={"Upload-Metadata": good, **h})          # noqa: E731
+    assert post(**{"Upload-Length": "0"}).status_code == 422
+    assert post(**{"Upload-Length": "-5"}).status_code == 422
+    assert post(**{"Upload-Length": str(10**15)}).status_code == 422                                  # beyond the cap
+    assert post(**{"Upload-Length": "abc"}).status_code == 422
+    r = client.post("/api/files/tus", headers={"Upload-Length": "3", "Upload-Metadata": "filename !!notbase64!!"})
+    assert r.status_code == 422 and "base64" in r.json()["errors"][0]["message"]
+    r = post(**{"Upload-Length": "3"})
+    assert r.status_code == 201
+    r = client.patch(r.headers["location"], content=b"abc", headers={"Upload-Offset": "x", "Content-Type": "application/offset+octet-stream"})
+    assert r.status_code == 400
+
+
+def test_the_api_description_is_for_admins_only(client):
+    assert client.get("/api/docs").status_code in (401, 403)
+    assert client.get("/api/openapi.json").status_code in (401, 403)
+    _admin_session(client)
+    assert client.get("/api/openapi.json").json()["info"]["title"] == "LABaPe"
+    assert "swagger" in client.get("/api/docs").text.lower()

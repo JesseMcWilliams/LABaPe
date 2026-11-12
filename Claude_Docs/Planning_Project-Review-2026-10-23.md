@@ -15,7 +15,7 @@
 | 5 | Download from URL blocks link-local only: loopback and the stack's own containers (OpenBao, step-ca) are reachable | `engine/downloads.py` `check_url` | **done** (question 199): loopback, unspecified, `localhost`, single-label names and the container network are refused too |
 | 6 | CSV exports don't neutralize `= + - @` cells (syslog lines come from any host) | `web/src/components/Paging.tsx` `csv` | **done** (a text cell that starts with one gets a leading quote; numbers are untouched) |
 | 7 | Grants and role bindings match the username, which comes from `preferred_username` or email; a rename could pick up someone else's grants | `permissions.py`, `security.py` `resolve_roles`, `auth/oidc.py` | **done** (question 200): grants and bindings are tied to the account's subject at its next sign-in (migration 0038) |
-| 8 | Small: `/hosts/{id}/resources` answers for any host; tus `Upload-Length` unchecked and bad headers give a 500; `/api/docs` public; `caddy:2` and `postgres:17-alpine` float; the API image runs as root; raw errors to the browser (`api/remote.py` create_session); an environment without a named network allows IPs of every network in its certificates (`api/ca.py`) | as named | later |
+| 8 | Small: `/hosts/{id}/resources` answers for any host; tus `Upload-Length` unchecked and bad headers give a 500; `/api/docs` public; `caddy:2` and `postgres:17-alpine` float; the API image runs as root; raw errors to the browser (`api/remote.py` create_session); an environment without a named network allows IPs of every network in its certificates (`api/ca.py`) | as named | **Part built 2026-11-11** (tus checks, `/api/docs`, pinned tags); the rest later |
 
 ## Code
 

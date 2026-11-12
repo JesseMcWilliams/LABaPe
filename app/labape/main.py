@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -20,6 +21,7 @@ from .auth.oidc import is_own_origin
 from .config import get_settings
 from .db import session_factory
 from .errors import on_http_error, on_validation_error
+from .security import Principal, require_roles
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -31,7 +33,8 @@ def create_app() -> FastAPI:
     public = urlsplit(s.public_url)
     origin = f"{public.scheme}://{public.netloc}"
 
-    app = FastAPI(title="LABaPe", docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    # The API description is for admins: served below behind the admin role, not publicly.
+    app = FastAPI(title="LABaPe", docs_url=None, openapi_url=None, redoc_url=None)
     app.add_exception_handler(RequestValidationError, on_validation_error)
     app.add_exception_handler(HTTPException, on_http_error)
 
@@ -107,6 +110,14 @@ def create_app() -> FastAPI:
     def health():
         with session_factory()() as db:
             return {"ok": True, "maintenance": maintenance_mode.get(db, cached=True)["active"]}
+
+    @app.get("/api/openapi.json", include_in_schema=False)
+    def openapi_json(_: Principal = Depends(require_roles("admin"))):
+        return JSONResponse(app.openapi())
+
+    @app.get("/api/docs", include_in_schema=False)
+    def api_docs(_: Principal = Depends(require_roles("admin"))):
+        return get_swagger_ui_html(openapi_url="/api/openapi.json", title="LABaPe API")
 
     web = s.web_dir
     index = web / "index.html"
