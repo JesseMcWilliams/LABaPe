@@ -23,7 +23,7 @@
 
 Risk: rebinding the listener can drop the connection mid-play. Test on one lab Windows VM first (question 226), with a rollback: the role keeps the old thumbprint in `C:\ProgramData\LABaPe\tls\listener-previous.txt` and the next run restores it when the new certificate does not answer.
 
-## 2. B3: Ansible's host-key checks
+## 2. B3: Ansible's host-key checks (built 2026-11-12)
 
 | Step | What |
 |---|---|
@@ -45,3 +45,9 @@ Risk: rebinding the listener can drop the connection mid-play. Test on one lab W
 ## 4. B2 run live (2026-11-11)
 
 A new throwaway environment `b2win` (one Windows 10 VM from `win10-packer-2026.10` on kvm1, DHCP) deployed with the change: the listener answered with the platform certificate, the VM's record was `ca`, `chains_to_platform_ca` was true, and a command through the console API validated against the platform root. `renew.ps1 -Force` issued a new certificate and moved the listener to it (matching thumbprints before and after); the command afterwards still worked, which a fingerprint pin would have refused. `tools/helpers/live/winrm_ca_check.py` repeats the check.
+
+## 5. B3 as built (2026-11-12)
+
+`vmidentity.harden(inventory, folder, ssh_args)` is called by the two places that run Ansible against deployed VMs after the deploy (`vmaccess._ansible`, which key and password changes and rotation use, and the WinRM runner in `vmadmin`). It writes a known_hosts file from the recorded SSH keys and sets `ANSIBLE_HOST_KEY_CHECKING=True` with `StrictHostKeyChecking=accept-new`, so a recorded VM must present its key and an unrecorded one is accepted; and it adds `ansible_winrm_server_cert_validation: validate` with the platform root for Windows VMs recorded as `ca`. Nothing changes for a VM without a record. Not changed: the deploy itself (it forgets its VMs' records first and records them after, so there is nothing to compare, and its first contact with a new Windows VM happens before the certificate exists), and the CLI (`ansible.cfg` keeps `host_key_checking = False`; a person at a terminal has no records). A host-key failure in these runs carries the console's hint (`labape vm-identity forget`).
+
+Run live (2026-11-12): on `b2win1` (Windows, recorded `ca`) Ansible's `win_ping` went over WinRM with `validate` against the platform root and succeeded. On a new Debian VM `b3lin1` (recorded SSH keys) a ping with the right key succeeded; with the stored key replaced by a different valid ed25519 key it failed with "REMOTE HOST IDENTIFICATION HAS CHANGED" plus the `labape vm-identity forget` hint; with the key restored it succeeded again. The first attempt did not fail, because a connection an earlier run had left open (ControlPersist) was reused without being checked: `harden` now gives each run its own control-socket folder. (A corrupted, unparseable key in the record is ignored by ssh and is not a mismatch; the test needs a valid key.)

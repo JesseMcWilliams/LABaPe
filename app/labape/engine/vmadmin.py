@@ -134,6 +134,7 @@ def _win(inv: dict, vm: str, task: dict, timeout: int = 180) -> dict:
 
     with tempfile.TemporaryDirectory() as d:
         inv_file, play, out = Path(d) / "inventory.yml", Path(d) / "play.yml", Path(d) / "result.json"
+        one, checks = vmidentity.harden(one, Path(d))                          # plan B3
         inv_file.write_text(yaml.safe_dump(one), encoding="utf-8")
         os.chmod(inv_file, 0o600)
         tasks = [{**task, "register": "labape_result", "ignore_errors": True},
@@ -143,7 +144,7 @@ def _win(inv: dict, vm: str, task: dict, timeout: int = 180) -> dict:
         play.write_text(yaml.safe_dump([{"name": "labape", "hosts": vm, "gather_facts": False, "tasks": tasks}]),
                         encoding="utf-8")
         env = {**os.environ, "ANSIBLE_HOST_KEY_CHECKING": "False", "ANSIBLE_NOCOLOR": "1", "ANSIBLE_FORCE_COLOR": "0",
-               "HOME": os.environ.get("HOME", d)}
+               "HOME": os.environ.get("HOME", d), **checks}
         r = subprocess.run(["ansible-playbook", "-i", str(inv_file), str(play)], capture_output=True, text=True,
                            timeout=timeout, env=env, check=False)
         if not out.is_file():
