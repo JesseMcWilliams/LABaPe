@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 
 from .. import appsettings, update
 from ..models import Setting, utcnow
+import hashlib
+import base64
+import shlex
 
 ARCHIVE_NAME = re.compile(r"^labape-stack-[A-Za-z0-9._-]{1,64}-\d{8}-\d{6}\.tar\.sealed$")
 REQUESTED_KEY = "backup.stack_requested_at"
@@ -119,7 +122,6 @@ LINKED_DIR = "linked-backups"             # under the primary file host's file c
 
 
 def sha256_file(path: Path) -> str:
-    import hashlib
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for b in iter(lambda: f.read(1 << 20), b""):
@@ -130,7 +132,6 @@ def sha256_file(path: Path) -> str:
 def send_to_links(db: Session, now: dt.datetime | None = None, client_for=None) -> dict:
     """Send the newest checked archive to each linked stack that doesn't have it yet. A failed send
     is tried again after RETRY. Returns {link id: result}."""
-    import base64
 
     import httpx
 
@@ -183,7 +184,6 @@ def incoming_dir(db: Session) -> Path:
 def store_linked(db: Session, job) -> int:
     """Job `backup.store_linked`: a received archive onto this stack's primary file host, with its
     sidecar, then the peer's copies there past the retention (the newest always stays)."""
-    import shlex
 
     from . import filedist
     p = job.params or {}

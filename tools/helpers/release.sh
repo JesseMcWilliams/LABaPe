@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--skip-handoff] [--dry-run] [--resume]
+# release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--skip-handoff] [--skip-postgres] [--dry-run] [--resume]
 # Cut a LABaPe release (question 24; releases only at milestones, which the user decides):
 #   1. checks: on main, clean, up to date; the tag doesn't exist; [Unreleased] has entries; the newest
 #      Claude_Docs/Planning_Handoff-*.md has changed since the previous release (the handoff is part of a release:
@@ -14,6 +14,9 @@
 #      run tools/helpers/deploy-web.sh first. --skip-sbom regenerates from the snapshot already in the
 #      repository (npm and the pins refresh; Python and images don't) and says so; --sbom-anyway accepts
 #      a worker image that isn't this main;
+#      The backend tests run on PostgreSQL too (tools/helpers/test-postgres.sh: a throwaway container on the
+#      lab host, so LABAPE_LAB_SSH is needed, or LABAPE_LOCAL_DOCKER=1); a failure stops the release
+#      (--skip-postgres skips the run and says so). A dry run skips it: it takes minutes;
 #   3. --docx: Published_Docs/<guide>.docx from each User_Docs/*.md (needs pandoc);
 #   4. ship.sh: commit, push, PR, merge;
 #   5. a signed tag vX.Y.Z on the merge (git's signing setup; checked with git tag -v), pushed;
@@ -30,11 +33,11 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-USAGE="usage: release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--skip-handoff] [--dry-run] [--resume]"
+USAGE="usage: release.sh VERSION SUMMARY_FILE [--prerelease] [--docx] [--skip-sbom] [--sbom-anyway] [--skip-handoff] [--skip-postgres] [--dry-run] [--resume]"
 VERSION="${1:?$USAGE}"; VERSION="${VERSION#v}"
 SUMMARY="${2:?$USAGE}"
 shift 2
-PRE=false DOCX=false DRY=false SKIP_SBOM=false SBOM_ANYWAY=false SKIP_HANDOFF=false RESUME=false
+PRE=false DOCX=false DRY=false SKIP_SBOM=false SBOM_ANYWAY=false SKIP_HANDOFF=false SKIP_POSTGRES=false RESUME=false
 for a in "$@"; do
   case "$a" in
     --prerelease) PRE=true ;;
@@ -42,6 +45,7 @@ for a in "$@"; do
     --skip-sbom) SKIP_SBOM=true ;;
     --sbom-anyway) SBOM_ANYWAY=true ;;
     --skip-handoff) SKIP_HANDOFF=true ;;
+    --skip-postgres) SKIP_POSTGRES=true ;;
     --dry-run) DRY=true ;;
     --resume) RESUME=true ;;
     *) echo "$USAGE" >&2; exit 2 ;;
@@ -137,6 +141,22 @@ fi
 AI_CHECK="$(mktemp -d)"
 build_ai_files "$AI_CHECK" || { rm -rf "$AI_CHECK"; exit 1; }
 rm -rf "$AI_CHECK"
+# The backend tests on PostgreSQL, which production uses (the plain pytest run is on SQLite).
+if $DRY; then
+  echo "release: dry run: the PostgreSQL test run is skipped" >&2
+elif $SKIP_POSTGRES; then
+  echo "release: --skip-postgres: the backend tests were not run on PostgreSQL" >&2
+else
+  [ -n "${LABAPE_LAB_SSH:-}" ] || [ "${LABAPE_LOCAL_DOCKER:-}" = 1 ] || { echo "release: the PostgreSQL test run needs LABAPE_LAB_SSH (or LABAPE_LOCAL_DOCKER=1), or pass --skip-postgres" >&2; exit 1; }
+  PGLOG="$(mktemp)"
+  echo "release: running the backend tests on PostgreSQL (output in $PGLOG)" >&2
+  if ! bash "$HERE/test-postgres.sh" >"$PGLOG" 2>&1; then
+    tail -n 25 "$PGLOG" >&2
+    echo "release: the PostgreSQL test run failed (full output in $PGLOG)" >&2
+    exit 1
+  fi
+  tail -n 1 "$PGLOG" >&2
+fi
 if $DRY; then
   echo "release: dry run: checks passed; would release $TAG$($PRE && echo ' (pre-release)')"
   exit 0

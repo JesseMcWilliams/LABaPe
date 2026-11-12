@@ -22,6 +22,11 @@ import re
 import sys
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
+import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
+import argparse
 
 SERVER_VERSION = "1"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -267,10 +272,6 @@ class Session:
 
 def http_sender(url: str, token: str, ca_file: str = "", verify: bool = True):
     """A `send` that calls LABaPe with urllib, so stdio needs nothing but Python (the MCP bundle relies on it)."""
-    import ssl
-    import urllib.error
-    import urllib.parse
-    import urllib.request
     base = url.rstrip("/")
     ctx = ssl.create_default_context(cafile=ca_file or None)
     if not verify:
@@ -327,7 +328,6 @@ async def serve_stdio(send: Send, stdin=None, stdout=None) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
     ap = argparse.ArgumentParser(prog="labape mcp", description="MCP server for LABaPe over stdio")
     ap.add_argument("--url", default=os.environ.get("LABAPE_URL", ""), help="the web interface's address (LABAPE_URL)")
     ap.add_argument("--token-file", default=os.environ.get("LABAPE_TOKEN_FILE", ""),

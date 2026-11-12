@@ -9,6 +9,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Added
 
+- **Internal: Hyper-V remnants removed** (question 218): `tofu/backends/hyperv`, `tofu/modules/{vm,network}/hyperv`, the renderer's Hyper-V branch and the provider's SBOM row. KVM (libvirt) is the only backend.
+- **Internal: `release.sh` runs the backend tests on PostgreSQL** before it makes the release branch (`--skip-postgres` skips); standard-library imports moved from inside functions to the top of their modules; a plan for running the containers as the service user, not root ([Planning_Root-Image.md](Claude_Docs/Planning_Root-Image.md), not built).
 - **Internal: the three code files over 1,000 lines are split** (no behaviour change): the installer's `steps.py` into `steps.py`, `steps_base.py` and `steps_stack.py`; the job worker's `runner.py` into `runner.py` and `runner_prepare.py` (preparing a job's engine directory and commands); and the environments API into `environments.py` and `environments_vms.py` (the VM, account, lease, snapshot, power and move routes, same URLs).
 - **The Containers page also shows the access account's own (rootless) Podman containers:** marked `rootless · <user>`, with their images and volumes, logs and live stats (run as that user). They are shown, not changed: no start, stop, restart, update or clean-up, and the newer-image check leaves them out.
 - **Fix: a Debian VM's package install no longer fails on a package the mirror has since replaced** (a stale index gave a 404 on `firefox-esr`): the apt install of the chosen packages now refreshes an index older than ten minutes and tries once more if a fetch still fails.

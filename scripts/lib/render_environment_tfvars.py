@@ -41,14 +41,8 @@ def main() -> int:
         return 1
 
     tfvars = {"network_mode": labape_networks.network_mode(env)}
-    if os.path.basename(os.path.normpath(backend_dir)) == "hyperv":
-        # The Hyper-V backend still takes one network (Claude_Docs/
-        # Reference_Backend-Parity.md): the catalog's default network.
-        net = networks[default_network]
-        tfvars.update({"network_cidr": str(net.cidr), "gateway": str(net.gateway)})
-    else:
-        tfvars.update({"networks": {name: net.tfvars() for name, net in networks.items()},
-                       "default_network": default_network})
+    tfvars.update({"networks": {name: net.tfvars() for name, net in networks.items()},
+                   "default_network": default_network})
     tfvars |= {
         "management_source": labape_networks.management_source(env),
         "image_source_default": env.get("image_source_default", "iso_direct"),

@@ -1,6 +1,6 @@
 # Installing and Configuring OpenTofu (Debian 13)
 
-> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend was removed on 2026-11-12 (question 218): `tofu/backends/hyperv` and its modules no longer exist, and the Hyper-V notes below are history that no longer applies.
 
 This targets the **control machine** — the Linux/WSL box that runs
 `tofu`/`ansible-playbook` (Claude_Docs/Design_System-Overview.md §15), not necessarily the libvirt
@@ -69,10 +69,9 @@ repo requires `>= 1.6.0`.
 
 ## 3. Provider plugin cache (recommended)
 
-This repo has two backend directories (`tofu/backends/hyperv`,
-`tofu/backends/libvirt`), each with its own `.terraform/` provider
+The libvirt backend (`tofu/backends/libvirt`) keeps its own `.terraform/` provider
 download. A shared plugin cache avoids re-downloading the same
-provider version twice:
+provider version for each working copy:
 
 ```bash
 mkdir -p ~/.terraform.d/plugin-cache

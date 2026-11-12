@@ -19,6 +19,9 @@ from cryptography import x509
 from cryptography.x509.oid import ExtensionOID, NameOID
 
 from .config import get_settings
+import base64
+import os as _os
+from pathlib import Path as _P
 
 PROVISIONER = "labape-runner"
 LEAF_HOURS = 720            # 30 days (question 70c); step-ca allows up to 90
@@ -152,12 +155,10 @@ def provisioners() -> list[dict]:
 # only prompts for a password, so the agent's rotation does it here.
 
 def _b64d(s: str) -> bytes:
-    import base64
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
 def _b64e(b: bytes) -> str:
-    import base64
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
 
@@ -171,7 +172,6 @@ def _pbes2_kek(header: dict, password: bytes) -> bytes:
 
 
 def jwe_decrypt(token: str, password: bytes) -> bytes:
-    import json
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
     protected, ek, iv, ct, tag = token.split(".")
@@ -183,8 +183,6 @@ def jwe_decrypt(token: str, password: bytes) -> bytes:
 
 
 def jwe_encrypt(plaintext: bytes, password: bytes, template: dict) -> str:
-    import json
-    import os as _os
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.keywrap import aes_key_wrap
     header = {k: v for k, v in template.items() if k not in ("p2s",)}
@@ -199,8 +197,6 @@ def jwe_encrypt(plaintext: bytes, password: bytes, template: dict) -> str:
 
 def repass_provisioner(config: str, old_password: bytes, new_password: bytes) -> None:
     """Re-encrypt labape-runner's key in ca.json with the new CA password."""
-    import json
-    from pathlib import Path as _P
     path = _P(config)
     cfg = json.loads(path.read_text(encoding="utf-8"))
     prov = next(p for p in cfg["authority"]["provisioners"] if p.get("name") == PROVISIONER)

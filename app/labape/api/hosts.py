@@ -26,6 +26,7 @@ from ..models import HostContainers, HostFacts, HostMetric, HostStats, Job, KvmH
 from ..permissions import visible_hosts
 from ..models import utcnow
 from ..security import Principal, audit, client_ip, current_principal, require_roles
+import threading
 
 router = APIRouter(prefix="/api/hosts", tags=["hosts"])
 
@@ -337,7 +338,6 @@ class AccessIn(BaseModel):
 
 
 def _refresh_later(host_id: int, smart: bool = False) -> None:
-    import threading
 
     from ..db import session_factory
 

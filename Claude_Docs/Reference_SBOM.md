@@ -20,7 +20,7 @@
 
 Summary: 52 Python, 208 npm, 22 explicitly installed Debian packages
 (of 266 in the worker image and 116 in the syslog image), 12 third-party images,
-4 engine tools, 5 Ansible collections, 4 OpenTofu providers, 2 Packer plugins.
+4 engine tools, 5 Ansible collections, 3 OpenTofu providers, 2 Packer plugins.
 CycloneDX components: 306.
 
 ## 2. How the pieces fit
@@ -398,7 +398,7 @@ Licenses of third-party images are the upstream projects', not checked against t
 
 | Tool | Version | What it does | License | How it gets there |
 |---|---|---|---|---|
-| OpenTofu | 1.12.6 | Creates the VMs (libvirt and Hyper-V backends) | MPL-2.0 | Downloaded in the image build; SHA-256 checked (`TOFU_VERSION`). |
+| OpenTofu | 1.12.6 | Creates the VMs (libvirt backend) | MPL-2.0 | Downloaded in the image build; SHA-256 checked (`TOFU_VERSION`). |
 | Packer | 1.16.1 | Builds VM templates | BUSL-1.1 | Downloaded in the image build; SHA-256 checked (`PACKER_VERSION`). Business Source License: read its terms before offering LABaPe as a service. |
 | step CLI | 0.30.2 | Talks to the platform CA | Apache-2.0 | Downloaded in the image build; SHA-256 pinned for amd64 and arm64. |
 | ansible-core | 2.21.4 | Configures VMs | GPL-3.0-or-later | pip, from container/requirements.in (locked with hashes). |
@@ -424,7 +424,6 @@ OpenTofu providers (mirrored into the image at build time, so deploys don't reac
 | dmacvicar/libvirt | ~> 0.8 | 0.9.9 | Apache-2.0 | tofu/backends/libvirt (mirrored into the image) |
 | hashicorp/local | ~> 2.5 | 2.9.1 | MPL-2.0 | tofu/backends/libvirt (mirrored into the image) |
 | hashicorp/null | ~> 3.2 | 3.3.2 | MPL-2.0 | tofu/backends/libvirt (mirrored into the image) |
-| taliesins/hyperv | ~> 1.2 | (not in the image) | MPL-2.0 | tofu/backends/hyperv; fetched when a Hyper-V host deploys |
 
 
 Packer plugins (`packer plugins install`, three tries):

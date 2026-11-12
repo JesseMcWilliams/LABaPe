@@ -8,6 +8,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, with_loader_criteria
 
 from .config import get_settings
+import logging
 
 
 class Base(DeclarativeBase):
@@ -53,7 +54,6 @@ def get_db() -> Iterator[Session]:
 
 def init_db() -> None:
     """Create or migrate the schema (labape.migrate, design §23.2)."""
-    import logging
 
     from . import models  # noqa: F401  (registers tables)
     from .migrate import upgrade

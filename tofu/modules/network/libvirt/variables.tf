@@ -34,8 +34,7 @@ variable "bridge_device" {
   default     = "br0"
 }
 
-# Accepted for interface parity with the Hyper-V module and the eventual
-# NAT path (Claude_Docs/Design_System-Overview.md §6.2), but unused while mode = "bridged" — bridged
+# Reserved for the eventual NAT path (Claude_Docs/Design_System-Overview.md §6.2), but unused while mode = "bridged" — bridged
 # networking attaches directly to the existing physical LAN, so there's
 # no virtual network object for these to configure.
 variable "network_address" {

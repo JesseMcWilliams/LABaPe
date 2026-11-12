@@ -51,6 +51,7 @@ from .templates import sync_all as sync_templates
 from ..netpolicy import release
 from ..security import audit, get_secret, put_secret
 from .vmaccess import clear_env_passwords, env_password_overrides
+import secrets as _secrets
 
 log = logging.getLogger("labape.worker")
 
@@ -462,7 +463,6 @@ def _cert_env(job_id: int, job_type: str, remote: bool) -> dict[str, str]:
     from .. import ca
     if job_type != "environment.deploy" or not ca.configured():
         return {}
-    import secrets as _secrets
     from ..api.ca import token_name
     token = _secrets.token_urlsafe(32)
     with session_factory()() as db:

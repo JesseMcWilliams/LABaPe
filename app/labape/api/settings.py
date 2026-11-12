@@ -20,6 +20,8 @@ from ..errors import FieldError
 from ..files import roots
 from ..models import Job, StackLink
 from ..security import Principal, audit, client_ip, get_secret, put_secret, require_roles
+import base64
+import hashlib
 
 router = APIRouter(prefix="/api/admin", tags=["settings"])
 public_router = APIRouter(tags=["settings"])
@@ -53,7 +55,6 @@ def _logo_type(data: bytes) -> str | None:
 
 @public_router.get("/api/branding/logo")
 def branding_logo(db: Session = Depends(get_db)):
-    import base64
 
     from fastapi.responses import Response
 
@@ -69,8 +70,6 @@ def branding_logo(db: Session = Depends(get_db)):
 @router.put("/settings/branding/logo")
 async def put_logo(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("admin"))):
     """The raw image as the body (PNG, JPEG or WebP, at most 256 KB)."""
-    import base64
-    import hashlib
 
     from ..models import Setting
     data = await request.body()

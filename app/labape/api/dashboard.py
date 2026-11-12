@@ -27,6 +27,7 @@ from ..models import (BreakglassGrant, Environment, HostStats, KvmHost, MetricSa
 from ..naming import instance_names
 from ..permissions import visible_hosts, visible_ids
 from ..security import Principal, _fernet, audit, current_principal, decrypt_value, get_secret, require_roles
+import tempfile
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 BUCKET_MINUTES = 10
@@ -211,7 +212,6 @@ async def _auth(db: Session) -> list[dict]:
 
 def _vault_check() -> dict:
     """The engine vault opens with its password: in the secret store once imported (design §26)."""
-    import tempfile
     from ..db import session_factory
     from ..engine import engine_secrets
     with session_factory()() as db:

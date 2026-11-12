@@ -83,7 +83,7 @@ IMAGES = [
 ]
 # (tool, version, role, license, how it gets there)
 TOOLS = [
-    ("OpenTofu", "1.12.6", "Creates the VMs (libvirt and Hyper-V backends)", "MPL-2.0", "Downloaded in the image build; SHA-256 checked (`TOFU_VERSION`)."),
+    ("OpenTofu", "1.12.6", "Creates the VMs (libvirt backend)", "MPL-2.0", "Downloaded in the image build; SHA-256 checked (`TOFU_VERSION`)."),
     ("Packer", "1.16.1", "Builds VM templates", "BUSL-1.1", "Downloaded in the image build; SHA-256 checked (`PACKER_VERSION`). Business Source License: read its terms before offering LABaPe as a service."),
     ("step CLI", "0.30.2", "Talks to the platform CA", "Apache-2.0", "Downloaded in the image build; SHA-256 pinned for amd64 and arm64."),
     ("ansible-core", "2.21.4", "Configures VMs", "GPL-3.0-or-later", "pip, from container/requirements.in (locked with hashes)."),
@@ -99,7 +99,6 @@ PROVIDERS = [  # (source, constraint, installed, license, where)
     ("dmacvicar/libvirt", "~> 0.8", "0.9.9", "Apache-2.0", "tofu/backends/libvirt (mirrored into the image)"),
     ("hashicorp/local", "~> 2.5", "2.9.1", "MPL-2.0", "tofu/backends/libvirt (mirrored into the image)"),
     ("hashicorp/null", "~> 3.2", "3.3.2", "MPL-2.0", "tofu/backends/libvirt (mirrored into the image)"),
-    ("taliesins/hyperv", "~> 1.2", "(not in the image)", "MPL-2.0", "tofu/backends/hyperv; fetched when a Hyper-V host deploys"),
 ]
 PLUGINS = [("hashicorp/qemu", ">= 1.1.0", "1.1.7", "MPL-2.0"), ("hashicorp/ansible", ">= 1.1.0", "1.1.6", "MPL-2.0")]
 # What LABaPe puts on VMs (roles and the catalog); (software, how, source, notes)
@@ -286,7 +285,7 @@ def build():
              props={"labape:group": "container images", "labape:declared-in": where, **({"labape:digest": digest} if digest else {})})
     root = {"bom-ref": root_ref, "type": "application", "name": "LABaPe", "version": version,
             "licenses": [{"license": {"id": "AGPL-3.0-only"}}],
-            "description": "LABaPe: web interface, API and worker for building lab environments (KVM, Hyper-V), with the stack around them"}
+            "description": "LABaPe: web interface, API and worker for building lab environments (KVM), with the stack around them"}
     direct_refs = sorted(
         [f"pypi:{norm(k)}@{py[norm(k)]['version']}" for k in list(declared) + ["ansible-core", "pywinrm"] if norm(k) in py]
         + [refs[f"node_modules/{n}"] for n in direct if f"node_modules/{n}" in refs])

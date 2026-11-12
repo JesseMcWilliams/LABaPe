@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from .. import appsettings
 from ..models import KvmHost, StoredFile, Template
 from . import hostio
+import datetime as dt
 
 CACHE = ".labape-files"              # under a host's VM storage path: the cache before F1
 CATEGORY_DIRS = {"isos": "ISOs", "installers": "Installers", "files": "Other"}
@@ -325,7 +326,6 @@ def run_sync_templates(db: Session, job) -> int:
 
 def schedule_template_sync(db: Session, now=None) -> int | None:
     """Daily, when Settings → File distribution asks for it and no sync is queued or running."""
-    import datetime as dt
 
     from .. import appsettings
     from ..models import Job, Setting, utcnow

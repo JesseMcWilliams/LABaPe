@@ -34,6 +34,9 @@ from sqlalchemy.orm import Session
 
 from ..models import HostFacts, HostMetric, KvmHost, utcnow
 from . import hostio
+import ipaddress
+from urllib.parse import urlsplit
+import time
 
 KEY_NAME = "labape_hostadmin"
 ACCOUNT_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -431,7 +434,6 @@ def record_samples(db: Session, host_id: int, smart: dict, at: dt.datetime) -> i
 
 def disk_of(message: str) -> str:
     """The device a drive warning is about ("kvm1: /dev/sdc: 76 reallocated ..." -> "/dev/sdc"), else ""."""
-    import re
     m = re.search(r"(?:^|: )(/dev/[A-Za-z0-9/_.-]+?)(?=[: (]|$)", message or "")
     return m.group(1) if m else ""
 
@@ -737,7 +739,6 @@ print(json.dumps({"ok": True}))
 
 def forward_conf(address: str, host_name: str) -> str:
     """rsyslog settings that send everything to the stack collector over TLS with a client certificate."""
-    import ipaddress
     try:
         ipaddress.ip_address(address)
         auth = 'StreamDriverAuthMode="x509/certvalid"'
@@ -817,7 +818,6 @@ INSTALL_ROOT = "/opt/labape-kvm"
 
 def service_user(h: KvmHost) -> str:
     """The user in a qemu+ssh libvirt URI: the one jobs and file operations run as."""
-    from urllib.parse import urlsplit
     return urlsplit(h.libvirt_uri).username or ""
 
 
@@ -958,7 +958,6 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
            f"--instance web --config-file deploy/answers.web.json --non-interactive")
     log(f"labape: running the installer (kvm profile) on {h.name}; this takes a while\n")
     from .runner import beat
-    import time
     with open(job.log_path, "ab", buffering=0) as logf:
         p = popen([*ssh.base(), cmd], stdout=logf, stderr=subprocess.STDOUT, env=hostio.tool_env())
         while (rc := p.poll()) is None:

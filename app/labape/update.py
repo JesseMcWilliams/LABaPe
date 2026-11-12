@@ -22,6 +22,7 @@ from pathlib import Path
 import httpx
 
 from .config import get_settings
+import uuid
 
 _releases_cache: tuple[float, list[dict]] | None = None
 
@@ -56,7 +57,6 @@ def busy() -> bool:
 
 
 def write_request(action: str, target: str, actor: str, **extra) -> dict:
-    import uuid
     req = {"id": uuid.uuid4().hex, "action": action, "target": target, "requested_by": actor,
            "requested_at": dt.datetime.now(dt.timezone.utc).isoformat(), **extra}
     d = folder()

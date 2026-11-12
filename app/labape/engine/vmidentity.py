@@ -21,6 +21,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import Environment, VmIdentity, utcnow
+import socket
 
 SSH, WINRM = "ssh", "winrm"
 CHANGED_HINT = ("LABaPe recorded a different SSH host key for this VM. If the VM was rebuilt outside LABaPe, an "
@@ -131,7 +132,6 @@ def fetch_certificate(address: str, port: int = 5986, timeout: float = 8.0) -> s
     """SHA-256 (hex) of the certificate the WinRM listener presents now. Raises OSError when it can't be reached."""
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
-    import socket
     with socket.create_connection((address, port), timeout=timeout) as sock, ctx.wrap_socket(sock) as tls:
         return fingerprint(tls.getpeercert(binary_form=True) or b"")
 
@@ -142,7 +142,6 @@ CA = "ca"            # the stored WinRM value of a VM whose listener presents a 
 def chains_to_platform_ca(address: str, port: int = 5986, timeout: float = 8.0) -> bool:
     """True when the listener's certificate is signed by the platform CA and carries `address` (one handshake that
     checks both). Raises OSError when the VM can't be reached; False for any other certificate."""
-    import socket
 
     from .. import ca
     try:

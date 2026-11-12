@@ -41,6 +41,14 @@ After the stack is up, `labape bootstrap` (run by the installer) registers the h
 
 **Sign-in.** LABaPe signs people in through OpenID Connect, Authentik by default. The installer either takes an existing provider (issuer, client ID, and the client secret, which it prompts for) or starts a throwaway Authentik for testing ([tools/authentik-test/](../tools/authentik-test/README.md)). In Authentik, the redirect URI is `https://<web host>/api/auth/oidc/callback`, and roles come from groups; see [container/README.md § Sign-in](../container/README.md#sign-in-containerenv) for the mapping and how to change it.
 
+**Disk, RAID and alert-mail steps (KVM hosts).** The installer's `Prereq.*` steps set up a host so its problems reach you; each asks before it changes an existing setting and says what it did:
+- `Prereq.RaidAlerts`: RAID events (`mdadm`) go to syslog. If `mdadm.conf` already has a `PROGRAM` line it asks first (answer `ReplaceRaidProgram`).
+- `Prereq.RaidDiskTimeouts`: SCT error recovery control of 7 seconds on the SATA disks of a host that has RAID arrays, through a udev rule, so a slow bad sector fails the read instead of the whole drive out of the array.
+- `Prereq.SmartAlerts`: `smartd`'s disk warnings are mailed to the stack's mail server (it installs the `mail` command; a `smartd.conf` that already has `-m` is left alone and the step says so).
+- `Prereq.SmartTests`: a short SMART self-test every Sunday at 02:00 and a long one on the 1st at 03:00, on every drive (`DEVICESCAN`).
+- `Prereq.AlertMail`: the host's own mail goes to the stack's Mailpit (answers `MailBind`, `AlertMailHost`). A host without it shows "alerts from this host may not arrive"; untick **Check that its alerts arrive** in the host's Settings if it is not meant to mail.
+- `Prereq.DiagSudo`: lets the access account read SMART data and run the container and disk collectors with sudo.
+
 **Running the stack by hand** (Docker or Podman, Quadlets, HTTPS options): [container/README.md](../container/README.md).
 
 **Platform CA and the browser.** The stack runs its own certificate authority. Web-interface deploys give every VM a certificate from it. To serve the web interface with a certificate from the same CA, set `LABAPE_CADDYFILE=Caddyfile.labape-ca` in `container/.env` and recreate Caddy. Then have users import the root (dashboard → **Download the root certificate**). Back up `container/secrets/ca_password` together with the `labape-ca` volume: losing either means re-issuing every certificate.
@@ -83,7 +91,20 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 - **Check** (mdadm) / **Scrub** (ZFS) reads and verifies every drive; **Stop** ends it. **Repair** (mdadm) rewrites blocks that differ between the drives.
 - **Take out** marks a drive faulty and removes it from the array (the pool runs degraded until a replacement is added); **Take offline** / **Bring online** do the same for a ZFS drive without removing it.
 - **Add a drive…** lists the drives that are free (not mounted, no filesystem, in no pool) and adds the one you pick; in a degraded pool it starts rebuilding onto it, and whatever was on the drive is overwritten.
+- **Re-add** puts a drive that was failed out of an md array back in. LABaPe checks the drive's health first; a drive that fails the check needs its serial typed to go on, and you can ask for a full rebuild instead of a quick re-sync.
+- **Replace a drive…** is the guided replacement of a failed md member: pick the pool and the failed member, then the new drive (it must carry no filesystem and no array label), type the new drive's serial (its path when it has none), and LABaPe writes the partition table, adds it and follows the rebuild. A drive the pool needs for its only copy of the data is named in the dialog.
+- Each member shows its serial number; an empty slot and a drive that failed out are shown as such.
+- Every action asks to confirm first and is audited. LVM groups are shown only.
+
 - Every action asks to confirm first and is audited. LVM groups are shown only. Creating, destroying or growing a pool is done on the host itself.
+
+**Self-tests.** The Drives and volumes list has a **Last self-test** column (when and the result). A drive whose last self-test failed, or that has had none for a long time, appears among the host's warnings. The tests themselves are scheduled on the host by `Prereq.SmartTests`.
+
+**Containers.** A host with Docker or Podman has a **Containers** section: every container with its image, state, ports and health, a detail dialog with logs (the last 2,000 lines or 1 MB; values after `PASSWORD`, `TOKEN`, `SECRET` and `KEY` are masked), stats and a **History** tab (CPU and memory, from 6 hours to 7 days), plus Images and Volumes tabs. Containers of the access account's own rootless Podman show too, marked *rootless* and read-only.
+- **Level.** The host's setting says what LABaPe may do: *off* (read only, the default), *known* (start, stop, restart and pull-and-recreate for containers it has already listed), *new* or *all*. The stack's own containers are never actionable, even on the stack host. Quadlet-managed containers are restarted through their systemd unit.
+- **Update <project>** pulls and recreates a Compose project's services. A weekly check can compare each container's image digest with its registry (a per-host switch, off by default, **Check now**); a *newer image* chip marks the result.
+- **Clean up…** previews unused images, stopped containers and dangling volumes, and removes only what you tick. An **unused images** alert (Settings → Monitoring) says when they pile up.
+- **Alert switch.** Stopped, unhealthy and restarting containers of a non-stack host alert unless you switch it off per host.
 
 **Update and Reboot.** The host's Dashboard has **Update** and **Reboot** buttons, each asking you to confirm first and then following the job.
 - **Update** runs the normal package update (`apt-get update` then `apt-get upgrade`, or `dnf upgrade`; never a release upgrade). The confirmation lists the packages waiting by the host's package lists as they are now; the job refreshes the lists first.
@@ -373,6 +394,16 @@ An admin's dashboard lists checks for sign-in, secrets and certificates, and not
 
 The last two (and the new-login choice) are done by the **update agent** on the host: they are offered only when it is installed, are refused while it is busy, and the Dashboard checks refresh after a minute or two. After updating LABaPe to a release that adds an agent action, reinstall the agent with `deploy/update-agent/install.sh` (the agent runs from a copy). A fix that fails leaves the settings as they were and says why. If the command line's own vault on the host (`~/LABaPe/secrets.vault.yml`) can no longer be opened with the store's password (the password was rotated more often than the store keeps previous ones), the refresh still completes and ends with a warning that gives the command to replace that vault with the store's current one (`python3 scripts/lib/store_get.py vault-pass --vault <file> --out <password file> --rebuild`; the old file is kept).
 
+### 12.2 Notifications, the heartbeat and the daily digest
+
+**Admin → Notifications** decides who hears about alerts, beyond the plain email list in Settings → Monitoring.
+- **Channels:** email, a webhook (Teams, Slack, Discord or generic JSON), ntfy, or syslog. A channel's secret (a webhook URL, an ntfy token) is kept in the platform secret store and never shown again. **Send test** checks it.
+- **Rules:** which alerts go to which channels, by level, host, category and **quiet hours**; an optional **reminder** every N hours while the alert stays open. An alert the rules don't match still follows Settings → Monitoring.
+- **Delivery log:** every message with its channel, result and time.
+- **Daily digest:** one summary message at the **digest hour** (Settings → Monitoring), sent only when something is open or cleared. Add the rule option *daily digest* to a channel to receive it.
+
+**Heartbeat.** Each host with SSH access set up sends a small message to the stack's mail server and syslog once a day. If a host misses two in a row, an alert says its alerts may not be getting out, which catches a broken mail path before a disk fails. Hosts without a mail program need `Prereq.AlertMail` ([§1](#1-installing)), or untick **Check that its alerts arrive** in the host's Settings.
+
 ## 13. Backups and rebuilding a stack
 
 **Full stack backups** (Settings → Full stack backups) put the whole stack into one encrypted archive: every database (LABaPe, Authentik, the syslog collector, Conjur), OpenBao, the platform CA, the configuration and the bootstrap secrets. Session recordings and syslog messages are options. The host's update agent takes one daily (03:00 UTC by default) and on **Back up now**; nothing stops while it runs. Archives older than the retention (14 days) are removed; the newest always stays.
@@ -454,6 +485,8 @@ scrape_configs:
 
 The metrics: `labape_info{version}`, `labape_maintenance`; per KVM host (`host`, `role`) `labape_host_enabled`, `labape_host_up`, `_cpus`, `_cpu_percent`, `_memory_bytes`, `_memory_used_bytes`, `_vm_disk_bytes`, `_vm_disk_free_bytes`, `_vms_running`, `_vms_defined`, `_collected_timestamp_seconds`; `labape_environments{status}`, `labape_jobs{state}`, `labape_jobs_failed_24h`, `labape_alerts_open{level}`; per linked stack `labape_link_up` and `labape_link_last_ok_timestamp_seconds`; `labape_backup_last_timestamp_seconds{kind}` and `labape_backup_last_check_ok`. A scrape reads only what LABaPe already collects. If your Prometheus doesn't trust the platform CA, give it the root (dashboard → Download the root certificate).
 
+`/api/docs` (the API's interactive reference) is for admins only: sign in as an admin first. Uploads over 200 GB are refused.
+
 ## 19. Windows sign-on and the stack's names
 
 **Sign-in follows the name used.** The stack answers on its main name and every name in `LABAPE_ALT_NAMES` ([§9](#9-updating-labape)). Whichever name a browser opened, sign-in stays on that name, Authentik's page included. To add a name, add it to `LABAPE_ALT_NAMES` in `container/.env`, then run `bash caddy/web-tls.sh renew`: it signs the certificate again with the new name and updates Authentik's redirect addresses.
@@ -515,11 +548,15 @@ docker restart labape-ca
 
 Then tick **The CA applies extra attributes** on the CA tab and save. LABaPe checks every certificate it gets back and revokes and refuses one that lacks what was asked for, so a missing template shows up as an error, not a wrong certificate. (This feature has not yet been run against a live step-ca: try it on a test request first.)
 
+**Extra ranges for environments.** The CA signs a certificate for an IP address only if it is one of the environment's allocated addresses, or lies in an **Extra ranges for environments** range (set on the CA tab, one CIDR per line) for an environment whose host groups name no network. An environment with a named network gets certificates for that network's addresses only.
+
+**VM identity: certificates and host keys.** A Windows VM's WinRM listener answers with its platform-CA certificate, checked against the CA, so a "certificate is not the one LABaPe recorded" message means a VM answered with something else: look at the VM before deploying again. A VM without a platform certificate keeps its self-signed listener and the pin LABaPe recorded; the VM's record says which. Ansible's later runs (key and password changes, rotation) check the SSH host key recorded at the VM's first contact, and the WinRM certificate; a change fails the job for that VM with a message and a hint, never silently. Fix the cause, or after a legitimate rebuild clear the record with the hint's command.
+
 ## 22. Users
 
 **Admin → Users** lists everyone who has signed in: roles, last sign-in, active personal API tokens and open remote sessions. Search by name, display name or email, or show only disabled accounts.
 
-- **Disable** turns an account off in LABaPe only: its sessions stop at the next request, its personal tokens are revoked, and it can't sign in until you **Enable** it again. The sign-in provider is not changed, remote sessions already open are not closed, and you can't disable your own account.
+- **Disable** turns an account off in LABaPe only: its sessions stop at the next request, its personal tokens are revoked, its open remote and console sessions are ended, and it can't sign in until you **Enable** it again. The sign-in provider is not changed, and you can't disable your own account.
 - An account that is deactivated or removed in Authentik is disabled here by itself within 15 minutes, with its personal tokens revoked (the worker asks Authentik through the Directory settings' API token, whose role must be able to view users: [§6](#6-settings)). A sign-in clears a mark the check made, never one an admin made. When Authentik cannot be asked, nothing changes.
 - **Role bindings and sharing are tied to the account.** A grant or binding made for a username is tied to that account's provider and stable id at its next sign-in, so a name later given to a different account picks up nothing. Quotas still match by name.
 - The web server sends HSTS, `X-Content-Type-Options`, `Referrer-Policy` and a `frame-ancestors 'self'` policy.
