@@ -37,6 +37,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `deploy-web.sh` | locally → lab | Build and run this working tree on the lab's web stack |
 | `lab-live.sh` | locally → lab | Run one of the `live/` scripts on the lab host |
 | `lab.sh` | sourced | Shared settings for the two above |
+| `live/winrm_ca_check.py` | lab (container) | B2 check: a Windows VM's WinRM listener thumbprint against its platform certificate through the console API; `--renew` forces the renewal script and checks the listener moved |
 | `live/oidc_login.py` | lab (container) | Sign in through the test Authentik; imported by the others |
 | `live/env_create.py` | lab (container) | Create a one-VM environment (optionally with catalog applications, `--apps`, and services, `--services`) and wait for its deploy |
 | `live/env_plan.py` | lab (container) | Preview a redeploy of an environment (design §56.1): queues the plan job, waits, and prints each VM's action (reinstalled, created, removed or kept) with the reasons. Nothing is applied |

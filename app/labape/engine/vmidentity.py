@@ -136,6 +136,28 @@ def fetch_certificate(address: str, port: int = 5986, timeout: float = 8.0) -> s
         return fingerprint(tls.getpeercert(binary_form=True) or b"")
 
 
+CA = "ca"            # the stored WinRM value of a VM whose listener presents a platform-CA certificate (plan B2)
+
+
+def chains_to_platform_ca(address: str, port: int = 5986, timeout: float = 8.0) -> bool:
+    """True when the listener's certificate is signed by the platform CA and carries `address` (one handshake that
+    checks both). Raises OSError when the VM can't be reached; False for any other certificate."""
+    import socket
+
+    from .. import ca
+    try:
+        pem = ca.root_pem()
+    except ca.CaError:
+        return False
+    ctx = ssl.create_default_context(cadata=pem)
+    ctx.check_hostname = True
+    try:
+        with socket.create_connection((address, port), timeout=timeout) as sock, ctx.wrap_socket(sock, server_hostname=address):
+            return True
+    except ssl.SSLCertVerificationError:
+        return False
+
+
 # --- after a deploy ---------------------------------------------------------------------------
 
 def record_env(db: Session, env: Environment, inventory: dict, log=None) -> dict[str, str]:
@@ -152,7 +174,9 @@ def record_env(db: Session, env: Environment, inventory: dict, log=None) -> dict
         address = str(h["ansible_host"])
         try:
             if h.get("ansible_connection") == "winrm":
-                return vm, address, WINRM, fetch_certificate(address, int(h.get("ansible_port") or 5986))
+                port = int(h.get("ansible_port") or 5986)
+                # A listener on a platform-CA certificate is held to the CA, not to one certificate (it renews).
+                return vm, address, WINRM, CA if chains_to_platform_ca(address, port) else fetch_certificate(address, port)
             return vm, address, SSH, scan_ssh(address)
         except (OSError, subprocess.SubprocessError, ssl.SSLError) as exc:
             return vm, address, "", str(exc)
