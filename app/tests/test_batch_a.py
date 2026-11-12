@@ -138,3 +138,18 @@ def test_host_resources_only_for_hosts_the_caller_may_see(client):
         assert client.get(f"/api/hosts/{host_id}/resources").status_code == 404       # a viewer with no environment there
     finally:
         client.app.dependency_overrides.pop(current_principal, None)
+
+
+def test_a_user_without_groups_filters_by_name_only_and_never_binds_a_nul_byte():
+    """PostgreSQL rejects a NUL byte in a text parameter; an empty group list used to be replaced by one."""
+    from sqlalchemy import select
+
+    from labape.models import Grant
+    from labape.permissions import _principal_filter
+    from labape.security import Principal
+    stmt = select(Grant.object_id).where(_principal_filter(Principal(5, "dev1", "Dev", [], {"deployer"})))
+    compiled = stmt.compile()
+    assert not any("\x00" in str(v) for v in compiled.params.values())
+    assert "dev1" in compiled.params.values()
+    with_groups = select(Grant.object_id).where(_principal_filter(Principal(5, "dev1", "Dev", ["ops"], {"deployer"}))).compile()
+    assert "ops" in str(with_groups.params.values()) or any("ops" in str(v) for v in with_groups.params.values())

@@ -7,7 +7,9 @@ import pytest
 
 _tmp = Path(tempfile.mkdtemp(prefix="labape-test-"))
 os.environ.update({
-    "LABAPE_DATABASE_URL": f"sqlite:///{(_tmp / 'test.db').as_posix()}",
+    # LABAPE_TEST_DATABASE_URL runs the suite on PostgreSQL instead (tools/helpers/test-postgres.sh); the tests
+    # then drop and recreate every table of that database, so point it at a throwaway one.
+    "LABAPE_DATABASE_URL": os.environ.get("LABAPE_TEST_DATABASE_URL") or f"sqlite:///{(_tmp / 'test.db').as_posix()}",
     "LABAPE_SECRET_KEY": "test-only-secret-key",
     "LABAPE_PUBLIC_URL": "http://testserver",
     "LABAPE_DATA_DIR": str(_tmp / "data"),
@@ -50,3 +52,28 @@ def app(db_reset):
 @pytest.fixture()
 def client(app):
     return TestClient(app)
+
+
+def _stub_missing_hosts(session, flush_context, instances):
+    """SQLite doesn't enforce foreign keys, so many fixtures point rows at a host id that was never created. On
+    PostgreSQL (LABAPE_TEST_DATABASE_URL) add a stub host for each such id first, so those tests run unchanged."""
+    from labape.models import KvmHost
+    want = {getattr(o, "kvm_host_id", None) for o in session.new} - {None}
+    with session.no_autoflush:
+        for hid in want:
+            if session.get(KvmHost, hid) is None and not any(isinstance(o, KvmHost) and o.id == hid for o in session.new):
+                session.add(KvmHost(id=hid, name=f"stub-host-{hid}"))
+
+
+@pytest.fixture(autouse=True)
+def _postgres_foreign_keys(request):
+    if not os.environ.get("LABAPE_TEST_DATABASE_URL"):
+        yield
+        return
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+    event.listen(Session, "before_flush", _stub_missing_hosts)
+    try:
+        yield
+    finally:
+        event.remove(Session, "before_flush", _stub_missing_hosts)
