@@ -102,6 +102,18 @@ def container_alerts(host_id: int, body: AlertsIn, request: Request, db: Session
     return {"alerts": h.container_alerts}
 
 
+@router.get("/{host_id}/containers/history")
+def container_history(host_id: int, name: str, hours: int = 24, db: Session = Depends(get_db),
+                      _: Principal = Depends(require_roles("admin"))):
+    """CPU and memory of one container over the last 1 to 168 hours (plan A1)."""
+    h = _host(db, host_id)
+    if not 1 <= hours <= 168:
+        raise FieldError("hours", "Choose 1 to 168 hours.")
+    if not hostcontainers.NAME.match(name):
+        raise FieldError("name", "Not a container name.")
+    return {"name": name, "hours": hours, "points": hostcontainers.history(db, h.id, name, hours)}
+
+
 class SwitchIn(BaseModel):
     enabled: bool
 

@@ -13,10 +13,13 @@ import subprocess
 
 from sqlalchemy.orm import Session
 
-from ..models import HostContainers, KvmHost, utcnow
+from sqlalchemy import delete, select
+
+from ..models import ContainerSample, HostContainers, KvmHost, utcnow
 from . import hostadmin
 
 COLLECT_EVERY = dt.timedelta(minutes=5)
+SAMPLES_KEEP = dt.timedelta(days=7)                 # plan A1: how long CPU and memory readings are kept
 VOLUME_SIZES_EVERY = dt.timedelta(hours=1)          # `system df -v` walks every volume: hourly only
 RESTART_WINDOW = dt.timedelta(minutes=30)
 # The Stack's own compose projects: shown, never actionable (plan §0.3).
@@ -135,7 +138,42 @@ def collect(db: Session, h: KvmHost, now: dt.datetime | None = None) -> HostCont
     row.data, row.collected_at, row.error = got, now, ""
     db.merge(row)
     db.commit()
+    record_samples(db, h.id, got, now)
     return row
+
+
+def parse_percent(text) -> float | None:
+    """'12.34%' -> 12.34; None when it can't be read (a stopped container has no stats)."""
+    m = re.fullmatch(r"\s*([0-9]*\.?[0-9]+)\s*%?\s*", str(text or ""))
+    return float(m.group(1)) if m else None
+
+
+def record_samples(db: Session, host_id: int, got: dict, now: dt.datetime) -> int:
+    """Keep each container's CPU and memory from this read, and drop what is older than a week."""
+    n = 0
+    for c in got.get("containers") or []:
+        st = c.get("stats")
+        if not st:
+            continue
+        cpu = parse_percent(st.get("cpu"))
+        mem = parse_size(str(st.get("memory") or "").split("/")[0]) or None        # "512MiB / 2GiB": the used part
+        if cpu is None and mem is None:
+            continue
+        db.add(ContainerSample(kvm_host_id=host_id, name=c["name"], at=now, cpu_pct=cpu, mem_bytes=mem))
+        n += 1
+    db.execute(delete(ContainerSample).where(ContainerSample.kvm_host_id == host_id, ContainerSample.at < now - SAMPLES_KEEP))
+    db.commit()
+    return n
+
+
+def history(db: Session, host_id: int, name: str, hours: int, now: dt.datetime | None = None, cap: int = 700) -> list[dict]:
+    """The readings of one container over the last `hours`, oldest first, thinned to at most `cap` points."""
+    now = now or utcnow()
+    rows = db.scalars(select(ContainerSample).where(
+        ContainerSample.kvm_host_id == host_id, ContainerSample.name == name,
+        ContainerSample.at >= now - dt.timedelta(hours=hours)).order_by(ContainerSample.at)).all()
+    step = max(1, -(-len(rows) // cap))
+    return [{"t": int(_aware(r.at).timestamp() * 1000), "cpu": r.cpu_pct, "memory": r.mem_bytes} for r in rows[::step]]
 
 
 def collect_due(db: Session, h: KvmHost, now: dt.datetime | None = None) -> None:

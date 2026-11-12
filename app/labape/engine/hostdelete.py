@@ -14,7 +14,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from .. import appsettings
-from ..models import (Environment, HostFacts, HostMetric, HostNetwork, HostStats, Job, KvmHost, MetricSample, MonitorAlert,
+from ..models import (ContainerSample, Environment, HostContainers, HostFacts, HostMetric, HostNetwork, HostStats, Job, KvmHost, MetricSample, MonitorAlert,
                       RemoteSession, StackStatus, Template, utcnow)
 
 ALL = {"include_deleted_hosts": True}
@@ -77,7 +77,7 @@ def restore(db: Session, h: KvmHost) -> None:
 def purge(db: Session, h: KvmHost) -> str:
     """Remove a deleted host's data now; the row too unless an environment still points at it."""
     hid = h.id
-    for model in (HostFacts, HostMetric, HostNetwork, HostStats, MetricSample, MonitorAlert, StackStatus, Template):
+    for model in (ContainerSample, HostContainers, HostFacts, HostMetric, HostNetwork, HostStats, MetricSample, MonitorAlert, StackStatus, Template):
         db.execute(delete(model).where(model.kvm_host_id == hid), execution_options=ALL)
     db.execute(update(Job).where(Job.kvm_host_id == hid).values(kvm_host_id=None), execution_options=ALL)
     db.execute(update(RemoteSession).where(RemoteSession.kvm_host_id == hid).values(kvm_host_id=None), execution_options=ALL)

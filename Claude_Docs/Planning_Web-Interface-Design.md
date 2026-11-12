@@ -2325,3 +2325,15 @@ Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications
 | Not built | CPU and memory history charts, and rootless Podman containers of the access account: both stay open (see the plan, C4). |
 | Verified | `test_c4_container_extras.py`, `test_n2_heartbeat.py` (opt-out). Not yet run against a real registry. |
 
+## 81. Container history (plan A1, built 2026-11-11)
+
+Plan: [Planning_Next-Round-2026-11-08.md](Planning_Next-Round-2026-11-08.md).
+
+| Area | As built |
+|---|---|
+| Data | `container_samples` (host, name, time, CPU percent, memory bytes; migration 0045). `hostcontainers.record_samples` runs after each 5-minute collection for every container that has stats (the numbers `docker`/`podman stats` gave; the used part of "512MiB / 2GiB") and deletes the host's samples older than 7 days. A purged host's samples go with it (`hostdelete.purge`, which now also clears `host_containers`). |
+| API | `GET /api/hosts/{id}/containers/history?name=&hours=` (admin; 1 to 168 hours): points `{t, cpu, memory}` oldest first, thinned to at most 700. |
+| Page | The container dialog's History tab: a range choice and two `LineChart`s (CPU as a percentage of one core, memory). |
+| Not sampled | Disk and network I/O; stopped containers (no stats); the Stack's own containers are sampled like any other and shown read-only. |
+| Verified | `test_a1_container_history.py`. Not yet looked at in a browser. |
+
