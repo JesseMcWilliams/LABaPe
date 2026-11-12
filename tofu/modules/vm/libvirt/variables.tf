@@ -1,7 +1,5 @@
-# Common `vm` module interface (Claude_Docs/Design_System-Overview.md §6.1). Both backends' vm
-# modules accept the same set of variables so an environment definition
-# never changes based on which hypervisor is selected — only which
-# backend module gets invoked does (tofu/backends/*, Claude_Docs/Design_System-Overview.md §6.3).
+# Common `vm` module interface (Claude_Docs/Design_System-Overview.md §6.1): the variables an
+# environment definition passes, whichever backend module is invoked (tofu/backends/*, Claude_Docs/Design_System-Overview.md §6.3).
 
 variable "name" {
   description = "VM/hostname."

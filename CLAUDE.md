@@ -2,7 +2,7 @@
 
 LABaPe automates end-to-end provisioning and configuration of ephemeral,
 self-hosted lab/test environments (mixed Windows + Linux servers and
-workstations) on libvirt/KVM (Hyper-V support will be dropped, question 175), using OpenTofu to provision
+workstations) on libvirt/KVM (Hyper-V support was dropped, question 175), using OpenTofu to provision
 infrastructure and Ansible to configure the OS, join Active Directory, and
 install software. It's a polyglot repo — OpenTofu/HCL, Bash, Python helpers,
 Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
@@ -15,7 +15,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - `HANDOFF.local.md` — session-scratch handoff notes, gitignored (`*.local.md`). Treat as ephemeral, not a source of truth.
 - `Live-Testing.local.md` — gitignored; live-lab connection details, read only for live-testing tasks.
 - `secrets.vault.example.yml` — template shape only; the real `secrets.vault.yml` is gitignored and never committed.
-- `tofu/` — OpenTofu: `backends/{hyperv,libvirt}`, `modules/{vm,network}/{hyperv,libvirt}` (hyperv is unmaintained and will be removed: don't extend it), `environments/*.tfvars.example`. Real `.tfvars`/`environment.yml`/state are gitignored.
+- `tofu/` — OpenTofu: `backends/libvirt`, `modules/{vm,network}/libvirt` (the Hyper-V directories were removed on 2026-11-12, question 218), `environments/*.tfvars.example`. Real `.tfvars`/`environment.yml`/state are gitignored.
 - `ansible/` — `playbooks/site.yml`, `roles/`, `package_catalog.yml` (committed catalog); real per-run manifests are gitignored.
 - `packer/{windows,linux}/` — base-image templates (Claude_Docs/Design_Base-Images.md).
 - `iso/answer-files/` — unattended-install answer files shared by Packer/direct-ISO-boot/template promotion.
@@ -63,6 +63,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Planning_Disk-Health-Notifications.md`: plan after OZ's failed-out drive: scheduled SMART self-tests (S1), a Notifications page with channels and rules (N1), an alert-path heartbeat and digest (N2), a guided drive replacement (R1), container extras (C4); questions 208-214.
   - `Planning_Next-Round-2026-11-08.md`: the round after the disk plan: container history charts and rootless Podman, a manual-check list for OZ, then the open queue (small review items, WinRM certificate, Ansible host-key checks, remote sessions on disable, Hyper-V remnants); questions 215-220.
   - `Planning_WinRM-And-Host-Keys.md`: plan for binding the WinRM listener to the platform-CA certificate (B2) and strict host-key checks in Ansible's later runs (B3); questions 222-226.
+  - `Planning_Root-Image.md`: plan for running the API and worker containers as the service user instead of root (uid and groups from `.env`, a passwd entry, a one-time volume `chown` by the update agent, then hardening); not built; questions 227-228.
   - `Planning_Container-Management.md`: plan for a Containers page on any Docker or Podman host (Stack and KVM hosts): read first (C1), guarded actions (C2) and clean-up (C3); the Stack's own containers stay read-only; questions 203-207.
   - `Planning_Access-Mail-Updates-Files.md`: the next round's list (2026-10-14): Secrets paging, connecting as an account, a lab mail server, Catalog → Updates, new packages, files per KVM host, monitoring tools; questions 167-173.
   - `Reference_Console-API-And-MCP.md`: how another AI or script gets a token and uses the console API (commands, text sessions) and the MCP server.
@@ -72,7 +73,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
   - `Archive_Planning_Stack-Syslog-Installer-File-Host.md`: built (design §29.1-§29.6); the plan for the stack's syslog collector and Syslog tab, the installer's ask-first answer file and service choices, and the primary file host (batches Y1-Y3, questions 121-141).
   - `Planning_Project-Review-2026-10-23.md`: the security, code, features, tooltips and guides review after #249, with what is done, decided (questions 196-198) and open (199-202).
   - `Planning_Web-Interface-Options.md`: M10 web interface decisions (custom app, Authentik, containers, remote libvirt) and the options considered.
-  - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number). Numbers are plain in the files and never reset (next: 227); in chat they appear with a D prefix (D174) so they don't collide with the chat's own Q/A numbers.
+  - `Planning_Questions.md`: numbered open questions awaiting decisions (answer by number). Numbers are plain in the files and never reset (next: 229); in chat they appear with a D prefix (D174) so they don't collide with the chat's own Q/A numbers.
   - Letter codes in the planning docs (`O1`-`O6`, `Y3b`, `S4`, `P1`, `D1`, `H2`, ...) are **batch codes**, not the kind labels of the user-level numbering rules (D# decision, P# proposal, Q# question): `D1` is the Drive Pools batch and `P1` a paging or placement batch. On screen, name the doc with a batch code ("Backlog D1", "Operations round P1"), and never write a bare D-number for one, since D174 means question 174. No LABaPe doc uses kind labels yet; a new one that does names them in its header.
   - `Planning_Web-Interface-Design.md`: M10 design and as-built record (components, data model, permissions, job runner, deployment, build phases 10a-10h; §19-§24 cover what's built, through secret rotation).
   - `Testing_Manual-Checks-v0.5.5.md`: step-by-step manual checks for the pages and procedures only a person can do (tokens page, package picker, New environment form, Delete, Desktop and MCP, Director update, Kerberos click-through), with a results table.

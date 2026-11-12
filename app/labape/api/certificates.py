@@ -17,6 +17,7 @@ from ..errors import FieldError
 from ..models import Certificate, Environment
 from ..permissions import can_see as can_see_object
 from ..security import Principal, audit, client_ip, current_principal, require_roles
+import ipaddress
 
 router = APIRouter(prefix="/api/certificates", tags=["certificates"])
 
@@ -77,7 +78,6 @@ def get_settings_(db: Session = Depends(get_db), p: Principal = Depends(current_
 @router.put("/settings")
 def put_settings(body: SettingsIn, request: Request, db: Session = Depends(get_db),
                  p: Principal = Depends(require_roles("ca_admin"))):
-    import ipaddress
     for n in body.allowed_networks:
         try:
             ipaddress.ip_network(n, strict=False)
@@ -172,7 +172,6 @@ def request_certificate(body: RequestIn, request: Request, db: Session = Depends
 
 
 def _is_ip(v: str) -> bool:
-    import ipaddress
     try:
         ipaddress.ip_address(v)
         return True

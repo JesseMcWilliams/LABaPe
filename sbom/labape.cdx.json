@@ -25,7 +25,7 @@
      }
     }
    ],
-   "description": "LABaPe: web interface, API and worker for building lab environments (KVM, Hyper-V), with the stack around them"
+   "description": "LABaPe: web interface, API and worker for building lab environments (KVM), with the stack around them"
   },
   "properties": [
    {
@@ -9091,7 +9091,7 @@
    "name": "OpenTofu",
    "version": "1.12.6",
    "purl": "pkg:generic/opentofu@1.12.6",
-   "description": "Creates the VMs (libvirt and Hyper-V backends)",
+   "description": "Creates the VMs (libvirt backend)",
    "licenses": [
     {
      "license": {

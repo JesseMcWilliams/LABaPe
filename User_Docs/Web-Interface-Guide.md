@@ -238,6 +238,7 @@ The new-environment form shows the KVM hosts and networks you may use. **Network
 - Every button shows a short tooltip. Buttons that change something ask you to confirm first, in a dialog that explains what will happen; their tooltip ends with "(asks to confirm)".
 - **Maintenance mode**: while an admin or an update has LABaPe in maintenance, a banner on every page shows why, who started it and when it should end. Changes are refused and their buttons are disabled ("Unavailable during maintenance"). You can still look at everything, follow job logs, cancel a job and sign out. Running jobs finish; new ones wait until maintenance ends.
 - A banner also warns ahead of a scheduled maintenance or the weekly maintenance window.
+- When your session ends while you are working (it expired, or an admin disabled your account), a notice says so and takes you back to sign in. Uploads over 200 GB are refused.
 
 ## 11. API tokens
 

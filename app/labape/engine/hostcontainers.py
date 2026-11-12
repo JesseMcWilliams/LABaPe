@@ -17,6 +17,7 @@ from sqlalchemy import delete, select
 
 from ..models import ContainerSample, HostContainers, KvmHost, utcnow
 from . import hostadmin
+import json
 
 COLLECT_EVERY = dt.timedelta(minutes=5)
 SAMPLES_KEEP = dt.timedelta(days=7)                 # plan A1: how long CPU and memory readings are kept
@@ -515,7 +516,6 @@ def live_stats(ssh, row: HostContainers | None, name: str) -> dict:
     r = ssh.run(" ".join(shlex.quote(x) for x in cmd), timeout=60)
     if r.returncode != 0:
         raise hostadmin.AdminError((r.stderr or r.stdout).decode(errors="replace").strip()[-300:] or f"exit {r.returncode}")
-    import json
     try:
         s = json.loads(r.stdout.decode().strip().splitlines()[-1])
     except (ValueError, IndexError) as exc:

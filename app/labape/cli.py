@@ -25,6 +25,14 @@ import socket
 import sys
 
 from .config import get_settings
+import json as _json
+from pathlib import Path as _P
+import datetime as _dt
+import json
+import os as _os
+import shutil as _shutil
+import sys as _sys
+import tempfile as _tempfile
 
 
 def _who() -> str:
@@ -133,7 +141,6 @@ def cmd_bootstrap(args) -> int:
 
 def cmd_maintenance(args) -> int:
     """Maintenance mode for the update agent: on, off, status (JSON)."""
-    import json as _json
     from . import maintenance_mode
     from .api.maintenance import status
     from .db import init_db, session_factory
@@ -152,7 +159,6 @@ def cmd_maintenance(args) -> int:
 
 def cmd_backup(args) -> int:
     """A database dump now (the update agent's pre-update backup); prints its path."""
-    import sys
     from .db import session_factory
     from .engine.maintenance import dump_database
     with session_factory()() as db:
@@ -164,8 +170,6 @@ def cmd_backup(args) -> int:
 
 def cmd_restore(args) -> int:
     """Restore a dump over the database (the API and worker must be stopped)."""
-    import sys
-    from pathlib import Path as _P
     from .engine.maintenance import restore_database
     if not args.yes:
         print("labape: restore replaces the whole database; pass --yes", file=sys.stderr)
@@ -176,8 +180,6 @@ def cmd_restore(args) -> int:
 def cmd_seal(args) -> int:
     """stdin -> stdout, encrypted (or decrypted) with the backup key (design §32): the host's
     agent pipes the full-stack backup's tar stream through this, so the host needs no crypto tools."""
-    import sys
-    from pathlib import Path as _P
     from . import seal
     try:
         key = seal.parse_key(_P(args.key_file).read_text(encoding="utf-8"))
@@ -197,8 +199,6 @@ def cmd_backup_key(_args) -> int:
 
 def cmd_health(args) -> int:
     """Exit 0 when the stack is healthy: database and layout, worker heartbeat, CA (design §23.2)."""
-    import datetime as _dt
-    import json as _json
     from . import ca
     from .db import engine, session_factory
     from .migrate import current, head
@@ -241,7 +241,6 @@ def cmd_health(args) -> int:
 
 def cmd_rewrap_master(args) -> int:
     """Re-wrap the store's data keys from one master key file to another (the agent's rotation)."""
-    from pathlib import Path as _P
     from .db import session_factory
     from .security import rewrap_master
     old = _P(args.from_file).read_text(encoding="utf-8").strip()
@@ -254,7 +253,6 @@ def cmd_rewrap_master(args) -> int:
 
 def cmd_ca_repass(args) -> int:
     """Re-encrypt the CA's signing provisioner key with a new password (the agent's rotation)."""
-    from pathlib import Path as _P
     from .ca import repass_provisioner
     repass_provisioner(args.config, _P(args.old).read_bytes().strip(), _P(args.new).read_bytes().strip())
     print("labape: provisioner key re-encrypted")
@@ -297,7 +295,6 @@ def cmd_ca_sign(args) -> int:
 def cmd_stores_configure(args) -> int:
     """stdin: {"stores": {name: settings}, "credentials": {name: login}} (design §26).
     --needs prints {name: true|false}; otherwise the settings are applied and audited."""
-    import json
 
     from .db import init_db, session_factory
     from .security import audit
@@ -432,12 +429,6 @@ def cmd_vm_identity(args) -> int:
 
 def cmd_push_vm_key(args) -> int:
     """Add a new VM key on the deployed environments' Linux VMs (the agent's rotation, design §24 R2)."""
-    import json as _json
-    import os as _os
-    import shutil as _shutil
-    import sys as _sys
-    import tempfile as _tempfile
-    from pathlib import Path as _P
     from .config import get_settings
     from .db import session_factory
     from .engine.vmaccess import AccessError, push_vm_key

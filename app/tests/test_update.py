@@ -1,5 +1,9 @@
 """Updates (design §23.2): choices, requests to the host agent, CLI commands the agent uses."""
 import json
+import os
+import shutil
+
+import pytest
 
 from labape import cli, update, version
 from labape.config import get_settings
@@ -56,6 +60,8 @@ def test_rollback_and_no_agent(client, monkeypatch, tmp_root):
     assert not (d2 / "request.json").exists()
 
 
+@pytest.mark.skipif(bool(os.environ.get("LABAPE_TEST_DATABASE_URL")) and not shutil.which("pg_dump"),
+                    reason="the backup step runs pg_dump, which this machine doesn't have (PostgreSQL run)")
 def test_cli_commands(client, capsys, tmp_root):
     _admin_session(client)
     assert cli.main(["maintenance", "on", "--reason", "agent test", "--source", "update"]) == 0

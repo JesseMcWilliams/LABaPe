@@ -18,6 +18,7 @@ from .. import appsettings, maintenance_mode, version
 from ..db import get_db
 from ..models import Environment, HostStats, Job, KvmHost, MonitorAlert, StackLink, utcnow
 from ..security import Principal, require_roles
+from pathlib import Path
 
 router = APIRouter(tags=["metrics"])
 HOST_UP_WITHIN = dt.timedelta(minutes=10)
@@ -107,7 +108,6 @@ def collect(db: Session) -> str:
             _ts(dt.datetime.fromisoformat(sb["created_at"])), kind="stack")
         o.g("labape_backup_last_check_ok", "1 when the newest full backup passed its check",
             1 if (sb.get("check") or {}).get("ok") else 0, kind="stack")
-    from pathlib import Path
     d = Path(appsettings.get(db, "backup").directory)
     newest_db = max((p.stat().st_mtime for p in d.glob("labape-*.dump")), default=None) if d.is_dir() else None
     o.g("labape_backup_last_timestamp_seconds", "When the newest backup was taken", newest_db, kind="database")

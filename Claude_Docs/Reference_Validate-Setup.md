@@ -53,9 +53,8 @@ already there.
 **Script**: `scripts/test/test-opentofu-config.sh`
 
 Runs `tofu init -backend=false` + `tofu validate` against
-`tofu/backends/libvirt` (and `tofu/backends/hyperv`, once M2 populates
-it — the script skips a backend directory cleanly if it has no `.tf`
-files yet, rather than failing). Validates HCL syntax, type
+`tofu/backends/libvirt` (the script skips a backend directory cleanly
+if it has no `.tf` files, rather than failing). Validates HCL syntax, type
 consistency, and provider schema conformance — the parts of the M1
 scaffold that a manual review can approximate but can't fully replace.
 
@@ -71,12 +70,10 @@ failure point in the whole pipeline (SSH key not authorized on the
 libvirt host, wrong URI, `libvirtd` not running) — worth confirming in
 isolation before ever running `tofu plan`.
 
-**Hyper-V**: `scripts/test/test-winrm-connectivity.py` — confirms WinRM
+**Windows WinRM**: `scripts/test/test-winrm-connectivity.py` — confirms WinRM
 is reachable and authenticates, using `hyperv_host`/`hyperv_user` from
-the vault (User_Docs/Install-OpenTofu-WSL.md §5). Since
-`tofu/backends/hyperv` doesn't exist yet (M2), this validates the host
-prerequisite work now so it doesn't need re-checking once that backend
-lands.
+the vault or an explicit host and user. The Hyper-V backend was removed
+(2026-11-12); the script stays as a generic Windows WinRM check.
 
 ## 5. Vault and SSH keys are consistent
 

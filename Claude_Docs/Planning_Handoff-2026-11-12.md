@@ -6,7 +6,7 @@
 
 **Latest release:** v0.7.0 (2026-10-24)
 
-`main` has everything below merged; **nothing is released since v0.7.0** (the CHANGELOG's `[Unreleased]` is long: a v0.8.0 is due, §3.1). pytest in the Windows scratch venv: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: the venv has no `winrm`; it passes in the image). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **227**.
+`main` has everything below merged; **nothing is released since v0.7.0** (the CHANGELOG's `[Unreleased]` is long: a v0.8.0 is due, §3.1). pytest in the Windows scratch venv: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: the venv has no `winrm`; it passes in the image). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **229** (227 and 228 are the root-image plan's, open with recommendations).
 
 | PR | What |
 |---|---|
@@ -18,6 +18,8 @@
 | #267, #269, #270 | **B2**: a Windows VM's WinRM listener answers with its platform-CA certificate, checked against the CA (not pinned); **B3**: Ansible's later runs check recorded SSH host keys and CA-signed WinRM certificates (plan: [Planning_WinRM-And-Host-Keys.md](Planning_WinRM-And-Host-Keys.md)) |
 | #268 | **A1**: container CPU and memory history (§81), migration 0045 |
 | #271 | A stale apt index no longer fails a Debian deploy; **A2**: rootless Podman of the access account on the Containers page, read-only (§82) |
+| #273 | Handoff |
+| (branch `2026-11-12-root-plan-and-review-items`) | The root-image plan ([Planning_Root-Image.md](Planning_Root-Image.md), not built); Hyper-V directories and renderer branch removed (question 218); `release.sh` runs the PostgreSQL test run (`--skip-postgres`; question 219); 58 stdlib imports hoisted; the user guides brought up to date for the unreleased work |
 | #272 | `runner.py` split into `runner` and `runner_prepare`; `api/environments.py` into `environments` and `environments_vms` (no code file is over 1,000 lines now) |
 
 Migrations are through **0045** (0039-0045 are new: host containers, container levels, notifications, digest, host heartbeat, container updates, container samples).
@@ -37,8 +39,8 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 
 1. **Release v0.8.0**: update the handoff (this file) and stamp it, bring `User_Docs/` up to date from [Planning_User-Docs-Backlog.md](Planning_User-Docs-Backlog.md) (about 25 lines: containers, notifications, heartbeat, replacement, CA ranges, WinRM, rootless, the Install guides' new steps), regenerate the SBOM from a worker image built from clean `main`, `release.sh` (`--docx` needs pandoc), signed tag, GitHub release. The user said "not yet" on 2026-11-08; ask first.
 2. **The user, on OZ:** run the installer steps in [Testing_Manual-Checks-Disk-Notifications.md](Testing_Manual-Checks-Disk-Notifications.md) §1 (`Prereq.*`), then record the results table; run `Prereq.AlertMail` on pi1 and garagepc or untick "Check that its alerts arrive" on those hosts; **replace the failed drive `P8G8JSPR`** (Replace a drive…, not Re-add).
-3. **A short plan for the API image that runs as root** (the volume, `/dev/kvm` and SSH keys need ownership changes and a migration for existing installs); agreed to do after B2/B3, which are done.
-4. **Remaining small review items:** imports inside functions, the Hyper-V remnants (B5, question 218: remove `tofu/*/hyperv`), the Postgres test run into the release routine.
+3. **Build the non-root images** from [Planning_Root-Image.md](Planning_Root-Image.md) (questions 227-228): entrypoint, `user:` and `.env` keys, the agent's one-time volume `chown`, live test on OZ; then the hardening PR. (The plan is written, nothing built.)
+4. **Remaining small review items:** done 2026-11-12 (stdlib imports hoisted: the 325 imports of the package itself and `cryptography`, `httpx`, `winrm` stay on purpose; Hyper-V removed; Postgres run in `release.sh`). Left over: the WSL install guides are still a Hyper-V walkthrough (backlog line).
 5. **Later:** actions on rootless Podman containers (question 216); a real ntfy or webhook on a rule (and Teams); per-host staggering of long self-tests; NVMe self-tests; a check that a Podman host's `skopeo` exists for the newer-image check.
 6. **From the older handoffs:** the Director's Fix, resetting `~/LABaPe-web` and reinstalling the update agent, deleting the test template `debian13-linktest-2026.10`, the garagepc folder check, the Kerberos click-through (handoff 2026-10-24 §3).
 

@@ -12,6 +12,11 @@ from .. import ca, linked_library, links, linksso
 from ..db import get_db
 from ..models import StackLink
 from ..security import Principal, audit, client_ip, require_roles
+import re
+import base64
+import hashlib
+import json
+import shutil
 
 router = APIRouter(tags=["links"])
 
@@ -80,7 +85,6 @@ def link_library(db: Session = Depends(get_db), authorization: str | None = Head
 def link_download(kind: str, ident: str, db: Session = Depends(get_db), authorization: str | None = Header(default=None),
                   range: str | None = Header(default=None)):
     """One template (by name) or file (by id) for a linked stack; `Range: bytes=N-` resumes a partial copy."""
-    import re
     link = _peer(db, authorization)
     start = 0
     if range:
@@ -201,10 +205,6 @@ async def receive_backup(name: str, request: Request, db: Session = Depends(get_
                          x_sha256: str = Header(default=""), x_labape_sidecar: str = Header(default="")):
     """A linked stack's newest full backup (design §36): staged, checked against its SHA-256, then
     a job keeps it on this stack's primary file host. It's sealed with the other stack's key."""
-    import base64
-    import hashlib
-    import json
-    import shutil
 
     from ..engine import stackbackup
     from ..models import Job

@@ -1,6 +1,6 @@
 # Installing and Configuring Ansible (Windows Host + Hyper-V + WSL2)
 
-> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend isn't maintained or tested and gets no new features; its code and the Hyper-V notes below stay until it is removed.
+> **Hyper-V is being dropped (decision 2026-10-16, question 175).** LABaPe will support KVM (libvirt) only. The Hyper-V backend was removed on 2026-11-12 (question 218): `tofu/backends/hyperv` and its modules no longer exist, and the Hyper-V notes below are history that no longer applies.
 
 Same control-machine role as User_Docs/Install-Ansible.md (Ansible doesn't
 run as a control node on Windows, Claude_Docs/Design_System-Overview.md §15) — it just runs inside

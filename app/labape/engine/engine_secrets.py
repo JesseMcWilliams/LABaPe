@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Secret
 from ..security import get_secret, put_secret
+import secrets as _secrets
 
 P = "platform/engine/"
 VAULT_PASSWORD = P + "vault_password"
@@ -150,7 +151,6 @@ def rotate_vault_password(db: Session, log) -> str:
     """New password; the vault re-encrypted with it and checked; then both stored.
     The old password goes into the history the command line uses to catch up."""
     old_pw, old_vault = _get(db, VAULT_PASSWORD), _get(db, VAULT)
-    import secrets as _secrets
     new_pw = _secrets.token_urlsafe(32)
     with tempfile.TemporaryDirectory() as d:
         vault, cur, new = Path(d) / "vault.yml", Path(d) / "cur", Path(d) / "new"

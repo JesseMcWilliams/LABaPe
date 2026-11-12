@@ -145,7 +145,6 @@ full deploy.
 - Windows 11 hosts need `disk_gb` of at least 64 (the plan fails otherwise), and Windows VMs run on legacy BIOS, so there's no Secure Boot/TPM testing ([operating system notes](User_Docs/Web-Interface-Guide.md#6-operating-system-notes)).
 - Windows Server installs the Desktop Experience unless a host group sets `windows_core = true` (or a template is built with `--core`); Firefox doesn't install on Server 2019 Core (on Debian it installs as `firefox-esr`).
 - Updates from the web interface accept only release tags signed by a key in `deploy/allowed_signers` (`deploy/README.md` § Updates); the maintainer's key is listed there since 2026-10-12, and no signed release exists yet.
-- The Hyper-V backend's `tofu init` fails: its `taliesins/hyperv` provider isn't in the OpenTofu registry.
 - Environments on remote KVM hosts aren't included in VM-key pushes or password rotation, because the web stack can't reach their VMs (`Claude_Docs/Planning_Web-Interface-Design.md` §24.3).
 
 Full bug-by-bug history: `Claude_Docs/Testing_Troubleshooting-Log.md` (current work and open findings) and `Claude_Docs/Archive_Testing_Troubleshooting-Log-M1-M6.md` (M1-M6).

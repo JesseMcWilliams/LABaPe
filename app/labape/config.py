@@ -14,6 +14,7 @@ from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from urllib.parse import urlsplit
 
 DEFAULT_ROLE_MAP = {
     "labape-admins": "admin",
@@ -99,7 +100,6 @@ class Settings(BaseSettings):
     def ca_renew_url(self) -> str:
         if self.ca_public_url:
             return self.ca_public_url.rstrip("/")
-        from urllib.parse import urlsplit
         return f"https://{urlsplit(self.public_url).hostname}:9444"
 
     def model_post_init(self, __context) -> None:  # noqa: D401
