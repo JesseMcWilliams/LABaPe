@@ -4,7 +4,7 @@
 
 ## 1. State
 
-**Latest release:** v0.7.0 (2026-10-24)
+**Latest release:** v0.8.0 (2026-11-12)
 
 `main` has everything below merged; **nothing is released since v0.7.0** (the CHANGELOG's `[Unreleased]` is long: a v0.8.0 is due, §3.1). pytest in the Windows scratch venv: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: the venv has no `winrm`; it passes in the image). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **229** (227 and 228 are the root-image plan's, open with recommendations).
 
