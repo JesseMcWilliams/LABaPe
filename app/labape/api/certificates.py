@@ -62,6 +62,7 @@ def list_certificates(scope: str = Query(default="mine", pattern="^(mine|all)$")
 class SettingsIn(BaseModel):
     allowed_domains: list[str] = Field(default_factory=list, max_length=50)
     allowed_networks: list[str] = Field(default_factory=list, max_length=50)
+    environment_ranges: list[str] = Field(default_factory=list, max_length=50)
     default_days: int = Field(default=30, ge=1, le=90)
     max_days: int = Field(default=90, ge=1, le=90)
     attributes_enabled: bool = False
@@ -82,11 +83,17 @@ def put_settings(body: SettingsIn, request: Request, db: Session = Depends(get_d
             ipaddress.ip_network(n, strict=False)
         except ValueError as exc:
             raise FieldError("allowed_networks", f"{n!r} isn't a network (for example 10.0.0.0/8)") from exc
+    for n in body.environment_ranges:
+        try:
+            ipaddress.ip_network(n.strip(), strict=False)
+        except ValueError as exc:
+            raise FieldError("environment_ranges", f"{n!r} isn't a network (for example 192.0.2.0/24)") from exc
     if body.default_days > body.max_days:
         raise FieldError("default_days", "The default lifetime can't be longer than the longest.")
     model = appsettings.CertificateSettings(
         allowed_domains=[d.strip().lower().strip(".") for d in body.allowed_domains if d.strip()],
         allowed_networks=[n.strip() for n in body.allowed_networks if n.strip()],
+        environment_ranges=[n.strip() for n in body.environment_ranges if n.strip()],
         default_days=body.default_days, max_days=body.max_days, attributes_enabled=body.attributes_enabled)
     appsettings.put(db, "certificates", model)
     audit(db, p.username, "certificate.settings", detail=model.model_dump(), source_ip=client_ip(request))

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ca
+from .. import appsettings, ca
 from ..config import get_settings
 from ..db import get_db
 from ..errors import FieldError
@@ -65,11 +65,14 @@ def sign_certificate(body: SignIn, request: Request, db: Session = Depends(get_d
         raise FieldError("host", f"{body.host} isn't a host of this job's environment.", status_code=403)
     domain = _domain()
     allowed_dns = {body.host.lower()} | ({f"{body.host.lower()}.{domain}"} if domain else set())
-    # Addresses: the host's static allocation, or anything in the networks the environment uses (DHCP).
+    # Addresses: the host's static allocation, or anything in the networks the environment names (DHCP), or in the
+    # ranges the CA's settings allow for environments (question 221). An environment that names no network gets only
+    # its allocations: it may not claim an address on some other network.
     allowed_ips = {a.address for a in db.scalars(select(IpAllocation).where(
         IpAllocation.environment_id == env.id, IpAllocation.vm_name == body.host))}
     nets = {g.get("network") for g in (env.spec or {}).get("host_groups", []) if g.get("network")}
-    cidrs = [ipaddress.ip_network(n.cidr, strict=False) for n in db.scalars(select(Network)) if not nets or n.name in nets]
+    cidrs = [ipaddress.ip_network(n.cidr, strict=False) for n in db.scalars(select(Network)) if n.name in nets]
+    cidrs += [ipaddress.ip_network(r, strict=False) for r in appsettings.get(db, "certificates").environment_ranges]
     _, _, ips = ca.csr_names(body.csr)
     allowed_ips |= {i for i in ips if any(ipaddress.ip_address(i) in c for c in cidrs)}
     try:

@@ -317,6 +317,10 @@ class CertificateSettings(BaseModel):
     its address are always allowed; CA administrators are not limited by these lists."""
     allowed_domains: list[str] = Field(default_factory=list, max_length=50)       # a name is allowed if it is, or ends in, one of these
     allowed_networks: list[str] = Field(default_factory=lambda: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"], max_length=50)
+    # Extra address ranges a deploy job may put in its VMs' certificates, on top of the environment's own named
+    # networks and the addresses LABaPe allocated to it (for an environment on a network LABaPe doesn't manage,
+    # such as a user's own range). Empty: only those.
+    environment_ranges: list[str] = Field(default_factory=list, max_length=50)
     default_days: int = Field(default=30, ge=1, le=90)
     max_days: int = Field(default=90, ge=1, le=90)                                 # step-ca allows up to 90 days
     # Extra key usages and extended key usages on a request (row 25). Off until the CA's provisioner carries the
