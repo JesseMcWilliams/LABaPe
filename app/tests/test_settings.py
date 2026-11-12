@@ -1,8 +1,11 @@
 """Admin settings: sections, secrets, syslog output, backups, retention purges, job emails."""
 import datetime as dt
 import os
+import shutil
 import socket
 import time
+
+import pytest
 
 from labape import notify
 from labape.db import session_factory
@@ -54,6 +57,8 @@ def test_syslog_test_and_audit_forwarding(client):
         rx.close()
 
 
+@pytest.mark.skipif(bool(os.environ.get("LABAPE_TEST_DATABASE_URL")) and not shutil.which("pg_dump"),
+                    reason="the backup step runs pg_dump, which this machine doesn't have (PostgreSQL run)")
 def test_backup_job_list_download_and_purge(client, tmp_root):
     _admin_session(client)
     d = tmp_root / "backups"
