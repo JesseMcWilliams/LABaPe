@@ -16,3 +16,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - Admin → Users → Disable also closes the user's open remote and console sessions: `Web-Interface-Admin.md` Users.
 - `/api/docs` is for admins only; uploads over 200 GB are refused; a sign-in notice when the session ends mid-use: `Web-Interface-Admin.md`, `Command-Line.md` (API docs), `Web-Interface-Guide.md`.
 - Certificates → Extra ranges for environments; an environment without a named network gets certificates only for its allocated addresses: `Web-Interface-Admin.md` Certificates.
+- Containers: the History tab (CPU and memory, 6 hours to 7 days): `Web-Interface-Admin.md` Containers.

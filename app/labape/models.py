@@ -832,3 +832,16 @@ class NotificationLog(Base):
     ok: Mapped[bool] = mapped_column(default=True)
     error: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[str] = mapped_column(Text, default="")
+
+
+class ContainerSample(Base):
+    """One container's CPU and memory at one 5-minute read (plan A1); kept 7 days for the history charts."""
+
+    __tablename__ = "container_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kvm_host_id: Mapped[int] = mapped_column(ForeignKey("kvm_hosts.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    cpu_pct: Mapped[float | None] = mapped_column(nullable=True)
+    mem_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

@@ -10,6 +10,7 @@ import { api, fmtTime } from "../api";
 import { Field } from "../forms";
 import { ActionButton } from "./Confirm";
 import { CleanupDialog } from "./ContainersCleanup";
+import ContainerHistory from "./ContainerHistory";
 
 interface Mount { type: string; source: string; target: string; rw: boolean }
 interface Container {
@@ -90,7 +91,7 @@ function Detail({ hostId, c, onClose, onChanged }: { hostId: number; c: Containe
       <DialogTitle sx={{ fontFamily: "monospace" }}>{c.name}</DialogTitle>
       <DialogContent>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-          <Tab label="Details" /><Tab label="Logs" />
+          <Tab label="Details" /><Tab label="Logs" /><Tab label="History" />
         </Tabs>
         {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
         {done && <Alert severity="success" sx={{ mb: 1 }}>{done}</Alert>}
@@ -157,6 +158,7 @@ function Detail({ hostId, c, onClose, onChanged }: { hostId: number; c: Containe
             )}
           </Stack>
         )}
+        {tab === 2 && <ContainerHistory hostId={hostId} name={c.name} />}
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
     </Dialog>
