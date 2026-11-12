@@ -690,6 +690,17 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
   const check = async () => {
     try { const h = await api.post<KvmHost>(`/api/hosts/${host.id}/access/check`); setMsg(h.access_status === "ready" ? "SSH access works." : `SSH access failed: ${h.access_error}`); reload(); } catch (e) { setMsg((e as Error).message); }
   };
+  const [hostSetup, setHostSetup] = useState<{ current: boolean; applied_at: string | null; ok: boolean | null; steps: string[] } | null>(null);
+  useEffect(() => {
+    if (host.access_status !== "ready") return;
+    api.get<NonNullable<typeof hostSetup>>(`/api/hosts/${host.id}/host-setup`).then(setHostSetup).catch(() => setHostSetup(null));
+  }, [host.id, host.access_status]);
+  const applySetup = async () => {
+    try {
+      const r = await api.post<{ job_id: number }>(`/api/hosts/${host.id}/host-setup`);
+      navigate(`/jobs/${r.job_id}`);
+    } catch (e) { setErrs(fromApiError(e)); }
+  };
   const prepare = async () => {
     setErrs({ summary: "", fields: {} });
     try {
@@ -784,6 +795,28 @@ export function AccessSection({ host, reload }: { host: KvmHost; reload: () => v
           </Stack>
         </Stack>
       </Paper>}
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1.5}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Alerts and disk setup{" "}
+            {hostSetup && <Chip size="small" label={hostSetup.current ? "current" : hostSetup.applied_at ? "out of date" : "not applied"} color={hostSetup.current ? "success" : "warning"} />}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Runs the installer&apos;s alert and disk steps on the host again (mail to the stack&apos;s Mailpit, RAID and SMART alerts, weekly self-tests,
+            the read-only diagnostic sudo rule). Each step says what it did and leaves an existing setting alone. LABaPe does this by itself for every
+            host after an update of the stack that changes these steps.
+            {hostSetup?.applied_at ? ` Last applied ${fmtTime(hostSetup.applied_at)}${hostSetup.ok === false ? ", and it failed" : ""}.` : ""}
+          </Typography>
+          <Stack direction="row">
+            <ActionButton variant="outlined" disabled={host.access_status !== "ready"} onClick={applySetup}
+              tip={host.access_status === "ready" ? "Run the alert and disk steps on this host as a job" : "Set up SSH access first"}
+              confirm={{ title: `Apply the alert and disk setup on ${host.name}?`, confirmLabel: "Apply",
+                body: "The installer runs as root on the host. It may install a mail program and the mail command, and it adds to smartd.conf and mdadm.conf only where the Admin guide says. Only smartd and mdmonitor restart." }}>
+              Apply host setup
+            </ActionButton>
+          </Stack>
+        </Stack>
+      </Paper>
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>

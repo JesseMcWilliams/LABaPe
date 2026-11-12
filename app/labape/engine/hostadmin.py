@@ -897,7 +897,6 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
     `install-labape.py --profile kvm` there as root, unattended, from the answers in the job's
     params (no secrets in them). The worker's libvirt key is authorized for the service user,
     so the host can then be used as a qemu+ssh KVM host."""
-    from ..config import get_settings
     from .runner import _append
     h = db.get(KvmHost, job.kvm_host_id)
     log = lambda m: _append(job, m)                                         # noqa: E731
@@ -913,46 +912,9 @@ def run_install(db: Session, job, popen=subprocess.Popen) -> int:
                "WorkerPublicKey": hostio.ensure_key(), "TemplatesToBuild": []}     # templates: web jobs
     answers.setdefault("AlertMailHost", stack_mail_host(db))              # the host's own mail goes to the stack's Mailpit
     root = INSTALL_ROOT
-    engine = get_settings().engine_dir
-    # The copy needs tar on the host; minimal RHEL-family images don't have it.
-    tar_ok = ssh.run("command -v tar >/dev/null || sudo -n dnf install -y -q tar >/dev/null 2>&1 "
-                     "|| sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tar >/dev/null 2>&1; "
-                     "command -v tar >/dev/null", timeout=300)
-    if tar_ok.returncode != 0:
-        log("labape: the host has no tar and installing it failed (dnf or apt-get)\n")
-        return 1
-    pruned = ssh.run(f"sudo -n python3 - {root} {' '.join(INSTALL_KEEP)}", input=PRUNE.encode(), timeout=120)
-    if pruned.returncode != 0:
-        log(f"labape: tidying {root} failed: {pruned.stderr.decode(errors='replace').strip()[-300:]}\n")
-        return 1
-    # Only what this copy doesn't bring back is worth reporting.
-    gone = [g.removeprefix("removed ") for g in pruned.stdout.decode(errors="replace").split("\n") if g]
-    gone = [g for g in gone if not any(g == f or g.startswith(f + "/") or f.startswith(g + "/") for f in INSTALL_FILES)]
-    if gone:
-        log(f"labape: removed what older installs left in {root}: {', '.join(gone)}\n")
-    log(f"labape: copying the installer to {h.ssh_user}@{h.ssh_address}:{root}\n")
-    tar = popen(["tar", "-C", str(engine), *[f"--exclude={x}" for x in INSTALL_EXCLUDE], "-czf", "-",
-                 *[d for d in INSTALL_FILES if (engine / d).exists()]], stdout=subprocess.PIPE)
-    r = subprocess.run([*ssh.base(), f"sudo -n mkdir -p {root} && sudo -n tar -xzf - -C {root}"],
-                       stdin=tar.stdout, capture_output=True, timeout=900, env=hostio.tool_env(), check=False)
-    tar.stdout.close()
-    tar.wait()
-    if r.returncode != 0 or tar.returncode != 0:
-        log(f"labape: copying failed: {r.stderr.decode(errors='replace').strip()[-400:]}\n")
-        return 1
-    put = ssh.run(f"sudo -n tee {root}/deploy/answers.web.json >/dev/null && sudo -n chmod 0600 {root}/deploy/answers.web.json",
-                  input=json.dumps({k: v for k, v in answers.items() if k != "ForwardHostLogs"}, indent=2).encode())
-    # The service user owns the repository copy, as on any LABaPe host: the installer runs
-    # ansible-vault and the CLI checks as that user. Created here if it doesn't exist yet
-    # (the same as the installer's Prereq.User).
-    svc = shlex.quote(answers.get("ServiceUser") or "labape")
-    own = ssh.run(f"(id -u {svc} >/dev/null 2>&1 || sudo -n useradd --create-home --shell /bin/bash {svc}) "
-                  f"&& sudo -n chown -R {svc}:{svc} {root}")
-    if own.returncode != 0:
-        log(f"labape: handing {root} to the service user failed: {own.stderr.decode(errors='replace').strip()[-300:]}\n")
-        return 1
-    if put.returncode != 0:
-        log("labape: writing the answer file failed\n")
+    from . import hostsetup
+    failed = hostsetup.push_installer(h, ssh, log, answers, "answers.web.json", popen)
+    if failed:
         return 1
     cmd = (f"cd {root} && sudo -n env DEBIAN_FRONTEND=noninteractive python3 deploy/install-labape.py --profile kvm "
            f"--instance web --config-file deploy/answers.web.json --non-interactive")

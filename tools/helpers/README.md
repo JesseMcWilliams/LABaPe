@@ -51,6 +51,7 @@ For example, in `~/.bashrc`: `export LABAPE_LAB_SSH=user@labhost LABAPE_LAB_KEY=
 | `live/host_files.py` | lab (container) | A KVM host's files path and free-space alert; change the path and wait for the move job |
 | `live/host_pools.py` | lab | Every host's drive pools as the page sees them (`refresh` reads the facts first); read-only |
 | `live/host_power.py` | lab | `info` a host's pending OS updates (read-only); `update` / `reboot` start real jobs |
+| `live/host_setup.py` | lab (container) | Each host's alert and disk setup state (design §83); `apply HOST_ID` queues the installer's alert and disk steps on that host, waits and prints the log |
 | `live/host_logs.py` | lab | Which hosts forward their own logs to the stack syslog; `on`/`off` HOST_ID |
 | `live/alert_to.py` | lab | Settings → Monitoring "Email alerts to": show or set |
 | `live/stack_mail.py` | lab (container) | The stack's own Mailpit: status, the admin-only route, a test email, its inbox, forwarding through a server (`relay`) or off |

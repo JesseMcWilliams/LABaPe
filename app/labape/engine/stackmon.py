@@ -464,8 +464,9 @@ def tick(db_factory) -> None:
                 from .. import links
                 links.poll_all(db, now)            # linked stacks' summaries (design §34)
                 recheck_email(db, now)
-                from . import heartbeat, notifications
+                from . import heartbeat, hostsetup, notifications
                 heartbeat.due(db, now)
+                hostsetup.due(db, now)
                 sync_alerts(db, evaluate(db, now), now)
                 notifications.digest(db, now)
         except Exception:  # noqa: BLE001

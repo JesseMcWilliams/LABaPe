@@ -618,6 +618,32 @@ def reboot_host(host_id: int, request: Request, db: Session = Depends(get_db),
     return _queue_host_job(db, _host(db, host_id), "host.reboot", request, p)
 
 
+@router.get("/{host_id}/host-setup")
+def host_setup_state(host_id: int, db: Session = Depends(get_db),
+                     p: Principal = Depends(require_roles("admin"))):
+    """Whether the host's alert and disk setup is current with the installer the stack carries (question 229)."""
+    from ..engine import hostsetup
+    h = _host(db, host_id)
+    s = hostsetup.state(db, h.id)
+    return {"current": s.get("revision") == hostsetup.revision(), "applied_at": s.get("at"), "ok": s.get("ok"),
+            "auto": hostsetup.auto_enabled(db), "steps": list(hostsetup.HEALTH_STEPS), "last_job": s.get("job")}
+
+
+@router.post("/{host_id}/host-setup")
+def apply_host_setup(host_id: int, request: Request, db: Session = Depends(get_db),
+                     p: Principal = Depends(require_roles("admin"))):
+    """Run the installer's alert and disk steps on the host again, as a job (question 229)."""
+    from ..engine import hostsetup
+    h = _host(db, host_id)
+    if h.access_status != "ready":
+        raise FieldError("access", "Set up SSH access to this host first.")
+    job = hostsetup.queue(db, h, p.username)
+    if job is None:
+        raise HTTPException(status_code=409, detail="A host setup job is already queued or running on this host")
+    audit(db, p.username, "host.setup", object_type="kvm_host", object_id=h.id, detail={"job": job.id}, source_ip=client_ip(request))
+    return {"job_id": job.id}
+
+
 class NetworkAnswer(BaseModel):
     Name: str = Field(pattern=r"^[a-z][a-z0-9-]{0,62}$")
     Cidr: str
