@@ -43,7 +43,7 @@ from ..naming import instance_names
 from .. import domain_member, linux_desktop, mail_server, openbao_vms, spread, timezones, vm_passwords
 from .files_sync import hash_in_background, scan as scan_files
 from .hoststats import collect_all as collect_host_stats
-from . import (linked_copy, package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, maintenance, migrate, power, rotation,
+from . import (linked_copy, package_updates, downloads, engine_secrets, filedist, hostadmin, hostio, hostpower, hostsetup, maintenance, migrate, power, rotation,
                secret_health, snapshots, stackbackup, stackmon, template_versions)
 from .. import linked_library, maintenance_mode, syslogstack, version
 from . import planpreview, vmidentity
@@ -104,7 +104,7 @@ def claim(db: Session, worker: str) -> Job | None:
     return None
 
 
-HOST_OWN_JOBS = ("host.install", "host.update", "host.reboot")        # these also run on a host not enabled for deploys
+HOST_OWN_JOBS = ("host.install", "host.setup", "host.update", "host.reboot")        # these also run on a host not enabled for deploys
 
 
 def recover_stale(db: Session) -> None:
@@ -264,7 +264,7 @@ def run(job_id: int, worker: str) -> None:
         # Jobs the worker runs itself, with no KVM host or engine scripts.
         system = {"system.backup": maintenance.run_backup, "files.download": downloads.run_download,
                   "secret.rotate": rotation.run_job, "template.delete": template_versions.run_delete,
-                  "environment.power": power.run_job, "host.install": hostadmin.run_install,
+                  "environment.power": power.run_job, "host.install": hostadmin.run_install, "host.setup": hostsetup.run_setup,
                   "host.update": hostpower.run_update, "host.reboot": hostpower.run_reboot,
                   "backup.store_linked": stackbackup.store_linked, "vm.snapshot": snapshots.run_job, "environment.move": migrate.run_job,
                   "secret.check": secret_health.run_job,
