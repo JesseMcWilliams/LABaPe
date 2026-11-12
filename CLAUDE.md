@@ -29,7 +29,7 @@ Ansible YAML/Jinja2, and some PowerShell — not a single-language target.
 - The throwaway test stores (`tools/secrets-test/`) were retired on 2026-10-12: the stack's own OpenBao and Conjur (`container/stores/`, design §26) replaced them.
 - `tools/helpers/` — helper scripts used more than once (shipping a change, deploying a working tree to the lab stack, live tests); see its README. Put any reused helper here, never lab details: they come from environment variables.
 - `software-store/` — gitignored except `.gitkeep`; local installer binaries, don't read or commit.
-- Code files stay under ~1,000 lines (largest: `app/labape/engine/runner.py`, ~730). `Planning_Web-Interface-Design.md` (~1,050) is over; grep for a section and read that range.
+- Code files stay under ~1,000 lines (largest now: `app/labape/engine/hostadmin.py`, ~995; `runner.py` and `api/environments.py` were split on 2026-11-12 into `runner_prepare.py` and `environments_vms.py`, the installer's `steps.py` into `steps_base.py` and `steps_stack.py`). `Planning_Web-Interface-Design.md` (~1,050) is over; grep for a section and read that range.
 
 ## Tests
 - `scripts/test/run-all.sh` — runs every check (tools/collections installed, Ansible syntax, `tofu validate`, libvirt/WinRM connectivity, vault+SSH key consistency), prints a PASS/FAIL summary.
