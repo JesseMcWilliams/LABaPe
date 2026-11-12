@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from .api import env_templates as env_templates_api
+from .api import environments_vms
 from .api import linked_library as linked_api
 from .api import fixes as fixes_api
 from .api import env_sharing
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
         networks.router,
         templates.router,
         environments.router,
+        environments_vms.router,
         env_secrets.router,
         mail.router,
         notifications_api.router,

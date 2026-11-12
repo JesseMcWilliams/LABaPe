@@ -4,7 +4,7 @@ import json
 
 from labape import spread
 from labape.db import session_factory
-from labape.engine import power, runner
+from labape.engine import power, runner, runner_prepare
 from labape.models import Environment, Job, KvmHost
 
 from test_api import _admin_session, _host
@@ -73,7 +73,7 @@ def _engine(tmp_root):
 
 def test_parts_of_a_spread_job(tmp_root, db_reset, monkeypatch):
     _engine(tmp_root)
-    monkeypatch.setattr(runner, "overlay_vault", lambda work, overrides: None)    # no ansible-vault here (A1 passwords)
+    monkeypatch.setattr(runner_prepare, "overlay_vault", lambda work, overrides: None)    # no ansible-vault here (A1 passwords)
     with session_factory()() as db:
         _hosts_rows(db)
         e = _env()
