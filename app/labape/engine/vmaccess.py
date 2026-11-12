@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Environment, Secret
 from ..security import get_secret, put_secret
-from . import hostio
+from . import hostio, vmidentity
 
 KEEP = 7                                  # previous VM keys still accepted (question 90)
 
@@ -64,6 +64,7 @@ def _ansible(inv: dict, pattern: str, module: str, args: dict, extra: dict | Non
     0600 file, never on the command line); the PLAY RECAP gives each host's result."""
     with tempfile.TemporaryDirectory() as d:
         inv_file, vars_file, play = Path(d) / "inventory.yml", Path(d) / "vars.yml", Path(d) / "play.yml"
+        inv, checks = vmidentity.harden(inv, Path(d), (env or {}).get("ANSIBLE_SSH_COMMON_ARGS", ""))     # plan B3
         inv_file.write_text(yaml.safe_dump(inv), encoding="utf-8")
         os.chmod(inv_file, 0o600)
         vars_file.write_text(yaml.safe_dump(extra or {}), encoding="utf-8")
@@ -73,7 +74,7 @@ def _ansible(inv: dict, pattern: str, module: str, args: dict, extra: dict | Non
                         encoding="utf-8")
         run_env = {**os.environ, "ANSIBLE_HOST_KEY_CHECKING": "False", "ANSIBLE_NOCOLOR": "1",
                    "ANSIBLE_FORCE_COLOR": "0", "ANSIBLE_STDOUT_CALLBACK": "default",
-                   "HOME": os.environ.get("HOME", d), **(env or {})}
+                   "HOME": os.environ.get("HOME", d), **(env or {}), **checks}
         r = subprocess.run(["ansible-playbook", "-i", str(inv_file), "-e", f"@{vars_file}", str(play)],
                            capture_output=True, text=True, timeout=timeout, env=run_env, check=False)
     secrets = [x for x in (*scrub, *((extra or {}).get(k) for k in ("new_pw", "ansible_password"))) if x]
@@ -84,7 +85,10 @@ def _ansible(inv: dict, pattern: str, module: str, args: dict, extra: dict | Non
     out.errors = {}
     for m in re.finditer(r"^fatal: \[([^\]]+)\]: (?:FAILED|UNREACHABLE)! => (.*)$", text, re.M):
         msg = re.search(r'"msg": "((?:[^"\\]|\\.)*)"', m.group(2))
-        out.errors[m.group(1)] = (msg.group(1) if msg else m.group(2))[:300]
+        text_ = (msg.group(1) if msg else m.group(2))[:300]
+        if "Host key verification failed" in text_ or "HOST IDENTIFICATION HAS CHANGED" in text_:
+            text_ += " (" + vmidentity.CHANGED_HINT + ")"
+        out.errors[m.group(1)] = text_
     for m in re.finditer(r"^(\S+)\s+:\s+ok=(\d+)\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)", text, re.M):
         host, (_ok, changed, unreachable, failed) = m.group(1), map(int, m.groups()[1:])
         out[host] = "unreachable" if unreachable else "failed" if failed else "changed" if changed else "ok"

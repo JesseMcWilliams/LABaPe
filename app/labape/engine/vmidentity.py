@@ -158,6 +158,48 @@ def chains_to_platform_ca(address: str, port: int = 5986, timeout: float = 8.0) 
         return False
 
 
+# --- Ansible (plan B3) -------------------------------------------------------------------------
+
+def harden(inventory: dict, folder: Path, ssh_args: str = "") -> tuple[dict, dict]:
+    """What makes a later Ansible run check the VMs it reaches against their records, not accept anything.
+    Returns (the inventory with WinRM validation added for VMs on a platform-CA certificate, extra environment).
+    SSH: a known_hosts file of the recorded keys, with `accept-new`, so a recorded VM must present its key and a VM
+    with no record is still accepted (and recorded by the next deploy). WinRM: `validate` against the platform root.
+    `ssh_args` are the caller's own ssh options, kept in front. Nothing changes for a VM that has no record."""
+    from ..config import get_settings
+    from ..db import session_factory
+    hosts = (inventory.get("all") or {}).get("hosts") or {}
+    lines, ca_hosts = [], []
+    with session_factory()() as db:
+        for name, h in hosts.items():
+            address = str((h or {}).get("ansible_host") or "")
+            if not address:
+                continue
+            if (h or {}).get("ansible_connection") == "winrm":
+                if trusted(db, address, WINRM) == CA:
+                    ca_hosts.append(name)
+            else:
+                value = trusted(db, address, SSH)
+                if value:
+                    lines.append(known_hosts(address, value))
+    inv = inventory
+    if ca_hosts:
+        import copy
+        inv = copy.deepcopy(inventory)
+        for name in ca_hosts:
+            inv["all"]["hosts"][name].update(ansible_winrm_server_cert_validation="validate",
+                                             ansible_winrm_ca_trust_path=str(get_settings().ca_root))
+    env: dict = {}
+    if lines:
+        kh = folder / "known_hosts"
+        kh.write_text("".join(lines), encoding="utf-8")
+        kh.chmod(0o600)
+        # A private control-socket folder: a connection another run left open would be reused without being checked.
+        env = {"ANSIBLE_HOST_KEY_CHECKING": "True", "ANSIBLE_SSH_CONTROL_PATH_DIR": str(folder),
+               "ANSIBLE_SSH_COMMON_ARGS": f"{ssh_args} -o UserKnownHostsFile={kh} -o HashKnownHosts=no -o StrictHostKeyChecking=accept-new".strip()}
+    return inv, env
+
+
 # --- after a deploy ---------------------------------------------------------------------------
 
 def record_env(db: Session, env: Environment, inventory: dict, log=None) -> dict[str, str]:
