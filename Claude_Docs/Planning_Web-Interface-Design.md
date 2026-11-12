@@ -2337,3 +2337,16 @@ Plan: [Planning_Next-Round-2026-11-08.md](Planning_Next-Round-2026-11-08.md).
 | Not sampled | Disk and network I/O; stopped containers (no stats); the Stack's own containers are sampled like any other and shown read-only. |
 | Verified | `test_a1_container_history.py`. Not yet looked at in a browser. |
 
+## 82. Rootless Podman on the Containers page (plan A2, built 2026-11-12)
+
+Plan: [Planning_Next-Round-2026-11-08.md](Planning_Next-Round-2026-11-08.md).
+
+| Area | As built |
+|---|---|
+| What is read | The collector script (`hostcontainers.SCRIPT`) became a `gather(runtime, owner)` function. It runs for root's runtime as before and, when the host's access account (`ssh_user`, not root) has a Podman, again as that user: `runuser -u <user> -- env XDG_RUNTIME_DIR=/run/user/<uid> HOME=<home> podman ...`. Each container, image and volume carries `owner` ("" for root's); the host record keeps `rootless: {user, uid, version}`. Only the access account is read, not every user. |
+| Page | A `rootless · <user>` chip on the container, image and volume. Rootless containers are never actionable (`why_not` says so): no start, stop, restart, update or clean-up; images and volumes of a user are never offered for clean-up; an image counts as in use only for containers of the same owner; the newer-image check leaves them out. |
+| Logs and stats | Run as the owner (`sudo -n runuser -u <user> -- env XDG_RUNTIME_DIR=... podman logs|stats`). |
+| Alerts, history | Rootless containers are watched like the others (stopped with an error, unhealthy, restarting) and sampled for the history charts. |
+| Limits | The user needs a Podman and a runtime directory (`/run/user/<uid>` exists while the user has a session or lingering is on); without it nothing extra is read and nothing fails. Rootless Docker is not read. Actions on rootless containers are a later step (question 216). |
+| Verified | `test_a2_rootless.py` (the script run against a fake runtime as root and as the user, the page, clean-up exclusion, logs and stats prefixes). Not yet run on a host with a rootless Podman. |
+

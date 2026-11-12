@@ -7,7 +7,7 @@
 | Batch | What | Notes |
 |---|---|---|
 | A1 | **(Built 2026-11-11, design §81.) Container history charts.** CPU and memory per container, sampled with each 5-minute read, kept 7 days, drawn on the container's detail dialog. | Question 215. Rest of C4. |
-| A2 | **Rootless Podman.** Containers of the access account's own Podman show on the Containers page, marked rootless; read-only first. | Question 216. Rest of C4. |
+| A2 | **(Built 2026-11-12, design §82.) Rootless Podman.** Containers of the access account's own Podman show on the Containers page, marked rootless; read-only first. | Question 216. Rest of C4. |
 | A3 | **(Written: [Testing_Manual-Checks-Disk-Notifications.md](Testing_Manual-Checks-Disk-Notifications.md).) A manual-check list for what only the lab can show:** run the installer steps on OZ (`Prereq.DiagSudo`, `SmartTests`, `SmartAlerts`, `RaidDiskTimeouts`, `AlertMail` on pi1 and garagepc), read `smartctl` for the self-test log, a real webhook or ntfy rule, a heartbeat that fails on purpose, the first real **Replace a drive** on `md10`. | A results table like `Testing_Manual-Checks-v0.5.5.md`. The user runs the steps; Claude writes the list and records results. |
 
 ## 2. The open queue

@@ -17,10 +17,10 @@ interface Container {
   name: string; id: string; image: string; project: string; service: string; state: string; health: string; exit_code: number | null; oom: boolean;
   error: string; started_at: string; finished_at: string; restarts: number; restart_policy: string; unit: string; compose_dir: string; ports: string[]; mounts: Mount[]; networks: string[];
   stats: { cpu: string; memory: string; memory_pct: string } | null; attention: string; stack_own: boolean; quadlet: boolean;
-  actionable: boolean; why_not: string; ops: string[]; image_update: string;
+  actionable: boolean; why_not: string; ops: string[]; image_update: string; owner?: string;
 }
-interface Image { id: string; repository: string; tag: string; size: string; created: string; dangling: boolean; in_use: boolean }
-interface Volume { name: string; driver: string; size: string | null; used_by: string[] }
+interface Image { id: string; repository: string; tag: string; size: string; created: string; dangling: boolean; in_use: boolean; owner?: string }
+interface Volume { name: string; driver: string; size: string | null; used_by: string[]; owner?: string }
 interface Page {
   runtime: string; version: string; collected_at: string | null; error: string; alerts: boolean; level: string; known: string[]; containers: Container[]; images: Image[]; volumes: Volume[];
   summary: { total: number; running: number; attention: number; newer_images: number };
@@ -279,7 +279,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
                     title={c.stack_own ? "The stack's own containers are never changed from here" : "A known container may be started, stopped, restarted and recreated from this page"} />
                 </TableCell>
               )}
-              <TableCell sx={{ fontFamily: "monospace" }}>{c.name}{c.stack_own && <Chip size="small" label="stack" sx={{ ml: 1 }} title="Part of this LABaPe stack" />}</TableCell>
+              <TableCell sx={{ fontFamily: "monospace" }}>{c.name}{c.stack_own && <Chip size="small" label="stack" sx={{ ml: 1 }} title="Part of this LABaPe stack" />}{c.owner && <Chip size="small" variant="outlined" label={`rootless · ${c.owner}`} sx={{ ml: 1 }} title={`Run by ${c.owner} with its own Podman; shown here, not changed from here`} />}</TableCell>
               <TableCell><Chip size="small" color={stateColor(c)} label={c.health ? `${c.state} · ${c.health}` : c.state} title={c.attention ? `This container ${c.attention}` : undefined} /></TableCell>
               <TableCell sx={{ fontSize: 12 }}>{c.image}{c.image_update === "newer" && <Chip size="small" color="info" label="newer image" sx={{ ml: 1 }} title="The registry has a newer version of this tag than the one on the host" />}</TableCell>
               <TableCell>{c.project ? `${c.project}/${c.service}` : "—"}</TableCell>
@@ -307,7 +307,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
         <TableBody>
           {page.images.map((i) => (
             <TableRow key={`${i.id}${i.repository}${i.tag}`}>
-              <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>{i.dangling ? "(untagged)" : `${i.repository}:${i.tag}`}</TableCell>
+              <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>{i.dangling ? "(untagged)" : `${i.repository}:${i.tag}`}{i.owner && <Chip size="small" variant="outlined" label={`rootless · ${i.owner}`} sx={{ ml: 1 }} />}</TableCell>
               <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>{i.id}</TableCell><TableCell>{i.size}</TableCell><TableCell>{i.created}</TableCell>
               <TableCell>{i.in_use ? <Chip size="small" label="in use" /> : i.dangling ? <Chip size="small" color="warning" label="dangling" title="Untagged and unused" /> : "—"}</TableCell>
             </TableRow>
@@ -320,7 +320,7 @@ export function ContainersSection({ hostId, reload }: { hostId: number; reload: 
         <TableBody>
           {page.volumes.map((v) => (
             <TableRow key={v.name}>
-              <TableCell sx={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{v.name}</TableCell><TableCell>{v.driver}</TableCell>
+              <TableCell sx={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{v.name}{v.owner && <Chip size="small" variant="outlined" label={`rootless · ${v.owner}`} sx={{ ml: 1 }} />}</TableCell><TableCell>{v.driver}</TableCell>
               <TableCell>{v.size ?? "—"}</TableCell>
               <TableCell>{v.used_by.length ? v.used_by.join(", ") : <Chip size="small" color="warning" label="unused" />}</TableCell>
             </TableRow>
