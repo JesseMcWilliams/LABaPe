@@ -20,6 +20,7 @@ from pathlib import Path
 from requests.adapters import HTTPAdapter
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import Environment, KvmHost
 from . import hostio, vmidentity
 
@@ -161,12 +162,13 @@ def _pin_winrm(session, sha256: str) -> None:
 
 
 def _winrm_pin(address: str, port: int, recorded: str | None) -> str:
-    """The certificate fingerprint to hold the connection to: the record, or (none yet) what the VM presents
-    now, which is recorded (trust on first use)."""
+    """What to hold the connection to: `ca` (the listener's certificate must be signed by the platform CA and carry
+    the address), or a certificate fingerprint. The record decides; with none yet, what the VM presents now is
+    recorded (trust on first use)."""
     if recorded:
         return recorded
     try:
-        found = vmidentity.fetch_certificate(address, port)
+        found = vmidentity.CA if vmidentity.chains_to_platform_ca(address, port) else vmidentity.fetch_certificate(address, port)
     except OSError as exc:
         raise ExecError(f"WinRM: {address}:{port} did not answer ({exc})") from exc
     from ..db import session_factory
@@ -188,18 +190,21 @@ def _run_windows(host: dict, params: dict, command: str, timeout: float, cap: in
     # (an environment's domain account, or the domain admin) goes over NTLM.
     domain_login = "\\" in login or "@" in login
     transport = "ntlm" if domain_login else str(host.get("ansible_winrm_transport") or "ntlm")
+    trust = _winrm_pin(params["hostname"], port, recorded) if scheme == "https" else ""       # question 198
+    by_ca = trust == vmidentity.CA
+    extra = {"ca_trust_path": str(get_settings().ca_root)} if by_ca else {}
     session = winrm.Session(f"{scheme}://{params['hostname']}:{port}/wsman", auth=(login, params.get("password", "")),
                             transport=transport,
-                            server_cert_validation="ignore", operation_timeout_sec=max(5, int(timeout)),
-                            read_timeout_sec=max(10, int(timeout) + 10))
-    if scheme == "https":     # the certificate is the VM's: check it against the record (question 198)
-        _pin_winrm(session, _winrm_pin(params["hostname"], port, recorded))
+                            server_cert_validation="validate" if by_ca else "ignore", operation_timeout_sec=max(5, int(timeout)),
+                            read_timeout_sec=max(10, int(timeout) + 10), **extra)
+    if scheme == "https" and not by_ca:     # a certificate the VM made itself: hold it to the recorded one
+        _pin_winrm(session, trust)
     secrets = [params.get("password", "")]
     try:
         r = session.run_ps(command)
     except Exception as exc:  # noqa: BLE001
         text = mask(str(exc), secrets)
-        if "Fingerprints did not match" in text or "fingerprint" in text.lower():
+        if "Fingerprints did not match" in text or "fingerprint" in text.lower() or (by_ca and "certificate verify failed" in text.lower()):
             raise ExecError("WinRM: the VM's certificate is not the one LABaPe recorded. If the VM was rebuilt "
                             "outside LABaPe, an administrator can run `labape vm-identity forget <address>`; "
                             "otherwise treat this as a possible impersonation of the VM.") from exc

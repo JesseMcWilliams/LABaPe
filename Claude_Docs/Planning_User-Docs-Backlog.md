@@ -17,3 +17,4 @@ User-visible changes not yet covered in `User_Docs/`. One line each; remove a li
 - `/api/docs` is for admins only; uploads over 200 GB are refused; a sign-in notice when the session ends mid-use: `Web-Interface-Admin.md`, `Command-Line.md` (API docs), `Web-Interface-Guide.md`.
 - Certificates → Extra ranges for environments; an environment without a named network gets certificates only for its allocated addresses: `Web-Interface-Admin.md` Certificates.
 - Containers: the History tab (CPU and memory, 6 hours to 7 days): `Web-Interface-Admin.md` Containers.
+- Windows VMs' WinRM listener on the platform certificate, checked against the CA (what a "certificate is not the one LABaPe recorded" message means now): `Web-Interface-Admin.md` Certificates and the Commands section.

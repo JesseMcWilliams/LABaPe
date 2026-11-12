@@ -12,12 +12,12 @@
 | Ansible to Linux | `host_key_checking = False` (`ansible.cfg`, `ANSIBLE_HOST_KEY_CHECKING=False` in the engine's runs), so any key is accepted on every run. |
 | SSH from LABaPe's console and browser sessions | Checked against the recorded host keys (`vmidentity`), trust on first use. |
 
-## 1. B2: bind the WinRM listener to the platform certificate
+## 1. B2: bind the WinRM listener to the platform certificate (built 2026-11-11, steps 1, 3, 4; step 2 below is left to B3)
 
 | Step | What |
 |---|---|
 | 1 | In `labape_cert/tasks/windows.yml`, after the certificate is accepted: find it by thumbprint and set the HTTPS listener to it in place (`winrm set winrm/config/Listener?Address=*+Transport=HTTPS @{CertificateThumbprint=...}`), not remove and create, so the running session survives. A renewal (the role already renews at 10 days) rebinds the same way. |
-| 2 | The generated inventory sets `ansible_winrm_server_cert_validation: validate` and `ansible_winrm_ca_trust_path` (the platform root) for a Windows host once the certificate role has run in that deploy; the first contact, before the platform certificate exists, stays as it is. |
+| 2 | **Not built (moves to B3):** the generated inventory sets `ansible_winrm_server_cert_validation: validate` and `ansible_winrm_ca_trust_path` (the platform root) for a Windows host once the certificate role has run in that deploy; the first contact, before the platform certificate exists, stays as it is. |
 | 3 | `vmexec` validates against the platform root and the host's name or address (the certificate carries both) when the VM's record says `ca`; a record of kind pin (a VM without a platform certificate, or a CLI deploy) keeps the pin. `vmidentity` records which kind each VM is. |
 | 4 | A VM whose listener certificate is the CA's but does not chain to the platform root is refused with the existing "possible impersonation" hint. |
 
@@ -41,3 +41,7 @@ Risk: rebinding the listener can drop the connection mid-play. Test on one lab W
 | 224 | Should Ansible check recorded SSH host keys strictly on every later run (B3)? | Yes for VMs that have a record; first contact still accepted and recorded. |
 | 225 | What does a mismatch do? | Fails the job for that VM with the console's message and hint; nothing is changed on the VM. |
 | 226 | May Claude rebind a listener on a lab Windows VM to test B2 (which VM)? | Yes, one throwaway VM, with the rollback in place; never a domain controller. |
+
+## 4. B2 run live (2026-11-11)
+
+A new throwaway environment `b2win` (one Windows 10 VM from `win10-packer-2026.10` on kvm1, DHCP) deployed with the change: the listener answered with the platform certificate, the VM's record was `ca`, `chains_to_platform_ca` was true, and a command through the console API validated against the platform root. `renew.ps1 -Force` issued a new certificate and moved the listener to it (matching thumbprints before and after); the command afterwards still worked, which a fingerprint pin would have refused. `tools/helpers/live/winrm_ca_check.py` repeats the check.

@@ -113,6 +113,36 @@
       args:
         chdir: 'C:\ProgramData\LABaPe\tls'
 
+# Plan B2: the WinRM HTTPS listener answers with the platform certificate, so a client can check it against the
+# platform root instead of pinning one certificate. The thumbprint is changed in place (the running session
+# survives); the previous one is kept, and put back if the listener doesn't answer with the new one.
+- name: Bind the WinRM HTTPS listener to the platform certificate
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $c = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.FriendlyName -eq 'LABaPe host certificate' -and $_.HasPrivateKey } |
+        Sort-Object NotAfter -Descending | Select-Object -First 1
+      $Ansible.Changed = $false
+      if (-not $c) { return }
+      $sel = @{ Address = '*'; Transport = 'HTTPS' }
+      $cur = Get-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $sel -ErrorAction SilentlyContinue
+      if ($cur -and $cur.CertificateThumbprint -eq $c.Thumbprint) { return }
+      if (-not $cur) {
+        New-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $sel -ValueSet @{ Hostname = $env:COMPUTERNAME; CertificateThumbprint = $c.Thumbprint } | Out-Null
+        $Ansible.Changed = $true
+        return
+      }
+      Set-Content -Path 'C:\ProgramData\LABaPe\tls\listener-previous.txt' -Value $cur.CertificateThumbprint -Encoding ascii
+      Set-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $sel -ValueSet @{ CertificateThumbprint = $c.Thumbprint } | Out-Null
+      Start-Sleep -Seconds 2
+      try {
+        Test-WSMan -ComputerName $env:COMPUTERNAME -UseSSL -ErrorAction Stop | Out-Null
+      } catch {
+        Set-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $sel -ValueSet @{ CertificateThumbprint = $cur.CertificateThumbprint } | Out-Null
+        throw "The WinRM listener did not answer with the platform certificate; the previous one was put back: $($_.Exception.Message)"
+      }
+      $Ansible.Changed = $true
+
 - name: Renewal script
   ansible.windows.win_copy:
     dest: 'C:\ProgramData\LABaPe\tls\renew.ps1'
@@ -136,6 +166,12 @@
       $new = Get-Item "Cert:\LocalMachine\My\$($new.Thumbprint)"
       if (-not $new.HasPrivateKey) { throw 'The renewed certificate could not be linked to the key' }
       $new.FriendlyName = 'LABaPe host certificate'
+      # The WinRM listener answers with this certificate (plan B2): move it to the new one before the old one goes.
+      $sel = @{ Address = '*'; Transport = 'HTTPS' }
+      $cur = Get-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $sel -ErrorAction SilentlyContinue
+      if ($cur -and $cur.CertificateThumbprint -eq $c.Thumbprint) {
+        Set-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $sel -ValueSet @{ CertificateThumbprint = $new.Thumbprint } | Out-Null
+      }
       Remove-Item "Cert:\LocalMachine\My\$($c.Thumbprint)"
       "Renewed; valid until $($new.NotAfter)"
 
