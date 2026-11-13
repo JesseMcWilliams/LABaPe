@@ -10,7 +10,7 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 ### Fixed
 
 - **Rolling back across a release that added tables:** the restore of the pre-update backup stopped with "cannot drop constraint kvm_hosts_pkey" (a newer table pointed at an older one) and left the stack stopped in maintenance. It now empties the schema and loads the dump in one transaction, so it works whatever the newer release added and a failure leaves the database as it was. The web interface asks to confirm before a rollback.
-- **The web certificate's nightly renewal failed with "Permission denied"** on a host whose checkout came from git: `container/caddy/web-tls.sh` was committed without its executable bit. It is executable now and its systemd unit runs it with `bash`; an existing host picks the unit up when `web-tls.sh install` is run again.
+- **The web certificate's nightly renewal failed with "Permission denied"** on a host whose checkout came from git: `container/caddy/web-tls.sh` was committed without its executable bit. It is executable now and its systemd unit runs it with `bash`; an existing host picks the unit up when `web-tls.sh setup` is run again.
 
 ### Added
 
