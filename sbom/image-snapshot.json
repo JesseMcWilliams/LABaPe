@@ -233,7 +233,7 @@
   },
   {
    "name": "labape",
-   "version": "0.7.0",
+   "version": "0.8.0",
    "license": "AGPL-3.0-only",
    "summary": "LABaPe web application: UI, REST API and job runner for lab environments",
    "home": "",
@@ -645,7 +645,7 @@
   ],
   "dpkg_total": 116
  },
- "image_version": "v0.7.0-49-g96a5ebc",
+ "image_version": "v0.8.0-11-g6ad1441",
  "captured": "2026-11-12",
- "captured_from": "the lab stack's worker container (labape:local, built as v0.7.0-49-g96a5ebc) and the images it runs"
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.8.0-11-g6ad1441) and the images it runs"
 }

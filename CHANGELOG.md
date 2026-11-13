@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-12
+
+A patch release: rolling back across a release that added tables now works (the restore empties the schema and loads the dump in one transaction), the Roll back choice asks for confirmation, the web certificate's nightly renewal script is executable, and Apply host setup (a host's alert and disk steps, by button and after an update) is included.
+
 ### Fixed
 
 - **Rolling back across a release that added tables:** the restore of the pre-update backup stopped with "cannot drop constraint kvm_hosts_pkey" (a newer table pointed at an older one) and left the stack stopped in maintenance. It now empties the schema and loads the dump in one transaction, so it works whatever the newer release added and a failure leaves the database as it was. The web interface asks to confirm before a rollback.

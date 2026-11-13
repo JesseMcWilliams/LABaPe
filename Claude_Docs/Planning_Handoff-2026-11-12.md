@@ -4,7 +4,7 @@
 
 ## 1. State
 
-**Latest release:** v0.8.0 (2026-11-12)
+**Latest release:** v0.8.1 (2026-11-12)
 
 `main` has everything below merged and **released as v0.8.0** (2026-11-12; the CHANGELOG's `[Unreleased]` is empty again). pytest on SQLite in a fresh Windows venv with `pip install -e app pytest requests`: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: no `winrm`; with `pywinrm` installed all pass); on PostgreSQL (the release's run): **680 passed, 3 skipped** (the two `pg_dump` tests skip without `pg_dump`). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **230** (227 and 228 are the root-image plan's, open with recommendations; 229 is answered).
 
