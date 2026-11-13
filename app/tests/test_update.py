@@ -81,3 +81,19 @@ def test_cli_commands(client, capsys, tmp_root):
     assert path.endswith("-pre-update-v0.2.0.dump")
     assert cli.main(["restore", path]) == 2                        # needs --yes
     assert version.newer("v0.4.0-rc.1", "v0.3.0")
+
+
+def test_the_log_endpoint_returns_the_latest_runs_tail(client, monkeypatch, tmp_root):
+    _admin_session(client)
+    d = _setup(monkeypatch, tmp_root)
+    assert client.get("/api/admin/update/log").json() == {"lines": []}                 # no log yet
+    (d / "agent.log").write_bytes(b"=== 2026-11-12T09:19:00Z first run\nold line\n"
+                                  b"=== 2026-11-12T23:57:09Z second run\n\x1b[31mred\x1b[0m line\r\nprogress 1\rprogress 2\n"
+                                  + b"".join(b"filler %d\n" % i for i in range(300)) + b"[failed] restore\n")
+    lines = client.get("/api/admin/update/log").json()["lines"]
+    assert lines[-1] == "[failed] restore" and len(lines) == 200
+    assert not any("first run" in x or "old line" in x for x in lines)               # only the latest run
+    (d / "agent.log").write_bytes(b"=== run\n\x1b[31mred\x1b[0m line\r\nprogress 1\rprogress 2\n")
+    assert client.get("/api/admin/update/log").json()["lines"] == ["=== run", "red line", "progress 1", "progress 2"]
+    client.post("/api/auth/logout")
+    assert client.get("/api/admin/update/log").status_code in (401, 403)

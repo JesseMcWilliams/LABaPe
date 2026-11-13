@@ -40,6 +40,12 @@ def get_update(db: Session = Depends(get_db), _: Principal = Depends(require_rol
             "previous": update.previous(), "agent": {"installed": update.agent_installed(), **update.status()}}
 
 
+@router.get("/log")
+def get_log(_: Principal = Depends(require_roles("admin"))):
+    """The tail of the update agent's log for its latest run: why a failed update or rollback failed."""
+    return {"lines": update.log_tail()}
+
+
 class UpdateIn(BaseModel):
     target: str = Field(pattern=r"^v\d+\.\d+\.\d+[A-Za-z0-9.+-]*$")
 

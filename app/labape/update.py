@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -46,6 +47,27 @@ def status() -> dict:
     s = _read("status.json") or {"state": "idle"}
     s["pending"] = (folder() / "request.json").is_file()
     return s
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def log_tail(max_lines: int = 200, window: int = 256 * 1024) -> list[str]:
+    """The agent's log for its latest run (from the last '=== ' line, which the agent writes at the start of
+    each run), at most max_lines of it. Reads only the end of the file; [] when there's no log."""
+    try:
+        with open(folder() / "agent.log", "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - window))
+            text = f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    i = text.rfind("\n=== ")
+    if i >= 0:
+        text = text[i + 1:]
+    text = _ANSI.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
+    return text.splitlines()[-max_lines:]
 
 
 def previous() -> dict | None:
