@@ -7,6 +7,11 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rolling back across a release that added tables:** the restore of the pre-update backup stopped with "cannot drop constraint kvm_hosts_pkey" (a newer table pointed at an older one) and left the stack stopped in maintenance. It now empties the schema and loads the dump in one transaction, so it works whatever the newer release added and a failure leaves the database as it was. The web interface asks to confirm before a rollback.
+- **The web certificate's nightly renewal failed with "Permission denied"** on a host whose checkout came from git: `container/caddy/web-tls.sh` was committed without its executable bit. It is executable now and its systemd unit runs it with `bash`; an existing host picks the unit up when `web-tls.sh setup` is run again.
+
 ### Added
 
 - **Apply host setup:** a KVM host's **SSH access** section has a button that runs the installer's alert and disk steps (mail to the stack's Mailpit, RAID and SMART alerts, weekly self-tests, the diagnostic sudo rule) on the host again, as a job. LABaPe also queues it by itself for every host after an update of the stack that changes those steps (a failed run waits a day; the Setting `hostsetup.auto` turns it off). Design §83.

@@ -627,6 +627,8 @@ Design §28.4, live on the throwaway Debian 13 VM `kvmtest1` (nested KVM).
 
 1. **Update failed at "checking": "the checkout at /opt/LABaPe has local changes":** `git status --porcelain` listed the installer's untracked `container/compose.override.yaml` (and a `.env.bak-*`). OZ never showed it because its stack has no override file. The files are git-ignored now and the agent uses `--untracked-files=no`; a checkout that predates this needs the two names in `.git/info/exclude` once.
 
+3. **A rollback from v0.8.0 to v0.7.0 failed at the restore and left the Pi stopped in maintenance (2026-11-12):** `pg_restore --clean` drops only what the dump holds, so `host_containers` and `container_samples` (added by 0039-0045, absent from the dump) blocked `DROP CONSTRAINT kvm_hosts_pkey`. `--single-transaction` rolled the restore back, so the database stayed at 0045; the agent had already stopped the API and worker and checked out v0.7.0. Recovered by hand by checking out v0.8.0 and `compose up -d`. `restore_database` now pipes `pg_restore -f -` into `psql --single-transaction` after `DROP SCHEMA public CASCADE`; the rollback button asks first. Separately `container/caddy/web-tls.sh` had lost its executable bit on the Pi (mode 644), so `labape-web-tls.service` failed nightly with 203/EXEC.
+
 ## The stack's mail server (2026-10-15)
 
 1. **The API couldn't write Mailpit's options ("/var/lib/labape-mailpit: no such file") although the volume was listed in the compose file:** `labape-api` and `labape-worker` each define their own `volumes:` list, which replaces the shared one from the YAML anchor (a merge doesn't merge lists). The mount is on `labape-api` itself.
