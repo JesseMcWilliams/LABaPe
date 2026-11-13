@@ -6,7 +6,7 @@
 
 **Latest release:** v0.8.0 (2026-11-12)
 
-`main` has everything below merged and **released as v0.8.0** (2026-11-12; the CHANGELOG's `[Unreleased]` is empty again). pytest on SQLite in a fresh Windows venv with `pip install -e app pytest requests`: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: no `winrm`; with `pywinrm` installed all pass); on PostgreSQL (the release's run): **680 passed, 3 skipped** (the two `pg_dump` tests skip without `pg_dump`). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **229** (227 and 228 are the root-image plan's, open with recommendations).
+`main` has everything below merged and **released as v0.8.0** (2026-11-12; the CHANGELOG's `[Unreleased]` is empty again). pytest on SQLite in a fresh Windows venv with `pip install -e app pytest requests`: **681 passed, 2 skipped, 1 failed** (`test_pywinrm_session_uses_the_pin`: no `winrm`; with `pywinrm` installed all pass); on PostgreSQL (the release's run): **680 passed, 3 skipped** (the two `pg_dump` tests skip without `pg_dump`). `npm run build` passes. Questions 203-226 are all answered (the default recommendation where the user said so); the next free question is **230** (227 and 228 are the root-image plan's, open with recommendations; 229 is answered).
 
 | PR | What |
 |---|---|
@@ -19,6 +19,7 @@
 | #268 | **A1**: container CPU and memory history (§81), migration 0045 |
 | #271 | A stale apt index no longer fails a Debian deploy; **A2**: rootless Podman of the access account on the Containers page, read-only (§82) |
 | #273-#276 | Handoff; the root-image plan; Hyper-V removed; PostgreSQL run in `release.sh`; stdlib imports hoisted; guides up to date; a second `pg_dump` skip (#275); **Release v0.8.0** (#276) |
+| #278 | **Apply host setup** (question 229, design §83): a `host.setup` job runs the installer's six alert and disk `Prereq.*` steps on a registered host; an **Apply host setup** panel in a host's SSH access section; the monitoring tick queues it for every ready host whose setup predates the installer's steps (hash of `install-labape.py` and `steps.py`), so a stack update brings hosts along (`hostsetup.auto` switches it off). Merged after v0.8.0, so it is in `[Unreleased]` |
 | #272 | `runner.py` split into `runner` and `runner_prepare`; `api/environments.py` into `environments` and `environments_vms` (no code file is over 1,000 lines now) |
 
 Migrations are through **0045** (0039-0045 are new: host containers, container levels, notifications, digest, host heartbeat, container updates, container samples).
@@ -32,23 +33,24 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 | Heartbeat (N2) | kvm1: mail and syslog both arrived end to end; pi1 and garagepc: "no mail program" (a real gap, §3.2); nkvm1 unreachable |
 | B2 and B3 | **Live** on throwaway VMs (`b2win` Windows 10, `b3lin` Debian): listener bound to the platform certificate, a forced renewal moved it, commands and `win_ping` validated against the platform root; a changed SSH key failed with the hint; the first attempt exposed the ControlPersist reuse (fixed) |
 | Postgres test run | Run through an SSH tunnel to a throwaway postgres on OZ; the full suite on PostgreSQL passed apart from two Windows-box gaps (the backup-job test needs `pg_dump`, `test_update.py::test_cli_commands` needs a capturable stdout) |
+| **Apply host setup** | **Live 2026-11-12:** ran by itself on kvm1, pi1 and garagepc after the deploy (steps Completed or NotApplicable, mail to Mailpit); nkvm1 failed (unreachable), retried daily. The panel is type-checked by the image build, **not seen in a browser** |
 | **Never run for real** | The self-test read on real drives (the first run showed empty `tests` for all five kvm1 drives: confirm with `sudo smartctl -a`); the installer steps `DiagSudo`, `SmartTests`, `SmartAlerts`, `RaidDiskTimeouts` on OZ and `AlertMail` on pi1 and garagepc (the user runs them); **Replace a drive** on a real array (`md10` is healthy now); rootless Podman on a host that has one; Podman hosts generally; the UI pages in a browser (Notifications, the History tab, Replace dialog) |
 
 ## 3. What's left (in order)
 
 1. ~~**Release v0.8.0**~~ **Done 2026-11-12** (PR #276, signed tag, GitHub release with the SBOM, the MCP bundle and the skill zip). No `.docx` guides: pandoc isn't installed on the Windows box (`Published_Docs/` stays empty). The release's PostgreSQL run found a second `pg_dump` test (#275).
-2. **The user, on OZ:** run the installer steps in [Testing_Manual-Checks-Disk-Notifications.md](Testing_Manual-Checks-Disk-Notifications.md) §1 (`Prereq.*`), then record the results table; run `Prereq.AlertMail` on pi1 and garagepc or untick "Check that its alerts arrive" on those hosts; **replace the failed drive `P8G8JSPR`** (Replace a drive…, not Re-add).
+2. **The user, on OZ:** the `Prereq.*` steps have already been applied to kvm1, pi1 and garagepc by Apply host setup (2026-11-12), so skip the installer run; do the **checks** in [Testing_Manual-Checks-Disk-Notifications.md](Testing_Manual-Checks-Disk-Notifications.md) §1 (1.1-1.6: `sudo -l`, `smartctl -a` as the service user, the smartd test mail in Mailpit, the `DEVICESCAN` line, `scterc`, `echo hi | mail -s test root` on pi1 and garagepc), then record the results table; **replace the failed drive `P8G8JSPR`** (Replace a drive…, not Re-add).
 3. **Build the non-root images** from [Planning_Root-Image.md](Planning_Root-Image.md) (questions 227-228): entrypoint, `user:` and `.env` keys, the agent's one-time volume `chown`, live test on OZ; then the hardening PR. (The plan is written, nothing built.)
 4. **Remaining small review items:** done 2026-11-12 (stdlib imports hoisted: the 325 imports of the package itself and `cryptography`, `httpx`, `winrm` stay on purpose; Hyper-V removed; Postgres run in `release.sh`). Left over: the WSL install guides are still a Hyper-V walkthrough (backlog line).
 5. **Later:** actions on rootless Podman containers (question 216); a real ntfy or webhook on a rule (and Teams); per-host staggering of long self-tests; NVMe self-tests; a check that a Podman host's `skopeo` exists for the newer-image check.
-6. **From the older handoffs:** the Director's Fix, resetting `~/LABaPe-web` and reinstalling the update agent, deleting the test template `debian13-linktest-2026.10`, the garagepc folder check, the Kerberos click-through (handoff 2026-10-24 §3).
+6. **From the older handoffs:** the Director's Fix, deleting the test template `debian13-linktest-2026.10`, the garagepc folder check, the Kerberos click-through (handoff 2026-10-24 §3).
 
 ## 4. Lab state (2026-11-12)
 
 | Thing | State |
 |---|---|
-| kvm1 / OZ | The web stack runs `v0.7.0-49-g96a5ebc` (main before #275; the release is v0.8.0, which differs by tests, the guides and docs only), put there by `deploy-web.sh`, so `~/LABaPe-web` is dirty: reset it and reinstall the update agent (§3 item 6). Migrations through **0045**. The compose pins (`caddy:2.11.7`, `postgres:17.11-alpine`) are in the repo but its containers still run the older builds of the same versions until the stack is recreated. `md10` is healthy (the failed drive is back or replaced: confirm which). No Notifications channels or rules are configured |
-| pi1, garagepc, nkvm1 | pi1 and garagepc raise "alerts from this host may not arrive" (no mail program); nkvm1 (172.21.50.3) is unreachable |
+| kvm1 / OZ | The web stack runs `v0.8.0-4-g32defec` (main after #278), put there by `deploy-web.sh`; and `~/LABaPe-web` was reset to `main` with the update agent reinstalled (2026-11-12); the stack was then redeployed from clean `main` as `v0.8.0-4-g32defec`. Migrations through **0045**. The compose pins (`caddy:2.11.7`, `postgres:17.11-alpine`) are in the repo but its containers still run the older builds of the same versions until the stack is recreated. `md10` is healthy (the failed drive is back or replaced: confirm which). No Notifications channels or rules are configured |
+| pi1, garagepc, nkvm1 | pi1 and garagepc got the mail program from Apply host setup, so the "alerts may not arrive" warning should clear after the next daily heartbeat (confirm); nkvm1 (172.21.50.3) is unreachable, so its setup job fails and retries daily |
 | Test environments | `b2win`, `b3lin`, `fxcheck` were destroyed; `lab2`, `krbwin11`, `agent1`, `nestkvm`, `syslog1` are the long-lived ones (lab2's `l2lin1` did not answer on 2026-11-12) |
 | Test data left behind | A few notification log rows from the live test; the `container_samples` and `host_containers` data are real |
 
@@ -66,7 +68,8 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 10. **Docs:** the SBOM is generated (`python tools/helpers/sbom.py`; it reads `steps_base.py`); a test fails when it is stale.
 
 11. **Releasing from the Windows box:** `release.sh` needs `LABAPE_LAB_SSH`, `LABAPE_LAB_KEY` and `PYTHON` (a venv with `pip install -e app pytest requests pywinrm`) set; run `deploy-web.sh` from clean `main` first or pass `--sbom-anyway`; the PostgreSQL run takes about 13 minutes; start the release in the background and poll its log. A `--dry-run` skips the PostgreSQL run. `--docx` needs pandoc (not installed).
-12. **A new `.sh` file may be CRLF in the working copy** (`scripts/test/test-opentofu-config.sh` was): git normalises it at commit, bash on the box can't run it until then.
+12. **The setup job's installer instance is `setup`** (`/opt/labape-kvm/deploy/state`, logs `install-setup-*.log`), apart from Prepare's `web`; its summary lists every other step as "Not yet completed", which is only noise. **The tick runs it on the first monitoring pass after an update** that changes `install-labape.py` or `steps.py`, so after any change to those files expect root-run installer steps on every host without a click.
+13. **A new `.sh` file may be CRLF in the working copy** (`scripts/test/test-opentofu-config.sh` was): git normalises it at commit, bash on the box can't run it until then.
 
 ## 6. Where things are
 
