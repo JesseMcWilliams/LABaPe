@@ -24,6 +24,8 @@ export interface UpdateInfo {
 
 export default function UpdateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const confirm = useConfirm();
+  const [log, setLog] = useState<string[] | null>(null);        // the agent's log for its latest run, once asked for
+  const showLog = () => api.get<{ lines: string[] }>("/api/admin/update/log").then((r) => setLog(r.lines), (e) => setError(e.message));
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [choice, setChoice] = useState("");
   const [error, setError] = useState("");
@@ -99,8 +101,31 @@ export default function UpdateDialog({ open, onClose }: { open: boolean; onClose
             {!stale && (started || running || (a && a.state !== "idle")) && a && (
               <Alert severity={a.state === "succeeded" ? "success" : a.state === "running" || a.pending ? "info" : "error"} sx={{ my: 1 }}>
                 {a.pending && a.state !== "running" ? "Waiting for the update agent to start…" : <>
+                  <Typography variant="overline" component="div" sx={{ lineHeight: 1.5, fontWeight: 700 }}>
+                    {started || running || a.pending ? "This run" : "Last run (already finished, not the current state)"}
+                    {a.action ? `: ${a.action === "rollback" ? "rollback" : "update"}` : ""}
+                    {a.from && a.to ? ` ${a.from} → ${a.to}` : ""}
+                  </Typography>
                   <b>{a.state}</b>{a.step ? ` (${a.step})` : ""}: {a.message}
-                  {a.finished_at && <Typography variant="caption" component="div">Finished {fmtTime(a.finished_at)}</Typography>}
+                  {a.state === "failed" && <Box sx={{ mt: 0.5 }}>
+                    <Button size="small" onClick={showLog} title="Read the end of the update agent's log for this run">
+                      {log === null ? "Show details" : "Reload details"}
+                    </Button>
+                    <Typography variant="caption" component="div">
+                      The full log is on the host: <code>container/update/agent.log</code> in the stack's checkout
+                      (<code>/opt/LABaPe</code> on a Pi install, <code>~/LABaPe-web</code> on a KVM host).
+                    </Typography>
+                    {log !== null && (
+                      <Box component="pre" sx={{ m: 0, mt: 1, p: 1, maxHeight: 260, overflow: "auto", fontSize: 11,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word", bgcolor: "action.hover", borderRadius: 1 }}>
+                        {log.length ? log.join("\n") : "The agent's log is empty or can't be read from here."}
+                      </Box>
+                    )}
+                  </Box>}
+                  {(a.started_at || a.finished_at) && <Typography variant="caption" component="div">
+                    {a.started_at && <>Started {fmtTime(a.started_at)}</>}{a.started_at && a.finished_at && " · "}
+                    {a.finished_at && <>Finished {fmtTime(a.finished_at)}</>}
+                  </Typography>}
                 </>}
                 {(a.state === "running" || a.pending) && <LinearProgress sx={{ mt: 1 }} />}
               </Alert>
