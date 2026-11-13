@@ -21,7 +21,7 @@ from ..db import get_db
 from ..engine import filedist, hostio
 from ..engine.hoststats import assess
 from ..errors import FieldError
-from ..engine import hostadmin, hostcontainers, hostdelete, hostpools, hostpower, pathperms
+from ..engine import hostadmin, hostcontainers, hostdelete, hostpools, hostpower, pathperms, selftests
 from ..models import HostContainers, HostFacts, HostMetric, HostStats, Job, KvmHost, Network
 from ..permissions import visible_hosts
 from ..models import utcnow
@@ -404,7 +404,8 @@ def host_admin(host_id: int, hours: int = 24, db: Session = Depends(get_db),
             "error": f.error if f else "", "facts": facts, "smart": smart,
             "latest": {"at": latest.at, **(latest.data or {})} if latest else None,
             "warnings": hostadmin.warnings(facts, smart, latest.data if latest else None,
-                                          h.disk_free_pct or appsettings.get(db, "monitoring", cached=True).disk_free_pct),
+                                          h.disk_free_pct or appsettings.get(db, "monitoring", cached=True).disk_free_pct,
+                                          selftests.effective(db, h.id)),
             "series": hostadmin.series(db, h, min(max(hours, 1), 168)),
             "containers": hostcontainers.summary(db.get(HostContainers, h.id)),
             "pools": hostpools.build(facts, smart), "pool_candidates": hostpools.unused_disks(facts),

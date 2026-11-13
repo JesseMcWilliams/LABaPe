@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **SMART self-test schedule, first part (plan: Planning_SMART-Self-Test-Schedule.md):** the host's `smartd.conf` is now read at collection, so a drive's "never tested" warning says whether a self-test is scheduled and when the first is due (an info note until a scheduled time has passed, then a warning that smartd may be unable to test the drive, for example a USB bridge that needs `-d sat`), and says plainly when none is scheduled or smartd isn't running. A stack default schedule (Settings section `selftests`) and per-host overrides with a list of drives to leave out are stored; `Prereq.SmartTests` takes them from the answers (`SmartSchedule`, `SmartSkip`) and owns one marked block of `smartd.conf`, replacing it when the schedule changes and giving the original `DEVICESCAN` line back when the tests are switched off. The page and the edit dialog follow.
+
 ### Changed
 
 - **The update dialog labels the status it shows:** a finished run's status now reads "Last run (already finished, not the current state)" with the kind of run (update or rollback), the versions and when it started and finished; a run started from the dialog reads "This run". A failed run has a **Show details** button that reads the end of the update agent's log for that run (new admin-only `GET /api/admin/update/log`), and names the log's place on the host.

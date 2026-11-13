@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from .. import appsettings, maintenance_mode
 from ..config import get_settings
 from ..models import HostContainers, HostFacts, HostMetric, KvmHost, MonitorAlert, MonitorSilence, Setting, StackStatus, utcnow
-from . import hostadmin, hostcontainers
+from . import hostadmin, hostcontainers, selftests
 
 log = logging.getLogger("labape.stackmon")
 
@@ -245,7 +245,8 @@ def evaluate(db: Session, now: dt.datetime | None = None) -> dict[str, tuple[int
             latest = db.scalar(select(HostMetric).where(HostMetric.kvm_host_id == h.id).order_by(HostMetric.at.desc()).limit(1))
             ld = latest.data if latest else {}
             free_pct = h.disk_free_pct or cfg.disk_free_pct            # F1: every host's filesystems
-            for w in hostadmin.warnings(f.facts if f else {}, f.smart if f else {}, ld, free_pct):
+            for w in hostadmin.warnings(f.facts if f else {}, f.smart if f else {}, ld, free_pct,
+                                        selftests.effective(db, h.id)):
                 if w["level"] == "info":
                     continue
                 if stack and "°C" in w["message"]:

@@ -117,6 +117,12 @@ ANSWERS: dict[str, Answer] = {a.name: a for a in [
     Answer("AlertMailHost", "Mail server for this host's own mail, host:port (the stack's Mailpit; empty: none)",
            default=lambda a: "" if a.get("Profile", "full") == "kvm" or not _primary_ip() else f"{_primary_ip()}:1025", optional=True,
            validate=lambda v: None if not v or re.fullmatch(r"[A-Za-z0-9._-]+(:\d{1,5})?", str(v)) else "host or host:port"),
+    # SMART self-tests (Prereq.SmartTests; the web interface sets both per host): smartd's -s expression and the
+    # drives to leave out, comma separated. An empty schedule means no tests.
+    Answer("SmartSchedule", "smartd self-test schedule, its -s expression (empty: no scheduled self-tests)",
+           default="S/../../7/02|L/../01/./03", ask=False, optional=True),
+    Answer("SmartSkip", "Drives smartd leaves out of the self-tests, comma separated (e.g. /dev/sdb)",
+           default="", ask=False, optional=True),
     Answer("ContainerRuntime", "Container runtime", kind="choice", choices=("docker", "podman"), default="docker"),
     # Services the web interface's stack runs (question 140): each defaults to yes. OpenBao is
     # always installed (the update agent's login and the boot-time unseal use it).

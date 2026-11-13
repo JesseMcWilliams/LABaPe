@@ -368,6 +368,33 @@ if out["available"]:
                              "wear_pct": nv.get("percentage_used"), "media_errors": nv.get("media_errors"),
                              "interface": (j.get("device") or {}).get("protocol", ""), "rpm": j.get("rotation_rate"),
                              "size_bytes": (j.get("user_capacity") or {}).get("bytes"), "attributes": detail, "nvme": nv})
+
+def smartd_report():
+    import datetime, os, time
+    conf = next((q for q in ("/etc/smartd.conf", "/etc/smartmontools/smartd.conf") if os.path.isfile(q)), None)
+    if conf is None:
+        return None
+    rep = {"conf": conf, "scan": None, "devices": {}, "active": False, "tz": time.strftime("%Z")}
+    for unit in ("smartd", "smartmontools"):
+        if subprocess.run(["systemctl", "is-active", "--quiet", unit]).returncode == 0:
+            rep["active"] = True
+    for line in open(conf, errors="replace"):
+        t = line.split("#", 1)[0].split()
+        if not t:
+            continue
+        expr = t[t.index("-s") + 1] if "-s" in t[:-1] else None
+        if t[0] == "DEVICESCAN":
+            rep["scan"] = expr
+            break                                   # smartd ignores what follows DEVICESCAN
+        if t[0].startswith("/dev/"):
+            rep["devices"][t[0]] = expr
+    rep["now"] = datetime.datetime.now().isoformat(timespec="seconds")
+    rep["conf_mtime"] = datetime.datetime.fromtimestamp(os.path.getmtime(conf)).isoformat(timespec="seconds")
+    return rep
+
+
+if out["available"]:
+    out["smartd"] = smartd_report()
 print(json.dumps(out))
 '''
 
@@ -547,29 +574,14 @@ def series(db: Session, h: KvmHost, hours: int = 24) -> dict:
     return out
 
 
-SELFTEST_STALE_HOURS = 14 * 24          # plan S1: no self-test in two weeks of running is worth a look
+def selftest_warnings(d: dict, smartd: dict | None = None, policy: dict | None = None) -> list[dict]:
+    """A drive's self-test warnings (engine/selftests.py)."""
+    from . import selftests
+    return selftests.disk_warnings(d, smartd, policy)
 
 
-def selftest_warnings(d: dict) -> list[dict]:
-    """A drive that was never self-tested, hasn't been for two weeks of running, or whose last test failed.
-    Only ATA drives report `tests`; a reading from before this existed has none and says nothing."""
-    tests, poh, dev = d.get("tests"), d.get("power_on_hours"), d.get("device")
-    if tests is None or poh is None:
-        return []
-    out = []
-    for kind, t in tests.items():
-        if t and t.get("passed") is False:
-            out.append({"level": "error", "disk": dev, "message": f"{dev}: the last {kind} SMART self-test failed ({t.get('status') or 'no detail'})"})
-    done = [t["hours"] for t in tests.values() if t and t.get("hours") is not None]
-    if not done:
-        out.append({"level": "warning", "disk": dev, "message": f"{dev}: no SMART self-test has ever run (schedule one: Prereq.SmartTests)"})
-    elif poh - max(done) > SELFTEST_STALE_HOURS:
-        out.append({"level": "warning", "disk": dev,
-                    "message": f"{dev}: no SMART self-test in {(poh - max(done)) // 24} days of running (the last at hour {max(done)})"})
-    return out
-
-
-def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) -> list[dict]:
+def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20,
+             selftest: dict | None = None) -> list[dict]:
     """What the Dashboard section flags: SMART failures and wear, heat, filesystems with less than
     `free_pct` percent free (an error below a quarter of it), failed units, a pending reboot, many updates."""
     from . import hostpools
@@ -582,7 +594,7 @@ def warnings(facts: dict, smart: dict, latest: dict | None, free_pct: int = 20) 
             w.append({"level": "warning", "disk": d["device"],
                       "message": f"{d['device']}: {d.get('reallocated') or 0} reallocated, "
                                  f"{d.get('pending') or 0} pending sectors"})
-        w += selftest_warnings(d)
+        w += selftest_warnings(d, (smart or {}).get("smartd"), selftest)
         if (d.get("wear_pct") or 0) >= 80:
             w.append({"level": "warning", "disk": d["device"],
                       "message": f"{d['device']}: {d['wear_pct']}% of its rated wear used"})
