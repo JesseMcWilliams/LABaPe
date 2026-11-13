@@ -73,7 +73,7 @@ Description=LABaPe: renew the web interface's certificate when due
 
 [Service]
 Type=oneshot
-ExecStart=$HERE/web-tls.sh renew
+ExecStart=/bin/bash $HERE/web-tls.sh renew
 UNIT
   cat > "$u/labape-web-tls.timer" <<UNIT
 [Unit]

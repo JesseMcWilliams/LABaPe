@@ -5,6 +5,7 @@ import {
 } from "@mui/material";
 import { api, fmtTime } from "../api";
 import { fromApiError } from "../forms";
+import { useConfirm } from "./Confirm";
 
 // Check now (design §23.2): the newest release, a newer pre-release, or the
 // previous version on standby, each with its notes; Continue hands the
@@ -22,6 +23,7 @@ export interface UpdateInfo {
 }
 
 export default function UpdateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const confirm = useConfirm();
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [choice, setChoice] = useState("");
   const [error, setError] = useState("");
@@ -52,6 +54,13 @@ export default function UpdateDialog({ open, onClose }: { open: boolean; onClose
 
   const go = async () => {
     setError("");
+    if (choice === "rollback" && !(await confirm({
+      title: `Roll back to ${info?.previous?.version ?? "the previous version"}?`,
+      body: info?.previous?.db_revision && info.previous.db_revision !== info.db_revision
+        ? `The database layout changed since then, so its pre-update backup is restored and everything changed since the update (${fmtTime(info.previous.kept_at)}) is lost. The web interface is down while it runs.`
+        : "The previous version is on standby: no rebuild and no data lost. The web interface is down for a minute.",
+      confirmLabel: "Roll back", danger: true,
+    }))) return;
     try {
       if (choice === "rollback") await api.post("/api/admin/update/rollback");
       else await api.post("/api/admin/update", { target: choice });

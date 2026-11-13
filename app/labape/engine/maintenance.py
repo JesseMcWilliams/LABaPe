@@ -77,9 +77,19 @@ def restore_database(path: Path, logf) -> int:
     env, conn = _pg(url)
     logf.write(f"labape: restoring {path}\n")
     logf.flush()
-    return subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction",
-                           f"--dbname={url.database or 'labape'}", *conn, str(path)],
-                          env=env, stdout=logf, stderr=subprocess.STDOUT, check=False).returncode
+    # Not "pg_restore --clean": it drops only what the dump holds, so a table the
+    # dump lacks (one a newer release added) that points at a dumped table stops
+    # it ("cannot drop constraint ... other objects depend on it"). The schema is
+    # emptied and the dump loaded in ONE transaction: any failure leaves the
+    # database as it was.
+    dbname = url.database or "labape"
+    script = subprocess.Popen(["pg_restore", "--no-owner", "-f", "-", str(path)], env=env,
+                              stdout=subprocess.PIPE, stderr=logf)
+    load = subprocess.run(["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "--single-transaction", *conn,
+                           f"--dbname={dbname}", "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public;", "-f", "-"],
+                          env=env, stdin=script.stdout, stdout=logf, stderr=subprocess.STDOUT, check=False)
+    script.stdout.close()
+    return load.returncode or script.wait()
 
 
 def run_backup(db: Session, job: Job) -> int:
