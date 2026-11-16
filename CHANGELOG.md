@@ -13,6 +13,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ### Changed
 
+- A drive that has no SMART at all (a USB flash stick) no longer gets a "no self-test has ever run" warning, and the "scheduled but nothing ran" warning names that case beside the USB bridge that needs `-d sat`; found on the Pi.
+
 - **The update dialog labels the status it shows:** a finished run's status now reads "Last run (already finished, not the current state)" with the kind of run (update or rollback), the versions and when it started and finished; a run started from the dialog reads "This run". A failed run has a **Show details** button that reads the end of the update agent's log for that run (new admin-only `GET /api/admin/update/log`), and names the log's place on the host.
 
 ## [0.8.1] - 2026-11-12

@@ -361,6 +361,7 @@ if out["available"]:
                 tests[key] = {"hours": t.get("lifetime_hours"), "passed": st.get("passed"), "status": st.get("string", "")}
         out["disks"].append({**({"tests": tests} if "ata_smart_self_test_log" in j else {}),"device": d["name"], "model": j.get("model_name", ""), "serial": j.get("serial_number", ""),
                              "passed": j.get("smart_status", {}).get("passed"),
+                             "smart_support": (j.get("smart_support") or {}).get("available"),
                              "temperature": j.get("temperature", {}).get("current"),
                              "power_on_hours": j.get("power_on_time", {}).get("hours"),
                              "reallocated": attrs.get("Reallocated_Sector_Ct"), "pending": attrs.get("Current_Pending_Sector"),

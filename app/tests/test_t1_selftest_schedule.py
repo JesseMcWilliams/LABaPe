@@ -81,6 +81,8 @@ def test_never_tested_says_whether_a_test_is_scheduled():
     # a scheduled time came and went a day ago and still nothing: smartd cannot test the drive
     lvl, msg = messages(NEVER, smartd(now="2026-11-18T09:00:00"))[0]
     assert lvl == "warning" and "smartd may be unable to test this drive" in msg and "-d sat" in msg
+    assert "flash stick" in msg and "leave the drive out" in msg
+    assert messages({**NEVER, "smart_support": False}, smartd(now="2026-11-18T09:00:00")) == []   # no SMART at all: nothing to schedule
     lvl, msg = messages(NEVER, smartd(active=False))[0]
     assert lvl == "warning" and "smartd isn't running" in msg
     lvl, msg = messages(NEVER, None)[0]                                           # a reading from before smartd was reported
