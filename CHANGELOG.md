@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-16
+
+Adds the SMART self-test schedule: a stack default with per-host overrides, an Admin -> Self-tests page and a host panel, warnings that know what is scheduled and skip drives without SMART, plus a clearer update dialog.
+
 ### Added
 
 - **SMART self-test schedule, first part (plan: Planning_SMART-Self-Test-Schedule.md):** the host's `smartd.conf` is now read at collection, so a drive's "never tested" warning says whether a self-test is scheduled and when the first is due (an info note until a scheduled time has passed, then a warning that smartd may be unable to test the drive, for example a USB bridge that needs `-d sat`), and says plainly when none is scheduled or smartd isn't running. A stack default schedule (Settings section `selftests`) and per-host overrides with a list of drives to leave out are stored; `Prereq.SmartTests` takes them from the answers (`SmartSchedule`, `SmartSkip`) and owns one marked block of `smartd.conf`, replacing it when the schedule changes and giving the original `DEVICESCAN` line back when the tests are switched off. **Admin → Self-tests** lists every host's schedule, what its `smartd.conf` really has, the next run and each drive's last result, and edits the stack default or one host (schedule, drives to leave out, the warning switch); the same panel is on a host's Drives section. Saving queues a short setup job that runs only the self-test step, and the monitoring tick re-applies a schedule a host doesn't have (every few hours at most).
