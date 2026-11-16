@@ -230,9 +230,53 @@ def prereq_smart_alerts(c: Ctx):
     return DONE, "smartd's warnings are mailed to root (the stack's Mailpit)" if changed else "already configured"
 
 
-# plan S1: smartd runs a short self-test every Sunday at 02:00 and a long one on the 1st at 03:00. Debian ships
-# DEVICESCAN with no schedule, so no drive was ever tested (OZ's failed drive: none in about 40,000 hours).
-SMART_SCHEDULE = "-s (S/../../7/02|L/../01/./03)"
+# plan S1 and the schedule plan (Planning_SMART-Self-Test-Schedule.md): smartd runs a short self-test every Sunday
+# at 02:00 and a long one on the 1st at 03:00. Debian ships DEVICESCAN with no schedule, so no drive was ever
+# tested (OZ's failed drive: none in about 40,000 hours). The schedule and the drives to leave out come from the
+# answers (the web interface sets them per host); the step owns one marked block and nothing else in the file.
+SMART_SCHEDULE = "S/../../7/02|L/../01/./03"          # the default SmartSchedule: smartd's -s regular expression
+SMART_BEGIN = "# BEGIN LABaPe (Prereq.SmartTests): self-tests; edit them in the web interface, not here"
+SMART_END = "# END LABaPe (Prereq.SmartTests)"
+SMART_ORIGINAL = "#original: "
+SMART_LEGACY_COMMENT = "# LABaPe (Prereq.SmartTests): weekly short and monthly long self-tests on every drive"
+
+
+def smartd_lines(lines: list[str], schedule: str, skip: list[str]) -> tuple[list[str] | None, str]:
+    """The smartd.conf lines with the self-test schedule in place, and what happened. None: nothing to change
+    (the message says why). The schedule (smartd's -s expression, empty: no tests) goes on the DEVICESCAN line
+    inside a block of our own, which keeps the original line as a comment, so removing the block, or switching
+    the tests off, gives the file back as it was; a skipped drive gets a line of its own before DEVICESCAN with
+    the same options and no -s (smartd watches a drive once, so DEVICESCAN leaves it alone)."""
+    begin = next((i for i, ln in enumerate(lines) if ln.strip() == SMART_BEGIN), None)
+    end = next((i for i, ln in enumerate(lines) if ln.strip() == SMART_END), None) if begin is not None else None
+    if begin is not None and end is not None and end > begin:
+        orig = next((ln[len(SMART_ORIGINAL):] for ln in lines[begin:end] if ln.startswith(SMART_ORIGINAL)), "")
+        rest = lines[:begin] + lines[end + 1:]
+        if orig:
+            rest.insert(begin, orig)                       # the file as it was, before our block
+        lines, had_block = rest, True
+    else:
+        # The first version of this step appended -s to the DEVICESCAN line under a comment line of its own.
+        legacy = f" -s ({SMART_SCHEDULE})"
+        before = lines
+        lines = [ln[:-len(legacy)] if ln.split()[:1] == ["DEVICESCAN"] and ln.endswith(legacy) else ln
+                 for ln in lines if ln.strip() != SMART_LEGACY_COMMENT]
+        had_block = lines != before                        # a legacy edit counts: it is ours to undo
+    scan = [i for i, ln in enumerate(lines) if ln.split()[:1] == ["DEVICESCAN"]]
+    if not scan:
+        return None, "no DEVICESCAN line: add '-s ...' to your drives' lines by hand"
+    i = scan[0]
+    if " -s " in f" {lines[i]} ":
+        return None, "already scheduled (by the admin's own -s on DEVICESCAN; left alone)"
+    if not schedule and not skip:
+        return (lines if had_block else None), "self-tests are switched off" if had_block else "no self-tests wanted, and none scheduled"
+    base = lines[i].rstrip()
+    block = [SMART_BEGIN, SMART_ORIGINAL + lines[i]]
+    block += [f"{dev} {base.split(None, 1)[1] if len(base.split(None, 1)) > 1 else ''}".rstrip() for dev in skip]
+    block.append(f"{base} -s ({schedule})" if schedule else base)
+    block.append(SMART_END)
+    return lines[:i] + block + lines[i + 1:], ("self-tests scheduled" if schedule else "no schedule") + \
+        (f"; left out: {', '.join(skip)}" if skip else "")
 
 
 def prereq_smart_tests(c: Ctx):
@@ -241,19 +285,18 @@ def prereq_smart_tests(c: Ctx):
     conf = next((p for p in SMARTD_CONFS if p.is_file()), None)
     if conf is None:
         return DONE, "no smartd.conf here, so no schedule was set"
-    lines = conf.read_text(encoding="utf-8", errors="replace").splitlines()
-    scan = [i for i, ln in enumerate(lines) if ln.split()[:1] == ["DEVICESCAN"]]
-    if not scan:
-        return DONE, f"{conf} has no DEVICESCAN line: add '-s ...' to your drives' lines by hand"
-    if all(" -s " in f" {lines[i]} " for i in scan):
+    schedule = str(c.a.need("SmartSchedule") or "").strip()
+    skip = [d.strip() for d in str(c.a.need("SmartSkip") or "").split(",") if d.strip().startswith("/dev/")]
+    text = conf.read_text(encoding="utf-8", errors="replace")
+    new, msg = smartd_lines(text.splitlines(), schedule, skip)
+    if new is None:
+        return DONE, msg
+    out = "\n".join(new) + "\n"
+    if out == text:
         return DONE, "already scheduled"
-    for i in scan:
-        if " -s " not in f" {lines[i]} ":
-            lines[i] = f"{lines[i].rstrip()} {SMART_SCHEDULE}"
-    lines.insert(scan[0], "# LABaPe (Prereq.SmartTests): weekly short and monthly long self-tests on every drive")
-    c.r.write(conf, "\n".join(lines) + "\n")
+    c.r.write(conf, out)
     c.r.run(["systemctl", "try-restart", "smartd"], check=False)
-    return DONE, "weekly short and monthly long self-tests scheduled"
+    return DONE, msg
 
 
 MDSTAT = Path("/proc/mdstat")

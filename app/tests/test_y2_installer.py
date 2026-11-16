@@ -371,6 +371,45 @@ def _smart_ctx(tmp_path, monkeypatch, conf_text, have=("smartctl",), sendmail=Tr
     return S.Ctx(r=R(), a=A.Resolver(interactive=False), repo=tmp_path, deploy_root=tmp_path), ran
 
 
+def test_smart_tests_follow_the_schedule_answers_and_can_be_undone(tmp_path, monkeypatch):
+    original = "DEVICESCAN -d removable -n standby -m root -M exec /usr/share/smartmontools/smartd-runner"
+    nl = chr(10)
+    c, ran = _smart_ctx(tmp_path, monkeypatch, "# top" + nl + original + nl)
+    conf = tmp_path / "smartd.conf"
+    c.a.add({"SmartSchedule": "S/../../3/04", "SmartSkip": "/dev/sdb, /dev/sdc, notadevice"})
+    status, msg = S.prereq_smart_tests(c)
+    lines = conf.read_text().splitlines()
+    skip_line = "/dev/sdb -d removable -n standby -m root -M exec /usr/share/smartmontools/smartd-runner"
+    assert status == S.DONE and "left out: /dev/sdb, /dev/sdc" in msg and "notadevice" not in conf.read_text()
+    assert lines[0] == "# top" and lines[1] == S.SMART_BEGIN and lines[-1] == S.SMART_END
+    assert skip_line in lines
+    assert lines.index(skip_line) < lines.index(original + " -s (S/../../3/04)")      # skipped drives come first
+    ran.clear()
+    assert S.prereq_smart_tests(c) == (S.DONE, "already scheduled") and not ran
+    c.a.add({"SmartSchedule": "L/../15/./05", "SmartSkip": ""}, overwrite=True)        # a new schedule replaces ours
+    S.prereq_smart_tests(c)
+    text = conf.read_text()
+    assert text.count("-s (") == 1 and "L/../15/./05" in text and "S/../../3/04" not in text and "/dev/sdb" not in text
+    assert text.count("DEVICESCAN") == 2                                    # the commented original and the live line
+    c.a.add({"SmartSchedule": ""}, overwrite=True)                          # tests off: the file is as it was
+    status, msg = S.prereq_smart_tests(c)
+    assert "switched off" in msg and conf.read_text() == "# top" + nl + original + nl
+    assert S.prereq_smart_tests(c)[1] == "no self-tests wanted, and none scheduled"
+
+
+def test_smart_tests_convert_the_first_versions_edit(tmp_path, monkeypatch):
+    nl = chr(10)
+    legacy = ("# LABaPe (Prereq.SmartTests): weekly short and monthly long self-tests on every drive" + nl +
+              "DEVICESCAN -a -m root -s (S/../../7/02|L/../01/./03)" + nl)
+    c, ran = _smart_ctx(tmp_path, monkeypatch, legacy)
+    S.prereq_smart_tests(c)                                                 # defaults: the same schedule, now in a block
+    text = (tmp_path / "smartd.conf").read_text()
+    assert S.SMART_BEGIN in text and text.count("-s (") == 1 and "weekly short" not in text
+    c.a.add({"SmartSchedule": ""}, overwrite=True)
+    S.prereq_smart_tests(c)
+    assert (tmp_path / "smartd.conf").read_text() == "DEVICESCAN -a -m root" + nl
+
+
 def test_smart_alerts_install_the_mail_command_for_smartd(tmp_path, monkeypatch):
     c, ran = _smart_ctx(tmp_path, monkeypatch, "DEVICESCAN -a -m root -M exec /usr/share/smartmontools/smartd-runner\n")
     status, msg = S.prereq_smart_alerts(c)
@@ -606,7 +645,7 @@ def test_smart_tests_are_scheduled_on_devicescan_once(tmp_path, monkeypatch):
     c, ran = _smart_ctx(tmp_path, monkeypatch, "/dev/sda -a -s L/../../1/03 -m root\n")
     assert "no DEVICESCAN" in S.prereq_smart_tests(c)[1] and (tmp_path / "smartd.conf").read_text().startswith("/dev/sda")
     c, ran = _smart_ctx(tmp_path, monkeypatch, "DEVICESCAN -a -s L/../../1/03\n")
-    assert S.prereq_smart_tests(c) == (S.DONE, "already scheduled")                  # the admin's own schedule stays
+    assert S.prereq_smart_tests(c)[1].startswith("already scheduled")               # the admin's own schedule stays
     c, ran = _smart_ctx(tmp_path, monkeypatch, None, have=())
     assert S.prereq_smart_tests(c)[0] == S.NA
     names = [s[0] for s in _installer().STEPS]

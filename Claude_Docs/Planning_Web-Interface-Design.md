@@ -2274,6 +2274,18 @@ Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications
 | Page | Drives and volumes has a **Last self-test** column (days of running ago and the kind; the tooltip has each kind's result; "never" and a failure are highlighted). |
 | Verified | pytest `test_s1_selftests.py` (the thresholds, a failed test, the SMART script run against fake `smartctl` JSON) and `test_y2_installer.py` (the step, run twice). |
 
+**Schedule, page and switches (2026-11-13, plan [Planning_SMART-Self-Test-Schedule.md](Planning_SMART-Self-Test-Schedule.md), questions 230-236):**
+
+| Area | As built |
+|---|---|
+| Policy | Settings section `selftests` (the stack default: run, short weekday and hour, long day and hour, warn) and, per host, the Setting `selftests.host<id>`: `mode` default, custom or off, the schedule fields, `skip` (drives left out) and `warn` (null: follow the default). `engine/selftests.py`: `effective`, `expression` (smartd's `-s` text), `describe`, `next_run`, `in_sync`, `reconcile`. Hours are the host's local time. |
+| Step | `Prereq.SmartTests` takes `SmartSchedule` and `SmartSkip` from the answers and owns one `# BEGIN/END LABaPe (Prereq.SmartTests)` block of `smartd.conf`: the original `DEVICESCAN` line kept as a `#original:` comment, a line per skipped drive before it (same options, no `-s`), then `DEVICESCAN` with the schedule. A change replaces the block, switching off restores the original line, the first version's edit is converted, an admin's own `-s` is left alone. |
+| Read | The SMART collector also reports `smartd`: the conf path, whether smartd is active, DEVICESCAN's `-s`, each device line's `-s`, the host's local time and the file's modification time. |
+| Warnings | `selftests.disk_warnings`: never tested with a test scheduled = **info** ("the first is scheduled ... next ...", no alert), the same once a scheduled time has passed by a day = warning (smartd may be unable to test the drive, `-d sat`), none scheduled = warning, smartd not running = warning; a drive in the skip list, left out in the host's file, or a host with `warn` off says nothing about missing tests; a failed test is always an error. |
+| Applying | `PUT /api/admin/selftests/hosts/{id}` and `PUT /api/admin/selftests/default` queue a `host.setup` job with `params.steps = ["Prereq.SmartTests"]` (it sends the effective schedule, leaves the setup revision alone); the monitoring tick (`selftests.reconcile`) queues it again for a host whose file differs, at most every 6 hours. |
+| Pages | **Admin → Self-tests** (`GET /api/admin/selftests`: default, each host's policy, what it has, next run, drives and their last results; Edit and Edit default) and a panel on a host's Drives section; one dialog edits both (confirm names the hosts following a changed default). |
+| Verified | pytest `test_t1_selftest_schedule.py`, `test_t2_selftest_api.py`, and `test_y2_installer.py` (the block, undo, conversion). Not yet: on a real host (explicit device lines before `DEVICESCAN`, USB drives) or in a browser. |
+
 ## 77. Notifications page (plan N1, built 2026-11-08)
 
 Plan: [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md).

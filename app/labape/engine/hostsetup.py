@@ -125,8 +125,13 @@ def run_setup(db: Session, job, popen=subprocess.Popen) -> int:
     except hostadmin.AdminError as exc:
         log(f"labape: {exc}\n")
         return 1
+    from . import selftests
+    eff = selftests.effective(db, h.id)
+    wanted = (job.params or {}).get("steps") or HEALTH_STEPS
+    run_steps = tuple(s for s in HEALTH_STEPS if s in wanted)               # the order the installer runs them in
     answers = {"Profile": "kvm", "InstallWebUi": False, "TemplatesToBuild": [],
-               "AlertMailHost": hostadmin.stack_mail_host(db)}
+               "AlertMailHost": hostadmin.stack_mail_host(db),
+               "SmartSchedule": selftests.expression(eff), "SmartSkip": ",".join(eff["skip"])}
     if hostadmin.service_user(h):
         answers["ServiceUser"] = hostadmin.service_user(h)
     if not answers["AlertMailHost"]:
@@ -134,10 +139,10 @@ def run_setup(db: Session, job, popen=subprocess.Popen) -> int:
     if push_installer(h, ssh, log, answers, "answers.setup.json", popen):
         return 1
     root = hostadmin.INSTALL_ROOT
-    steps = " ".join(f"--step {shlex.quote(s)}" for s in HEALTH_STEPS)
+    steps = " ".join(f"--step {shlex.quote(s)}" for s in run_steps)
     cmd = (f"cd {root} && sudo -n env DEBIAN_FRONTEND=noninteractive python3 deploy/install-labape.py --profile kvm "
            f"--instance setup --config-file deploy/answers.setup.json --non-interactive {steps}")
-    log(f"labape: running the alert and disk steps on {h.name}\n")
+    log(f"labape: running {'the alert and disk steps' if run_steps == HEALTH_STEPS else ', '.join(run_steps)} on {h.name}\n")
     with open(job.log_path, "ab", buffering=0) as logf:
         p = popen([*ssh.base(), cmd], stdout=logf, stderr=subprocess.STDOUT, env=hostio.tool_env())
         while (rc := p.poll()) is None:
@@ -147,19 +152,23 @@ def run_setup(db: Session, job, popen=subprocess.Popen) -> int:
                 return 1
             time.sleep(5)
     ok = rc == 0
-    _put(db, h.id, {"revision": revision() if ok else state(db, h.id).get("revision"), "at": utcnow().isoformat(),
-                    "ok": ok, "attempt": utcnow().isoformat(), "job": job.id})
+    full = run_steps == HEALTH_STEPS                  # a run of some steps says nothing about the revision
+    old = state(db, h.id)
+    _put(db, h.id, {**old, "revision": revision() if ok and full else old.get("revision"),
+                    "at": utcnow().isoformat() if full else old.get("at"), "ok": ok if full else old.get("ok"),
+                    "attempt": utcnow().isoformat() if full else old.get("attempt"), "job": job.id})
     log("labape: done\n" if ok else f"labape: the installer failed (exit {rc}); see the steps above\n")
     return rc
 
 
-def queue(db: Session, h: KvmHost, who: str, auto: bool = False) -> Job | None:
-    """A host.setup job for the host, unless one is queued or running. None when there is one."""
+def queue(db: Session, h: KvmHost, who: str, auto: bool = False, steps: list[str] | None = None) -> Job | None:
+    """A host.setup job for the host (only `steps`, when given), unless one is queued or running. None when there is one."""
     busy = db.scalar(select(Job).where(Job.kvm_host_id == h.id, Job.type == "host.setup",
                                        Job.state.in_(("queued", "running"))))
     if busy:
         return None
-    job = Job(type="host.setup", params={"auto": auto}, kvm_host_id=h.id, requested_by=who)
+    job = Job(type="host.setup", params={"auto": auto, **({"steps": steps} if steps else {})}, kvm_host_id=h.id,
+              requested_by=who)
     db.add(job)
     db.commit()
     return job

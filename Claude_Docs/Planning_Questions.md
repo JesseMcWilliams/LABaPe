@@ -357,3 +357,10 @@ Also 2026-10-14: Authentik high availability (several server and worker replicas
 227. **Which uid the API and worker containers run as (root-image plan).** Open. Recommendation: the host service user's uid and gid, taken from `.env`, so `/data`, `update/` and `engine-secrets/` need no ownership change. See [Planning_Root-Image.md](Planning_Root-Image.md).
 228. **Who migrates an existing install's volumes (root-image plan).** Open. Recommendation: the update agent, once, before the first non-root start, guarded by a marker file; not a manual release-note step.
 229. ~~**Re-applying the installer's alert and disk steps on registered hosts.**~~ **Answered (2026-11-12):** build it: a button on the KVM host's page (SSH access) and a run by the stack's update as well. Built as design §83 (`host.setup`; the monitoring tick queues it after an update that changes the steps).
+230. ~~**Where the self-test schedule page lives.**~~ **Answered (2026-11-13):** both: a fleet page and a section on each host's page. See [Planning_SMART-Self-Test-Schedule.md](Planning_SMART-Self-Test-Schedule.md).
+231. ~~**Whose schedule it is.**~~ **Answered (2026-11-13):** a stack default plus a per-host override (default / custom / off).
+232. ~~**How much of the schedule can be adjusted.**~~ **Answered (2026-11-13):** the short test's weekday and hour, the long test's day and hour, each switchable off, and which drives are tested.
+233. ~~**What disabling means.**~~ **Answered (2026-11-13):** two separate switches per host, run the self-tests and warn when none ran; a failed test still raises its error.
+234. ~~**Where "scheduled" comes from.**~~ **Answered (2026-11-13):** the host's own `smartd.conf`, read at collection time.
+235. **Hours in the host's local time (self-test plan).** Open. Recommendation: yes, smartd's own clock, with the host's zone shown in the dialog.
+236. **Saving the stack default queues a setup job for every ready host in default mode (self-test plan).** Open. Recommendation: yes, with the confirm dialog naming how many hosts.

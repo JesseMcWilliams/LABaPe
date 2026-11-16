@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .. import appsettings
 from ..db import get_db
-from ..engine import hostadmin
+from ..engine import hostadmin, selftests
 from ..models import DiskSample, HostFacts, KvmHost, MonitorAlert, utcnow
 from ..security import Principal, require_roles
 
@@ -86,4 +86,6 @@ def disk_detail(host_id: int, disk: str, days: int = Query(default=30, ge=1, le=
             "smart_at": f.smart_at if f else None, "days": days,
             "retention_days": appsettings.get(db, "retention").disk_history_days,
             "samples": samples, "changes": changes(samples), "alerts": alerts,
-            "warnings": [w for w in hostadmin.warnings({}, {"disks": [cur]}, None) if w.get("disk") == cur.get("device")]}
+            "warnings": [w for w in hostadmin.warnings({}, {"disks": [cur], "smartd": ((f.smart if f else None) or {}).get("smartd")},
+                                                       None, selftest=selftests.effective(db, h.id))
+                         if w.get("disk") == cur.get("device")]}

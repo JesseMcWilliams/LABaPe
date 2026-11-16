@@ -154,6 +154,19 @@ class MonitoringSettings(BaseModel):
         return [a.strip() for a in v]
 
 
+class SelfTestSettings(BaseModel):
+    """The stack's default SMART self-test schedule (Planning_SMART-Self-Test-Schedule.md): a host may override
+    it. Hours are the host's own local time (smartd's clock); weekdays are smartd's, 1 = Monday ... 7 = Sunday."""
+    run: bool = True                                                  # schedule self-tests at all
+    short_on: bool = True
+    short_weekday: int = Field(default=7, ge=1, le=7)
+    short_hour: int = Field(default=2, ge=0, le=23)
+    long_on: bool = True
+    long_day: int = Field(default=1, ge=1, le=28)
+    long_hour: int = Field(default=3, ge=0, le=23)
+    warn: bool = True                                                 # warn about a drive that was never or not lately tested
+
+
 class SyslogCollectorSettings(BaseModel):
     """The stack's syslog collector (design §29.1, questions 121-139)."""
     retention_days: int = Field(default=30, ge=1, le=3650)       # 30 days (user, 2026-10-13; was 90)
@@ -349,6 +362,7 @@ SECTIONS: dict[str, type[BaseModel]] = {
     "syslog_collector": SyslogCollectorSettings,
     "file_distribution": FileDistributionSettings,
     "monitoring": MonitoringSettings,
+    "selftests": SelfTestSettings,
     "lab_mail_relay": LabMailRelaySettings,
     "stack_mail": StackMailSettings,
     "package_updates": PackageUpdateSettings,
