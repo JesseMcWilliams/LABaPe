@@ -156,6 +156,8 @@ def disk_warnings(d: dict, smartd: dict | None = None, policy: dict | None = Non
                         "message": f"{dev}: the last {kind} SMART self-test failed ({t.get('status') or 'no detail'})"})
     policy = policy or {}
     expr, left_out = drive_schedule(smartd, dev)
+    if d.get("smart_support") is False:
+        return out                                  # the drive has no SMART (a flash stick): nothing to schedule
     if policy.get("warn") is False or dev in (policy.get("skip") or []) or left_out:
         return out
     done = [t["hours"] for t in tests.values() if t and t.get("hours") is not None]
@@ -179,7 +181,8 @@ def disk_warnings(d: dict, smartd: dict | None = None, policy: dict | None = Non
         if now and first and now > first + dt.timedelta(days=1):
             out.append({"level": "warning", "disk": dev,
                         "message": f"{dev}: scheduled ({describe(expr)}) but no self-test has run: smartd may be unable to "
-                                   "test this drive (a USB bridge needs '-d sat'); try 'smartctl -t short' by hand"})
+                                   "test this drive (a USB bridge may need '-d sat'; a flash stick or a RAID volume has no SMART at all); "
+                                   "try 'smartctl -t short' by hand, and leave the drive out on the Self-tests page if it can't be tested"})
         else:
             nxt = _first(next_run(expr, now)) if now else None
             out.append({"level": "info", "disk": dev,
