@@ -1,10 +1,10 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:76176697-95c9-5680-a66b-a3be63d93ef0",
+ "serialNumber": "urn:uuid:5dc1e51c-faa4-565e-a1b5-155217ab2546",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-12T00:00:00Z",
+  "timestamp": "2026-11-16T00:00:00Z",
   "tools": {
    "components": [
     {
@@ -14,10 +14,10 @@
    ]
   },
   "component": {
-   "bom-ref": "labape@0.8.1",
+   "bom-ref": "labape@0.8.2",
    "type": "application",
    "name": "LABaPe",
-   "version": "0.8.1",
+   "version": "0.8.2",
    "licenses": [
     {
      "license": {
@@ -9725,7 +9725,7 @@
  ],
  "dependencies": [
   {
-   "ref": "labape@0.8.1",
+   "ref": "labape@0.8.2",
    "dependsOn": [
     "npm:@emotion/react@11.14.0",
     "npm:@emotion/styled@11.14.1",
