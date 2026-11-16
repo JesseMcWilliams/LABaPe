@@ -186,3 +186,36 @@ def disk_warnings(d: dict, smartd: dict | None = None, policy: dict | None = Non
                         "message": f"{dev}: no self-test has run yet; the first is scheduled ({describe(expr)}"
                                    + (f"; next {_when(nxt)} host time" if nxt else "") + ")"})
     return out
+
+
+def in_sync(eff: dict, smartd: dict | None) -> bool | None:
+    """Whether the host's smartd.conf has what the policy wants (None: not read yet, or no smartd.conf)."""
+    if not smartd or not smartd.get("conf"):
+        return None
+    scan = (smartd.get("scan") or "").strip("()")
+    left_out = {d for d, e in (smartd.get("devices") or {}).items() if e is None}
+    return scan == expression(eff) and set(eff.get("skip") or []) <= left_out
+
+
+RECONCILE_EVERY = dt.timedelta(hours=6)
+
+
+def reconcile(db: Session, now: dt.datetime) -> None:
+    """From the monitoring tick: a ready host whose smartd.conf doesn't match its policy (a change that couldn't
+    be applied when it was saved, a host that was unreachable, a hand edit) gets the self-test step again, at most
+    every few hours. A file with the admin's own -s on DEVICESCAN never matches: the step leaves it alone, so the
+    retry stays quiet rather than the tick queuing a job for ever."""
+    from sqlalchemy import select
+
+    from ..models import HostFacts, KvmHost
+    from . import hostsetup
+    for h in db.scalars(select(KvmHost).where(KvmHost.access_status == "ready", KvmHost.deleted_at.is_(None)).order_by(KvmHost.id)):
+        f = db.get(HostFacts, h.id)
+        if in_sync(effective(db, h.id), ((f.smart if f else None) or {}).get("smartd")) is not False:
+            continue
+        s = hostsetup.state(db, h.id)
+        tried = s.get("st_attempt")
+        if tried and now - dt.datetime.fromisoformat(tried).astimezone(dt.timezone.utc) < RECONCILE_EVERY:
+            continue
+        if hostsetup.queue(db, h, "system", auto=True, steps=["Prereq.SmartTests"]) is not None:
+            hostsetup._put(db, h.id, {**hostsetup.state(db, h.id), "st_attempt": now.isoformat()})

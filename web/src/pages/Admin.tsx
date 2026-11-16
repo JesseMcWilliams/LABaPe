@@ -14,6 +14,7 @@ import SpeedIcon from "@mui/icons-material/Speed";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import PeopleIcon from "@mui/icons-material/People";
+import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import { hasRole, useAuth } from "../App";
 
 export const ADMIN_PAGES = [
@@ -24,6 +25,7 @@ export const ADMIN_PAGES = [
   { path: "settings", label: "Settings", icon: <SettingsIcon />, help: "Branding, files, backups, history, syslog, email, directory, stores" },
   { path: "mail", label: "Mail", icon: <MailOutlineIcon />, help: "The stack's mail server (Mailpit): what it caught, and forwarding to real inboxes" },
   { path: "notifications", label: "Notifications", icon: <NotificationsActiveIcon />, help: "Where alerts go: email, webhooks, ntfy, syslog; rules, quiet hours and reminders" },
+  { path: "selftests", label: "Self-tests", icon: <MonitorHeartIcon />, help: "SMART self-test schedule of every host: when they run, the next run, each drive's last result" },
   { path: "secrets", label: "Secrets", icon: <KeyIcon />, help: "Internal secrets, stored secrets and their rotation" },
   { path: "audit", label: "Audit log", icon: <FactCheckIcon />, help: "Who did what, when" },
   { path: "errors", label: "User errors", icon: <ReportProblemIcon />, help: "Requests the app refused and forms the browser blocked" },

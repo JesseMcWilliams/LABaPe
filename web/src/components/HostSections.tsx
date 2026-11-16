@@ -14,6 +14,7 @@ import { ActionButton, useConfirm } from "./Confirm";
 import { Facts } from "./PageParts";
 import Sparkline from "./Sparkline";
 import { ConnectButton } from "./Connect";
+import SelfTestPanel from "./SelfTestPanel";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
@@ -405,6 +406,7 @@ export function DrivesSection({ view }: { view: AdminView }) {
         <TableHead><TableRow><TableCell>Device</TableCell><TableCell>Type</TableCell><TableCell>Size</TableCell><TableCell>Model</TableCell><TableCell>FS</TableCell><TableCell>Mounted</TableCell></TableRow></TableHead>
         <TableBody><DiskRows devs={showLoop ? disks : disks.filter((d) => d.type !== "loop")} host={view.host.id} flags={flags} /></TableBody>
       </Table>
+      <SelfTestPanel hostId={view.host.id} />
       <Typography variant="subtitle1">Disk health (SMART)</Typography>
       {!smart.available ? <Alert severity="info">smartctl isn&apos;t installed on the host (package smartmontools).</Alert> : (
         <Table size="small">
@@ -422,7 +424,13 @@ export function DrivesSection({ view }: { view: AdminView }) {
                 </TableCell>
                 <TableCell>{d.temperature != null ? `${d.temperature} °C` : "—"}</TableCell>
                 <TableCell>{d.power_on_hours != null ? `${Math.round(d.power_on_hours / 24)} d` : "—"}</TableCell>
-                <TableCell sx={lastTest(d).warn ? { color: "warning.main", fontWeight: 600 } : undefined} title={lastTest(d).tip}>{lastTest(d).text}</TableCell>
+                {(() => {
+                  // "never" is only a problem when nothing is scheduled: an info note says a test is due.
+                  const lt = lastTest(d);
+                  const note = flags[d.device]?.level === "info" ? flags[d.device].messages.find((m) => m.includes("no self-test has run yet")) : undefined;
+                  const due = lt.text === "never" && note;
+                  return <TableCell sx={lt.warn && !due ? { color: "warning.main", fontWeight: 600 } : undefined} title={due ? note : lt.tip}>{due ? "never (scheduled)" : lt.text}</TableCell>;
+                })()}
                 <TableCell sx={(d.reallocated || d.pending) ? { color: "warning.main", fontWeight: 600 } : undefined}>{d.reallocated ?? "—"} / {d.pending ?? "—"}</TableCell>
                 <TableCell sx={(d.wear_pct ?? 0) >= 80 ? { color: "warning.main", fontWeight: 600 } : undefined}>{d.wear_pct != null ? `${d.wear_pct}%` : "—"}</TableCell>
               </TableRow>

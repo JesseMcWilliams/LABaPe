@@ -28,6 +28,7 @@ import TemplateDetail from "./pages/TemplateDetail";
 import Secrets from "./pages/Secrets";
 import Mail from "./pages/Mail";
 import Notifications from "./pages/Notifications";
+import SelfTests from "./pages/SelfTests";
 import SecretDetail from "./pages/SecretDetail";
 import AdminLayout, { ToAdmin } from "./pages/Admin";
 import RemoteSession from "./pages/RemoteSession";
@@ -199,6 +200,7 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="mail" element={<Mail />} />
             <Route path="notifications" element={<Notifications />} />
+            <Route path="selftests" element={<SelfTests />} />
             <Route path="secrets" element={<Secrets />} />
             <Route path="secrets/:id" element={<SecretDetail />} />
             <Route path="audit" element={<Audit />} />

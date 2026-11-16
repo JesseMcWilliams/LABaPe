@@ -1,6 +1,6 @@
 # Plan: show, adjust and disable the SMART self-test schedule (2026-11-13)
 
-> **Stage: Planning.** Follows the S1 batch of [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md) (design §76), which schedules self-tests with `Prereq.SmartTests` but leaves the schedule fixed and the warning "no SMART self-test has ever run (schedule one: Prereq.SmartTests)" blind to it. Questions 230-234 were answered on 2026-11-13; 235 and 236 are open with recommendations (in [Planning_Questions.md](Planning_Questions.md); in chat they carry a D prefix). Nothing is built yet.
+> **Stage: Planning.** Follows the S1 batch of [Planning_Disk-Health-Notifications.md](Planning_Disk-Health-Notifications.md) (design §76), which schedules self-tests with `Prereq.SmartTests` but leaves the schedule fixed and the warning "no SMART self-test has ever run (schedule one: Prereq.SmartTests)" blind to it. Questions 230-234 were answered on 2026-11-13; 235 and 236 are open with recommendations (in [Planning_Questions.md](Planning_Questions.md); in chat they carry a D prefix). Built on 2026-11-13 (batches T1-T3); T4 (the live check on the Pi, the guides, design §76) is left.
 
 ## 1. Why
 

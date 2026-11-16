@@ -468,6 +468,7 @@ def tick(db_factory) -> None:
                 from . import heartbeat, hostsetup, notifications
                 heartbeat.due(db, now)
                 hostsetup.due(db, now)
+                selftests.reconcile(db, now)
                 sync_alerts(db, evaluate(db, now), now)
                 notifications.digest(db, now)
         except Exception:  # noqa: BLE001
