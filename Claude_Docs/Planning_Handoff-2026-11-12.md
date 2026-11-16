@@ -21,6 +21,8 @@
 | #273-#276 | Handoff; the root-image plan; Hyper-V removed; PostgreSQL run in `release.sh`; stdlib imports hoisted; guides up to date; a second `pg_dump` skip (#275); **Release v0.8.0** (#276) |
 | #278 | **Apply host setup** (question 229, design §83): a `host.setup` job runs the installer's six alert and disk `Prereq.*` steps on a registered host; an **Apply host setup** panel in a host's SSH access section; the monitoring tick queues it for every ready host whose setup predates the installer's steps (hash of `install-labape.py` and `steps.py`), so a stack update brings hosts along (`hostsetup.auto` switches it off). Merged after v0.8.0, so it is in `[Unreleased]` |
 | #280 | **Rollback across added tables:** the restore empties the schema and loads the dump in one transaction (the Pi's rollback from v0.8.0 failed on `host_containers`, §5.14); the Roll back choice asks to confirm; `web-tls.sh` committed executable. Released as v0.8.1 |
+| #283 | The update dialog labels the last run's status and can show the agent log's tail after a failure (`GET /api/admin/update/log`) |
+| #284, #285 | **SMART self-test schedule** (plan [Planning_SMART-Self-Test-Schedule.md](Planning_SMART-Self-Test-Schedule.md), §76): stack default plus per-host override, **Admin → Self-tests** page, a panel on a host's Drives section, a `host.setup` job that runs only `Prereq.SmartTests`, warnings that know what is scheduled; a drive with no SMART (the Pi's flash stick) gets no never-ran warning. Confirmed live: an explicit device line before `DEVICESCAN` is monitored once (OZ, smartd 7.4). Released as v0.8.2 |
 | #272 | `runner.py` split into `runner` and `runner_prepare`; `api/environments.py` into `environments` and `environments_vms` (no code file is over 1,000 lines now) |
 
 Migrations are through **0045** (0039-0045 are new: host containers, container levels, notifications, digest, host heartbeat, container updates, container samples).
@@ -44,7 +46,8 @@ Migrations are through **0045** (0039-0045 are new: host containers, container l
 3. **Build the non-root images** from [Planning_Root-Image.md](Planning_Root-Image.md) (questions 227-228): entrypoint, `user:` and `.env` keys, the agent's one-time volume `chown`, live test on OZ; then the hardening PR. (The plan is written, nothing built.)
 4. **Remaining small review items:** done 2026-11-12 (stdlib imports hoisted: the 325 imports of the package itself and `cryptography`, `httpx`, `winrm` stay on purpose; Hyper-V removed; Postgres run in `release.sh`). Left over: the WSL install guides are still a Hyper-V walkthrough (backlog line).
 5. **Later:** actions on rootless Podman containers (question 216); a real ntfy or webhook on a rule (and Teams); per-host staggering of long self-tests; NVMe self-tests; a check that a Podman host's `skopeo` exists for the newer-image check.
-6. **From the older handoffs:** the Director's Fix, deleting the test template `debian13-linktest-2026.10`, the garagepc folder check, the Kerberos click-through (handoff 2026-10-24 §3).
+6. **Self-tests, still to check:** the pages in a browser on a Pi after v0.8.2 (its `sda` flash stick: collection must record `smart_support`), NVMe self-test scheduling in smartd on the Pi (7.3), the guides (`User_Docs/Web-Interface-Admin.md` Self-tests section, backlog line), questions 235 and 236 (recommended yes, built that way).
+7. **From the older handoffs:** the Director's Fix, deleting the test template `debian13-linktest-2026.10`, the garagepc folder check, the Kerberos click-through (handoff 2026-10-24 §3).
 
 ## 4. Lab state (2026-11-12)
 
