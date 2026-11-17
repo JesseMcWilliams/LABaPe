@@ -36,7 +36,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # for backups from the Settings page (trixie ships 17, matching the server).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      bash ca-certificates curl unzip git openssh-client perl iputils-ping \
+      bash ca-certificates curl unzip git openssh-client perl iputils-ping libcap2-bin \
       python3 python3-venv \
       libvirt-clients virtinst qemu-utils xorriso qemu-system-x86 ovmf postgresql-client \
  && rm -rf /var/lib/apt/lists/*
@@ -141,6 +141,13 @@ RUN chmod -R a+rX /opt/labape/help
 ARG LABAPE_VERSION=dev
 ENV LABAPE_VERSION=${LABAPE_VERSION}
 
+# Not root (plan: Planning_Root-Image.md): the entrypoint starts as root only to give the service user
+# (LABAPE_UID/LABAPE_GID from container/.env) a passwd entry and its folders, then drops to it. ping keeps its
+# raw-socket file capability so check-network.sh works for that user (the worker's cap_add keeps NET_RAW in the set).
+COPY container/entrypoint.sh /opt/labape/entrypoint.sh
+RUN chmod 0755 /opt/labape/entrypoint.sh && setcap cap_net_raw+ep "$(command -v ping)"
+
 VOLUME ["/var/lib/labape"]
 EXPOSE 8000
+ENTRYPOINT ["/opt/labape/entrypoint.sh"]
 CMD ["labape", "serve"]

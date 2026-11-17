@@ -37,6 +37,18 @@ EOF
   echo "labape: wrote container/.env"
 fi
 
+# The API and worker run as this user, not root (container/entrypoint.sh): keep the ids in .env. Rootless Podman
+# keeps root in the container, which already is this user on the host. The kvm and libvirt gids are for /dev/kvm
+# and the libvirt socket, plus the data root's group (blank when a group is missing).
+if ! grep -q '^LABAPE_UID=.' .env && { command -v docker >/dev/null 2>&1 || ! command -v podman >/dev/null 2>&1; }; then
+  extra="$({ getent group kvm libvirt || true; } | cut -d: -f3 | paste -sd, -)"
+  # the group of the data root (/data): its folders are group-writable for it, which is how the service user writes there
+  dr="$({ grep -m1 '^LABAPE_DATA_ROOT=' .env || true; } | cut -d= -f2-)"; dg="$(stat -c %g "${dr:-/data}" 2>/dev/null || true)"
+  case "$dg" in ''|0|"$(id -g)") ;; *) extra="${extra:+$extra,}$dg" ;; esac
+  printf 'LABAPE_UID=%s\nLABAPE_GID=%s\nLABAPE_EXTRA_GIDS=%s\n' "$(id -u)" "$(id -g)" "$extra" >> .env
+  echo "labape: container/.env: the stack runs as uid $(id -u) (groups: ${extra:-none})"
+fi
+
 umask 077
 mkdir -p secrets config engine-secrets/ssh
 # The update agent's request folder (mounted into the API): made here, as this user, or Docker

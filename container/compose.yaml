@@ -58,6 +58,11 @@ x-labape: &labape
     LABAPE_MAIL_PORT: "1025"
     LABAPE_MAILPIT_URL: http://labape-mailpit:8025/mail
     LABAPE_MAILPIT_CONFIG: /var/lib/labape-mailpit
+    # Run as the host's service user, not root (container/entrypoint.sh): setup.sh and the installer write these;
+    # blank keeps root. LABAPE_EXTRA_GIDS: the host's kvm and libvirt gids, for the worker's /dev/kvm and libvirt socket.
+    LABAPE_UID: ${LABAPE_UID:-}
+    LABAPE_GID: ${LABAPE_GID:-}
+    LABAPE_EXTRA_GIDS: ${LABAPE_EXTRA_GIDS:-}
   secrets: [database_url, tofu_pg_conn, secret_key, oidc_client_secret, ca_password]
   volumes:
     - labape-data:/var/lib/labape
@@ -164,6 +169,8 @@ services:
   labape-guacd:
     image: docker.io/guacamole/guacd:1.6.0
     restart: unless-stopped
+    # The recordings folder belongs to the service user once the worker starts as it; guacd's own uid is 1000.
+    user: "${LABAPE_UID:-1000}:${LABAPE_GID:-1000}"
     logging: *logging
     volumes:
       - labape-recordings:/home/guacd

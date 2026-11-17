@@ -1,6 +1,6 @@
 # Plan: stop running the API and worker as root (2026-11-12)
 
-> **Stage: Planning.** Review item 8 of [Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md), left over from batch B1 of [Planning_Next-Round-2026-11-08.md](Planning_Next-Round-2026-11-08.md). Questions 227 and 228 in [Planning_Questions.md](Planning_Questions.md) hold the choices; every recommendation is the default if there is no answer. Nothing here is built.
+> **Stage: Planning.** Review item 8 of [Planning_Project-Review-2026-10-23.md](Planning_Project-Review-2026-10-23.md), left over from batch B1 of [Planning_Next-Round-2026-11-08.md](Planning_Next-Round-2026-11-08.md). Questions 227 and 228 in [Planning_Questions.md](Planning_Questions.md) hold the choices; every recommendation is the default if there is no answer. Built 2026-11-17 as a drop-privileges entrypoint (see section 7), not the plan's start-as-the-service-uid; 227 and 228 are answered by it. The hardening (section 2 item 5) is not built.
 
 ## 1. Today
 
@@ -52,3 +52,9 @@ The update agent applies a release as root-capable host code, so it does the vol
 1. Entrypoint, `USER`/`user:` and the `.env` keys, with the tests above (one PR). Live-test on OZ before merging.
 2. The agent's migration step (same PR or the next, before a release uses it).
 3. Hardening: read-only root, `no-new-privileges`, `cap_drop` (own PR).
+
+## 7. As built (2026-11-17)
+
+Instead of starting the container as the service uid, `container/entrypoint.sh` starts as root, adds a passwd and group entry for `LABAPE_UID`/`LABAPE_GID`, chowns the folders the container writes (`/var/lib/labape`, `-transcripts`, `-recordings`, `-mailpit`, `-syslog/conf`, `-syslog/tls`; once each, marker `.labape-owner`; a read-only mount is skipped), then `exec setpriv --reuid --regid --groups` to the command. That settles both questions without the update agent chowning anything: **227** the host service user's uid and gid from `.env`; **228** the container migrates its own volumes on the first start. Only the update agent adds the `.env` keys (`user_ids` in `labape-update.sh`, Docker only), and `setup.sh` does the same for a new install. The extra groups are the host's `kvm` and `libvirt` gids plus the group of the data root (its folders are group-writable for it, e.g. `vmadmin`). Blank keys keep root, so a rollback or an install that predates the keys behaves as before. `guacd` follows with `user:`; `ping` carries `cap_net_raw+ep`.
+
+**Checked live on OZ (2026-11-17):** the API and worker run as 1001 with the extra groups and no capabilities; `ssh`, `git`, `ping`, `/dev/kvm`, `virsh`, `/data` writes, the secrets and every shared volume work as that user; a `host.setup` job (ssh and sudo to kvm1) succeeded; `tofu init` from the provider mirror, `ansible-playbook --syntax-check` and the Packer plugins work. **Not yet:** an Ansible or OpenTofu deploy of a real environment, a Packer build, the update agent's round trip and rollback on an existing install, a Pi (its service user isn't in `kvm`/`libvirt`).
