@@ -88,7 +88,20 @@ unseal_stores() {
   grep -q '^LABAPE_SECRETS_DIR=.' "$C/.env" 2>/dev/null || return 0
   bash "$C/stores/stores.sh" unseal
 }
-up() { (cd "$C" && "${COMPOSE[@]}" up -d) && unseal_stores && caddy_current; }
+# The API and worker run as this user, not root (container/entrypoint.sh; plan Planning_Root-Image.md): the ids go
+# in .env once. Rootless Podman keeps root in the container, which already is this user on the host.
+user_ids() {
+  [ "$RT" = docker ] || return 0
+  grep -q '^LABAPE_UID=.' "$C/.env" 2>/dev/null && return 0
+  local gids
+  gids="$({ getent group kvm libvirt || true; } | cut -d: -f3 | paste -sd, -)"
+  local dr dg      # the data root's group: its folders are group-writable for it
+  dr="$({ grep -m1 '^LABAPE_DATA_ROOT=' "$C/.env" || true; } | cut -d= -f2-)"; dg="$(stat -c %g "${dr:-/data}" 2>/dev/null || true)"
+  case "$dg" in ''|0|"$(id -g)") ;; *) gids="${gids:+$gids,}$dg" ;; esac
+  printf 'LABAPE_UID=%s\nLABAPE_GID=%s\nLABAPE_EXTRA_GIDS=%s\n' "$(id -u)" "$(id -g)" "$gids" >> "$C/.env"
+  echo "labape-update: the stack now runs as uid $(id -u), gid $(id -g) (groups: ${gids:-none})"
+}
+up() { user_ids; (cd "$C" && "${COMPOSE[@]}" up -d) && unseal_stores && caddy_current; }
 healthy() {
   labape health --deep >/dev/null 2>&1     && curl -sk --max-time 10 --resolve "${WEB_HOST:-localhost}:443:127.0.0.1" "https://${WEB_HOST:-localhost}/api/health" | grep -q '"ok":true'
 }
