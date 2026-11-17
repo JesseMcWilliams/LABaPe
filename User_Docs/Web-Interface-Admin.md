@@ -45,7 +45,7 @@ After the stack is up, `labape bootstrap` (run by the installer) registers the h
 - `Prereq.RaidAlerts`: RAID events (`mdadm`) go to syslog. If `mdadm.conf` already has a `PROGRAM` line it asks first (answer `ReplaceRaidProgram`).
 - `Prereq.RaidDiskTimeouts`: SCT error recovery control of 7 seconds on the SATA disks of a host that has RAID arrays, through a udev rule, so a slow bad sector fails the read instead of the whole drive out of the array.
 - `Prereq.SmartAlerts`: `smartd`'s disk warnings are mailed to the stack's mail server (it installs the `mail` command; a `smartd.conf` that already has `-m` is left alone and the step says so).
-- `Prereq.SmartTests`: a short SMART self-test every Sunday at 02:00 and a long one on the 1st at 03:00, on every drive (`DEVICESCAN`).
+- `Prereq.SmartTests`: SMART self-tests through `smartd`: by default a short one every Sunday at 02:00 and a long one on the 1st at 03:00, on every drive (`DEVICESCAN`). It owns one marked block of `smartd.conf` (the original `DEVICESCAN` line is kept as a comment); change the schedule on the **Self-tests** page, not by hand. A `-s` you wrote yourself on `DEVICESCAN` is left alone and the step says so.
 - `Prereq.AlertMail`: the host's own mail goes to the stack's Mailpit (answers `MailBind`, `AlertMailHost`). A host without it shows "alerts from this host may not arrive"; untick **Check that its alerts arrive** in the host's Settings if it is not meant to mail.
 - `Prereq.DiagSudo`: lets the access account read SMART data and run the container and disk collectors with sudo.
 
@@ -98,7 +98,14 @@ It prints a `/breakglass` URL and a one-time credential, valid for 5 minutes, wh
 
 - Every action asks to confirm first and is audited. LVM groups are shown only. Creating, destroying or growing a pool is done on the host itself.
 
-**Self-tests.** The Drives and volumes list has a **Last self-test** column (when and the result). A drive whose last self-test failed, or that has had none for a long time, appears among the host's warnings. The tests themselves are scheduled on the host by `Prereq.SmartTests`.
+**Self-tests.** The Drives and volumes list has a **Last self-test** column (when and the result). A drive whose last self-test failed, or that has had none for a long time, appears among the host's warnings. The tests themselves are scheduled on the host by `Prereq.SmartTests`; see below for the schedule.
+
+**Self-test schedule (Admin → Self-tests).** The page lists every host: the schedule that applies (the stack default, the host's own, or switched off), what the host's `smartd.conf` really has (a *Not applied yet* note when it differs), the next run and each drive's last short and long result. The same panel is at the top of a host's Drives and volumes section.
+- **Edit default** sets the stack default: the short test's weekday and hour and the long test's day of the month (1-28) and hour, each switchable off, and whether a drive with no test is warned about. Saving asks for confirmation and names the hosts that follow the default; each gets a short setup job that runs only the self-test step.
+- **Edit** on a host chooses *use the default*, *its own schedule* or *off*, the drives to leave out (a drive on the list is not tested and not warned about) and the warning switch. Hours are the host's own local time, as `smartd` reads them.
+- A failed self-test always raises its error, whatever the switches say.
+- A drive never tested shows *never (scheduled)* with an information note while the first run is still ahead. If a scheduled time has passed by a day with no test, the warning says `smartd` may be unable to test it: a USB bridge may need `-d sat`, and a flash stick or a RAID volume has no SMART at all; leave such a drive out. A drive that reports no SMART gets no never-tested warning.
+- If a host's file differs from its policy (a hand edit, a host that was unreachable), the monitoring tick applies the schedule again within a few hours; saving applies it at once.
 
 **Containers.** A host with Docker or Podman has a **Containers** section: every container with its image, state, ports and health, a detail dialog with logs (the last 2,000 lines or 1 MB; values after `PASSWORD`, `TOKEN`, `SECRET` and `KEY` are masked), stats and a **History** tab (CPU and memory, from 6 hours to 7 days), plus Images and Volumes tabs. Containers of the access account's own rootless Podman show too, marked *rootless* and read-only.
 - **Level.** The host's setting says what LABaPe may do: *off* (read only, the default), *known* (start, stop, restart and pull-and-recreate for containers it has already listed), *new* or *all*. The stack's own containers are never actionable, even on the stack host. Quadlet-managed containers are restarted through their systemd unit.
