@@ -233,7 +233,7 @@
   },
   {
    "name": "labape",
-   "version": "0.8.1",
+   "version": "0.8.2",
    "license": "AGPL-3.0-only",
    "summary": "LABaPe web application: UI, REST API and job runner for lab environments",
    "home": "",
@@ -601,7 +601,7 @@
   "postgresql-client\t17+278\tall"
  ],
  "os": "Debian GNU/Linux 13 (trixie)",
- "dpkg_total": 266,
+ "dpkg_total": 267,
  "tools": {
   "OpenTofu": "1.12.6",
   "Packer": "1.16.1",
@@ -645,7 +645,7 @@
   ],
   "dpkg_total": 116
  },
- "image_version": "v0.8.1-9-g6c12d41",
- "captured": "2026-11-16",
- "captured_from": "the lab stack's worker container (labape:local, built as v0.8.1-9-g6c12d41) and the images it runs"
+ "image_version": "v0.8.2-6-gbcd79a7",
+ "captured": "2026-11-17",
+ "captured_from": "the lab stack's worker container (labape:local, built as v0.8.2-6-gbcd79a7) and the images it runs"
 }

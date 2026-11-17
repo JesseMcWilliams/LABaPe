@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-17
+
+The API and worker now run as the host's service user instead of root (a drop-privileges entrypoint; existing Docker installs are migrated by the update agent), drives with no SMART no longer get a never-tested warning, and the admin guide covers the Self-tests page.
+
 ### Changed
 
 - **The API and worker no longer run as root.** The image starts through `container/entrypoint.sh`, which gives the host's service user (`LABAPE_UID`, `LABAPE_GID` in `container/.env`) a passwd entry and ownership of the folders the containers write (once, marked by `.labape-owner`), then drops to that user with the kvm, libvirt and data-root groups (`LABAPE_EXTRA_GIDS`). `setup.sh` writes the keys on a new install; the update agent writes them once before the first `up` on an existing Docker install; without them the containers stay root, as before. `guacd` runs as the same uid; `ping` keeps its file capability. Rootless Podman is unchanged (root in the container is already the service user). The read-only root filesystem and `cap_drop` are a later step.
