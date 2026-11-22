@@ -379,11 +379,12 @@ def test_smart_tests_follow_the_schedule_answers_and_can_be_undone(tmp_path, mon
     c.a.add({"SmartSchedule": "S/../../3/04", "SmartSkip": "/dev/sdb, /dev/sdc, notadevice"})
     status, msg = S.prereq_smart_tests(c)
     lines = conf.read_text().splitlines()
+    woken = original.replace(" -n standby", "")                    # a sleeping drive is woken for its test
     skip_line = "/dev/sdb -d removable -n standby -m root -M exec /usr/share/smartmontools/smartd-runner"
     assert status == S.DONE and "left out: /dev/sdb, /dev/sdc" in msg and "notadevice" not in conf.read_text()
     assert lines[0] == "# top" and lines[1] == S.SMART_BEGIN and lines[-1] == S.SMART_END
     assert skip_line in lines
-    assert lines.index(skip_line) < lines.index(original + " -s (S/../../3/04)")      # skipped drives come first
+    assert lines.index(skip_line) < lines.index(woken + " -s (S/../../3/04)")      # skipped drives come first
     ran.clear()
     assert S.prereq_smart_tests(c) == (S.DONE, "already scheduled") and not ran
     c.a.add({"SmartSchedule": "L/../15/./05", "SmartSkip": ""}, overwrite=True)        # a new schedule replaces ours

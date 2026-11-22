@@ -4,6 +4,8 @@ re-running is safe. The shared pieces live in steps_base.py and the web interfac
 this module re-exports them, so `labape_deploy.steps` is still the one place the installer and the tests look."""
 from __future__ import annotations
 
+import re
+
 from .steps_base import *  # noqa: F401,F403
 from .steps_base import _catalog, _installed  # noqa: F401
 from .steps_stack import *  # noqa: F401,F403
@@ -273,7 +275,10 @@ def smartd_lines(lines: list[str], schedule: str, skip: list[str]) -> tuple[list
     base = lines[i].rstrip()
     block = [SMART_BEGIN, SMART_ORIGINAL + lines[i]]
     block += [f"{dev} {base.split(None, 1)[1] if len(base.split(None, 1)) > 1 else ''}".rstrip() for dev in skip]
-    block.append(f"{base} -s ({schedule})" if schedule else base)
+    # smartd's `-n standby` (Debian's default) skips a test while the drive sleeps, so an idle drive was never
+    # tested: the scheduled line wakes the drive for its test (no -n, smartd's default is `never`).
+    scheduled = re.sub(r"\s-n\s+standby\S*", "", base) if schedule else base
+    block.append(f"{scheduled} -s ({schedule})" if schedule else base)
     block.append(SMART_END)
     return lines[:i] + block + lines[i + 1:], ("self-tests scheduled" if schedule else "no schedule") + \
         (f"; left out: {', '.join(skip)}" if skip else "")
