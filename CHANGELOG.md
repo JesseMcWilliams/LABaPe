@@ -7,6 +7,10 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-21
+
+ACME clients get a 90-day certificate by default (it was one day) and the lifetime is a setting; certificates they get directly from the CA now show in the Certificates list. The CA's database moved to the stack's PostgreSQL: ACME clients register again once.
+
 ### Added
 
 - **The ACME lifetime is a setting** (Certificates → CA): the default and longest lifetime, in days, that ACME clients such as Home Assistant's Let's Encrypt add-on or certbot get (they can't ask for one). The update agent applies a change to the CA (`ca_lifetime`: `step ca provisioner update acme`, then a CA restart), and the tab shows what the CA really has, with **Apply to the CA** when it differs.
