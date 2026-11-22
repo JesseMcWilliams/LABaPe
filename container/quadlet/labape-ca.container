@@ -1,6 +1,8 @@
 # LABaPe: platform CA (step-ca). See container/README.md "Podman and Quadlets".
 [Unit]
 Description=LABaPe platform CA
+Requires=labape-postgres.service
+After=labape-postgres.service
 
 [Container]
 ContainerName=labape-ca
@@ -13,6 +15,7 @@ PublishPort=9444:9000
 Volume=labape-ca.volume:/home/step
 Volume=/etc/labape/ca:/labape:ro,z
 Secret=labape-ca-password,target=/run/secrets/ca_password
+Secret=labape-database-url,target=/run/secrets/database_url
 
 [Service]
 Restart=always

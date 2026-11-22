@@ -253,3 +253,41 @@ def revoke(db: Session, c: Certificate, by: str, reason: str) -> None:
     ca.revoke(c.serial, reason)
     c.status, c.revoked_at, c.revoked_by, c.revoke_reason = "revoked", utcnow(), by, reason[:255]
     db.commit()
+
+
+# --- what the CA issued without LABaPe (ACME clients) ----------------------------------------------------------------
+
+def sync_from_ca(db: Session) -> int:
+    """Copies the certificates the CA issued that the register doesn't have (an ACME client such as Home Assistant's
+    Let's Encrypt add-on asks the CA directly) and the revocations the CA knows of. Returns how many were added; 0 when
+    the CA's database can't be read. Idempotent: the serial is the key."""
+    from . import ca_db
+    got = ca_db.read()
+    if got is None:
+        return 0
+    rows, revoked = got
+    known = {s: st for s, st in db.execute(select(Certificate.serial, Certificate.status))}
+    added = 0
+    for r in rows:
+        if r["serial"] in known:
+            continue
+        pem = serialization.Encoding.PEM
+        try:
+            leaf = x509.load_der_x509_certificate(r["der"]).public_bytes(pem).decode()
+        except ValueError:
+            continue
+        acme = r["type"].upper() == "ACME"
+        name = r["provisioner"] or "unknown"
+        try:
+            row = record(db, leaf, requested_by="ACME client" if acme else name, source="acme" if acme else "ca",
+                         note=f"issued by the {name} provisioner, asked for directly (not through LABaPe)")
+        except CertError:
+            continue
+        known[row.serial] = row.status
+        added += 1
+    mine = [s for s in revoked if known.get(s) == "active"]
+    if mine:
+        for c in db.scalars(select(Certificate).where(Certificate.serial.in_(mine))):
+            c.status, c.revoked_at, c.revoked_by, c.revoke_reason = "revoked", utcnow(), "the CA", "revoked at the CA"
+        db.commit()
+    return added

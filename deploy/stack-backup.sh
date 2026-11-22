@@ -91,6 +91,10 @@ mkdir -p "$W/db" "$W/volumes" "$W/files"
 # --- databases ------------------------------------------------------------------
 say "dumping the databases"
 dc exec -T postgres pg_dump -U labape -Fc labape > "$W/db/labape.dump"
+# The platform CA's own database (issued certificates, ACME accounts) when the CA uses the stack's PostgreSQL.
+if dc exec -T postgres psql -U labape -d labape -Atc "select 1 from pg_database where datname = 'stepca'" 2>/dev/null | grep -q 1; then
+  dc exec -T postgres pg_dump -U labape -Fc stepca > "$W/db/stepca.dump"
+fi
 if [ $SYSLOG = 1 ] && running labape-syslog-db; then
   dc exec -T labape-syslog-db pg_dump -h /var/run/postgresql -U postgres -Fc syslog > "$W/db/syslog.dump"
 fi

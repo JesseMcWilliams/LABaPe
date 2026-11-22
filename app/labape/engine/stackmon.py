@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from .. import appsettings, maintenance_mode
+from .. import appsettings, certs, maintenance_mode
 from ..config import get_settings
 from ..models import HostContainers, HostFacts, HostMetric, KvmHost, MonitorAlert, MonitorSilence, Setting, StackStatus, utcnow
 from . import hostadmin, hostcontainers, selftests
@@ -469,6 +469,11 @@ def tick(db_factory) -> None:
                 heartbeat.due(db, now)
                 hostsetup.due(db, now)
                 selftests.reconcile(db, now)
+                try:
+                    certs.sync_from_ca(db)
+                except Exception:  # noqa: BLE001
+                    db.rollback()
+                    log.exception("certificate sync from the CA")
                 sync_alerts(db, evaluate(db, now), now)
                 notifications.digest(db, now)
         except Exception:  # noqa: BLE001

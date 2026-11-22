@@ -126,7 +126,10 @@ services:
     environment:
       LABAPE_CA_NAME: ${LABAPE_CA_NAME:-LABaPe CA}
       LABAPE_CA_DNS: labape-ca,localhost,${LABAPE_HOSTNAME}
-    secrets: [ca_password]
+    secrets: [ca_password, database_url]     # database_url: the CA's own database is in the stack's PostgreSQL (ca/init.sh)
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       # VMs renew their certificates here (mTLS); the API and Caddy use labape-ca:9000.
       - "${LABAPE_CA_PORT:-9444}:9000"

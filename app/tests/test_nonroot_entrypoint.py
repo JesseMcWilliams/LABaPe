@@ -57,3 +57,10 @@ def test_without_a_service_user_the_entrypoint_just_runs_the_command(tmp_path):
         r = subprocess.run(["bash", str(CONTAINER / "entrypoint.sh"), "echo", "ran"], capture_output=True, text=True,
                            env={"PATH": "/usr/bin:/bin:/mingw64/bin", **env}, cwd=tmp_path)
         assert r.returncode == 0 and r.stdout.strip() == "ran", (env, r.stderr)
+
+
+def test_the_update_agent_applies_the_acme_lifetime():
+    sh = text(ROOT / "deploy" / "update-agent" / "labape-update.sh")
+    block = sh.split('if [ "$ACTION" = ca_lifetime ]; then')[1].split('if [ "$ACTION" = authentik_sso ]')[0]
+    assert "step ca provisioner update acme --x509-default-dur" in block and 'restart labape-ca' in block
+    assert "wait_healthy" in block and "acme_default_hours" in block and "acme_max_hours" in block
