@@ -4,7 +4,10 @@
 # (stamped with git describe, so the UI type-check runs too), recreate the
 # API and worker, and print /api/health.
 #
-# Leaves the lab clone dirty. Once the change is merged, reset it there:
+# Leaves the lab clone dirty, unless the tree deployed is a clean origin/main
+# (a release): then the clone is reset at the end, so the update dialog's
+# "checkout has local changes" check doesn't block. For a branch, reset it
+# yourself once the change is merged:
 #   git -C ~/LABaPe-web fetch && git -C ~/LABaPe-web reset --hard origin/main
 #   ~/LABaPe-web/deploy/update-agent/install.sh    # the agent runs from a copy
 # Don't run it while jobs are running: recreating the worker kills them.
@@ -21,9 +24,12 @@ cp .git/index "$idx"
 GIT_INDEX_FILE="$idx" git add -A 2>/dev/null
 tree="$(GIT_INDEX_FILE="$idx" git write-tree)"
 version="$(git describe --tags --always --dirty)"
+# Clean and equal to origin/main (as last fetched): safe to reset the lab clone afterwards.
+RESET=0
+if [ -z "$(git status --porcelain)" ] && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main 2>/dev/null)" ]; then RESET=1; fi
 
 # R=... is expanded on the lab host, so a ~ in LABAPE_LAB_REPO works.
-git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; R=$LAB_REPO; U='$LAB_URL';"'
+git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; RESET=$RESET; R=$LAB_REPO; U='$LAB_URL';"'
   tar -xf - -C "$R" && cd "$R"
   if docker build --build-arg LABAPE_VERSION="$V" -f container/Dockerfile -t labape:local . > /tmp/labape-build.log 2>&1; then
     echo "build=ok $V"
@@ -45,4 +51,5 @@ git -c core.autocrlf=false archive "$tree" | "${LAB_SSH[@]}" "V='$version'; R=$L
   CF="$(grep -m1 "^LABAPE_CADDYFILE=" .env | cut -d= -f2-)"; CF="${CF:-Caddyfile}"
   docker compose exec -T caddy cat /etc/caddy/Caddyfile 2>/dev/null | cmp -s - "caddy/$CF" \
     || docker compose up -d --force-recreate caddy >/dev/null 2>&1
-  sleep 15; curl -sk "$U/api/health"; echo'
+  sleep 15; curl -sk "$U/api/health"; echo
+  if [ "$RESET" = 1 ]; then git -C "$R" fetch -q origin && git -C "$R" reset -q --hard origin/main && echo "lab clone reset to origin/main"; fi'
