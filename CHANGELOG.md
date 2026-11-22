@@ -7,6 +7,8 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+- Self-tests: the scheduled `smartd` line no longer has Debian's `-n standby`, so a sleeping drive is woken for its test instead of skipping it (idle drives on OZ never ran one). The install step rewrites the line on the next run.
+
 ## [0.8.4] - 2026-11-21
 
 ACME clients get a 90-day certificate by default (it was one day) and the lifetime is a setting; certificates they get directly from the CA now show in the Certificates list. The CA's database moved to the stack's PostgreSQL: ACME clients register again once.
