@@ -339,6 +339,11 @@ class CertificateSettings(BaseModel):
     # Extra key usages and extended key usages on a request (row 25). Off until the CA's provisioner carries the
     # template that applies them (container/ca/enable-attributes.sh); without it step-ca ignores them.
     attributes_enabled: bool = False
+    # What an ACME client (Home Assistant's Let's Encrypt add-on, certbot, Caddy) gets: it can't ask for a lifetime, so
+    # the ACME provisioner's own default applies. Applied to the CA by the update agent (ca_lifetime); shorter
+    # public-certificate lifetimes are coming, so this is a setting.
+    acme_default_days: int = Field(default=90, ge=1, le=365)
+    acme_max_days: int = Field(default=90, ge=1, le=365)
 
 
 SECTIONS: dict[str, type[BaseModel]] = {

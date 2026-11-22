@@ -20,9 +20,9 @@ interface Cert {
 }
 interface CaInfo {
   configured: boolean; healthy: boolean | null; health: string; url: string; total: number; counts: Record<string, number>;
-  root: { subject: string; serial: string; not_before: string; not_after: string; fingerprint: string } | null; provisioners: { type: string; name: string }[];
+  root: { subject: string; serial: string; not_before: string; not_after: string; fingerprint: string } | null; provisioners: { type: string; name: string; default_hours?: number | null; max_hours?: number | null }[];
 }
-interface CertSettings { allowed_domains: string[]; allowed_networks: string[]; environment_ranges: string[]; default_days: number; max_days: number; attributes_enabled: boolean; always_allowed: string[]; can_edit: boolean }
+interface CertSettings { allowed_domains: string[]; allowed_networks: string[]; environment_ranges: string[]; default_days: number; max_days: number; attributes_enabled: boolean; acme_default_days: number; acme_max_days: number; always_allowed: string[]; can_edit: boolean }
 interface Issued { certificate: Cert; chain: string; key: string; root: string }
 
 // Extra attributes a request may ask for (certs.USES in the API): extended key usages, then key usages.
@@ -72,6 +72,7 @@ function CertList({ seesAll, canRevoke, canRequest, onRenew }: { seesAll: boolea
   const [all, setAll] = useState(seesAll);
   const [rows, setRows] = useState<Cert[]>([]);
   const [error, setError] = useState("");
+  const [synced, setSynced] = useState("");
   const [open, setOpen] = useState<Cert | null>(null);
   const flt = useUrlFilters(["q", "state", "source"]);
   const a = flt.applied;
@@ -85,16 +86,19 @@ function CertList({ seesAll, canRevoke, canRequest, onRenew }: { seesAll: boolea
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error">{error}</Alert>}
+      {synced && <Alert severity="info" onClose={() => setSynced("")}>{synced}</Alert>}
       <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
         {seesAll && <FormControlLabel label="Everyone's certificates" control={<Checkbox checked={all} onChange={(e) => setAll(e.target.checked)} />} />}
         <Box sx={{ flexGrow: 1 }} />
+        {canRevoke && <Button size="small" variant="outlined" title="Copy in what the CA issued that LABaPe doesn't have (ACME clients ask the CA directly); this also happens every few minutes"
+          onClick={() => api.post<{ added: number }>("/api/certificates/sync", {}).then((r) => { setError(""); setSynced(r.added ? `${r.added} certificate${r.added === 1 ? "" : "s"} added from the CA.` : "Nothing new at the CA."); load(); }, (e) => setError(e.message))}>Refresh from the CA</Button>}
         <Typography variant="body2" color="text.secondary">{flt.active ? `${shown.length} of ${rows.length}` : `${rows.length} certificate${rows.length === 1 ? "" : "s"}`}</Typography>
       </Stack>
       <FilterBar onApply={() => flt.apply()} onClear={flt.clear} active={flt.active}>
         <Field label="Search" value={flt.draft.q} sx={{ width: 240 }} help="Name, address, serial, requester, host" onChange={(e) => flt.set("q", e.target.value)} />
         <SelectFilter label="State" value={flt.draft.state} width={150} options={["active", "expiring", "expired", "revoked"]} onChange={(v) => flt.set("state", v)} />
-        <SelectFilter label="Source" value={flt.draft.source} width={150} options={["request", "engine", "stack", "imported"]}
-          help="request: asked for here; engine: a deploy; stack: the stack's own" onChange={(v) => flt.set("source", v)} />
+        <SelectFilter label="Source" value={flt.draft.source} width={150} options={["request", "engine", "stack", "imported", "acme", "ca"]}
+          help="request: asked for here; engine: a deploy; stack: the stack's own; acme: an ACME client (Home Assistant, certbot) asked the CA directly; ca: another way" onChange={(v) => flt.set("source", v)} />
       </FilterBar>
       <Pager total={shown.length} page={page} onPage={setPage} />
       <Table size="small">
@@ -287,18 +291,21 @@ function PemBox({ title, text, file }: { title: string; text: string; file: stri
 function CaPage({ canEdit }: { canEdit: boolean }) {
   const [info, setInfo] = useState<CaInfo | null>(null);
   const [cfg, setCfg] = useState<CertSettings | null>(null);
-  const [form, setForm] = useState({ domains: "", networks: "", ranges: "", def: 30, max: 90, attrs: false });
+  const [form, setForm] = useState({ domains: "", networks: "", ranges: "", def: 30, max: 90, attrs: false, acmeDef: 90, acmeMax: 90 });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pem, setPem] = useState("");
   const [note, setNote] = useState("");
   const load = () => {
     api.get<CaInfo>("/api/certificates/ca").then(setInfo, (e) => setMsg({ ok: false, text: e.message }));
-    api.get<CertSettings>("/api/certificates/settings").then((c) => { setCfg(c); setForm({ domains: c.allowed_domains.join("\n"), networks: c.allowed_networks.join("\n"), ranges: (c.environment_ranges ?? []).join("\n"), def: c.default_days, max: c.max_days, attrs: c.attributes_enabled }); }, () => undefined);
+    api.get<CertSettings>("/api/certificates/settings").then((c) => { setCfg(c); setForm({ domains: c.allowed_domains.join("\n"), networks: c.allowed_networks.join("\n"), ranges: (c.environment_ranges ?? []).join("\n"), def: c.default_days, max: c.max_days, attrs: c.attributes_enabled, acmeDef: c.acme_default_days, acmeMax: c.acme_max_days }); }, () => undefined);
   };
   useEffect(load, []);
   const counts = useMemo(() => Object.entries(info?.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(" · "), [info]);
-  const saveCfg = () => api.put("/api/certificates/settings", { allowed_domains: lines(form.domains), allowed_networks: lines(form.networks), environment_ranges: lines(form.ranges), default_days: form.def, max_days: form.max, attributes_enabled: form.attrs })
-    .then(() => { setMsg({ ok: true, text: "Saved." }); load(); }, (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
+  const saveCfg = (applyAcme = false) => api.put<{ note?: string }>("/api/certificates/settings", { allowed_domains: lines(form.domains), allowed_networks: lines(form.networks), environment_ranges: lines(form.ranges), default_days: form.def, max_days: form.max, attributes_enabled: form.attrs, acme_default_days: form.acmeDef, acme_max_days: form.acmeMax, apply_acme: applyAcme })
+    .then((r) => { setMsg({ ok: true, text: r.note || "Saved." }); load(); }, (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
+  // What the CA itself has for ACME clients (its provisioner's claims) against what is saved: they differ until the update agent has applied it.
+  const acme = info?.provisioners.find((p) => p.type === "ACME");
+  const acmeDiffers = !!(acme && cfg && acme.default_hours != null && acme.max_hours != null && (acme.default_hours !== cfg.acme_default_days * 24 || acme.max_hours !== cfg.acme_max_days * 24));
   const doImport = () => api.post("/api/certificates/import", { pem, note }).then(() => { setMsg({ ok: true, text: "Added to the register." }); setPem(""); setNote(""); load(); },
     (e) => setMsg({ ok: false, text: fromApiError(e).summary || e.message }));
   return (
@@ -310,7 +317,7 @@ function CaPage({ canEdit }: { canEdit: boolean }) {
           ["Address", info.url || "—"],
           ["Root certificate", info.root ? `${info.root.subject}, valid until ${fmtTime(info.root.not_after)}` : "—"],
           ["Root fingerprint", info.root?.fingerprint ?? "—"],
-          ["Provisioners", info.provisioners.map((p) => `${p.name} (${p.type})`).join(", ") || "—"],
+          ["Provisioners", info.provisioners.map((p) => `${p.name} (${p.type}${p.default_hours ? `, ${Math.round(p.default_hours / 24)} days` : ""})`).join(", ") || "—"],
           ["In the register", `${info.total}${counts ? ` (${counts})` : ""}`],
         ]} />
       )}
@@ -330,6 +337,20 @@ function CaPage({ canEdit }: { canEdit: boolean }) {
               <Field label="Default lifetime (days)" type="number" value={form.def} sx={{ width: 190 }} disabled={!canEdit} onChange={(e) => setForm({ ...form, def: Number(e.target.value) })} />
               <Field label="Longest lifetime (days)" type="number" value={form.max} sx={{ width: 190 }} disabled={!canEdit} help="step-ca allows up to 90" onChange={(e) => setForm({ ...form, max: Number(e.target.value) })} />
             </Stack>
+            <Typography variant="subtitle2" sx={{ pt: 1 }}>ACME clients (Home Assistant, certbot, Caddy)</Typography>
+            <Typography variant="body2" color="text.secondary">
+              An ACME client can't ask for a lifetime, so it gets the ACME provisioner's default. Public certificates are moving to shorter lifetimes, so this is yours to set.
+              Saving a change makes the update agent apply it to the CA, which restarts for a few seconds.
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <Field label="ACME default lifetime (days)" type="number" value={form.acmeDef} sx={{ width: 230 }} disabled={!canEdit} onChange={(e) => setForm({ ...form, acmeDef: Number(e.target.value) })} />
+              <Field label="ACME longest lifetime (days)" type="number" value={form.acmeMax} sx={{ width: 230 }} disabled={!canEdit} help="1 to 365" onChange={(e) => setForm({ ...form, acmeMax: Number(e.target.value) })} />
+            </Stack>
+            {acmeDiffers && acme && (
+              <Alert severity="warning" action={canEdit ? <Button color="inherit" size="small" onClick={() => saveCfg(true)}>Apply to the CA</Button> : undefined}>
+                The CA currently gives ACME clients {Math.round((acme.default_hours ?? 0) / 24)} days (at most {Math.round((acme.max_hours ?? 0) / 24)}); the saved setting is {cfg?.acme_default_days} (at most {cfg?.acme_max_days}).
+              </Alert>
+            )}
             <FormControlLabel label="The CA applies extra attributes" disabled={!canEdit}
               control={<Checkbox checked={form.attrs} onChange={(e) => setForm({ ...form, attrs: e.target.checked })} />} />
             <Typography variant="caption" color="text.secondary" component="div">
@@ -337,7 +358,7 @@ function CaPage({ canEdit }: { canEdit: boolean }) {
               The CA only applies them once its provisioner has the template: run <code>container/ca/enable-attributes.sh</code> in the CA container, once.
               A certificate that comes back without what was asked for is revoked and refused.
             </Typography>
-            {canEdit && <Box><Button variant="contained" onClick={saveCfg}>Save</Button></Box>}
+            {canEdit && <Box><Button variant="contained" onClick={() => saveCfg()}>Save</Button></Box>}
           </Stack>
         </Paper>
       )}

@@ -17,6 +17,8 @@
 #   signs a test request) -> maintenance off; everything put back on failure.
 # restart_service <labape-ca|labape-openbao|labape-conjur|labape-conjur-tls>: the Fix button on a failing CA or
 #   store check: restart that container, unseal OpenBao again when a store was restarted, then health checks.
+# ca_lifetime: the ACME provisioner's default and longest certificate lifetime (hours, from the request): `step ca
+#   provisioner update acme` in the CA container, then restart it and check health.
 # authentik_sso: sign-on between linked stacks (design §47.2): tools/authentik-test/sso.sh.
 # stores_setup: stores/stores.sh setup (secret health, S1: new store logins for LABaPe).
 # openbao_people: stores/stores.sh people-policies <envs>: each environment's OpenBao policy and
@@ -206,11 +208,11 @@ rotate() {
       for f in postgres_password database_url tofu_pg_conn; do cp -p "$S/$f" "$S/$f.old"; sed -i "s|$old|$new|" "$S/$f"; done
       store_push || { pg_password "$old"; for f in postgres_password database_url tofu_pg_conn; do mv "$S/$f.old" "$S/$f"; done
                       store_push; fail applying "writing the new database password to OpenBao failed; the old one is back"; }
-      recreate labape-api labape-worker
+      recreate labape-api labape-worker labape-ca
       if wait_healthy 120; then for f in postgres_password database_url tofu_pg_conn; do rm -f "$S/$f.old"; done; else
         pg_password "$old"; for f in postgres_password database_url tofu_pg_conn; do mv "$S/$f.old" "$S/$f"; done
         store_push || true
-        recreate labape-api labape-worker; wait_healthy 120 || true
+        recreate labape-api labape-worker labape-ca; wait_healthy 120 || true
         fail health "the new database password failed the health checks; the old one is back"
       fi ;;
     ca_password)
@@ -325,6 +327,30 @@ if [ "$ACTION" = restart_service ]; then
     status succeeded done "restarted $TARGET; the health checks pass"
   else
     status failed health "restarted $TARGET, but the health checks did not pass; see agent.log"
+  fi
+  finish
+  exit 0
+fi
+
+if [ "$ACTION" = ca_lifetime ]; then
+  # The ACME provisioner's certificate lifetime (Certificates -> CA): the
+  # default and longest, in hours, from the request. step-ca reads them at start, so the CA restarts.
+  dflt="$(field "$U/processing.json" acme_default_hours)"; max="$(field "$U/processing.json" acme_max_hours)"
+  case "$dflt$max" in ''|*[!0-9]*) status failed checking "the ACME lifetime needs whole hours"; finish; exit 0 ;; esac
+  if [ "$dflt" -lt 1 ] || [ "$max" -lt "$dflt" ] || [ "$max" -gt 8760 ]; then
+    status failed checking "the ACME lifetime must be between 1 hour and a year, the default not above the longest"; finish; exit 0
+  fi
+  status running applying "setting the ACME certificate lifetime to ${dflt}h (at most ${max}h)"
+  if ! (cd "$C" && "${COMPOSE[@]}" exec -T labape-ca step ca provisioner update acme --x509-default-dur "${dflt}h" --x509-max-dur "${max}h" </dev/null); then
+    status failed applying "step ca provisioner update acme failed; see agent.log"; finish; exit 0
+  fi
+  if ! (cd "$C" && "${COMPOSE[@]}" restart labape-ca); then
+    status failed applying "restarting the CA failed; see agent.log"; finish; exit 0
+  fi
+  if wait_healthy "${LABAPE_RESTART_HEALTH_SECONDS:-60}"; then
+    status succeeded done "ACME certificates now last ${dflt}h by default (at most ${max}h); the CA is back and the health checks pass"
+  else
+    status failed health "the lifetime is set, but the health checks did not pass after restarting the CA; see agent.log"
   fi
   finish
   exit 0

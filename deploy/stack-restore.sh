@@ -215,6 +215,9 @@ dc up -d postgres >/dev/null
 wait_pg dc postgres -U labape
 load dc postgres postgres labape labape "$W/db/labape.dump" -U labape
 role_password dc postgres labape "$PGPW" -U labape
+if [ -f "$W/db/stepca.dump" ]; then
+  load dc postgres postgres stepca labape "$W/db/stepca.dump" -U labape
+fi
 if [ -f "$W/db/syslog.dump" ] && dc config --services 2>/dev/null | grep -qx labape-syslog-db; then
   dc up -d labape-syslog-db >/dev/null
   wait_pg dc labape-syslog-db -h /var/run/postgresql -U postgres

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import ssl
 import subprocess
 import tempfile
@@ -136,6 +137,12 @@ def revoke(serial: str, reason: str = "") -> None:
             raise CaError(f"step ca revoke failed: {(r.stderr or r.stdout).strip()[-400:]}".replace(token, "***"))
 
 
+def _hours(duration) -> int | None:
+    """step-ca's "2160h0m0s" as whole hours (None when it isn't there)."""
+    m = re.match(r"(\d+)h", str(duration or ""))
+    return int(m.group(1)) if m else None
+
+
 def provisioners() -> list[dict]:
     """The CA's provisioners (public list): [{type, name}], or [] when it can't be asked."""
     import httpx
@@ -144,7 +151,10 @@ def provisioners() -> list[dict]:
         return []
     try:
         r = httpx.get(f"{s.ca_url.rstrip('/')}/provisioners", params={"limit": 100}, verify=trust(), timeout=10)
-        return [{"type": p.get("type", ""), "name": p.get("name", "")} for p in r.json().get("provisioners", [])]
+        return [{"type": p.get("type", ""), "name": p.get("name", ""),
+                 "default_hours": _hours((p.get("claims") or {}).get("defaultTLSCertDuration")),
+                 "max_hours": _hours((p.get("claims") or {}).get("maxTLSCertDuration"))}
+                for p in r.json().get("provisioners", [])]
     except (httpx.HTTPError, ValueError):
         return []
 

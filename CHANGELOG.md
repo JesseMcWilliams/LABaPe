@@ -7,6 +7,15 @@ Versions follow `vMAJOR.MINOR.PATCH`; the image is stamped with
 
 ## [Unreleased]
 
+### Added
+
+- **The ACME lifetime is a setting** (Certificates → CA): the default and longest lifetime, in days, that ACME clients such as Home Assistant's Let's Encrypt add-on or certbot get (they can't ask for one). The update agent applies a change to the CA (`ca_lifetime`: `step ca provisioner update acme`, then a CA restart), and the tab shows what the CA really has, with **Apply to the CA** when it differs.
+- **Certificates that ACME clients get directly from the CA now appear in the register** (source `acme`; `ca` for other direct requests), with a **Refresh from the CA** button and an automatic copy every few minutes. For that the CA's database moved from step-ca's Badger file to a database (`stepca`) of the stack's PostgreSQL (`container/ca/init.sh`; the stack backup and restore carry it, a rotated database password recreates the CA). **The first start after the switch begins with an empty CA database**: ACME clients register again. Caddy does so by itself; Home Assistant's add-on needs its `/data/letsencrypt/accounts` folder deleted once, then a restart. The old Badger folder stays in the CA volume.
+
+### Fixed
+
+- **ACME certificates from the platform CA lasted one day.** `container/ca/init.sh` set lifetimes only on the `labape-runner` provisioner; `acme` kept step-ca's built-in 24 hours, and an ACME client (Home Assistant's Let's Encrypt add-on, certbot) can't ask for another, so it renewed daily (Caddy's certificate too). The `acme` provisioner now defaults to 90 days (at most 90), set on every start so an existing CA is corrected; a lifetime an admin already set on it is kept.
+
 ## [0.8.3] - 2026-11-17
 
 The API and worker now run as the host's service user instead of root (a drop-privileges entrypoint; existing Docker installs are migrated by the update agent), drives with no SMART no longer get a never-tested warning, and the admin guide covers the Self-tests page.

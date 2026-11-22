@@ -67,6 +67,24 @@ class SettingsIn(BaseModel):
     default_days: int = Field(default=30, ge=1, le=90)
     max_days: int = Field(default=90, ge=1, le=90)
     attributes_enabled: bool = False
+    acme_default_days: int | None = Field(default=None, ge=1, le=365)      # None: keep what is saved
+    acme_max_days: int | None = Field(default=None, ge=1, le=365)
+    apply_acme: bool = False                         # apply again although it didn't change (the CA's own value differs)
+
+
+def apply_acme_lifetime(cfg, actor: str) -> str:
+    """Asks the update agent to put the ACME lifetime on the CA (it edits the CA's config and restarts it). Returns what
+    to tell the admin; never raises: the setting is saved either way, and the CA tab shows what the CA really has."""
+    from .. import update
+    if not update.agent_installed():
+        return ("Saved, but the update agent isn't installed on this host, so the CA keeps its lifetime: run "
+                f"`step ca provisioner update acme --x509-default-dur {cfg.acme_default_days * 24}h --x509-max-dur "
+                f"{cfg.acme_max_days * 24}h` in the CA container and restart it.")
+    if update.busy():
+        return "Saved, but the update agent is busy; save again when it has finished to apply it to the CA."
+    update.write_request("ca_lifetime", "acme", actor, acme_default_hours=cfg.acme_default_days * 24,
+                         acme_max_hours=cfg.acme_max_days * 24)
+    return "Saved. The update agent is applying the ACME lifetime to the CA (it restarts for a few seconds)."
 
 
 @router.get("/settings")
@@ -90,14 +108,23 @@ def put_settings(body: SettingsIn, request: Request, db: Session = Depends(get_d
             raise FieldError("environment_ranges", f"{n!r} isn't a network (for example 192.0.2.0/24)") from exc
     if body.default_days > body.max_days:
         raise FieldError("default_days", "The default lifetime can't be longer than the longest.")
+    old = appsettings.get(db, "certificates")
+    acme_default = body.acme_default_days if body.acme_default_days is not None else old.acme_default_days
+    acme_max = body.acme_max_days if body.acme_max_days is not None else old.acme_max_days
+    if acme_default > acme_max:
+        raise FieldError("acme_default_days", "The ACME default lifetime can't be longer than the longest.")
     model = appsettings.CertificateSettings(
         allowed_domains=[d.strip().lower().strip(".") for d in body.allowed_domains if d.strip()],
         allowed_networks=[n.strip() for n in body.allowed_networks if n.strip()],
         environment_ranges=[n.strip() for n in body.environment_ranges if n.strip()],
-        default_days=body.default_days, max_days=body.max_days, attributes_enabled=body.attributes_enabled)
+        default_days=body.default_days, max_days=body.max_days, attributes_enabled=body.attributes_enabled,
+        acme_default_days=acme_default, acme_max_days=acme_max)
     appsettings.put(db, "certificates", model)
     audit(db, p.username, "certificate.settings", detail=model.model_dump(), source_ip=client_ip(request))
-    return model.model_dump()
+    out = model.model_dump()
+    if (old.acme_default_days, old.acme_max_days) != (model.acme_default_days, model.acme_max_days) or body.apply_acme:
+        out["note"] = apply_acme_lifetime(model, p.username)
+    return out
 
 
 @router.get("/ca")
@@ -189,6 +216,16 @@ def _root() -> str:
 class ImportIn(BaseModel):
     pem: str = Field(min_length=100, max_length=40000)
     note: str = Field(default="", max_length=500)
+
+
+@router.post("/sync")
+def sync_from_ca(request: Request, db: Session = Depends(get_db), p: Principal = Depends(require_roles("ca_admin"))):
+    """Copies in what the CA issued that the register doesn't have (ACME clients ask the CA directly); the monitoring
+    tick does the same every few minutes."""
+    added = certs.sync_from_ca(db)
+    if added:
+        audit(db, p.username, "certificate.sync", detail={"added": added}, source_ip=client_ip(request))
+    return {"added": added}
 
 
 @router.post("/import", status_code=201)

@@ -241,3 +241,96 @@ def test_a_ca_auditor_sees_everything_and_changes_nothing(client, fake_ca):
     assert client.post(f"/api/certificates/{cid}/revoke", json={}).status_code == 403
     assert client.put("/api/certificates/settings", json={"allowed_domains": []}).status_code == 403
     assert client.get("/api/certificates/settings").json()["can_edit"] is False
+
+
+def test_the_acme_lifetime_is_a_setting_the_update_agent_applies(client, fake_ca, monkeypatch):
+    from labape import update
+    requests = []
+    monkeypatch.setattr(update, "agent_installed", lambda: True)
+    monkeypatch.setattr(update, "busy", lambda: False)
+    monkeypatch.setattr(update, "write_request", lambda action, target, actor, **extra: requests.append((action, target, extra)))
+    _admin_session(client)
+    assert client.get("/api/certificates/settings").json()["acme_default_days"] == 90            # today's default
+    # a save that leaves it alone (an older client that doesn't send it) changes nothing and asks nothing
+    assert client.put("/api/certificates/settings", json={"default_days": 30, "max_days": 60}).status_code == 200
+    assert requests == []
+    r = client.put("/api/certificates/settings", json={"acme_default_days": 40, "acme_max_days": 60})
+    assert r.status_code == 200 and "applying the ACME lifetime" in r.json()["note"]
+    assert requests == [("ca_lifetime", "acme", {"acme_default_hours": 960, "acme_max_hours": 1440})]
+    assert client.get("/api/certificates/settings").json()["acme_default_days"] == 40
+    # saved again unchanged: nothing, unless the CA tab asks to apply it again
+    client.put("/api/certificates/settings", json={"acme_default_days": 40, "acme_max_days": 60})
+    assert len(requests) == 1
+    client.put("/api/certificates/settings", json={"acme_default_days": 40, "acme_max_days": 60, "apply_acme": True})
+    assert len(requests) == 2
+    # the default can't be longer than the longest; a year is the limit
+    assert client.put("/api/certificates/settings", json={"acme_default_days": 50, "acme_max_days": 40}).status_code == 422
+    assert client.put("/api/certificates/settings", json={"acme_default_days": 1, "acme_max_days": 366}).status_code == 422
+    # keeping the longest while changing the default checks against the saved longest
+    assert client.put("/api/certificates/settings", json={"acme_default_days": 70}).status_code == 422
+
+
+def test_without_the_agent_the_setting_is_still_saved_and_says_what_to_run(client, fake_ca, monkeypatch):
+    from labape import update
+    monkeypatch.setattr(update, "agent_installed", lambda: False)
+    _admin_session(client)
+    r = client.put("/api/certificates/settings", json={"acme_default_days": 40, "acme_max_days": 40})
+    assert r.status_code == 200 and "step ca provisioner update acme --x509-default-dur 960h --x509-max-dur 960h" in r.json()["note"]
+    assert client.get("/api/certificates/settings").json()["acme_max_days"] == 40
+
+
+def test_the_ca_reports_each_provisioners_lifetime_in_hours(monkeypatch):
+    import httpx
+
+    class R:
+        def json(self):
+            return {"provisioners": [{"type": "ACME", "name": "acme", "claims": {"defaultTLSCertDuration": "2160h0m0s", "maxTLSCertDuration": "2160h0m0s"}},
+                                     {"type": "JWK", "name": "labape-runner"}]}
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: R())
+    monkeypatch.setattr(ca, "trust", lambda: True)
+    monkeypatch.setattr(ca, "get_settings", lambda: type("S", (), {"ca_url": "https://ca:9000"})())
+    assert ca.provisioners() == [{"type": "ACME", "name": "acme", "default_hours": 2160, "max_hours": 2160},
+                                 {"type": "JWK", "name": "labape-runner", "default_hours": None, "max_hours": None}]
+
+
+def _der_cert(cn, sans):
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+    now = dt.datetime.now(dt.timezone.utc)
+    c = (x509.CertificateBuilder().subject_name(name).issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test CA")]))
+         .public_key(key.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now)
+         .not_valid_after(now + dt.timedelta(days=90))
+         .add_extension(x509.SubjectAlternativeName([x509.DNSName(s) for s in sans]), critical=False)
+         .sign(key, hashes.SHA256()))
+    return c.serial_number, c.public_bytes(serialization.Encoding.DER)
+
+
+def test_certificates_an_acme_client_got_from_the_ca_appear_in_the_register(client, fake_ca, monkeypatch):
+    from labape import ca_db
+    s1, d1 = _der_cert("homeassistant.jlm.abq", ["homeassistant.jlm.abq"])
+    s2, d2 = _der_cert("tool.jlm.abq", ["tool.jlm.abq"])
+    revoked = set()
+    monkeypatch.setattr(ca_db, "read", lambda: ([{"serial": str(s1), "der": d1, "provisioner": "acme", "type": "ACME"},
+                                                   {"serial": str(s2), "der": d2, "provisioner": "labape-runner", "type": "JWK"}], revoked))
+    _admin_session(client)
+    r = client.post("/api/certificates/sync")
+    assert r.status_code == 200 and r.json() == {"added": 2}
+    rows = {c["subject"]: c for c in client.get("/api/certificates?scope=all").json()}
+    ha = rows["homeassistant.jlm.abq"]
+    assert ha["source"] == "acme" and ha["requested_by"] == "ACME client" and ha["sans"] == ["homeassistant.jlm.abq"] and ha["state"] == "active"
+    assert "asked for directly" in ha["note"] and rows["tool.jlm.abq"]["source"] == "ca"
+    assert client.post("/api/certificates/sync").json() == {"added": 0}                       # once per serial
+    # a revocation at the CA reaches the register
+    revoked.add(str(s1))
+    client.post("/api/certificates/sync")
+    assert {c["subject"]: c["state"] for c in client.get("/api/certificates?scope=all").json()}["homeassistant.jlm.abq"] == "revoked"
+    assert client.get("/api/certificates?scope=all&source=acme").status_code == 200
+
+
+def test_the_sync_is_for_ca_admins_and_does_nothing_when_the_ca_database_is_unreadable(client, fake_ca):
+    from labape import ca_db
+    assert ca_db.read() is None                      # the tests run on SQLite
+    _config(client)
+    assert client.post("/api/certificates/sync").json() == {"added": 0}
+    _as(client, "requester", "ca_requester")
+    assert client.post("/api/certificates/sync").status_code == 403
